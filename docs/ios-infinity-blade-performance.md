@@ -1,5 +1,24 @@
 # Infinity Blade 安装与帧率验证
 
+## 原生 Mach 时基实查：与宿主正常时间一致（2026-11-15）
+
+在独立检查点中只读核对 10B329 内核实际数据，没有替换或调用客户机函数。
+`mach_absolute_time` 经当前 CPU data 的回调 `0x80089604`，读取虚拟
+`0xc02a1000/4`（MMU 实查物理 `0xbf102000/4`），并加 CPU data 的 64-bit
+偏移；本次偏移为 0。原生 `_clock_timebase_info` 所指数据的 numer/denom
+实读为 125/3，与 PMGR 的 24 MHz 计数器匹配。
+
+normal/rate 1 的六秒运行窗口，两端停机读取数据。依据实际回调及换算常量计算
+Mach 时间差 6006.3 ms，机器时钟差 6006.3000002 ms，宿主窗口 6007.2 ms。
+未发现 16 倍等时间比例错误；不能通过改变时钟比例来声称 FPS 优化。
+末尾画面确认亮屏、God King 战斗仍在前进。该次是时间诊断，不作为 FPS 成绩。
+证据为 `build/ios/infinity-next/perf/native-timebase-result.json` 和
+`native-timebase/timebase-end.png`，原始回调、常量与前后读取一并保留。
+
+默认主核心/fallback 已重新从接受的源码构建，条件 FP、调度缓存和权限检查复用
+候选都没有混入默认核心。当前实测仍约 1.7–2.1 FPS，**60 FPS 未达成**；
+更大的已观测开销仍在 ARM 执行/调度及解释器的访存、MMIO 路径。
+
 ## 同块 FP 权限检查复用：未确认战斗收益（2026-11-15）
 
 候选在代码生成时复用同一基本块内支配后续指令的 FP 访问检查；每个新块重置，
