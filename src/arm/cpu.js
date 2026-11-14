@@ -1441,6 +1441,8 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
     });
     return {
         "host_time": performance.now(),
+        "clock": Object.assign({ "mode": this.clock.mode, "rate": this.clock.rate,
+            "now_ms": this.clock.now(), "paused": this.clock.paused }, this.clock.get_diagnostics()),
         "cpu_type": this.cpu_type,
         "machine_type": this.machine_type,
         "active_core": exports["a64_current_core"](),

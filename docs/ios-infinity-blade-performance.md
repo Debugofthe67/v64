@@ -4,14 +4,19 @@
 
 专用导航轮在原版 UIKit 的 `UIApplication.sendEvent:` 入口观察到延迟：
 客体时钟从 2116.978 s 到 2129.959 s，所处理的 `UIInternalEvent` 时间戳仅从
-2116.336 s 到 2118.204 s。确认存在事件积压，但当前没有充分证据将内部类型
-1004 直接归为加速度事件。该观察轮临时恢复每条入口原指令后单步执行，结束时
+2116.336 s 到 2118.204 s。随后读取 `_gsEvent` 所指的原版包，确认类型为 23、
+轴数据为 `(0,-1,0)`；类型名称交叉核对 [Theos 的 GSEvent 定义](https://github.com/theos/headers/blob/master/GraphicsServices/GSEvent.h)。
+先前查看 UIEvent 对象边界外得到的 1004 不作为事件类型。该观察轮临时恢复每条入口原指令后单步执行，结束时
 已全部移除；不作为 FPS 成绩或之后保存的正式检查点。
 
 后续仅在教学导航中把统一客体时钟速率设为 0.05，原版游戏的 `EAGLView` 中
 已观察到有效 UITouch（phase 2、path 258、位置 30.5/240），格挡后盾牌值下降。
 这项导航诊断不是提高真实游戏速度；正式对照必须恢复正常速率 1，以宿主真实
 elapsed time 计算完整游戏帧率，并记录时钟模式与速率。
+
+ARM 公开诊断现提供 clock mode/rate/now_ms/paused；基准在开始、预热后、结束
+三处拒绝非 normal、rate 非 1 或暂停的时钟。独立真实核心回归验证 0.25 倍时间推进、
+暂停冻结与宿主时间分别可见，避免把慢时钟导航误算为正常速度验收。
 
 核对生成脚本和 `nand_build.mjs` 后，清理 `build/ios/ctrl-a.img` 至 `ctrl-e.img`
 五个旧控制器探针：它们由空白 NAND bootstrap 和生成的 CX01 字节构建，未写入

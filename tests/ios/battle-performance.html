@@ -28,6 +28,10 @@ try {
         new frame.contentWindow.Uint8Array(await file.slice(at, at + length).arrayBuffer()) });
     log("Restored battle RAM and matching NAND; " + file.size + " snapshot bytes");
     const sample = () => emulator.get_diagnostics();
+    const normal_clock = d => {
+        if(d.clock?.mode !== "normal" || d.clock.rate !== 1 || d.clock.paused)
+            throw Error("FPS requires a running normal clock at rate 1: " + JSON.stringify(d.clock));
+    };
     const frames = d => (d.graphics?.native?.drawables || []).filter(x => x.width === 960 && x.height === 640).reduce((n, x) => n + x.frames, 0);
     const touch = points => emulator.bus.send("touch", { width: 640, height: 960, touches: points });
     // Finish any finger stored in the checkpoint. An indefinitely held
@@ -42,16 +46,19 @@ try {
     await block();input = setInterval(block, 2000);
     await emulator.run();
     const initial = await sample(), warmup = Number(query.get("warmup") || 12);
+    normal_clock(initial);
     if(!initial.graphics?.native) throw Error("Build lacks native presentation counters");
     await until(async () => { await sleep(200);return frames(await sample()) - frames(initial) >= warmup; }, "warmup game frames", 180000);
     const host_before = await (await fetch("/__host_metrics")).json();
     const before = await sample();log("Warmup completed: " + (frames(before) - frames(initial)) + " frames");
+    normal_clock(before);
     const duration = Number(query.get("duration") || 60000);
     const frame_limit = Number(query.get("frames") || 0);
     if(frame_limit > 0)
         await until(async () => { await sleep(200);return frames(await sample()) - frames(before) >= frame_limit; }, "fixed-work battle frames", duration);
     else await sleep(duration);
     const after = await sample();
+    normal_clock(after);
     await emulator.stop();clearInterval(input);touch([]);
     const host_after = await (await fetch("/__host_metrics")).json();
     const ms = after.host_time - before.host_time, count = frames(after) - frames(before);
