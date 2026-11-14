@@ -2215,3 +2215,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 XP 06 原版默认六项已完成：原生成功窗口总分102、SM2=36、HDR/SM3=36、CPU=232。原版 NV06N.3DR ZIP CRC/XML 有效，2SM2/2CPU/2HDR均为 status0与正数结果；最后一段89614 draws、GPU/draw/nonsoftwarePGRAPH故障0，只有17D0/17D4预期软件方法。只从首错前的配套健康状态续跑，未修改失败 RAM 来取得成功。7feature/6batch仍未运行，原生分数不作并行/暂停后的性能门禁，见 `g4-xp-9371-06-native-default6.json`。
 
 - G5 ATA 命令中断顺序：旧并行口在执行新命令后才拉低 IRQ，同步 IDENTIFY/PIO/错误响应的新 INTRQ 被随后撤销。现先清旧 IRQ，再执行命令，与 QEMU 命令口顺序一致。真实 Rust8259/ATA/ATAPI 端口回归旧版在电平 IRQ14 下 pending0 应为64，新版双通道边沿/电平、状态确认、nIEN、PIO 字节均通过；source/release 进度/大盘、镜像错误/回写、33项 AHCI及 Closure通过。原生 Win98 子通道仍 Code10，未把真实中断缺陷续修冒称为缓存损坏根因，见 `g5-ide-command-interrupt-order.json`。
+
+- G6 原生 UI 选择：增加有界 ComboBox 列表/索引选择与原版通知，以及树控件客户区的真实鼠标输入。05 的 14 项 IQ 列表和索引 2→0 往返通过；06 原版主界面确认 SM2/CPU/HDR 均 0/2、feature 7/7、batch 6/6，保持 1280×1024/None/Optimal。原生请求时间戳区分相同诊断内容，避免采集端误判超时；严格 MinGW 构建通过。见 `g6-native-combo-tree-controls.json`；完整 feature/batch 与 IQ 门禁继续。

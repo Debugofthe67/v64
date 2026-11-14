@@ -153,6 +153,7 @@ void __attribute__((stdcall)) entry(void)
 {
     output=CreateFileA("D:\\NVUI.TXT",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,0,CREATE_ALWAYS,0,0);
     if(output==INVALID_HANDLE_VALUE)ExitProcess(2);
+    text("REQUEST_TICK=");hex(GetTickCount());text("\r\n");
     find_benchmarks();
     DWORD result=1;DWORD_PTR response=0;
     if(!parse()){text("ERROR argument too long\r\n");goto done;}
@@ -172,7 +173,67 @@ void __attribute__((stdcall)) entry(void)
     if(!IsWindow(window) || !IsWindowVisible(window) || !IsWindowEnabled(window) || !benchmark(window))
     {text("ERROR target must be a visible enabled benchmark control\r\n");goto done;}
     GetClassNameA(window,type,sizeof(type));describe(window);
-    if(!lstrcmpiA(arguments[0],"/rows") && !lstrcmpiA(type,"SysListView32"))
+    if(!lstrcmpiA(arguments[0],"/point") && !lstrcmpiA(type,"SysTreeView32"))
+    {
+        DWORD coords[2]={0,0};const char *p=arguments[2];
+        for(unsigned int axis=0;axis<2;axis++)
+        {
+            unsigned int digits=0;
+            while(*p>='0' && *p<='9')
+            {if(digits++>=4){text("ERROR bounded tree point\r\n");goto done;}coords[axis]=coords[axis]*10+*p++-'0';}
+            if(!digits || (axis==0?*p++!=',':*p!=0)){text("ERROR expected tree point x,y\r\n");goto done;}
+        }
+        RECT client;POINT point={(LONG)coords[0],(LONG)coords[1]};
+        GetClientRect(window,&client);ClientToScreen(window,&point);
+        const int width=GetSystemMetrics(SM_CXSCREEN),height=GetSystemMetrics(SM_CYSCREEN);
+        if(coords[0]>=(DWORD)client.right || coords[1]>=(DWORD)client.bottom ||
+            width<2 || height<2 || point.x<0 || point.y<0 || point.x>=width || point.y>=height)
+        {text("ERROR tree point outside visible client\r\n");goto done;}
+        HWND root=window;
+        while(GetWindowLongA(root,GWL_STYLE)&WS_CHILD){HWND parent=GetParent(root);if(!parent)break;root=parent;}
+        SetForegroundWindow(root);
+        // Stock absolute mouse input keeps MFC's GetMessagePos hit testing
+        // and the tree's checkbox notifications on their original UI path.
+        mouse_event(MOUSEEVENTF_MOVE|MOUSEEVENTF_ABSOLUTE,(DWORD)point.x*65535/(width-1),(DWORD)point.y*65535/(height-1),0,0);
+        Sleep(100);mouse_event(MOUSEEVENTF_LEFTDOWN,0,0,0,0);Sleep(50);mouse_event(MOUSEEVENTF_LEFTUP,0,0,0,0);
+        result=0;
+    }
+    else if(!lstrcmpiA(arguments[0],"/items") && !lstrcmpiA(type,"ComboBox"))
+    {
+        DWORD_PTR count=0,selected=0;
+        if(!SendMessageTimeoutA(window,CB_GETCOUNT,0,0,SMTO_ABORTIFHUNG,2000,&count) || count>128)
+        {text("ERROR bounded combo count\r\n");goto done;}
+        if(!SendMessageTimeoutA(window,CB_GETCURSEL,0,0,SMTO_ABORTIFHUNG,2000,&selected))
+        {text("ERROR combo selection\r\n");goto done;}
+        text("ITEM_COUNT=");hex((DWORD)count);text(" SELECTED_INDEX=");hex((DWORD)selected);text("\r\n");
+        for(DWORD index=0;index<count;index++)
+        {
+            char value[512];DWORD_PTR length=0;
+            if(!SendMessageTimeoutA(window,CB_GETLBTEXTLEN,index,0,SMTO_ABORTIFHUNG,2000,&length) || length>=sizeof(value) ||
+                !SendMessageTimeoutA(window,CB_GETLBTEXT,index,(LPARAM)value,SMTO_ABORTIFHUNG,2000,&response))
+            {text("ERROR combo item\r\n");goto done;}
+            value[length]=0;text("ITEM_INDEX=");hex(index);text(" TEXT=");text(value);text("\r\n");
+        }
+        result=0;
+    }
+    else if(!lstrcmpiA(arguments[0],"/select") && !lstrcmpiA(type,"ComboBox"))
+    {
+        DWORD index=0;const char *digit=arguments[2];unsigned int digits=0;
+        for(;*digit;digit++,digits++)
+        {
+            if(*digit<'0' || *digit>'9' || digits>=3){text("ERROR decimal combo index\r\n");goto done;}
+            index=index*10+*digit-'0';
+        }
+        DWORD_PTR count=0;
+        if(!digits || !SendMessageTimeoutA(window,CB_GETCOUNT,0,0,SMTO_ABORTIFHUNG,2000,&count) || count>128 || index>=count)
+        {text("ERROR combo index outside observed items\r\n");goto done;}
+        result=!SendMessageTimeoutA(window,CB_SETCURSEL,index,0,SMTO_ABORTIFHUNG,2000,&response);
+        if(!result && response==index)
+            result=!SendMessageTimeoutA(GetParent(window),WM_COMMAND,MAKEWPARAM(GetDlgCtrlID(window),CBN_SELCHANGE),
+                (LPARAM)window,SMTO_ABORTIFHUNG,2000,&response);
+        else if(!result)result=1;
+    }
+    else if(!lstrcmpiA(arguments[0],"/rows") && !lstrcmpiA(type,"SysListView32"))
         result=rows(window);
     else if(!lstrcmpiA(arguments[0],"/click") && !lstrcmpiA(type,"Button"))
     {
