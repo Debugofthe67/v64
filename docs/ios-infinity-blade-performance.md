@@ -73,6 +73,12 @@ PMGR 实验（已撤下）：独立 MMIO 计数中 `+0x2004/+0x2000` 合计 2857
 符号链接引用的 `build/ios/infinity-play/direct-fixed.packed`，释放约 3.73 GiB；
 保留 `mp3-battle.packed` 与匹配检查点，清理记录在忽略目录 `perf/cleanup.json`。
 
+scalar-lane 版本交替控制轮 `scalar-2` 为 65 帧/60.002 秒（1.083 FPS），与首轮
+0.983 FPS 接近。随后试验 Thumb IT 内 VFP/NEON 原生化，20 个条件真假、NaN/denorm
+精确回退、首/次指令 FP trap 的 ITSTATE 用例与 QEMU 一致，SIMD/fallback 均通过；
+但战斗只有 44 帧/60.002 秒（0.733 FPS），高频 vector FP helper 仍在，因此撤下
+运行时改动，仅保留 `qitfp` 的回归覆盖。继续针对实际保留的 VCMP/VCMPE helper 工作。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，
