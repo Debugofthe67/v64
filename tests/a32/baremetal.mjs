@@ -10,6 +10,7 @@ import { build32, compare, root, QEMU_MACHINE32 } from "./runner.mjs";
 
 const TESTS = {
     system: { sources: ["system.c", "system_asm.S"] },
+    fp_access: { sources: ["fp_access.c", "fp_access_asm.S"] },
     mmu: { sources: ["mmu.c", "mmu_asm.S", "system_asm.S"] },
     platform: { sources: ["platform.c"], cores: 2 },
     // (the ranchu board's GICv2: QEMU's virt with gic-version=2, v86's GIC in its v2 mode)

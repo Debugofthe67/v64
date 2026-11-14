@@ -1,5 +1,17 @@
 # Infinity Blade 安装与帧率验证
 
+## FP 权限复用前的独立异常回归（2026-11-15）
+
+`qfplocals` 增加两个 A32 假条件后真实 FP trap 的案例：未执行的 VADD 或
+VMOV 不能为后续无条件 FP 指令提供访问权限。已提交控制核心的全部 10 个
+MMU/JIT 退出现场与 QEMU 一致。
+
+新增 `tests/a32/fp_access.*`：真正的 PL1、MMU 开启、热 ARM 与 Thumb 函数，
+先执行 FP，再通过 VMSR helper 关闭 FPEXC.EN；下一条 VMOV 必须 UNDEFINED，
+重启 FP 后结果仍为 2.0。每个指令集重复 128 次，并核对故障指令地址和返回值；
+Thumb 还覆盖禁用后的假条件 FP。控制核心与 QEMU 的全部输出一致，实际执行
+约 3.9 万条 native 指令。新样例加入 A32 默认裸机回归。
+
 ## 调度函数索引缓存：结果不一致，未保留（2026-11-15）
 
 尝试用 64 槽缓存已发布函数的索引，仍在 `code_page` 校验当前翻译/模式/权限后，

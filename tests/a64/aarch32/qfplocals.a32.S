@@ -4,7 +4,7 @@
     .syntax unified
     .fpu crypto-neon-fp-armv8
 base:
-    .word 8
+    .word 10
     .word scalar-base,0,0
     .word conditional-base,0,0
     .word vector-base+1,0,0
@@ -13,6 +13,8 @@ base:
     .word trap_thumb-base+1,0,0x100
     .word undefined_arm-base,0,0
     .word undefined_thumb-base+1,0,0
+    .word trap_after_false_arith-base,0,0x100
+    .word trap_after_false_move-base,0,0x100
     .macro warm
     mov r12,#128
 1:
@@ -108,4 +110,25 @@ undefined_thumb:
     subs r12,r12,#1
     bne 1b
     .inst.w 0xeef90bc0
+    svc #0
+
+    .arm
+    .balign 4096
+trap_after_false_arith:
+    warm
+    subs r12,r12,#1
+    bne 1b
+    cmp r12,#0
+    // A false native FP condition cannot establish FP access for the VMOV.
+    vaddne.f32 s0,s1,s2
+    vmov s3,s2
+    svc #0
+    .balign 4096
+trap_after_false_move:
+    warm
+    subs r12,r12,#1
+    bne 1b
+    cmp r12,#0
+    vmovne s0,r4
+    vadd.f32 s1,s2,s3
     svc #0
