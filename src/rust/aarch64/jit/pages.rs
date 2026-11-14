@@ -563,6 +563,7 @@ const TEMPLATED: usize = 12;
 static mut WRITES: u64 = 0;
 static mut RESETS: u64 = 0;
 static mut HELPERS: u64 = 0;
+static mut UNCACHED_ACCESSES: u64 = 0;
 /// functions retired to make room (P6.6b), and the time spent compiling (ms)
 static mut EVICTIONS: u64 = 0;
 static mut COMPILE_MS: f64 = 0.0;
@@ -1146,7 +1147,7 @@ pub fn register() {
 
 /// The access cache's miss (pagegen::frame::AccessAbi::slow): the host
 /// address of a `kind & 255`-byte access (bit 8: write) at virtual address
-/// `address` by the running core at its EL, filling the cache; 0 when
+/// `address` by the running core at its EL, caching Normal memory only; 0 when
 /// refused (a fault, a device, a page with code for a write, a page
 /// crossing): the function leaves for the interpreter to do it
 #[no_mangle]
@@ -1185,11 +1186,33 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
     let el0 = cpu::el() == 0 || kind & 0x800 != 0;
     // The IOP has a physical RAM window, not active translation tables.
     // RAM below is cached; MMIO, watched code and reservations still refuse.
+    let mut cacheable = true;
     let translated = if mmu_off {
         crate::aarch64::mmu::mmu_off(address).map(|pa| (pa, false, true))
     }
     else {
-        crate::aarch64::mmu::translate_for_cache(address, write, el0)
+        crate::aarch64::mmu::translate_for_cache(address, write, el0).or_else(|| {
+            // IOSurface DRAM is mapped Device/strongly ordered. Execute an
+            // aligned access without caching its pointer: a later unaligned
+            // access must still take the Device alignment fault. The bus
+            // checks below continue to exclude MMIO, watched code, read-only
+            // stores, device-local memory and exclusive reservations.
+            if !size.is_power_of_two() || address & (size as u64 - 1) != 0 {
+                return None;
+            }
+            let access = if write {
+                crate::aarch64::memory::Access::Write
+            }
+            else {
+                crate::aarch64::memory::Access::Read
+            };
+            let t = crate::aarch64::mmu::translate(address, access, el0, size).ok()?;
+            if !t.device {
+                return None;
+            }
+            cacheable = false;
+            Some((t.pa, false, false))
+        })
     };
     let Some((pa, _large, global)) = translated
     else {
@@ -1219,6 +1242,11 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
             backing, writable, ..
         } => {
             let page = backing & !0xFFF;
+            if !cacheable && page >= unsafe { bus::DEVICE_START } {
+                r.stats[ACCESS_REFUSED] += 1;
+                refused(REFUSED_NOT_RAM);
+                return 0;
+            }
             // (device memory: its writes go the interpreter's way, which marks them)
             if write
                 && (!writable
@@ -1243,7 +1271,7 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
         },
         // (extended RAM: its frame, held until the run loop's next safe
         // point; no write entry while a core holds a reservation in the page)
-        Lookup::Extended { .. } => {
+        Lookup::Extended { .. } if cacheable => {
             let frame = if write
                 && crate::aarch64::smp::reserved_page(crate::aarch64::extended::monitor_key(
                     pa & !0xFFF,
@@ -1268,6 +1296,10 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
             return 0;
         },
     };
+    if !cacheable {
+        unsafe { UNCACHED_ACCESSES += 1 };
+        return host + (address & 0xFFF) as u32;
+    }
     // (a tagged pointer, TBI, gets an entry too: forget_tagged)
     let core = current_core();
     access(core).fill(LAYOUT, ENTRIES, el0, write, address, host, false, global);
@@ -1634,6 +1666,7 @@ pub fn a64_page_stat(n: u32) -> f64 {
         109 => (unsafe { AUTO_SWITCHES }) as f64,
         110 => (unsafe { super::ASID_TAG }) as u32 as f64,
         111 => (unsafe { LIVE_BYTES }) as f64,
+        112 => (unsafe { UNCACHED_ACCESSES }) as f64,
         120..=127 => (unsafe { REFUSED[n as usize - 120] }) as f64,
         _ => r.stats.get(n as usize).copied().unwrap_or(0) as f64,
     }

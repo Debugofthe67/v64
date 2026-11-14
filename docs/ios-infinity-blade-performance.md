@@ -25,6 +25,26 @@ AVAudioPlayer mutex，UIKit 事件时间停在电影结束处。此前显示战�
 与解释器一致；额外 200 个随机 NEON 用例无差异。SIMD 和 fallback 正式核心构建通过。
 尚未把指令实现变化换算为游戏 FPS，待同一可操作场景测量。
 
+正式 MP3 构建已重新从 generation 7 NAND 冷启，经 Install IPA → Open 打开原包，
+推送提示和电影结束后 MP3 持续输出，未再出现上述 AMC 断言，解码错误数 0。
+主菜单可打开、主线可进入；格挡教程中保持真实触摸后角色举盾、提示消失，
+敌人攻击后盾牌从 23 降到 22，生命从 1440 到 1396。**已验收实际战斗输入**，
+不是仅凭动画或 HUD 判定可玩。该冷启动尚未加载后续向量/uncached JIT 优化。
+
+带实际格挡的 101.37 s 窗口完成 70 个原生 drawable（0.691 fps），中位帧间隔
+1277 ms；其中同时有开发构建工作，不作为严格 A/B 基线。更早开场的带 profiler
+窗口为 89 帧 / 51.32 s（1.734 fps），两者进度不同。60 fps 仍未达到。
+
+采样还发现 Device 属性的 IOSurface DRAM 访问总是退出编译代码。增加对齐、
+单页、通过当前 EL 权限检查的 DRAM 一次性 host pointer，**不填访问缓存**；
+后续未对齐访问仍产生原生 fault，MMIO、空洞、只读写入、代码页、设备本地内存、
+exclusive reservation 沿用拒绝路径。真实 A32 EL0 循环、无 Device cache fill、
+对齐/权限异常与 MMIO/hole/watched-code 回归通过，MMU/JIT 用例通过。
+诊断 `uncached_accesses` 单独计数；实际游戏性能需重新测量。
+
+为腾出后续验收空间，已清理本轮生成的旧 adapter/query 中间 NAND 文件；原始输入、
+安装后原始备份、generation 7 的完整备份和各阶段哈希记录保留。
+
 ## 当前续作结果
 
 更新后的正式构建已从 generation 5 NAND 完整冷启，通过 UI 打开原包。
