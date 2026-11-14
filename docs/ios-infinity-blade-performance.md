@@ -106,6 +106,15 @@ underflow/符号零用例与 QEMU 一致；MMU/page JIT 与解释器一致，q4/
 PC 和尝试次数正确。uncached RAM 权限回归及 NEON/FP page 回归通过。
 该调度优化还需新的正式冷启游戏复测。
 
+战斗教学中的图像/触摸方向问题已定位为 IOSurface GPU 别名：窗口回读会
+将 GL 行序转为 CPU/native 行序，但 CA 的直接 GPU 采样仍拿到生产者的 GL 行序。
+现窗口发布记录 native 行序，采样使用独立的 GPU 翻转图像；生产者 renderbuffer
+保持原始 GL 行序和 retained backing。CPU 部分更新先正规化未改写区域。
+GLES 2 translator 和实际 native GLSL ES 1.00/glslang 两条真实 GPU 路径均验证
+非对称角点、跨进程采样、原 framebuffer 内容、部分 CPU 更新与快照恢复。
+GLES2/GLES3 executor 浏览器回归通过，无 WebGPU validation error。
+隔离诊断画面方向已恢复；尚待正式构建冷启确认及触摸战斗验收。
+
 ## 测试输入（2026-11-14）
 
 机主本地提供 `Infinity_Blade_1.4.3_ios_6.0.ipa`。原包只读，

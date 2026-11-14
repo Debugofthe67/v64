@@ -3318,8 +3318,8 @@ export const GLES3 = {
         const level0 = texture.images.get(0);
         if(level0 && (level0.image || level0.color_buffer))
         {
-            const t = level0.image ? this.image_texture(level0.image) : this.color_buffer_texture(level0.color_buffer);
-            if(!t || tex.sample !== "float" || tex.dimension !== "2d" || target.textures.has(t.texture)) return fallback();
+            const t = level0.image ? this.image_texture(level0.image, true) : this.color_buffer_texture(level0.color_buffer, true);
+            if(!t || tex.sample !== "float" || tex.dimension !== "2d" || target.textures.has(t.texture) || target.textures.has(t.source)) return fallback();
             return { view: t.texture.createView(), sample_type: "float", filtering: true };
         }
         const gpu = this.gpu_texture3(texture);
