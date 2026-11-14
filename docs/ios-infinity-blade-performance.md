@@ -1,5 +1,27 @@
 # Infinity Blade 安装与帧率验证
 
+## AP 时钟直读候选：未保留（2026-11-15）
+
+独立采样确认内核 `0x800894a4` 的计时入口最终读取虚拟 `0xc02a1000/4`，
+对应 PMGR `0xbf102000/4`。尝试在真实地址翻译、权限检查后，通过数值
+machine-clock import 提供一次对齐 scalar LDR；设备 owner 必须由 AppleTimer
+显式登记并与实时 bus mapping 一致，不填 RAM cache，不优化写入或其他寄存器。
+这与先前仍调用 JS MMIO handler 的实验不同。
+
+主核心/fallback 的真实 EL0 短描述符、2048 次 LDR、Device/strongly ordered
+映射、低位回卷、暂停/恢复、权限、宽度、非 scalar、跨页和替换 owner 检查通过，
+原 ARM7 counter/LDM、设备、uncached DRAM 回归通过。原始 fixture 与补丁
+仅保留在本地 `perf/pmgr-*-unproven.*`，不增加默认运行时入口。
+
+同一有效格挡检查点的 30 帧测试：第一对控制/候选 2.169/1.875 FPS；
+反向控制/候选 2.231/2.273 FPS。第一对地址访问拒绝约 1426 万→319 万，
+但未形成可重复 FPS 收益，撤下该候选。独立 12 秒 CPU 采样结束仍在盾值 19
+的真实战斗，无教学遮罩：`pages::run` 包含约 9.985 秒，时钟 import 包含
+1.498 秒，访存 access 包含 2.245 秒；这些时间有嵌套，不能相加。
+进一步 helper 统计发现 `PLD [r1,#64]` 仍频繁单步；下一步检查该架构 hint
+的原生生成，避免仅按 helper 数下降宣称游戏提速。
+
+
 ## 宿主 CPU 时间诊断（2026-11-15）
 
 浏览器 runner 可用 `BROWSER_PROCESS_METRICS=1`，配合固定
