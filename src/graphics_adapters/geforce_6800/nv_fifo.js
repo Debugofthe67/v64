@@ -235,7 +235,9 @@ export class NVFIFO
 
     drain()
     {
-        if(!(this.reg(0x3250) & 1) || this.reg(0x2100) & 1) return false;
+        // An acquire also blocks work already prefetched into CACHE1. run()
+        // can revisit drain after the acquire suspended its first pass.
+        if(!(this.reg(0x3250) & 1) || this.reg(0x2100) & 1 || this.reg(0x3254) & 0x10) return false;
         while(this.reg(0x3270) !== this.reg(0x3210))
         {
             if(this.device.graph && (this.device.graph.busy || this.device.graph.engine3d && this.device.graph.engine3d.busy)) return false;

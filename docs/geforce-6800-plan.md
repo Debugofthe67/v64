@@ -2013,3 +2013,10 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   第 891 次黑桶覆盖（D16 65535→63017），并与原始程序/64 顶点
   捕获对应。1033 次绘制、三类真实故障为零；逐绘制提交只用于调查，
   不计性能。见 `g6-native-depth-pixel-history.json`。
+
+- G2/G6 PFIFO 预取等待修复：先关闭 puller 预取 acquire→REF 全队列，
+  再启用可稳定复现 acquire 未满足而 final drain 提前把 REF 写成 99。
+  现所有 drain 均遵守 semaphore 等待，快照后重复运行仍保持 REF=0，
+  直到真实 RAM release=42 才提交 REF=99。回归先红后绿，完整真实 GPU
+  的 REF/像素/别名/快照套件和 Closure 通过。它与 06 过早释放资源现象
+  相符，但原生整套仍需重跑；见 `g6-prefetched-acquire-ordering.json`。

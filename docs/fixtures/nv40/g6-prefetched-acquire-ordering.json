@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-14",
+  "change": "A semaphore acquire suspends every CACHE1 drain, including the final drain and already prefetched methods.",
+  "reproduction": {
+    "queue": [
+      "SET_CONTEXT_DMA_SEMAPHORE handle 0x77",
+      "SEMAPHORE_OFFSET 12",
+      "SEMAPHORE_ACQUIRE 42",
+      "REF 99"
+    ],
+    "setup": "Puller disabled while repeated pusher runs prefetch the complete queue; re-enable puller while RAM semaphore remains zero.",
+    "pusherGet": 24,
+    "beforeFix": {
+      "expectedREF": 0,
+      "actualREF": 99,
+      "assertion": "a prefetched REF cannot pass a blocked acquire in the final drain"
+    },
+    "afterFix": {
+      "REFWhileBlocked": 0,
+      "REFAfterSnapshotAndAnotherBlockedRun": 0,
+      "REFAfterRealRAMRelease42": 99
+    }
+  },
+  "nativeContext": "06 first-error captures show native RAMHT/PTE removal while old queue work remains. Premature completion is a plausible contributor, but this unit reproduction alone does not establish the whole native failure cause.",
+  "validation": [
+    "node tests/devices/geforce_6800_fifo.js: regression fails before the guard and passes after it; stalled snapshot/resume and real release covered.",
+    "NV_GPU_RENDERER=chrome node tests/devices/geforce_6800_render.mjs: full actual GPU pixels, batching, REF, alias and snapshot ordering suite passes.",
+    "make build/v86-geforce-6800.js: Closure 0 errors/warnings."
+  ],
+  "redLogSHA256": "77087017bed8066a3ea5e50d8552039841ad47a2eaaea22aa7df8a2601e2960f",
+  "limits": [
+    "No acquire value, notification, guest clock, driver timeout or completion result is fabricated.",
+    "Original native 06 run must be restarted using the rebuilt adapter before claiming runtime acceptance."
+  ]
+}

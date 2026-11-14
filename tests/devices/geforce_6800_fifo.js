@@ -103,6 +103,20 @@ const header = (method, count = 1, subc = 0, ni = false) => method | count << 18
     assert.equal(f.regs.get(0x3254) & 0x10, 0);
 }
 {
+    const f = fixture(); f.object(0x45000, 0x2303D, 4095, 0x8002); f.handle(0x77, 0x45000, 0);
+    f.regs.set(0x3250,0); // Prefetch the whole queue before the puller runs.
+    f.submit([header(0x60,3),0x77,12,42,header(0x50),99]);
+    for(let i=0;i<8;i++)f.fifo.run();
+    assert.equal(f.fifo.read(0xC00044),24,"pusher has already fetched the queued REF");
+    f.regs.set(0x3250,1);f.fifo.run();
+    assert.equal(f.fifo.read(0xC00048),0,"a prefetched REF cannot pass a blocked acquire in the final drain");
+    assert(f.regs.get(0x3254)&0x10);
+    const saved=f.fifo.get_state(),restored=new NVFIFO(f.device);restored.set_state(saved);
+    restored.run();assert.equal(restored.read(0xC00048),0,"another run keeps the prefetched REF blocked");
+    new DataView(f.ram.buffer).setUint32(0x800C,42,true);restored.run();
+    assert.equal(restored.read(0xC00048),99,"the queued REF retires only after the real semaphore release");
+}
+{
     const f = fixture(); f.object(0x45000, 0x2303D, 4095, 0x8002);
     f.handle(0x77, 0x45000, 0, 0); f.handle(0x77, 0x45000, 0, 1);
     f.submit([header(0x60, 3), 0x77, 12, 42, header(0x50), 99]);
