@@ -200,6 +200,12 @@ The tested configuration is XP SP3 on i440FX with IDE, ACPI disabled,
    [RGB565 fixture](fixtures/nv40/g3-xp-9371-rgb565.json) also checks native
    D3D9 rendering, system-memory readback and GDI conversion.
 
+Before a long benchmark run, select **(None)** in Display Properties →
+Screen Saver and **Never** for monitor power-off in Power Options. The original
+XP screen saver interrupted a native 3DMark05 run with `D3DERR_DEVICELOST`;
+[the interrupted exports](fixtures/nv40/g6-native-screen-saver-interruption.json)
+record the incomplete tests.
+
 The driver runs in PCI mode; an AGP bridge is not required for this tested
 configuration. Benchmark image quality and the later 3DMark gates remain
 open. See [GeForce 6800 GT](gpu-devices.md#geforce-6800-gt) for current

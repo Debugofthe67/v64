@@ -2178,3 +2178,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 可选 BC 上传：仅在实际 GPUDevice 已启用 BC 时，对线性、AAE4 恒等 crossbar 的 BC1/2/3 保留 checked 编码字节，缺失能力和特殊 remap/gamma 继续 CPU 转换。完整块行局部上传、cube/mip 尾部与 NPOT 实际存储计数均有真实 GPU 对照；共享 GPU、190 executor 用例、完整 glbridge 与 Closure 通过。70 张纹理 CPU 微测编码缓存 35 MiB，相比 RGBA 路径 252 MiB 且避免循环解码；不当作原生 FPS。sRGB 白黑插值实测 104 对既有 102，故保守回退而不放宽阈值。见 `g6-native-bc-texture-upload.json`，完整原生与图像/性能门禁仍开放。
 
 - G6 Win16 栈诊断：Win98 USER.EXE 使用非零 SS base、16-bit SP，旧只读采样却把带陈旧高位的 ESP 当平坦地址。现按 SS base 和栈宽定位，宽度/线性边界不回绕，并记录 SS 元数据；旧实现新用例先红，修复后普通/PAE、缺页、跨页、非平坦 16/32-bit 与只读副作用检查全绿。见 `g6-native-segmented-stack-diagnostics.json`。仅修正诊断，GT2 等待原因仍待查。
+
+- G4/G6 长测环境：05 在原生 XP 屏保上报 D3DERR_DEVICELOST；原版导出确认仅 11/16 项完成（余五 batch 未跑）。06 导出确认 SM2/CPU 四项完成、两 HDR 未跑，检查时也有屏保；未捕获其首个退出原因。已在原版显示属性/电源选项关闭屏保与显示器自动关闭，保存配套状态并开始完整重跑。ZIP CRC/XML 有效，原生分数不当作性能或全套验收，见 `g6-native-screen-saver-interruption.json`。
