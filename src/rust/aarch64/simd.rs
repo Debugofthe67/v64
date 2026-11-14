@@ -51,7 +51,8 @@ pub fn with_elem(x: u128, index: u32, esize: u32, value: u64) -> u128 {
         let (lo, hi) = (x as u64, (x >> 64) as u64);
         return if at < 64 {
             ((lo & !mask | value) as u128) | ((hi as u128) << 64)
-        } else {
+        }
+        else {
             (lo as u128) | (((hi & !mask | value) as u128) << 64)
         };
     }

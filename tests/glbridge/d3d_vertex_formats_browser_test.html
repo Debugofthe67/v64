@@ -25,8 +25,13 @@
             let code = translated.wgsl.replace("fn d9_vs_main(", "fn d9_vs_main(@builtin(vertex_index) capture_index: u32, ");
             const width = Math.min(cases.length,256), height = Math.ceil(cases.length/width);
             code = code.replace("@location(0) varying0: vec4<f32>", "@location(0) @interpolate(flat) varying0: vec4<u32>");
-            code = code.replace("result.varying0 = o_varying0;", "result.varying0 = bitcast<vec4<u32>>(o_varying0);");
-            code = code.replace("    return result;", "    result.varying0 = bitcast<vec4<u32>>(vin0);\n    result.position = vec4<f32>((f32(capture_index % "+width+"u)+0.5)*2.0/"+width+".0-1.0, 1.0-(f32(capture_index / "+width+"u)+0.5)*2.0/"+height+".0,0.5,1.0);\n    return result;");
+            // The MOV writes oPos. Carry that raw value in the color slot,
+            // replacing its clamp/UNORM export before switching it to u32.
+            // Require one assignment so a translator change fails explicitly.
+            const exports = code.match(/result\.varying0 = [^;\n]+;/g);
+            if (!exports || exports.length !== 1) throw Error("Expected one vertex color export");
+            code = code.replace(exports[0], "result.varying0 = bitcast<vec4<u32>>(o_position);");
+            code = code.replace("    return result;", "    result.position = vec4<f32>((f32(capture_index % "+width+"u)+0.5)*2.0/"+width+".0-1.0, 1.0-(f32(capture_index / "+width+"u)+0.5)*2.0/"+height+".0,0.5,1.0);\n    return result;");
             device.pushErrorScope("validation");
             const module = device.createShaderModule({code}), compilation = await module.getCompilationInfo();
             if (compilation.messages.some(m => m.type === "error")) throw Error(compilation.messages.map(m => m.message).join("\n"));

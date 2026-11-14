@@ -51,7 +51,11 @@ pub fn call(word: u32, length: u32, thumb: bool) -> bool {
     if answer == NOT_HANDLED {
         return false;
     }
-    if r0 & 0xffff == 3 && answer == -2 { unsafe { HOST_YIELD = true; } }
+    if r0 & 0xffff == 3 && answer == -2 {
+        unsafe {
+            HOST_YIELD = true;
+        }
+    }
     crate::aarch64::a32::set_reg(0, answer as u32);
     true
 }
@@ -76,7 +80,12 @@ pub fn a32_backdoor_translate(va: u32, write: bool) -> f64 {
             let ram = matches!(crate::aarch64::bus::bus().lookup(t.pa),
                 crate::aarch64::bus::Lookup::Ram { backing, writable, .. }
                 if backing < unsafe { crate::aarch64::bus::DEVICE_START } && (!write || writable));
-            if !t.device || ram { t.pa as f64 } else { -1.0 }
+            if !t.device || ram {
+                t.pa as f64
+            }
+            else {
+                -1.0
+            }
         },
         _ => -1.0,
     }

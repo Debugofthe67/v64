@@ -31,7 +31,11 @@
                 if(!position)(role==="size"?[0,0,.5]:positions[v]).forEach((n,c)=>view.setFloat32(v*stride+c*4,n,true));
                 data.set(canonical?new Uint8Array(decoded.buffer):row.bytes,v*stride+(position?0:12));
             }
-            const world=identity.slice();if(position){world[12]=-decoded[0]/decoded[3];world[13]=-decoded[1]/decoded[3];world[14]=.5-decoded[2]/decoded[3];}
+            // Untransformed fixed-function POSITION uses xyz with an implicit
+            // homogeneous w=1, including when the input format has four lanes.
+            // Center both paths in that space so a non-unit fourth lane cannot
+            // move the reference and typed point outside the clip volume.
+            const world=identity.slice();if(position){world[12]=-decoded[0];world[13]=-decoded[1];world[14]=.5-decoded[2];}
             const body=dev=>{
                 const usage=position?0:role==="color"?10:role==="normal"?3:role==="size"?4:5;
                 const elements=position?[element(0,canonical?3:type,0)]:[element(0,2,0),element(12,canonical?3:type,usage)];

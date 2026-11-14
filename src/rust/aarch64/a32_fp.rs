@@ -28,7 +28,9 @@ pub fn sreg(n: u32) -> u32 { unsafe { *crate::aarch64::state::v.cast::<u32>().ad
 
 #[inline(always)]
 pub fn set_sreg(n: u32, value: u32) {
-    unsafe { *crate::aarch64::state::v.cast::<u32>().add(n as usize) = value; }
+    unsafe {
+        *crate::aarch64::state::v.cast::<u32>().add(n as usize) = value;
+    }
 }
 
 /// D[n]: half n%2 of V[n/2]
@@ -37,7 +39,9 @@ pub fn dreg(n: u32) -> u64 { unsafe { *crate::aarch64::state::v.cast::<u64>().ad
 
 #[inline(always)]
 pub fn set_dreg(n: u32, value: u64) {
-    unsafe { *crate::aarch64::state::v.cast::<u64>().add(n as usize) = value; }
+    unsafe {
+        *crate::aarch64::state::v.cast::<u64>().add(n as usize) = value;
+    }
 }
 
 /// FPSR's bits FPSCR has: NZCV, QC, the cumulative flags

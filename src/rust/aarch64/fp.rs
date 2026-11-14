@@ -308,9 +308,12 @@ impl Fp {
                 let product = x * y;
                 let bits = product.to_bits();
                 let magnitude = bits & 0x7fff_ffff;
-                if (0x0100_0000..0x7f80_0000).contains(&magnitude) ||
-                    magnitude == 0 && (a & 0x7fff_ffff == 0 || b & 0x7fff_ffff == 0) {
-                    if (x as f64) * (y as f64) != product as f64 { self.flags |= FPSR_IXC; }
+                if (0x0100_0000..0x7f80_0000).contains(&magnitude)
+                    || magnitude == 0 && (a & 0x7fff_ffff == 0 || b & 0x7fff_ffff == 0)
+                {
+                    if (x as f64) * (y as f64) != product as f64 {
+                        self.flags |= FPSR_IXC;
+                    }
                     return bits as u64;
                 }
             }
