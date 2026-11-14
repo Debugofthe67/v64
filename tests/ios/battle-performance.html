@@ -16,6 +16,24 @@ async function until(fn, description, timeout = 120000) {
     while(performance.now() < end) { const value = await fn();if(value) return value;await sleep(10); }
     throw Error("Timed out: " + description);
 }
+async function screenshot(name, frame, emulator) {
+    // The CPU must already be stopped. Presentation can clear a canvas, so
+    // request a full repaint and require visible pixels before accepting it.
+    for(let attempt = 0; attempt < 10; attempt++) {
+        emulator.worker_controller.request_frame(true);
+        await until(() => !emulator.worker_controller.frame_pending, "panel repaint", 5000);
+        const image = await new Promise(resolve => frame.contentWindow.requestAnimationFrame(() => resolve(emulator.screen_make_screenshot())));
+        if(!image?.src) continue;
+        await image.decode();
+        const canvas = document.createElement("canvas");canvas.width = image.width;canvas.height = image.height;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });ctx.drawImage(image, 0, 0);
+        const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        if(rgba.some((value, i) => i % 4 !== 3 && value > 8)) {
+            await artifact(name, await (await fetch(image.src)).blob());return;
+        }
+    }
+    throw Error("No visible battle screenshot after full panel repaint");
+}
 let emulator, input;
 try {
     const vm = query.get("vm");if(!vm) throw Error("vm must identify the checkpoint's disposable VM");
@@ -27,6 +45,10 @@ try {
     await emulator.restore_state_stream({ size: file.size, read: async (at, length) =>
         new frame.contentWindow.Uint8Array(await file.slice(at, at + length).arrayBuffer()) });
     log("Restored battle RAM and matching NAND; " + file.size + " snapshot bytes");
+    if(query.has("navigate")) {
+        window.battle_navigation = true;log("Navigation checkpoint ready; CPU stopped, no FPS measurement");
+        await new Promise(() => {});
+    }
     const sample = () => emulator.get_diagnostics();
     const normal_clock = d => {
         if(d.clock?.mode !== "normal" || d.clock.rate !== 1 || d.clock.paused)
@@ -43,12 +65,17 @@ try {
     };
     const screen_states = [];
     emulator.add_listener("ios-screen-state", state => screen_states.push(state));
-    await block();input = setInterval(block, 2000);
     await emulator.run();
+    // Up and the next Down must have distinct running-machine timestamps.
+    touch([]);await sleep(2000);
+    await block();input = setInterval(block, 2000);
     const initial = await sample(), warmup = Number(query.get("warmup") || 12);
     normal_clock(initial);
     if(!initial.graphics?.native) throw Error("Build lacks native presentation counters");
     await until(async () => { await sleep(200);return frames(await sample()) - frames(initial) >= warmup; }, "warmup game frames", 180000);
+    await emulator.stop();await screenshot("battle-start.png", frame, emulator);
+    const photographed = frames(await sample());await emulator.run();
+    await until(async () => { await sleep(200);return frames(await sample()) - photographed >= 2; }, "post-screenshot game frames", 120000);
     const host_before = await (await fetch("/__host_metrics")).json();
     const before = await sample();log("Warmup completed: " + (frames(before) - frames(initial)) + " frames");
     normal_clock(before);
@@ -63,7 +90,7 @@ try {
     const host_after = await (await fetch("/__host_metrics")).json();
     const ms = after.host_time - before.host_time, count = frames(after) - frames(before);
     const result = { label: query.get("label") || "unlabelled", checkpoint: { name: file.name, bytes: file.size, modified: file.lastModified },
-        input: "shield at (45/46,480), move every 2000 ms, release 100 ms every 16 s", warmup_frames: frames(before) - frames(initial),
+        input: "release checkpoint finger while running for 2000 ms; shield at (45/46,480), move every 2000 ms, release 100 ms every 16 s", warmup_frames: frames(before) - frames(initial),
         frame_limit, measurement: frame_limit ? "fixed completed-frame workload" : "fixed duration",
         screen_states,
         duration_ms: ms, game_frames: count, game_fps: count * 1000 / ms,
@@ -73,22 +100,7 @@ try {
     await artifact("battle-fps.json", JSON.stringify(result, null, 2));
     if(!before.graphics.panel.awake || !after.graphics.panel.awake || screen_states.some(s => !s.awake))
         throw Error("Panel slept during the battle benchmark; reject this FPS window");
-    // Repaint after the timing window. A canvas may have been cleared by
-    // presentation; never accept a black screenshot as visual battle evidence.
-    let screenshot;
-    for(let attempt = 0; attempt < 10 && !screenshot; attempt++) {
-        emulator.worker_controller.request_frame(true);
-        await until(() => !emulator.worker_controller.frame_pending, "panel repaint", 5000);
-        const image = await new Promise(resolve => frame.contentWindow.requestAnimationFrame(() => resolve(emulator.screen_make_screenshot())));
-        if(!image?.src) continue;
-        await image.decode();
-        const canvas = document.createElement("canvas");canvas.width = image.width;canvas.height = image.height;
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });ctx.drawImage(image, 0, 0);
-        const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        if(rgba.some((value, i) => i % 4 !== 3 && value > 8)) screenshot = await (await fetch(image.src)).blob();
-    }
-    if(!screenshot) throw Error("No visible battle screenshot after full panel repaint");
-    await artifact("battle.png", screenshot);
+    await screenshot("battle.png", frame, emulator);
     if(count < 1) throw Error("No complete game frame in measurement window");
     log(JSON.stringify({ duration_ms: ms, game_frames: count, game_fps: result.game_fps, panel_fps: result.panel_fps }));
     window.battle_complete = result;
