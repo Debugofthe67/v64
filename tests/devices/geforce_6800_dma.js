@@ -93,4 +93,33 @@ for(const target of [0, 2])
 }
 d = object(0x640, 0xB003, 7, 0x2003);
 assert.throws(() => engine.read32(d, 0), /access denied/);
+let scalarReads = 0, blobReads = 0;
+const readBlob = machine.read_physical, ramView = new DataView(ram.buffer);
+machine.read32_physical = at => {
+    scalarReads++;
+    machine.validate_physical_range(at, 4);
+    return ramView.getUint32(at, true);
+};
+machine.read_physical = (at, size) => { blobReads++; return readBlob(at, size); };
+master = true; d = object(0x680, 0x0002303D, 8191, 0x2002);
+ram.set([0x81, 0x23, 0x45, 0xE7, 0xAB], 0x2001);
+assert.equal(engine.read32(d, 1), 0xE7452381);
+assert.equal(engine.read32(d, 1, false), 0x812345E7);
+assert.equal(scalarReads, 2, "contiguous system-memory words use the checked physical scalar API");
+assert.equal(blobReads, 0, "scalar pusher reads allocate no copied byte buffer");
+ram.set([1, 2], 0x2FFE); ram.set([3, 4], 0x3000);
+assert.equal(engine.read32(d, 0xFFE), 0x04030201);
+assert.equal(scalarReads, 2, "cross-page words retain the checked multi-range reader");
+assert.equal(blobReads, 2);
+master = false; assert.throws(() => engine.read32(d, 1), /bus mastering/);
+master = true; ramin.setUint32(0x684, 1, true); d = engine.descriptor(0x680);
+assert.throws(() => engine.read32(d, 1), /limit/);
+d = object(0x6C0, 0x0002103D, 8191, 0x2003, 0x4003);
+ramin.setUint32(0x6C8, 0x2002, true);
+assert.throws(() => engine.read32(d, 1), /page access/);
+d = object(0x700, 0x00023003, 8191, 0x2003);
+assert.throws(() => engine.read32(d, 1), /access denied/);
+d = object(0x740, 0x0002303D, 8191, 0xF003);
+assert.throws(() => engine.read32(d, 4096), /outside guest RAM/);
+assert.equal(scalarReads, 2, "all DMA checks precede the physical scalar API");
 console.log("PASS: NV40 DMA inclusive limits, linear/paged mappings, permissions, PCI DMA and CACHE1 descriptor load");

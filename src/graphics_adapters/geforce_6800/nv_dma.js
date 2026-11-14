@@ -73,9 +73,18 @@ export class NVDMA
             const bytes = this.read(dma, offset, 4);
             return new DataView(bytes.buffer).getUint32(0, little);
         }
-        const range = ranges[0], bytes = dma.target ? this.device.machine.read_physical(range.at, 4) : this.device.vram();
-        const at = dma.target ? 0 : range.at;
-        const word = bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 16 | bytes[at + 3] << 24;
+        const range = ranges[0];
+        let word;
+        if(dma.target && typeof this.device.machine.read32_physical === "function")
+        {
+            word = this.device.machine.read32_physical(range.at);
+        }
+        else
+        {
+            const bytes = dma.target ? this.device.machine.read_physical(range.at, 4) : this.device.vram();
+            const at = dma.target ? 0 : range.at;
+            word = bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 16 | bytes[at + 3] << 24;
+        }
         return (little ? word : word >>> 24 | word >>> 8 & 0xFF00 | word << 8 & 0xFF0000 | word << 24) >>> 0;
     }
 
