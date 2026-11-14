@@ -177,6 +177,11 @@ void __attribute__((stdcall)) entry(void)
     else if(!lstrcmpiA(arguments[0],"/click") && !lstrcmpiA(type,"Button"))
     {
         LONG style=GetWindowLongA(window,GWL_STYLE)&15;
+        // The native Win9x skinned registration flow faulted in USER.EXE
+        // after a cross-thread BM_CLICK. Keep this diagnostic conservative:
+        // use actual keyboard/mouse input for these application-owned buttons.
+        if((GetVersion()&0x80000000) && style==BS_OWNERDRAW)
+        {text("ERROR Win9x owner-drawn button requires native keyboard or mouse input\r\n");goto done;}
         HWND parent=GetParent(window),root=window;
         while(GetWindowLongA(root,GWL_STYLE)&WS_CHILD)
         {

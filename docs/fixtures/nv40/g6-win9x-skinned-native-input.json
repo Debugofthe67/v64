@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-15",
+  "scope": "Native UI diagnostic restriction; does not claim a general Win98 USER.EXE or benchmark fix.",
+  "observation": "Original2005 native03 accepts the official public Pro code. A foreign-thread BM_CLICK of its skinned registration confirmation is followed by a USER.EXE page fault at0008:0000185F before any3D draws. Relaunch retains Pro registration; actual keyboard input closes its Tip dialog, and the app exits and Win98 shuts down normally. Causality beyond this sequence is not established.",
+  "change": "On Win9x, /click explicitly refuses BS_OWNERDRAW buttons before foregrounding or sending a click; use native keyboard/mouse input. Standard buttons, read-only enumeration/accessibility and XP behavior retain existing paths.",
+  "validation": [
+    "Strict standalone MinGW no-CRT build, no extra link dependencies",
+    "Observed Win98 control style BS_OWNERDRAW and USER16 fault captured",
+    "Actual Win98 keyboard path reaches the registered main window and normal shutdown; full benchmark still pending"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-win98-mark03-original-runtime/checkpoint-native-registration-user16-fault.state.bundle.json",
+      "bytes": 1065,
+      "sha256": "5d4e4bcda476944e2cb7fb9e784811e96d10144b84c9cc25cd726e1e371b637f"
+    },
+    {
+      "file": "build/nv40-win98-mark03-original-runtime/registered-close-0.txt",
+      "bytes": 232,
+      "sha256": "7891bbe3cadaebe935589e02b41d55dd2ee14f74e55f9b173d49805c476fd2fe"
+    },
+    {
+      "file": "build/nv40-win98-mark03-original-runtime/trace.json",
+      "bytes": 6024579,
+      "sha256": "4d18dac6433bebbcbd40032c145e458e50de7c67ab41c03bb9404e08656cb89a"
+    },
+    {
+      "file": "build/nv40-win98-mark03-original-runtime/result.json",
+      "bytes": 34185,
+      "sha256": "ac81867bc4f07cd71678bdde6bd8d236f4fad29a96a5cb3539a63ec623b2aa85"
+    }
+  ]
+}
