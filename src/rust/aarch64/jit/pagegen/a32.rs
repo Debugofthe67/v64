@@ -249,7 +249,7 @@ pub enum Kind {
 pub enum NeonForm {
     /// VADD, VSUB, VMUL, VMLA, VMLS (0-4), standard RN/FZ/DN arithmetic;
     /// ordinary lanes and sticky IXC only, otherwise the exact helper.
-    Fp { op: u8 },
+    Fp { op: u8, scalar: Option<u8> },
     /// d = op(n, m), the lanes' operation `op`; `invert_m`: VORN's m
     /// inverted first; `test`: VTST, (n & m) != 0 with `op` the lanes' ne
     Binary { op: u32, invert_m: bool, test: bool },
@@ -593,6 +593,29 @@ fn neon_data(word: u32, thumb: bool) -> Option<Kind> {
             m: m as u8,
         })
     };
+    // Two registers and a scalar: U selects Q rather than signedness,
+    // M selects the 32-bit lane of Dm. Only Dd/Dn require even Q indices.
+    if word & (1 << 23 | 1 << 6 | 1 << 4) == (1 << 23 | 1 << 6) && word >> 20 & 3 == 2 {
+        let op = match word >> 8 & 15 {
+            1 => Some(3), // VMLA
+            5 => Some(4), // VMLS
+            9 => Some(2), // VMUL
+            _ => None,
+        };
+        if let Some(op) = op {
+            let q = u != 0;
+            return (!q || (d | n) & 1 == 0).then_some(Kind::Neon {
+                form: NeonForm::Fp {
+                    op,
+                    scalar: Some((m >> 4) as u8),
+                },
+                q,
+                d: d as u8,
+                n: n as u8,
+                m: (m & 15) as u8,
+            });
+        }
+    }
     if word & 1 << 23 == 0 {
         // three registers of the same length
         let size = (word >> 20 & 3) as usize;
@@ -619,7 +642,7 @@ fn neon_data(word: u32, thumb: bool) -> Option<Kind> {
                 _ => None,
             };
             if let Some(op) = op {
-                return neon(NeonForm::Fp { op }, &[d, n, m]);
+                return neon(NeonForm::Fp { op, scalar: None }, &[d, n, m]);
             }
         }
         return match (word >> 8 & 15, word >> 4 & 1, u) {
@@ -3504,6 +3527,7 @@ impl Emitter<'_> {
     fn neon_fp(
         &mut self,
         op: u8,
+        scalar: Option<u8>,
         q: bool,
         d: u8,
         n: u8,
@@ -3522,7 +3546,11 @@ impl Emitter<'_> {
         self.b.br_if(slow);
         self.neon_load(n, q);
         let a = self.b.set_new_local_v128();
-        self.neon_load(m, q);
+        self.neon_load(m, scalar.is_none() && q);
+        if let Some(lane) = scalar {
+            self.b.simd_lane(0x1B, lane); // i32x4.extract_lane
+            self.b.simd(0x11); // i32x4.splat
+        }
         let b = self.b.set_new_local_v128();
         for l in [&a, &b] {
             self.v_ordinary(l, false, false);
@@ -3609,8 +3637,8 @@ impl Emitter<'_> {
         length: u8,
         offset: u16,
     ) {
-        if let NeonForm::Fp { op } = form {
-            return self.neon_fp(op, q, d, n, m, word, length, offset);
+        if let NeonForm::Fp { op, scalar } = form {
+            return self.neon_fp(op, scalar, q, d, n, m, word, length, offset);
         }
         self.fp_access(offset);
         self.c32(state::v as i32 + 8 * d as i32);

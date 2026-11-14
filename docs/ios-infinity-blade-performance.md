@@ -42,6 +42,24 @@ CLCD render 包含 3.44 秒；native readback 不是当前主要耗时。
 此前把编码当成 VSRA 的推断已纠正，相应未证明有效的 VSRA 改动已撤下。
 多个实际 scalar-lane 变体各调用约 320 万次 helper，下一步为其生成带精确回退的 SIMD。
 
+已实现 scalar-lane VMUL/VMLA/VMLS：按编码的 lane 从 Dm 广播至 `f32x4`，Q 选择位与
+普通向量形式不同；只对 Dd/Dn 检查偶数 Q 编号。保留已有普通数、sticky IXC、下溢
+和两次舍入检查，全部检查完成后才写回，覆盖标量与目的寄存器重叠。364 个 ARM/Thumb、
+D/Q、两个 lane、Dd=Dn/Dm 与 Dd 重叠、NaN/denorm/tiny/zero、非法 Q 编码及 FP trap
+用例与 QEMU、MMU page JIT 和解释器一致；fallback 构建结果也一致。
+
+相同检查点和上述亮屏输入协议的首个有效对照：
+
+| 构建 | 完整游戏帧 / 秒 | FPS | 面板更新 | helper 调用 |
+| --- | ---: | ---: | ---: | ---: |
+| 基线 `awake-baseline-1` | 38 / 60.003 | 0.633 | 39 | 115,168,915 |
+| scalar-lane `scalar-1` | 59 / 60.001 | 0.983 | 60 | 75,929,948 |
+
+两轮开始/结束满背光 2047，无息屏事件，非黑屏截图确认同一 God King 战斗。
+第一对窗口提高约 55%，仍需交替复跑确认波动范围，**60 FPS 未达到**。
+优化后独立诊断中，原先高频的 scalar-lane 编码已退出前 40 个 helper 热点；
+截图、原始计数与采样文件保存在 `build/ios/infinity-next/perf/`，不提交专有游戏数据。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，
