@@ -24,6 +24,53 @@ static DWORD crc(DWORD value,const BYTE *bytes,DWORD count)
     for(DWORD i=0;i<count;i++)value=table[(value^bytes[i])&255]^(value>>8);
     return value;
 }
+static void finish_dump(HANDLE dump,const char *path,const char *label,const char *raw_label)
+{
+    if(dump==INVALID_HANDLE_VALUE)return;
+    if(!FlushFileBuffers(dump))number("ERROR_DUMP_FLUSH",GetLastError());
+    CloseHandle(dump);
+    HANDLE check=CreateFileA(path,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);
+    if(check==INVALID_HANDLE_VALUE){number("ERROR_DUMP_REOPEN",GetLastError());return;}
+    DWORD high=0,size=GetFileSize(check,&high);
+    if(high || size>0x100000){text("ERROR dump exceeds 1 MiB bound\r\n");CloseHandle(check);return;}
+    DWORD value=0xFFFFFFFF,count;
+    for(;;)
+    {
+        if(!ReadFile(check,buffer,sizeof(buffer),&count,0))
+        {number("ERROR_DUMP_READ",GetLastError());CloseHandle(check);return;}
+        if(!count)break;
+        value=crc(value,buffer,count);
+    }
+    number(label,value^0xFFFFFFFF);CloseHandle(check);
+    // Separate the guest cache's readback from what its storage stack returns
+    // without file buffering. These are diagnostic copies, never the source.
+    if(size&511){text("DUMP_RAW_SKIPPED_UNALIGNED\r\n");return;}
+    BYTE *aligned=VirtualAlloc(0,sizeof(buffer),MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+    if(!aligned){number("ERROR_DUMP_ALLOC",GetLastError());return;}
+    check=CreateFileA(path,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_FLAG_NO_BUFFERING,0);
+    if(check==INVALID_HANDLE_VALUE)number("ERROR_DUMP_RAW_OPEN",GetLastError());
+    else
+    {
+        value=0xFFFFFFFF;DWORD position=0;
+        while(position<size)
+        {
+            DWORD request=size-position;if(request>sizeof(buffer))request=sizeof(buffer);
+            if(!ReadFile(check,aligned,request,&count,0) || count!=request)
+            {number("ERROR_DUMP_RAW_READ",GetLastError());break;}
+            value=crc(value,aligned,count);position+=count;
+        }
+        if(position==size)number(raw_label,value^0xFFFFFFFF);
+        CloseHandle(check);
+    }
+    VirtualFree(aligned,0,MEM_RELEASE);
+}
+static void dump_bytes(HANDLE dump,const BYTE *bytes,DWORD count)
+{
+    if(dump==INVALID_HANDLE_VALUE)return;
+    DWORD written=0;
+    if(!WriteFile(dump,bytes,count,&written,0) || written!=count)
+    {number("ERROR_DUMP_WRITE",GetLastError());number("DUMP_WRITTEN",written);}
+}
 static BOOL argument(const char **input,DWORD *value)
 {
     const char *p=*input;while(*p==' ')p++;
@@ -107,29 +154,31 @@ void __attribute__((stdcall)) entry(void)
         if(!ReadFile(file,buffer,request,&count,0) || count!=request)
         {number("ERROR_READ_OFFSET",position);number("ERROR_READ",GetLastError());CloseHandle(file);ExitProcess(2);}
         value=crc(value,buffer,count);position+=count;
-        if(dump!=INVALID_HANDLE_VALUE){DWORD written;WriteFile(dump,buffer,count,&written,0);}
+        dump_bytes(dump,buffer,count);
         if(!(position&0x3FFFFFF))number("READ_PROGRESS",position);
     }
-    if(dump!=INVALID_HANDLE_VALUE)CloseHandle(dump);
+    finish_dump(dump,"D:\\NVDATA.BIN","DUMP_READFILE_CRC32","DUMP_READFILE_RAW_CRC32");
     DWORD sequential=value^0xFFFFFFFF;number("READFILE_CRC32",sequential);number("READFILE_MS",GetTickCount()-start);
     text("MAPPING_BEGIN\r\n");FlushFileBuffers(output);
     HANDLE mapping=CreateFileMappingA(file,0,PAGE_READONLY,0,0,0);
     if(!mapping){number("ERROR_MAPPING",GetLastError());CloseHandle(file);ExitProcess(2);}
     text("MAPPING_CREATED\r\n");FlushFileBuffers(output);
     dump=range?CreateFileA("D:\\NVMAP.BIN",GENERIC_WRITE,FILE_SHARE_READ,0,CREATE_ALWAYS,0,0):INVALID_HANDLE_VALUE;
-    value=0xFFFFFFFF;position=first;start=GetTickCount();
+    value=0xFFFFFFFF;position=first;start=GetTickCount();DWORD post_write=0xFFFFFFFF;
     while(position<end)
     {
         DWORD base=position&~0xFFFF,delta=position-base,count=end-position;if(count>0x100000-delta)count=0x100000-delta;
         const BYTE *view=MapViewOfFile(mapping,FILE_MAP_READ,0,base,count+delta);
         if(!view){number("ERROR_VIEW_OFFSET",position);number("ERROR_VIEW",GetLastError());CloseHandle(mapping);CloseHandle(file);ExitProcess(2);}
         value=crc(value,view+delta,count);
-        if(dump!=INVALID_HANDLE_VALUE){DWORD written;WriteFile(dump,view+delta,count,&written,0);}
+        dump_bytes(dump,view+delta,count);
+        if(range)post_write=crc(post_write,view+delta,count);
         UnmapViewOfFile(view);position+=count;
         if(!(position&0x3FFFFFF))number("MAP_PROGRESS",position);
     }
-    if(dump!=INVALID_HANDLE_VALUE)CloseHandle(dump);
+    finish_dump(dump,"D:\\NVMAP.BIN","DUMP_MAPPED_CRC32","DUMP_MAPPED_RAW_CRC32");
     number("MAPPED_CRC32",value^0xFFFFFFFF);number("MAPPED_MS",GetTickCount()-start);
+    if(range)number("MAPPED_POST_WRITE_CRC32",post_write^0xFFFFFFFF);
     number("MATCH",sequential==(value^0xFFFFFFFF));text("END\r\n");
     CloseHandle(mapping);CloseHandle(file);CloseHandle(output);ExitProcess(0);
 }

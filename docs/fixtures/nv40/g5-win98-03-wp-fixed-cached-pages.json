@@ -1,0 +1,111 @@
+{
+  "date": "2026-11-15",
+  "scope": "Fresh original Win98 03 eleven-test run with the independently fixed supervisor-WP CPU and native power/saver disabled; cache corruption remains unresolved.",
+  "failedRun": {
+    "directory": "build/nv40-win98-mark03-wp-nosaver-cold-full",
+    "checkpoint": "build/nv40-win98-mark03-wp-nosaver-cold-full/checkpoint-native-after-gt2-stopped-before-gt3.state.bundle.json",
+    "coldBoot": true,
+    "draws": 93902,
+    "gpuFailures": 0,
+    "selected": "Original 4GT/2CPU/5feature, no sound; Win98SE 81.98,256MiB RAM,128MiB VRAM",
+    "dialog": "File \"screens/testloading_gt3.dds\" is corrupted"
+  },
+  "resource": {
+    "datSHA256": "352f116cc8b4854dec0e618fccf327052828d4792cb4eda4622e7636748b77a6",
+    "offset": "0x1a964be1",
+    "bytes": 4194432,
+    "encodedCRC32": "217db024",
+    "decodedCRC32": "e303cfea",
+    "decodedMatchesOriginalIndex": true
+  },
+  "nativeWrongRange": {
+    "offset": "0x1aa64be1",
+    "bytes": 1048576,
+    "expectedCRC32": "ea6e7853",
+    "readFileAndReadOnlyMapCRC32": "ef6acacf",
+    "verifiedReadFileDumpSHA256": "de9d6c14e8bf90e19b6f688b0262308691fe4549e0079c4ffc55819b3fc308b0",
+    "differentBytes": 36625,
+    "badPages": [
+      {
+        "filePage": "1ab4c000",
+        "physical": [
+          "eb4000"
+        ]
+      },
+      {
+        "filePage": "1ab5a000",
+        "physical": [
+          "c3a000"
+        ]
+      },
+      {
+        "filePage": "1ab5b000",
+        "physical": [
+          "c38000"
+        ]
+      },
+      {
+        "filePage": "1ab5c000",
+        "physical": [
+          "c37000"
+        ]
+      },
+      {
+        "filePage": "1ab5d000",
+        "physical": [
+          "c36000"
+        ]
+      },
+      {
+        "filePage": "1ab5e000",
+        "physical": [
+          "c35000"
+        ]
+      },
+      {
+        "filePage": "1ab5f000",
+        "physical": [
+          "c34000"
+        ]
+      },
+      {
+        "filePage": "1ab60000",
+        "physical": [
+          "c33000"
+        ]
+      },
+      {
+        "filePage": "1ab61000",
+        "physical": [
+          "c32000"
+        ]
+      }
+    ],
+    "sourceEvidence": "Physical EB4000 starts with a64-byte sequence matching XOR-decoded original GT2 hangar_low.msh at DAT offset159738380; this is a prefix match, not a whole-page source attribution. C3A000 and nearby incorrect pages contain runtime structures."
+  },
+  "diagnosticCopyCaveat": {
+    "run": "build/nv40-win98-mark03-gt3-raw-write-watch",
+    "nativeOutputSHA256": "307b97f02e097a02e126449271437da3b1f13ce83a1a086d36365bda7373275a",
+    "hostSourceRangeCRC32": "f8b05a07",
+    "nativeReadFileAndMappingCRC32": "f8b05a07",
+    "nativePostWriteMappingCRC32": "f8b05a07",
+    "nativeDumpBufferedAndNoBufferingReadbacks": "Both NVDATA/NVMAP report f8b05a07 after FlushFileBuffers; raw mode uses aligned VirtualAlloc storage and FILE_FLAG_NO_BUFFERING.",
+    "hostNVDATA_CRC32": "f8b05a07",
+    "hostNVMAP_CRC32": "af8d3718",
+    "snapshotCheck": "Embedded tools-disk extraction matches live host output and both FAT mirrors are identical. This does not identify the cause of the native/host NVMAP discrepancy.",
+    "policy": "Use an exported copy as evidence of native bytes only when its independently computed CRC matches the native CRC. Do not infer source-cache corruption from the extra NVMAP dump differences."
+  },
+  "helperChange": {
+    "source": "tests/devices/geforce_filecheck.c",
+    "behavior": "Check dump WriteFile result/length, FlushFileBuffers, bounded reopen ReadFile CRC, aligned nonbuffered CRC for sector-sized copies, and mapping CRC after WriteFile. Original benchmark/DAT remain read-only and unmodified.",
+    "validation": [
+      "Strict freestanding MinGW -Wall -Wextra -Werror passes.",
+      "Real Win98 imports execute and all buffered/nonbuffered/post-write fields complete with END."
+    ]
+  },
+  "limits": [
+    "The separate supervisor WP bug is fixed and independently tested, but this fresh run proves that fix alone does not resolve Win98 03 corruption.",
+    "Native passage beyond GT2 loading does not prove that the power setting caused the earlier wait.",
+    "The original Win9803 full suite, IQ and root-cause gate remain open."
+  ]
+}

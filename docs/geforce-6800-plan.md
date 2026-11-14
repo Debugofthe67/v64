@@ -2190,3 +2190,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 BC 对照入口：harness 的 `NV_HOST_BC=cpu` 仅收紧宿主可选能力，保持原客体/驱动/时钟和 GPU write/done 原对象及次序；默认 auto 不变。真实 backend 在初始/后续 hello/reset 下均保持 CPU 路径，协议与无 renderer/未知值拒绝回归通过。后续原生同状态 A/B 仍待整套结束后采集，未宣布 FPS 收益；记录并入 `g6-native-bc-texture-upload.json`。
 
 - G6 线性 VRAM DMA：既有 146 秒原生采样中 DMA read/ranges 自身约 3.21/0.86 秒。线性 VRAM 对象的一份基址/PTE 权限覆盖全段，现完整端点校验后一次连续复制；分页和系统内存保留逐页检查，字节/权限不缓存。跨页回归先红后绿，越界/权限失败零部分写、全部 DMA/FIFO/2D/state/texture 与完整真实 GPU、Closure 通过。交错预热微测每 1 GiB 的范围对象 262400→256，SHA 相同，中位 Node CPU 138.78→113.56 ms；并行宿主数据不作原生 FPS。见 `g6-contiguous-linear-vram-dma.json`。
+
+- G5 修复核冷跑续核：关闭原生屏保/显示器断电后，03 在 93902 draws、零 GPU 错误时报 `screens/testloading_gt3.dds` 损坏。第二个 MiB 的原生 ReadFile/只读映射 CRC 均为 ef6acacf，正确值 ea6e7853；CRC 匹配的 ReadFile 转储定位九个错误缓存页，EB4000 含 GT2 hangar 已解码前缀。独立 WP 修复不能据此宣称解决全部损坏。诊断工具新增写入/刷新/客体缓冲及无缓存读回、映射写后 CRC；另有 NVMAP 宿主转储与原生校验不一致，故只采用 CRC 匹配的副本作 RAM 内容证据。见 `g5-win98-03-wp-fixed-cached-pages.json`，继续追查实际写入者。
