@@ -2219,3 +2219,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 原生 UI 选择：增加有界 ComboBox 列表/索引选择与原版通知，以及树控件客户区的真实鼠标输入。05 的 14 项 IQ 列表和索引 2→0 往返通过；06 原版主界面确认 SM2/CPU/HDR 均 0/2、feature 7/7、batch 6/6，保持 1280×1024/None/Optimal。原生请求时间戳区分相同诊断内容，避免采集端误判超时；严格 MinGW 构建通过。见 `g6-native-combo-tree-controls.json`；完整 feature/batch 与 IQ 门禁继续。
 
 - G6 UI 模态保护：控件自身 enabled 不代表父对话框可操作；现在沿 WS_CHILD 父链拒绝禁用窗口下的动作。原版 XP 05 成功提示仍打开时，对主窗口 Run 的请求已在发送消息前明确拒绝；严格 C 编译通过。串行 IQ 改为核对原版保存提示后点击其 OK，再选择下一项；见 `g6-native-combo-tree-controls.json`。
+
+- G6 顶点循环热点：原版 06 顶点特性测试的并行宿主采样中，array_vertices/vertex_value/indices 合计约 33% self，另有逐元素回调开销。索引改为有界 DataView 循环，canonical float4 改为四次直接 DWORD 写入；保留原 DMA 检查、转换和默认分量。7 轮交错微测的 16/32 位索引 Node CPU 中位 36.86/37.79→3.73/3.28 ms，indexed/inline 顶点 115.44/51.79→63.84/25.42 ms，输出逐字节一致。state/graph/texture/DMA、完整真实 WebGPU 像素/别名/快照回归及 Closure 通过。见 `g6-native-vertex-loop-overhead.json`；不据微测宣称原生 FPS，最终独立时间分布仍待采集。

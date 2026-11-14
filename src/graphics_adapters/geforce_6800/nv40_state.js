@@ -283,7 +283,8 @@ export class NV40State
                 }
                 if(!locations.has(attribute)) continue;
                 const offset=(vertex*inputs.length+locations.get(attribute))*16;
-                values.forEach((value,i)=>view.setUint32(offset+i*4,value,true));
+                view.setUint32(offset,values[0],true);view.setUint32(offset+4,values[1],true);
+                view.setUint32(offset+8,values[2],true);view.setUint32(offset+12,values[3],true);
             }
         }
         return {bytes,count,stride:inputs.length*16};
@@ -296,7 +297,10 @@ export class NV40State
             throw new RangeError("NV40 invalid index buffer range");
         const size=type===1?2:4,dma=this.dma(o,format&1?0x1A0:0x19C);
         const bytes=this.device.dma.read(dma,get(o,0x181C)+first*size,count*size),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
-        return Array.from({length:count},(_,i)=>size===2?view.getUint16(i*2,true):view.getUint32(i*4,true));
+        const indices=new Array(count);
+        if(size===2) for(let i=0;i<count;i++)indices[i]=view.getUint16(i*2,true);
+        else for(let i=0;i<count;i++)indices[i]=view.getUint32(i*4,true);
+        return indices;
     }
     array_vertices(o,indices,inputs)
     {
@@ -325,7 +329,8 @@ export class NV40State
                     }
                 }
                 const at=(vertex*inputs.length+slot)*16;
-                values.forEach((value,i)=>view.setUint32(at+i*4,value,true));
+                view.setUint32(at,values[0],true);view.setUint32(at+4,values[1],true);
+                view.setUint32(at+8,values[2],true);view.setUint32(at+12,values[3],true);
             }
         }
         return {bytes,count:indices.length,stride:inputs.length*16};
