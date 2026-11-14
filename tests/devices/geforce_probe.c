@@ -300,7 +300,16 @@ static void devices(void)
         SetupDiGetDeviceRegistryPropertyA(set,&dev,SPDRP_DRIVER,&type,(BYTE*)driver,sizeof(driver),0);
         put("DEVICE "); put(hardware); put(" problem="); number(problem); put(" cm="); number(rc);
         put(" started="); number(!!(status&DN_STARTED)); put(" service="); put(service);
-        put(" driver=");put(driver);put(" description=");put(description);line();
+        put(" driver=");put(driver);put(" description=");put(description);
+        HKEY driver_key=SetupDiOpenDevRegKey(set,&dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);
+        if(driver_key!=INVALID_HANDLE_VALUE)
+        {
+            char version[128];DWORD version_type=0,length=sizeof(version);
+            if(RegQueryValueExA(driver_key,"DriverVersion",0,&version_type,(BYTE*)version,&length)==ERROR_SUCCESS && version_type==REG_SZ)
+            {version[sizeof(version)-1]=0;put(" version=");put(version);}
+            RegCloseKey(driver_key);
+        }
+        line();
 #ifdef NV_WIN98
         resources(dev.DevInst);
 #endif
