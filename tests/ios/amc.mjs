@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { AppleAMC, AMC_RAM_SIZE } from "../../src/apple/amc.js";
+import { AMCCodec } from "../../src/apple/amc_codec.js";
 
 const ports = new Map(), irq = new Map(), mapped = [];
 const cpu = {
@@ -44,3 +45,26 @@ assert.equal(amc.local(0x40000, 0), true);
 amc.set_state(null);
 assert.equal(amc.memory()[0x20400], 0);
 console.log("PASS: N90 AMC memory, engine reset, source-owned IRQs, bounds and snapshots");
+
+const codec = amc.codec = new AMCCodec(amc, { ports: new Map() });
+const code = new DataView(amc.memory().buffer, amc.memory().byteOffset);
+[0x21000004, 0xb623a100, 0x58100000, 0x00080a30].forEach((word, i) => code.setUint32(0x4600 + i * 4, word, true));
+regs.write(0x940, 4, 0x84004600);
+assert.equal(regs.read(0xa98), 0, "loading code alone does not complete a program");
+regs.write(0x984, 4, 0);
+assert.equal(regs.read(0xa98), 4);
+assert.equal(codec.stats.bootstraps, 1);
+assert.equal(codec.initialized, false, "bootstrap does not initialize an AAC stream");
+assert.equal(codec.decoder, null);
+assert.equal(codec.stats.inputs, 0);
+assert.equal(codec.stats.pcm_bytes, 0);
+regs.write(0xc48, 4, 4);
+code.setUint32(0x4600, 0, true);
+regs.write(0x984, 4, 0);
+assert.equal(regs.read(0xa98), 0, "a different program at the same entry stays unsupported");
+regs.write(0x940, 4, 0x84004604); regs.write(0x984, 4, 0);
+assert.equal(regs.read(0xa98), 0);
+regs.write(0x99c, 4, 3);
+assert.equal(codec.initialized, false);
+assert.equal(codec.stats.failures, 0);
+console.log("PASS: identified AMC power bootstrap has a separate ready handshake, no fabricated AAC or PCM");

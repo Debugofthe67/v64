@@ -1,6 +1,10 @@
 import { AMCAudioDecoder } from "./audio_decode.js";
 
 const RESULT = 0x18000, DMA_DONE = 1 << 20, PORT = 0x8480002c;
+// The 10B329 control bootstrap loaded for AMC power transitions. It signals
+// program-ready independently of the AAC buffer contract. Match both entry
+// and instruction prefix; arbitrary/unknown DSP programs do not complete.
+const BOOT_ENTRY = 0x84004600, BOOT_PREFIX = [0x21000004, 0xb623a100, 0x58100000, 0x00080a30];
 const view = bytes => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
 // HLE of the observed 10B329 AAC program, not a DSP instruction emulator.
@@ -25,7 +29,7 @@ export class AMCCodec
         this.slot = 0;
         this.input_pending = false;
         this.polling = false;
-        this.stats = { initialized: 0, inputs: 0, decoded_samples: 0, pcm_bytes: 0, failures: 0, errors: [] };
+        this.stats = { initialized: 0, bootstraps: 0, inputs: 0, decoded_samples: 0, pcm_bytes: 0, failures: 0, errors: [] };
         this.reset();
         device.on_job = (offset, value) => this.write(offset, value);
         dma.ports.set(PORT, () => this.poll());
@@ -77,6 +81,16 @@ export class AMCCodec
         }
         else if(offset === 0x984)
         {
+            if(this.device.regs[0x940 >>> 2] === BOOT_ENTRY)
+            {
+                const code = view(this.device.memory());
+                if(BOOT_PREFIX.every((word, i) => code.getUint32(0x4600 + i * 4, true) === word))
+                {
+                    this.stats.bootstraps++;
+                    this.device.complete(4); // control program ready, not an AAC/DMA job
+                }
+                return;
+            }
             if(this.device.regs[0x940 >>> 2] !== 0x83007020) return;
             const m = view(this.device.memory());
             m.setUint16(RESULT + 2, 2, true);
