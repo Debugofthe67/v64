@@ -140,5 +140,11 @@
     "build/nv40-native-bc-glbridge-regression.log",
     "build/nv40-native-bc-closure-final.log",
     "build/nv40-native-bc-benchmark.json"
-  ]
+  ],
+  "controlledBaseline": {
+    "environment": "NV_HOST_BC=auto(default) or cpu",
+    "behavior": "Host-only filtering withholds optional BC from every capability report, including later hello/reset grants. Native driver, original guest state, clocks and all GPU write/done messages are unchanged.",
+    "validation": "Original capability report remains unmodified; writes/completions preserve object identity/order, and actual NV40Render remains on CPU fallback across reset. Invalid policies and cpu without a real renderer reject.",
+    "limit": "Protocol control validated; native saved-state A/B timing remains to be collected after complete native suites."
+  }
 }

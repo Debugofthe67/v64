@@ -1,6 +1,7 @@
 // Real-driver G0 investigation, shared by XP and Win98. Images are opened O_RDONLY.
 // Never treats an absent probe, installer failure or stalled guest as acceptance.
 import assert from "node:assert/strict";
+import {geforce_renderer_policy} from "../lib/geforce_renderer_policy.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -213,12 +214,15 @@ export async function run_geforce_guest(win98)
         osOverlay:process.env.NV_OVERLAY_LOAD,gameOverlay:process.env.NV_GAME_OVERLAY_LOAD,
         guest:win98?"win98":"xp",vramMiB:vram_mb,osImage:image,gameImage:game_path});
     if(restored_bundle)console.log("NV40 verified matching checkpoint RAM/disk bundle");
+    const host_bc_policy=process.env.NV_HOST_BC || "auto";
+    assert(["auto","cpu"].includes(host_bc_policy),"NV_HOST_BC must be auto or cpu");
     let remote=null;
     if(process.env.NV_GPU_RENDERER==="chrome")
     {
         const {create_remote_renderer}=await import("../x64/gpu_remote_renderer.mjs");
         remote=await create_remote_renderer({on_log:line=>console.log("NV40 GPU:",line)});
     }
+    geforce_renderer_policy(remote?.renderer,host_bc_policy);
     const wasm_path=path.resolve(process.env.NV_WASM || path.join(root,"build",release_build?"v86.wasm":"v86-debug.wasm"));
     const vm = new V86({ ...(remote?{graphics_adapter_renderer_channel:remote.renderer}:{}), disable_jit:!!process.env.NV_DISABLE_JIT, wasm_path, graphics_adapter: "geforce_6800", vram_size: vram_mb << 20,
         bios: { url: root + "bios/seabios.bin" },
@@ -260,6 +264,7 @@ export async function run_geforce_guest(win98)
     };
     const result_text = () => Buffer.from(read_fat16(tools.bytes, "NV.TXT") || []).toString("ascii");
     const trace_report = () => ({ ...nv.trace.report(),
+        rendererPolicy:{hostBC:host_bc_policy},
         clock: {mode:vm.v86.cpu.clock.mode, elapsedMs:vm.v86.cpu.clock.now()-clock_start,
             hostElapsedMs:elapsed()*1000, ...vm.v86.cpu.clock.get_diagnostics()},
         pit: {mode:Array.from(vm.v86.cpu.devices.pit.counter_mode),enabled:Array.from(vm.v86.cpu.devices.pit.counter_enabled),
