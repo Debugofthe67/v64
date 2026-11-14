@@ -1,0 +1,238 @@
+{
+  "date": "2026-11-15",
+  "scope": "G4 original XP2001 complete21 functional run, native project/IQ export and normal shutdown. Reference IQ comparison and performance remain open.",
+  "guest": "XP SP3, original93.71,128MiB NV40, release Chrome WebGPU; all21 tests started again from the original UI, with no keyboard input during the benchmark. This is a fresh benchmark execution in a restored guest, not a new cold boot.",
+  "originalResult": {
+    "selected": 21,
+    "completed": 21,
+    "nativeScore": 162,
+    "performanceClaim": false,
+    "rows": [
+      "RESULTS",
+      "3DMark Score, 162",
+      "Game 1 - Car Chase - Low Detail, 1.1 fps",
+      "Game 1 - Car Chase - High Detail, 0.4 fps",
+      "Game 2 - Dragothic - Low Detail, 2.6 fps",
+      "Game 2 - Dragothic - High Detail, 1.1 fps",
+      "Game 3 - Lobby - Low Detail, 2.3 fps",
+      "Game 3 - Lobby - High Detail, 1.3 fps",
+      "Game 4 - Nature, 2.3 fps",
+      "Fill Rate (Single-Texturing), 357.9 MTexels/s",
+      "Fill Rate (Multi-Texturing), 993.3 MTexels/s",
+      "High Polygon Count (1 Light), 1.4 MTriangles/s",
+      "High Polygon Count (8 Lights), 1.4 MTriangles/s",
+      "Environment Bump Mapping, 8.7 fps",
+      "DOT3 Bump Mapping, 2.8 fps",
+      "Vertex Shader, 2.1 fps",
+      "Pixel Shader, 15.1 fps",
+      "Advanced Pixel Shader, 3.8 fps",
+      "Point Sprites, 2.5 MSprites/s"
+    ]
+  },
+  "run": {
+    "directory": "build/nv40-xp-mark2001-native-fresh-all21",
+    "draws": 74803,
+    "gpu": {
+      "batches": 10719,
+      "draws": 74803,
+      "bytes": 20270504824,
+      "readbacks": 17803,
+      "failures": 0,
+      "uploads": 12471,
+      "uploadBytes": 8761352208,
+      "resourceHits": 254391,
+      "resourceMisses": 1306,
+      "resourceEvictions": 829,
+      "coldUploadBytes": 720110660,
+      "resourceBytes": 247121132,
+      "peakResourceBytes": 268432764
+    },
+    "nonSoftwarePgraphFaults": [],
+    "softwarePgraphCallbacks": 4,
+    "nonSoftwareFifoFaults": [],
+    "imageUnchanged": true,
+    "game": {
+      "path": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+      "slot": "secondary-slave",
+      "imageUnchanged": true
+    }
+  },
+  "shutdown": {
+    "normal": true,
+    "EIP": "806F3048",
+    "halted": 1,
+    "displayMode": null,
+    "bundle": "build/nv40-xp-mark2001-native-fresh-all21/checkpoint-full21-normal-shutdown.state.bundle.json"
+  },
+  "export": {
+    "directory": "build/nv40-xp-mark2001-native-fresh-all21-artifacts",
+    "nativeProjectHeader": "3DMark2001 Project File",
+    "projectBytes": 25186,
+    "originalBMPs": 8,
+    "bitmapValidation": [
+      {
+        "file": "Quality_IQ01I_NV01A.bmp",
+        "width": 1024,
+        "height": 832,
+        "bits": 24,
+        "bmpBytes": 2555958,
+        "fileBytes": 2560000
+      },
+      {
+        "file": "Quality_IQ01T_NV01A.bmp",
+        "width": 80,
+        "height": 60,
+        "bits": 24,
+        "bmpBytes": 14454,
+        "fileBytes": 18496
+      },
+      {
+        "file": "Quality_IQ02I_NV01A.bmp",
+        "width": 1024,
+        "height": 832,
+        "bits": 24,
+        "bmpBytes": 2555958,
+        "fileBytes": 2560000
+      },
+      {
+        "file": "Quality_IQ02T_NV01A.bmp",
+        "width": 80,
+        "height": 60,
+        "bits": 24,
+        "bmpBytes": 14454,
+        "fileBytes": 18496
+      },
+      {
+        "file": "Quality_IQ03I_NV01A.bmp",
+        "width": 1024,
+        "height": 832,
+        "bits": 24,
+        "bmpBytes": 2555958,
+        "fileBytes": 2560000
+      },
+      {
+        "file": "Quality_IQ03T_NV01A.bmp",
+        "width": 80,
+        "height": 60,
+        "bits": 24,
+        "bmpBytes": 14454,
+        "fileBytes": 18496
+      },
+      {
+        "file": "Quality_IQ04I_NV01A.bmp",
+        "width": 1024,
+        "height": 832,
+        "bits": 24,
+        "bmpBytes": 2555958,
+        "fileBytes": 2560000
+      },
+      {
+        "file": "Quality_IQ04T_NV01A.bmp",
+        "width": 80,
+        "height": 60,
+        "bits": 24,
+        "bmpBytes": 14454,
+        "fileBytes": 18496
+      }
+    ],
+    "artifacts": [
+      {
+        "file": "NV01A.3DP",
+        "name": "NV01A.3DP",
+        "bytes": 25186,
+        "sha256": "17c2690102187dcd7a954a735b5bc38513df79785b020416fb845fb3ddfa923c"
+      },
+      {
+        "file": "Quality/IQ01I_NV01A.bmp",
+        "name": "Quality_IQ01I_NV01A.bmp",
+        "bytes": 2560000,
+        "sha256": "f13f563718d83dbe007e9c1707d72d654fe55cf7bf538fa6ebc31538e0e90155"
+      },
+      {
+        "file": "Quality/IQ02I_NV01A.bmp",
+        "name": "Quality_IQ02I_NV01A.bmp",
+        "bytes": 2560000,
+        "sha256": "1a8cfe301248f13d459191b7f43396130400d01056d42122a0f1cc39f04a4167"
+      },
+      {
+        "file": "Quality/IQ03I_NV01A.bmp",
+        "name": "Quality_IQ03I_NV01A.bmp",
+        "bytes": 2560000,
+        "sha256": "973dbd17784d7efe2134fe12d7372ca69f6c2820c6aa1f505da7f32fb4a9a9cb"
+      },
+      {
+        "file": "Quality/IQ04I_NV01A.bmp",
+        "name": "Quality_IQ04I_NV01A.bmp",
+        "bytes": 2560000,
+        "sha256": "1e4cb6fa7abb75c154584fcfa63f34004ee4c90777f99f72e18f12f07d1fac2b"
+      },
+      {
+        "file": "Quality/IQ01T_NV01A.bmp",
+        "name": "Quality_IQ01T_NV01A.bmp",
+        "bytes": 18496,
+        "sha256": "78eeb907d3703d5bdc7c3c96333761df9e13b84ff96ff75cf5240fa22a92f222"
+      },
+      {
+        "file": "Quality/IQ02T_NV01A.bmp",
+        "name": "Quality_IQ02T_NV01A.bmp",
+        "bytes": 18496,
+        "sha256": "7cfd2f8e6f51426cf1eca11dd58f159943025c6647dec8487fe0485251d024e2"
+      },
+      {
+        "file": "Quality/IQ03T_NV01A.bmp",
+        "name": "Quality_IQ03T_NV01A.bmp",
+        "bytes": 18496,
+        "sha256": "73f0a8eb985104518f08f51780ec43d0df445b18baf8ad99ab502d722879a758"
+      },
+      {
+        "file": "Quality/IQ04T_NV01A.bmp",
+        "name": "Quality_IQ04T_NV01A.bmp",
+        "bytes": 18496,
+        "sha256": "8c9c96bb1fd9249914d51e5e5745b82813a602bc0c6f872e9661f4f881656ec9"
+      }
+    ]
+  },
+  "limits": [
+    "The previous continuation left Car Chase High N/A. This new native all21 execution produces0.4fps for that test and a numeric aggregate without modifying the benchmark, driver or result file. The reason for the prior missing result is not established.",
+    "Eight original IQ BMPs are exported and structurally valid. Their reference/cross-driver comparison remains open.",
+    "Concurrent workloads and checkpoint origin exclude an isolated performance or fresh-cold-run claim.",
+    "The harness initialization status is not used to accept this benchmark; original UI, native result rows, project, IQ files and normal shutdown are the evidence."
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark2001-native-fresh-all21/trace.json",
+      "bytes": 5296943,
+      "sha256": "bbf0ec6ace9dd7cb4ed1ed2a809e8d6a6dc35ee02784a38b55fa6060f7ded07a"
+    },
+    {
+      "file": "build/nv40-xp-mark2001-native-fresh-all21/result.json",
+      "bytes": 567,
+      "sha256": "aecbc63b603ba46b71267c1a65557a0bc42d59e58358fbea176954b331f6ac02"
+    },
+    {
+      "file": "build/nv40-xp-mark2001-native-fresh-all21/full21-result-rows-0.txt",
+      "bytes": 53611,
+      "sha256": "eef8202a4c64b86ac308da8fbdad5acb2e49938e9726f818cb8a10a5d2ec54b2"
+    },
+    {
+      "file": "build/nv40-xp-mark2001-native-fresh-all21/full21-save-file-2.txt",
+      "bytes": 11716,
+      "sha256": "81ef035d0ac7ad2582cf6167725182db6a562e4288e6e747942741f1a0c2240b"
+    },
+    {
+      "file": "build/nv40-xp-mark2001-native-fresh-all21/checkpoint-full21-normal-shutdown.state.bundle.json",
+      "bytes": 1051,
+      "sha256": "17eb0357a72a1404ddbc6e0dce182c0265727bc9e2f64ea8c44382928a739b04"
+    },
+    {
+      "file": "build/nv40-xp-mark2001-native-fresh-all21-artifacts/extracted-artifacts.json",
+      "bytes": 1674,
+      "sha256": "a6635cb7d59ca100179ef1dc047b18de3e7ac560c5044fb5dd378370e44a5e3d"
+    },
+    {
+      "file": "build/nv40-xp-mark2001-native-fresh-all21-artifacts/bitmap-validation.json",
+      "bytes": 1191,
+      "sha256": "53e2cccf6ac1f09ee1d11e92671afb160940bdf1f0e9f1b5f1e2d93feb8d760a"
+    }
+  ]
+}
