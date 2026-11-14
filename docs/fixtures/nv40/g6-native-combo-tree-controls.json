@@ -3,7 +3,8 @@
   "change": [
     "Bounded native ComboBox item inspection and index selection with the original CBN_SELCHANGE notification.",
     "Bounded SysTreeView32 client coordinates delivered through stock absolute mouse input, preserving original checkbox hit-testing.",
-    "Native GetTickCount request identifier distinguishes successive identical diagnostic payloads without changing the clock."
+    "Native GetTickCount request identifier distinguishes successive identical diagnostic payloads without changing the clock.",
+    "Reject actions on controls whose WS_CHILD parent chain contains a disabled dialog; a child enabled bit alone is insufficient."
   ],
   "nativeProof": {
     "xp05": {
@@ -72,5 +73,12 @@
       "bytes": 7650,
       "sha256": "dbb4fae1d3574bab0a18568b0f8818aed3617b0a3dd797e858a6cf5bb10a7e6b"
     }
-  ]
+  ],
+  "modalGuardProof": {
+    "guest": "XP 93.71 / original 3DMark05",
+    "target": "Main Run control below a disabled original main window while an IQ success prompt is open.",
+    "result": "Rejected before any control message.",
+    "file": "build/nv40-xp-mark05-iq-uninterrupted-gpu/verify-modal-guard-0.txt",
+    "sha256": "6ab72e119ce33aa5c50ef7bf8baa655451f4fc34eb51275219e5966774d2a2ca"
+  }
 }

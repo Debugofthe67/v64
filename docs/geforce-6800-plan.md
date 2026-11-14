@@ -2217,3 +2217,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 ATA 命令中断顺序：旧并行口在执行新命令后才拉低 IRQ，同步 IDENTIFY/PIO/错误响应的新 INTRQ 被随后撤销。现先清旧 IRQ，再执行命令，与 QEMU 命令口顺序一致。真实 Rust8259/ATA/ATAPI 端口回归旧版在电平 IRQ14 下 pending0 应为64，新版双通道边沿/电平、状态确认、nIEN、PIO 字节均通过；source/release 进度/大盘、镜像错误/回写、33项 AHCI及 Closure通过。原生 Win98 子通道仍 Code10，未把真实中断缺陷续修冒称为缓存损坏根因，见 `g5-ide-command-interrupt-order.json`。
 
 - G6 原生 UI 选择：增加有界 ComboBox 列表/索引选择与原版通知，以及树控件客户区的真实鼠标输入。05 的 14 项 IQ 列表和索引 2→0 往返通过；06 原版主界面确认 SM2/CPU/HDR 均 0/2、feature 7/7、batch 6/6，保持 1280×1024/None/Optimal。原生请求时间戳区分相同诊断内容，避免采集端误判超时；严格 MinGW 构建通过。见 `g6-native-combo-tree-controls.json`；完整 feature/batch 与 IQ 门禁继续。
+
+- G6 UI 模态保护：控件自身 enabled 不代表父对话框可操作；现在沿 WS_CHILD 父链拒绝禁用窗口下的动作。原版 XP 05 成功提示仍打开时，对主窗口 Run 的请求已在发送消息前明确拒绝；严格 C 编译通过。串行 IQ 改为核对原版保存提示后点击其 OK，再选择下一项；见 `g6-native-combo-tree-controls.json`。

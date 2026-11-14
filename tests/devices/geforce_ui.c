@@ -172,6 +172,13 @@ void __attribute__((stdcall)) entry(void)
     HWND window=(HWND)(ULONG_PTR)address;char type[64];
     if(!IsWindow(window) || !IsWindowVisible(window) || !IsWindowEnabled(window) || !benchmark(window))
     {text("ERROR target must be a visible enabled benchmark control\r\n");goto done;}
+    for(HWND ancestor=window;ancestor;)
+    {
+        if(!IsWindowEnabled(ancestor))
+        {text("ERROR target belongs to a disabled dialog; close its modal window first\r\n");goto done;}
+        if(!(GetWindowLongA(ancestor,GWL_STYLE)&WS_CHILD))break;
+        ancestor=GetParent(ancestor);
+    }
     GetClassNameA(window,type,sizeof(type));describe(window);
     if(!lstrcmpiA(arguments[0],"/point") && !lstrcmpiA(type,"SysTreeView32"))
     {
