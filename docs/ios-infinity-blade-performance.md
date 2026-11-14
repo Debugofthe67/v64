@@ -110,6 +110,22 @@ I2S0 为 44100 Hz，控制/模式寄存器 `0x181/0x03000081`；AMC mask/pending
 IXC、IDC 已置位。普通数 guard 因此持续回退，不能仅凭 helper 数量将其归因于 IT。
 断点显著改变执行速度，这些数据只解释回退条件，不参加 FPS 对照。
 
+随后试验仅在 `FPSR & 0x9d == 0x9d` 时用 SIMD 实现输入 FZ、输出 FZ/DN，
+下溢边界保留 helper。712 个 ARM/Thumb、D/Q、scalar、别名、缺失 sticky bit
+用例与 QEMU、MMU/JIT、fallback 一致。但后置路径两轮为 0.983/1.400 FPS，
+优先选择该路径的一轮为 1.183 FPS；交替原版控制组为 1.433 FPS。
+helper 虽从控制组 7433 万次降至 5532–5921 万次，**没有验收到 FPS 收益**，
+已撤下运行时试验，仅保留 `qneonsticky` 回归。不能把 helper 减少作为游戏提速。
+
+新 CPU 诊断窗口中 `pages::run` 自身约 2.13 秒/30.05 秒，解释器包含 7.24 秒，
+CLCD render 包含 3.31 秒，各包含时间有嵌套，不能相加。八次 IT helper 断点显示
+`bf08/bf18` 后多为内核条件 `POP {…,PC}`；`bf1c` 后包含条件 BLX。
+下一步优先验证最后一条 IT 指令的条件返回，保留内存 fault 和跨指令集重试的 ITSTATE。
+
+额外删除已被主 profile 替代、无打开句柄的旧 `infinity-next/browser-profile`
+（逻辑大小 5.28 GB）。由于 APFS 克隆共享块，不将该逻辑大小报告成实际释放量；
+匹配的主检查点和当前工作克隆保留，记录在忽略目录 `perf/profile-cleanup.json`。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，
