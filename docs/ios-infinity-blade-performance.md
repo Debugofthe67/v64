@@ -1,5 +1,36 @@
 # Infinity Blade 安装与帧率验证
 
+## 纯 FP helper 的寄存器现场回归（2026-11-15）
+
+新 `qfplocals` 比较全部 R0–R14 和异常现场，覆盖新写入的 GPR、NaN/inexact
+标量算术、条件转换、NEON 转换和饱和、比较后读取 FPSCR/APSR，以及 FP 禁用
+和非法指令时的 retry。主核心与原版控制核心的 8 个退出均与 QEMU 一致，
+加入默认 AArch32 回归。候选完整 22 组、fallback 相关 8 组、seed 4403 的
+40×100×32 随机程序及 ARM7 状态回归通过。
+
+当前候选仅给已分辨为不读写 GPR 的 FP/SIMD 数据处理保留通用寄存器局部值；
+排除所有内存操作、core-register transfer 和系统协处理器。A32 NZCV 本就位于
+内存，指令 PC 显式传入；helper 拒绝时仍由统一 retry 出口提交完整 GPR，之后
+原解释器处理异常。VFP/NEON 数学、精确回退和 FPSR 语义未放宽。相同样例
+helper 均为 899 次，生成代码 465,118→445,965 bytes。实际战斗收益仍待交替验证。
+
+## 导航与睡眠现场（2026-11-15）
+
+重新检查 `progress-master-profile`，画面存在游戏下拉菜单和续作推广按钮；
+不能把该画面的停顿直接归因于剧情或 CPU 性能。原生触摸集合实际记录了有效
+UITouch（phase 2、path 258），硬件队列为零。宿主 `(490,790)` 对应 UIKit
+`(253,394.5)`，与先前 `(45,480)`→`(30.5,240)` 一样提示横向约 16 physical px
+偏移；尚未执行全屏校准，也未修改触摸模型。导航手势已结束。
+
+随后真实诊断确认 panel awake=false、backlight=0；黑屏不是进入新战斗的证据。
+该现场以 normal/rate 1 停止 CPU 保存，RAM 1,103,630,576 bytes，关闭 Chrome 后
+克隆为 `sleep-debug-profile`。用原控制核心重新加载时，RAM/NAND 身份与代次校验
+通过。它只用于睡眠诊断，不能用于 FPS；原 active/progress master 均保留。
+电源键和 Home 测试后的显示仍熄灭，GPIO 待处理按键位已清除，CPU 继续退休指令。
+原生 Settings 查询受 User 应用列表限制；另一请求发生超时，不能宣称助手解锁成功。
+没有修改固件、游戏或自动锁屏配置，后续仍需验证唤醒和较长战斗场景。
+
+
 ## 预取提示的最终战斗复测（2026-11-15）
 
 `control-3` 与 `hint-4` 的开始 PNG 完全相同，结束 PNG 也完全相同；同一
