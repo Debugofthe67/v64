@@ -2092,3 +2092,10 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   OK handler 正常退出。严格 C 构建、harness 语法和 Win98 原始 API
   导出检查通过，Win98 新工具运行仍待验证。见
   `g6-native-ui-process-scope.json`。
+
+- G4 05 原生路径准备：原始 Boost 拒绝 E 盘根目录 EXE；以独立 XP
+  文件系统工具创建新的 C:\NV05RUN→E:\ 目录联接，避免重复大型 DAT。
+  工具拒绝已有目录，原盘只读、写入仅在 overlay；原始程序进入 Business
+  主界面、默认五项及 Tip modal，正常关闭后 CLI 进入 GT1。严格 C 构建
+  与 harness 语法通过。随后遇到与 2001 SE 相同的 Curie 17D0 中断和
+  对象错误，默认整套及图像门禁未通过；见 `g4-05-native-directory-setup.json`。

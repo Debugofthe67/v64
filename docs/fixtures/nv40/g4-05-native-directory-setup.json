@@ -1,0 +1,48 @@
+{
+  "date": "2026-11-14",
+  "scope": "Native XP 3DMark05 disk-path fixture setup; no benchmark completion claim.",
+  "problem": "Original Boost filesystem code rejects the EXE at E drive root with invalid name /3DMark05.exe in E://3DMark05.exe. E:/./ normalizes to the same path. The C NTFS volume has only 290492416 bytes free, insufficient for the original DAT.",
+  "change": "NV_BENCH_LAUNCH includes a separate NVJUNC.EXE. Invoked explicitly, it creates a new C:/NV05RUN directory junction to E:/ through the original XP FSCTL_SET_REPARSE_POINT API. It refuses any existing directory and never overwrites or deletes guest files. Original game images remain read-only with all changes in sector overlays.",
+  "nativeProof": {
+    "junction": "Observed SET_REPARSE=00000001 and EXE_ATTRIBUTES=00000020. The shared NVUI.TXT was subsequently overwritten by UI inspection; the observation is recorded here and the successfully launched native UI below remains independently inspectable.",
+    "launch": "C:/NV05RUN/3DMark05.exe entered the original Business Edition main window with defaults: three game tests, two CPU tests, 1024x768, no AA, Optimal filtering, VS/PS 3_0 and fixed frame rate Off.",
+    "modal": "Process-scoped NVUI enumerated 3DMark05.exe PID 0x62c, its Tip Of The Day window and standard Button controls. Native checkbox and OK handlers dismissed it.",
+    "run": "Original GUI closed with EXIT_CODE=0. CLI default five then entered GT1 and real rendering. That run later trapped at Curie 0x17D0, followed by object errors and incorrect blue lighting; it is not accepted as a graphics or completion pass."
+  },
+  "validation": [
+    "Strict no-CRT -Wall -Wextra -Werror build",
+    "node --check tests/devices/geforce_guest.mjs",
+    "Native XP junction creation, original Business Edition UI and normal process exit"
+  ],
+  "evidence": {
+    "tests/devices/geforce_directory.c": {
+      "bytes": 2048,
+      "sha256": "538c8ef09b198c67cf9ed8611da4188ab8dd14a8c9497c61ce35f80aca5fb065"
+    },
+    "build/NVJUNC.EXE": {
+      "bytes": 8450,
+      "sha256": "248fb06af57f273e1ed5db3ed02bcb2669b3a90f375c961f395bbb631da2c83e"
+    },
+    "build/nv40-xp-mark05-directory/ui-directory-inspect-0.txt": {
+      "bytes": 7523,
+      "sha256": "cf7198dce6f485ef287a0f10dde29f5e2a1cf8bb48918f23b47ee5747d29b7b4"
+    },
+    "build/nv40-xp-mark05-directory/ui-tip-dismiss-0.txt": {
+      "bytes": 261,
+      "sha256": "c4406b2956b6d7fa1ad7bb600352bab3dfaaf2dd54f4416dcfbddc1bcd3713f7"
+    },
+    "build/nv40-xp-mark05-directory/ui-tip-dismiss-1.txt": {
+      "bytes": 232,
+      "sha256": "fc2f4d76efc7d8b0c93ec945b68dfaf4ee015bf7aa831b311e8d33f66eff5736"
+    },
+    "build/nv40-xp-mark05-directory/ui-tip-dismiss-2.txt": {
+      "bytes": 6546,
+      "sha256": "55056296abd3798e2da6daa80be8d9f118e7360b878bb38598755bc12f71dcbc"
+    }
+  },
+  "limits": [
+    "Junction setup is explicit and XP NTFS specific; it is not automatically applied to existing guest images.",
+    "Original benchmark, renderer, driver and graphics API code are unchanged by this filesystem helper.",
+    "Default five, feature five, batch six and image quality remain open."
+  ]
+}
