@@ -1,0 +1,147 @@
+{
+  "date": "2026-11-15",
+  "scope": "G6 checked contiguous linear-VRAM copies; native FPS and full-suite gates remain open.",
+  "profileBasis": {
+    "directory": "build/nv40-xp-mark06-decoded512-profile",
+    "wallMs": 146338.30899999998,
+    "DMAReadSelfMs": 3211.143,
+    "DMARangesSelfMs": 860.29,
+    "limit": "This includes all DMA reads; it does not identify every sample as eligible linear VRAM."
+  },
+  "change": "For a linear VRAM descriptor, one base PTE and permission apply to the complete adjusted span. Validate its complete end then copy one contiguous range. Paged descriptors still fetch each PTE; system memory retains all per-physical-page validation and scalar/cross-page paths. No cached guest bytes or descriptor permissions are reused.",
+  "validation": {
+    "red": "Old implementation fails the new whole-span assertion by returning7ranges for the adjusted0x6001-byte VRAM span.",
+    "green": [
+      "Adjusted multi-page bytes and independent read ownership",
+      "Inclusive limit,full VRAM end,write permission and rejected-write atomicity",
+      "Existing discontiguous/reboundPTE,PCI master,descriptor class,scalar little/big endian and cross-page tests",
+      "FIFO,2D,state,texture andBCupload units",
+      "Complete actual NV40WebGPU pixel/readback/fence/alias/snapshot suite",
+      "Release NVplugin Closure:0errors/0warnings"
+    ]
+  },
+  "benchmark": {
+    "scope": "Concurrent host synthetic checked linear-VRAM copies; warmed/interleaved order; no native FPS claim",
+    "size": 4194304,
+    "iterations": 256,
+    "results": [
+      {
+        "source": "/Users/renruisi/Desktop/Code/v86/build/nv40-dma-before.mjs",
+        "sourceSHA256": "9b4a662a1153d1552de309ce67cc206784eafdf5ab055f2b65095803d2d577a2",
+        "rounds": [
+          {
+            "round": 0,
+            "wallMs": 226.33175,
+            "nodeCpuUs": {
+              "user": 136651,
+              "system": 24037
+            },
+            "copiedBytes": 1073741824,
+            "spans": 262400,
+            "lastCopySHA256": "d6ae388e779d1ce413a56ee623579c64475597396b2068f489786c35d17d9d71"
+          },
+          {
+            "round": 1,
+            "wallMs": 160.92149999999992,
+            "nodeCpuUs": {
+              "user": 123988,
+              "system": 5344
+            },
+            "copiedBytes": 1073741824,
+            "spans": 262400,
+            "lastCopySHA256": "d6ae388e779d1ce413a56ee623579c64475597396b2068f489786c35d17d9d71"
+          },
+          {
+            "round": 2,
+            "wallMs": 136.53812500000004,
+            "nodeCpuUs": {
+              "user": 143805,
+              "system": 4424
+            },
+            "copiedBytes": 1073741824,
+            "spans": 262400,
+            "lastCopySHA256": "d6ae388e779d1ce413a56ee623579c64475597396b2068f489786c35d17d9d71"
+          },
+          {
+            "round": 3,
+            "wallMs": 153.09754099999986,
+            "nodeCpuUs": {
+              "user": 118470,
+              "system": 8044
+            },
+            "copiedBytes": 1073741824,
+            "spans": 262400,
+            "lastCopySHA256": "d6ae388e779d1ce413a56ee623579c64475597396b2068f489786c35d17d9d71"
+          }
+        ]
+      },
+      {
+        "source": "/Users/renruisi/Desktop/Code/v86/src/graphics_adapters/geforce_6800/nv_dma.js",
+        "sourceSHA256": "0836cbc652a4e6078b09f2b2fe8bfd14ef045226c692ca84871cb7d02a53e91c",
+        "rounds": [
+          {
+            "round": 0,
+            "wallMs": 149.138958,
+            "nodeCpuUs": {
+              "user": 110732,
+              "system": 16001
+            },
+            "copiedBytes": 1073741824,
+            "spans": 256,
+            "lastCopySHA256": "d6ae388e779d1ce413a56ee623579c64475597396b2068f489786c35d17d9d71"
+          },
+          {
+            "round": 1,
+            "wallMs": 139.98583299999996,
+            "nodeCpuUs": {
+              "user": 114085,
+              "system": 4156
+            },
+            "copiedBytes": 1073741824,
+            "spans": 256,
+            "lastCopySHA256": "d6ae388e779d1ce413a56ee623579c64475597396b2068f489786c35d17d9d71"
+          },
+          {
+            "round": 2,
+            "wallMs": 75.92124999999987,
+            "nodeCpuUs": {
+              "user": 97093,
+              "system": 6029
+            },
+            "copiedBytes": 1073741824,
+            "spans": 256,
+            "lastCopySHA256": "d6ae388e779d1ce413a56ee623579c64475597396b2068f489786c35d17d9d71"
+          },
+          {
+            "round": 3,
+            "wallMs": 97.86299999999983,
+            "nodeCpuUs": {
+              "user": 105326,
+              "system": 3548
+            },
+            "copiedBytes": 1073741824,
+            "spans": 256,
+            "lastCopySHA256": "d6ae388e779d1ce413a56ee623579c64475597396b2068f489786c35d17d9d71"
+          }
+        ]
+      }
+    ]
+  },
+  "summary": [
+    {
+      "source": "/Users/renruisi/Desktop/Code/v86/build/nv40-dma-before.mjs",
+      "medianWallMs": 157.0095204999999,
+      "medianNodeCPUms": 138.78050000000002
+    },
+    {
+      "source": "/Users/renruisi/Desktop/Code/v86/src/graphics_adapters/geforce_6800/nv_dma.js",
+      "medianWallMs": 118.9244164999999,
+      "medianNodeCPUms": 113.5575
+    }
+  ],
+  "limits": [
+    "Eight interleaved warmed microbench rounds ran alongside native guests; timings are not isolated native performance.",
+    "Each1GiB round returns the same final-copySHA and preserves original sourceSHA. Ranges fall262400->256 per round(1025->1 per4MiB copy).",
+    "Existing native full suites loaded earlier modules and continue; they are not evidence of this optimization until an explicit later restore/start."
+  ]
+}

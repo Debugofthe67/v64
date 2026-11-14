@@ -32,6 +32,26 @@ assert.throws(() => engine.read(d, 0, 1.5), /limit/);
 assert.equal(engine.read(d, 64, 0).length, 0);
 assert.equal(dirty, 1);
 
+// A linear VRAM object has one base PTE for the whole span. It needs neither
+// a copied page list nor hundreds of per-page subarray/set operations.
+d = object(0x180, 0x00F0303D, 0x8FFF, 0x10002);
+assert.deepEqual(engine.ranges(d,0xFFF,0x6001,false),[{at:0x1100E,count:0x6001,offset:0}],"linear VRAM span remains contiguous across every page boundary");
+const large=Uint8Array.from({length:0x6001},(_,i)=>i*13+7);
+engine.write(d,0xFFF,large);const copied=engine.read(d,0xFFF,large.length);
+assert.deepEqual(copied,large);copied[0]^=255;
+assert.equal(vram[0x1100E],large[0],"a bulk read remains an independent byte copy");
+const unchanged=vram.slice(0x1100E,0x1700F);
+assert.throws(()=>engine.read(d,0x3000,0x6001),/limit/);
+assert.deepEqual(vram.subarray(0x1100E,0x1700F),unchanged);
+d=object(0x180,0x303D,0x3FFF,0x1FF002);
+assert.throws(()=>engine.read(d,0,0x2000),/outside VRAM/);
+const tail=vram.slice(0x1FF000);
+assert.throws(()=>engine.write(d,0,new Uint8Array(0x2000).fill(0xEE)),/outside VRAM/);
+assert.deepEqual(vram.subarray(0x1FF000),tail,"a late VRAM boundary never partially writes the valid first page");
+d=object(0x180,0x303D,0x7FFF,0x10000);
+assert.throws(()=>engine.write(d,0,new Uint8Array(0x6000)),error=>error.nv_dma?.page===0 && /page access/.test(error.message));
+assert.deepEqual(vram.subarray(0x1100E,0x1700F),unchanged,"a rejected whole-span write changes no byte");
+
 // Paged objects can map adjacent logical pages to discontiguous physical pages.
 d = object(0x200, 0xFFC0103D, 15, 0xA003, 0xC003);
 engine.write(d, 0, pattern.subarray(0, 16));

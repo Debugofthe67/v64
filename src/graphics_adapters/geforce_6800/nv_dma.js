@@ -44,7 +44,12 @@ export class NVDMA
             }
             const address = (pte & 0xFFFFF000) >>> 0;
             const at = dma.linear ? address + logical : address + logical % 4096;
-            const count = Math.min(length - done, 4096 - logical % 4096);
+            // Linear VRAM has one fixed base/permission PTE for the complete
+            // object. Validate its full end before the single contiguous copy.
+            // System memory keeps physical-page checks and paged DMA still
+            // reloads each PTE, including discontiguous/edited mappings.
+            const count = dma.linear && !dma.target ? length - done :
+                Math.min(length - done, 4096 - logical % 4096);
             if(dma.target) this.device.machine.validate_physical_range(at, count);
             else if(at + count > this.device.vram_size) throw new RangeError("NV DMA outside VRAM");
             ranges.push({ at, count, offset: done });

@@ -2188,3 +2188,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 原始 03 冷跑准备续核：Win98 原屏保已为 None，电源属性却为 15 分钟关闭显示器；已由原生界面改为 Never。独立文件 ReadFile/只读映射再次验证原 DAT 指定范围 CRC d98897c1；原版 Pro UI 确认 4GT/2CPU/5feature、sound0，保存配套开跑前状态后用实际鼠标启动。设置问题是否导致先前 GT2 等待未据此定论，完整新跑继续；详情并入 `g6-native-memory-status-diagnostic.json`。
 
 - G6 BC 对照入口：harness 的 `NV_HOST_BC=cpu` 仅收紧宿主可选能力，保持原客体/驱动/时钟和 GPU write/done 原对象及次序；默认 auto 不变。真实 backend 在初始/后续 hello/reset 下均保持 CPU 路径，协议与无 renderer/未知值拒绝回归通过。后续原生同状态 A/B 仍待整套结束后采集，未宣布 FPS 收益；记录并入 `g6-native-bc-texture-upload.json`。
+
+- G6 线性 VRAM DMA：既有 146 秒原生采样中 DMA read/ranges 自身约 3.21/0.86 秒。线性 VRAM 对象的一份基址/PTE 权限覆盖全段，现完整端点校验后一次连续复制；分页和系统内存保留逐页检查，字节/权限不缓存。跨页回归先红后绿，越界/权限失败零部分写、全部 DMA/FIFO/2D/state/texture 与完整真实 GPU、Closure 通过。交错预热微测每 1 GiB 的范围对象 262400→256，SHA 相同，中位 Node CPU 138.78→113.56 ms；并行宿主数据不作原生 FPS。见 `g6-contiguous-linear-vram-dma.json`。
