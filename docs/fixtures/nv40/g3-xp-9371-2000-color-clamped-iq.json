@@ -1,0 +1,442 @@
+{
+  "date": "2026-11-14",
+  "status": "Native IQ-only rerun completed and saved after normal shutdown; large game-frame residuals remain.",
+  "driver": "NVIDIA 93.71",
+  "settings": "1024x768x16, 16-bit textures, Z16, triple buffering, hardware T&L; only the two IQ groups selected",
+  "scope": "Matched-state IQ rerun using color-interpolator clamping; not another full 22-test run.",
+  "run": {
+    "directory": "build/nv40-xp-2000-ui-iq",
+    "GPU": {
+      "batches": 569,
+      "draws": 1039,
+      "bytes": 199429976,
+      "readbacks": 996,
+      "failures": 0,
+      "uploads": 1172,
+      "uploadBytes": 177406284
+    },
+    "graphFaults": [],
+    "nonSoftwareFifoFaults": [],
+    "imageUnchanged": true,
+    "game": {
+      "path": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+      "slot": "secondary-slave",
+      "imageUnchanged": true
+    },
+    "normalShutdownSafeOffObserved": true
+  },
+  "project": "NVCIQ.3DP",
+  "artifacts": [
+    {
+      "file": "NVCIQ.3DP",
+      "name": "NVCIQ.3DP",
+      "bytes": 4711,
+      "sha256": "9d6573019d3a30578d438b00d1952c69bcff4d35befeaf7405af197bac172449"
+    },
+    {
+      "file": "Quality/IQ01I_NVCIQ.bmp",
+      "name": "Quality_IQ01I_NVCIQ.bmp",
+      "bytes": 249856,
+      "sha256": "9013df2843080d45e1d1a06276eb4e5dc708d4a8fa7897a99f8b7f9e95e44bf1"
+    },
+    {
+      "file": "Quality/IQ01T_NVCIQ.bmp",
+      "name": "Quality_IQ01T_NVCIQ.bmp",
+      "bytes": 16384,
+      "sha256": "73f01bc478ad38f5072245abb106b84a8211bc024aaafed0121a53d9b14cf8e3"
+    },
+    {
+      "file": "Quality/IQ02I_NVCIQ.bmp",
+      "name": "Quality_IQ02I_NVCIQ.bmp",
+      "bytes": 249856,
+      "sha256": "a3824c888535556fcd168789e3e3932ab4fcdefbcdf1cf35335ac2a06a51ce57"
+    },
+    {
+      "file": "Quality/IQ02T_NVCIQ.bmp",
+      "name": "Quality_IQ02T_NVCIQ.bmp",
+      "bytes": 16384,
+      "sha256": "61b644dcb080a9fdaae1ba27248edab7b1a6752671989d8671a6d83397d6358a"
+    },
+    {
+      "file": "Quality/IQ03I_NVCIQ.bmp",
+      "name": "Quality_IQ03I_NVCIQ.bmp",
+      "bytes": 249856,
+      "sha256": "70cc5b79626a263db10803db4a13a3c06ee1b742bae3b6a33cbf026dbb1549c9"
+    },
+    {
+      "file": "Quality/IQ03T_NVCIQ.bmp",
+      "name": "Quality_IQ03T_NVCIQ.bmp",
+      "bytes": 16384,
+      "sha256": "5686a82c8f579dffd9c7d4191cd15bb7b4c4243c0bd7877c2a8a7cdf6952fe53"
+    },
+    {
+      "file": "Quality/IQ04I_NVCIQ.bmp",
+      "name": "Quality_IQ04I_NVCIQ.bmp",
+      "bytes": 249856,
+      "sha256": "c978403856b9fa6e75ec820d05465e4f4f2766a65a6583c84d3f8059ddc89448"
+    },
+    {
+      "file": "Quality/IQ04T_NVCIQ.bmp",
+      "name": "Quality_IQ04T_NVCIQ.bmp",
+      "bytes": 16384,
+      "sha256": "6facf25a2be5c852e3bd864ff87a9461b7430333770e1386312ba92115a9d441"
+    },
+    {
+      "file": "Quality/IQ05I_NVCIQ.bmp",
+      "name": "Quality_IQ05I_NVCIQ.bmp",
+      "bytes": 249856,
+      "sha256": "1718091476349e6318cfdd747cf701b1d25b6f5cee38e29e9a4d723d68017338"
+    },
+    {
+      "file": "Quality/IQ05T_NVCIQ.bmp",
+      "name": "Quality_IQ05T_NVCIQ.bmp",
+      "bytes": 16384,
+      "sha256": "51a938f9ee46bab7f24c23d351ffcf2f1257a0ef257b08d4d184f7ff7af0dc2e"
+    },
+    {
+      "file": "Quality/IQ06I_NVCIQ.bmp",
+      "name": "Quality_IQ06I_NVCIQ.bmp",
+      "bytes": 249856,
+      "sha256": "c598d5f5efdd6964311b477153476a41379297e2b6b7ddbacb862a4d2f76cd53"
+    },
+    {
+      "file": "Quality/IQ06T_NVCIQ.bmp",
+      "name": "Quality_IQ06T_NVCIQ.bmp",
+      "bytes": 16384,
+      "sha256": "62d1f757cabd1074d1d660db47544549c7379ce1bbe2eae86e8b1e05950b1645"
+    },
+    {
+      "file": "Quality/IQ07I_NVCIQ.bmp",
+      "name": "Quality_IQ07I_NVCIQ.bmp",
+      "bytes": 249856,
+      "sha256": "a1a7884f85d1f13dcae9dbbbabd41c87333c9d95ae53677b5c67ed4f06e91ccd"
+    },
+    {
+      "file": "Quality/IQ07T_NVCIQ.bmp",
+      "name": "Quality_IQ07T_NVCIQ.bmp",
+      "bytes": 16384,
+      "sha256": "011d80de90bd626f027bc58d253efbc3b0fbe35fca0d336c3b0bee361997f634"
+    },
+    {
+      "file": "Quality/IQ08I_NVCIQ.bmp",
+      "name": "Quality_IQ08I_NVCIQ.bmp",
+      "bytes": 2560000,
+      "sha256": "14b1d8da5de616dd2267af7e9c29b536829f27ef5073bc543c5d855f5e25bf39"
+    },
+    {
+      "file": "Quality/IQ08T_NVCIQ.bmp",
+      "name": "Quality_IQ08T_NVCIQ.bmp",
+      "bytes": 18496,
+      "sha256": "2e1a7ffa4b99713e8c229a8131cd6398eec7bb93a5a4dfe9a2290ba90dce63ae"
+    },
+    {
+      "file": "Quality/IQ09I_NVCIQ.bmp",
+      "name": "Quality_IQ09I_NVCIQ.bmp",
+      "bytes": 2560000,
+      "sha256": "a40ab344c7bc0a3ae50d7ef24e5f8ab2a3a599ad45f1dee934b798a074486073"
+    },
+    {
+      "file": "Quality/IQ09T_NVCIQ.bmp",
+      "name": "Quality_IQ09T_NVCIQ.bmp",
+      "bytes": 18496,
+      "sha256": "5d0b163f4494015797ba72620aff7179d10e435381cd01881800335ad1ab9f50"
+    }
+  ],
+  "imageComparison": [
+    {
+      "case": 1,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0,
+      "exact_pixel_percent": 100.0,
+      "native_sha256": "9013df2843080d45e1d1a06276eb4e5dc708d4a8fa7897a99f8b7f9e95e44bf1",
+      "reference_sha256": "0da313c8b34fc7c4e08beb9cefa5a7c332d98086dc719abef4fe80f1a4c8d520"
+    },
+    {
+      "case": 2,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0,
+      "exact_pixel_percent": 100.0,
+      "native_sha256": "a3824c888535556fcd168789e3e3932ab4fcdefbcdf1cf35335ac2a06a51ce57",
+      "reference_sha256": "c0f3de49a85e1e2b03e30140292cdc5a831cd5090d52da0ba186c017f3bd1bb9"
+    },
+    {
+      "case": 3,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 553,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.02008056640625,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.15618896484375,
+      "native_sha256": "70cc5b79626a263db10803db4a13a3c06ee1b742bae3b6a33cbf026dbb1549c9",
+      "reference_sha256": "2c6b591c0d5ea4d299b7c5a63348502a82306cbcf5fa8af4ed34e6ed956d6d7d"
+    },
+    {
+      "case": 4,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 540,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.019999186197916668,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.176025390625,
+      "native_sha256": "c978403856b9fa6e75ec820d05465e4f4f2766a65a6583c84d3f8059ddc89448",
+      "reference_sha256": "a5951c3c965c18c8dec33342d5414ca65deea79fbe1aef8deaadfb02307c451c"
+    },
+    {
+      "case": 5,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 617,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.020772298177083332,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.05853271484375,
+      "native_sha256": "1718091476349e6318cfdd747cf701b1d25b6f5cee38e29e9a4d723d68017338",
+      "reference_sha256": "621317632376c082714ca4117bcd6181ca161f3a2a5c9f591e463b705a41dd83"
+    },
+    {
+      "case": 6,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 554,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.019999186197916668,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.1546630859375,
+      "native_sha256": "c598d5f5efdd6964311b477153476a41379297e2b6b7ddbacb862a4d2f76cd53",
+      "reference_sha256": "d324ed6b6e7281769a857904bb2457ed92cc5fc01338cde89a9f2e0d97df9e77"
+    },
+    {
+      "case": 7,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 375,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.00762939453125,
+      "max_channel_error": 4,
+      "exact_pixel_percent": 99.42779541015625,
+      "native_sha256": "a1a7884f85d1f13dcae9dbbbabd41c87333c9d95ae53677b5c67ed4f06e91ccd",
+      "reference_sha256": "77d76eb60967406651b15c61a2e459ded9f5ac0d0aa5f186c72c73b2577c0d6b"
+    },
+    {
+      "case": 8,
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "different_pixels": 320925,
+      "pixels": 786432,
+      "mean_absolute_rgb_error": 5.762674967447917,
+      "max_channel_error": 104,
+      "exact_pixel_percent": 59.19227600097656,
+      "native_sha256": "14b1d8da5de616dd2267af7e9c29b536829f27ef5073bc543c5d855f5e25bf39",
+      "reference_sha256": "fb969ac1941880a20d186f2ef8e392365f995460f2c2cccb943caf7014fa85af"
+    },
+    {
+      "case": 9,
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "different_pixels": 92886,
+      "pixels": 786432,
+      "mean_absolute_rgb_error": 4.003028021918403,
+      "max_channel_error": 248,
+      "exact_pixel_percent": 88.18893432617188,
+      "native_sha256": "a40ab344c7bc0a3ae50d7ef24e5f8ab2a3a599ad45f1dee934b798a074486073",
+      "reference_sha256": "16d5837ce7630b87f7bb9c9f9208bd7de01dc7886cf62c4287fb866710a56866"
+    }
+  ],
+  "thumbnailComparison": [
+    {
+      "case": 1,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0,
+      "native_sha256": "73f01bc478ad38f5072245abb106b84a8211bc024aaafed0121a53d9b14cf8e3",
+      "reference_sha256": "73f01bc478ad38f5072245abb106b84a8211bc024aaafed0121a53d9b14cf8e3"
+    },
+    {
+      "case": 2,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0,
+      "native_sha256": "61b644dcb080a9fdaae1ba27248edab7b1a6752671989d8671a6d83397d6358a",
+      "reference_sha256": "61b644dcb080a9fdaae1ba27248edab7b1a6752671989d8671a6d83397d6358a"
+    },
+    {
+      "case": 3,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 25,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.010416666666666666,
+      "max_channel_error": 8,
+      "native_sha256": "5686a82c8f579dffd9c7d4191cd15bb7b4c4243c0bd7877c2a8a7cdf6952fe53",
+      "reference_sha256": "dfd41c478700c67a4e742b4d165626dafa304edc1d233894688192fdd232c5f7"
+    },
+    {
+      "case": 4,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 22,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0087890625,
+      "max_channel_error": 8,
+      "native_sha256": "6facf25a2be5c852e3bd864ff87a9461b7430333770e1386312ba92115a9d441",
+      "reference_sha256": "4b30cdca46451b81852149f49046b63f85ab6699d8fe472f2c495ea94a8f8227"
+    },
+    {
+      "case": 5,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 44,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.025065104166666668,
+      "max_channel_error": 8,
+      "native_sha256": "51a938f9ee46bab7f24c23d351ffcf2f1257a0ef257b08d4d184f7ff7af0dc2e",
+      "reference_sha256": "8c11eb73c09bfc9959e46dd013d1e5620c3c9708c72145aaa99647531c805e3e"
+    },
+    {
+      "case": 6,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 35,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.018880208333333332,
+      "max_channel_error": 8,
+      "native_sha256": "62d1f757cabd1074d1d660db47544549c7379ce1bbe2eae86e8b1e05950b1645",
+      "reference_sha256": "24c26738af9d5ab47a120e03c3779c9f0060e1d1e92634bf7c433580491c3a36"
+    },
+    {
+      "case": 7,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 27,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0087890625,
+      "max_channel_error": 4,
+      "native_sha256": "011d80de90bd626f027bc58d253efbc3b0fbe35fca0d336c3b0bee361997f634",
+      "reference_sha256": "d562147953d343958c19e021c00bfc775939d449964215aa83c121dcca229b43"
+    },
+    {
+      "case": 8,
+      "kind": "T",
+      "width": 80,
+      "height": 60,
+      "roi_y": 0,
+      "different_pixels": 1930,
+      "pixels": 4800,
+      "mean_absolute_rgb_error": 5.831666666666667,
+      "max_channel_error": 96,
+      "native_sha256": "2e1a7ffa4b99713e8c229a8131cd6398eec7bb93a5a4dfe9a2290ba90dce63ae",
+      "reference_sha256": "ef04d78dd3c758c127d5d6641f8c6d9d6cf634f3168c2ddba48401e0a0bf9eb0"
+    },
+    {
+      "case": 9,
+      "kind": "T",
+      "width": 80,
+      "height": 60,
+      "roi_y": 0,
+      "different_pixels": 562,
+      "pixels": 4800,
+      "mean_absolute_rgb_error": 3.8805555555555555,
+      "max_channel_error": 224,
+      "native_sha256": "5d0b163f4494015797ba72620aff7179d10e435381cd01881800335ad1ab9f50",
+      "reference_sha256": "3b936b1dac0fb62f3a9d576343629e04e1283cbc2eb8ee3c6f939d9abf81c5a9"
+    }
+  ],
+  "method": "Compare original BMP RGB without shifts/resampling/channel changes. I images exclude the top 64 metadata rows; T thumbnails are compared in full, with no metadata crop.",
+  "changeFromPrevious": {
+    "IQ8ImageMeanAbsoluteRGBError": [
+      6.551495022243923,
+      5.762674967447917
+    ],
+    "IQ8ImageMaxChannelError": [
+      176,
+      104
+    ],
+    "IQ9ImageMeanAbsoluteRGBError": [
+      4.003028021918403,
+      4.003028021918403
+    ]
+  },
+  "remaining": [
+    "IQ1/2 I and T are exact; 3-7 retain small quantization/filter residuals.",
+    "IQ8 improved, but remains different; IQ9 still contains black barrels absent from the proxy reference.",
+    "Original CPU/GPU scene scores are not inferred from IQ-only N/A.",
+    "Harness BLOCKED refers to the intentionally replaced initialization probe; benchmark evidence is its native completion/project/BMPs and trace."
+  ],
+  "screenshots": {
+    "capture-0117.png": {
+      "bytes": 56344,
+      "sha256": "63c687b1bb4ad0ce9c3d01062f70c07991000b93b99f4021b96581135234d8b1"
+    },
+    "capture-0174.png": {
+      "bytes": 56393,
+      "sha256": "de77c3efe1443ba7628eb921d1a25698972bbd12bc13fa44eff71d73950826e5"
+    },
+    "capture-0212.png": {
+      "bytes": 6346,
+      "sha256": "f98dc3a08b2c22263dde39dfcbbf740011acb922f7814fae1957d803b26618f2"
+    }
+  },
+  "bundle": {
+    "status": "complete",
+    "guest": "xp",
+    "vramMiB": 128,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+    "state": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-2000-ui-iq.state",
+      "bytes": 651080580,
+      "sha256": "4ad4a6db87ce940930db86b00c24c388ab49b7405c6167124299c99fddaf08d3"
+    },
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-2000-ui-iq-overlay.bin",
+      "bytes": 126105792,
+      "sha256": "83b4715741f43b6a0478fb6d6d855e24b839a94c892fa7e8b5f4865a8d2fc993"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-2000-ui-iq-game-overlay.bin",
+      "bytes": 2255472,
+      "sha256": "7aba892c8b0dea6d39697d9738ff3174443de8542624a4aa8d68ab7062bb53ce"
+    }
+  },
+  "imageGate": false,
+  "performanceGate": false
+}

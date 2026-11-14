@@ -1999,3 +1999,10 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   `NV_TOOLS_LIVE_ARTIFACTS` 有界导出变化的根文件，严格 C 构建和
   原生控件/文件名确认通过，见 `g6-native-benchmark-ui-controls.json`。
   同时将 GPU 传输回归纳入 devices-test。
+
+- G3 2000 钳位后 IQ 复核：原版仅选两组 IQ，正常结束并保存 NVCIQ，
+  safe-off 后导出 18 张 I/T BMP，1039 次绘制、三类真实故障均为零。
+  I 图只排除顶部 64 行元数据，T 缩略图完整比较；IQ1/2 两类均精确，
+  3–7 最大通道误差 8。IQ8 大图 MAD 6.55→5.76、最大误差 176→104，
+  IQ9 仍有黑色木桶；图像门禁未过，继续逐绘制定位。见
+  `g3-xp-9371-2000-color-clamped-iq.json`。
