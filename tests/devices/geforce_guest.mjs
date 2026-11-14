@@ -335,8 +335,10 @@ export async function run_geforce_guest(win98)
         {
             assert(game,"IDE read observation needs NV_HDB");
             const first=Number(process.env.NV_IDE_WATCH_FIRST),length=Number(process.env.NV_IDE_WATCH_BYTES);
-            const limit=Number(process.env.NV_IDE_WATCH_LIMIT||262144);
-            assert(Number.isInteger(limit)&&limit>=1&&limit<=262144,"invalid IDE watch record bound");
+            // Win9x reads this 470 MiB DAT through 1 KiB PRDT segments.
+            // Keep a full pass (source plus copy records) within the bound.
+            const limit=Number(process.env.NV_IDE_WATCH_LIMIT||2097152);
+            assert(Number.isInteger(limit)&&limit>=1&&limit<=2097152,"invalid IDE watch record bound");
             ide_read_fd=fs.openSync(path.join(out,"ide-read-watch.ndjson"),"w");
             ide_read_watch=watch_geforce_ide_reads(cpu,game,first,length,row=>{
                 if(ide_read_rows>=limit){ide_read_dropped++;return;}

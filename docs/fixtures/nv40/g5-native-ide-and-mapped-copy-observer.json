@@ -4,7 +4,7 @@
   "controls": {
     "disk": "Original 470748903-byte DAT remains unchanged; read-only base image with RAM overlay.",
     "observer": "Hash overlapping game-disk callbacks and the real post-write ordinary RAM bytes; retain payload, error, callback order and other CPUs. No guest PTE edits, CPU watch arming, injected IRQ or clock changes.",
-    "bounds": "262144 NDJSON records maximum, with dropped/loggingErrors counters. Mapped hold only in an explicit standalone build, limited to 0..60000ms; default0."
+    "bounds": "2097152 NDJSON records maximum, with dropped/loggingErrors counters. Mapped hold only in an explicit standalone build, limited to 0..60000ms; default0."
   },
   "validation": {
     "unit": "node tests/devices/geforce_ide_watch.mjs: asynchronous/nested callbacks, source identity/options/returns, source offsets, DMA return/exception identity, other CPU isolation, hook restoration and logging failure.",
