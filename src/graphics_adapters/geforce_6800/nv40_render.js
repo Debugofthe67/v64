@@ -9,19 +9,38 @@ const get=(o,at,fallback=0)=>o.methods.has(at)?o.methods.get(at):fallback;
 const float_value=word=>new Float32Array(Uint32Array.of(word).buffer)[0];
 const float_word=value=>new Uint32Array(Float32Array.of(value).buffer)[0];
 const data=typed=>new Uint8Array(typed.buffer,typed.byteOffset,typed.byteLength);
-const changed_bytes=(a,b)=>{
-    // Decoded texture-cache hits reuse the same host byte image. Comparing
-    // a view with itself cannot discover a change; guest memory reads still
-    // produce fresh images and retain their exact-byte comparison below.
+function changed_tail(a,b,first,aw,bw)
+{
+    let last=b.length;
+    while((last&3) && last>first && a[last-1]===b[last-1])last--;
+    if(!(last&3))
+    {
+        let end=last>>>2;
+        const lower=(first+3)>>>2;
+        while(end-lower>=8 && aw[end-1]===bw[end-1] && aw[end-2]===bw[end-2] &&
+            aw[end-3]===bw[end-3] && aw[end-4]===bw[end-4] && aw[end-5]===bw[end-5] &&
+            aw[end-6]===bw[end-6] && aw[end-7]===bw[end-7] && aw[end-8]===bw[end-8])end-=8;
+        while(end>lower && aw[end-1]===bw[end-1])end--;
+        last=end*4;
+    }
+    while(last>first && a[last-1]===b[last-1])last--;
+    return last;
+}
+export function nv40_changed_bytes(a,b)
+{
+    // Decoded texture-cache hits reuse the same host byte image. Guest
+    // memory reads still produce fresh images and require exact comparison.
     if(a===b) return null;
     if(!a || a.length!==b.length) return [0,b.length];
     const count=a.length>>>2,aw=new Uint32Array(a.buffer,a.byteOffset,count),bw=new Uint32Array(b.buffer,b.byteOffset,count);
     let first=0;while(first<count && aw[first]===bw[first])first++;
     first*=4;while(first<b.length && a[first]===b[first])first++;
     if(first===b.length) return null;
-    let last=b.length;while(last>first && a[last-1]===b[last-1])last--;
-    return [first,last];
-};
+    // Sparse guest updates can leave megabytes of unchanged trailing rows.
+    // Keep that word scan outside the common unchanged-image path.
+    return [first,changed_tail(a,b,first,aw,bw)];
+}
+
 const BLEND=new Map([[0,1],[1,2],[0x300,3],[0x301,4],[0x302,5],[0x303,6],[0x304,7],[0x305,8],
     [0x306,9],[0x307,10],[0x308,11],[0x8001,14],[0x8002,15],[0x8003,14],[0x8004,15],
     ...Array.from({length:11},(_,i)=>[0x1001+i,i+1]),[0x100C,5],[0x100D,6],[0x100E,14],[0x100F,15]]);
@@ -220,7 +239,7 @@ export class NV40Render
         const handle=resource.handle;
         if(this.draw_resources)this.draw_resources.add(handle);
         if(images)images.forEach((bytes,index)=>{
-            const previous=resource.images && resource.images[index],changed=changed_bytes(previous,bytes);
+            const previous=resource.images && resource.images[index],changed=nv40_changed_bytes(previous,bytes);
             if(!changed) return;
             const level=index%levels,face=surface.cube?Math.floor(index/levels):0;
             const width=Math.max(1,surface.width>>>level),height=Math.max(1,surface.height>>>level),

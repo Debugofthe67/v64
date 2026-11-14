@@ -1,0 +1,90 @@
+{
+  "date": "2026-11-15",
+  "scope": "Exact CPU upload-change interval optimization, motivated by a bounded native HDR host sample; not native FPS or final isolated G6 acceptance.",
+  "profile": {
+    "run": "build/nv40-xp-mark06-hdr-readback-30s-resume",
+    "sampleMilliseconds": 40677.967,
+    "concurrentGuests": 3,
+    "byteComparisonSelfMilliseconds": 4885.752,
+    "byteComparisonSelfPercent": 12.010806734761351,
+    "scope": "Node event-loop sampling only, excluding Chrome/GPU hardware time. No performance gate inferred."
+  },
+  "change": [
+    "Retain the original aligned DWORD forward scan and identical-image fast return.",
+    "After finding a difference, scan unchanged trailing bytes with grouped DWORD loads before finding the exact final byte. Sparse guest changes no longer traverse whole trailing image rows one byte at a time.",
+    "No cache invalidation, image equality, upload row rounding, guest bytes or host resource lifetime changes."
+  ],
+  "validation": {
+    "byteOracle": "Every tail length0..131 across16 pairs of independent aligned views, boundary/sparse mutations,4096 deterministic random cases and4MiB native image endpoints agree with independent differing-byte indices.",
+    "device": "State,texture,graph and full render ordering tests pass.",
+    "gpu": "Complete real NV40 WebGPU pixel suite passes, including BC partial block-row/cube/mip updates, attachment aliases, GPU blend history, delayed fences and recursive snapshot quiescence.",
+    "build": "Closure plugin build:0errors/0warnings.",
+    "microbenchmark": {
+      "command": "node tests/bench/nv40_bytes.mjs",
+      "sha256": "46857e6ba4db4b0528cdc74ec05c7dc6aed44ed2a874875eaf4b90df3046a195",
+      "rounds": 7,
+      "iterations": 32,
+      "imageBytes": 4194304,
+      "results": [
+        {
+          "scenario": "first-byte",
+          "expected": [
+            0,
+            1
+          ],
+          "medianMilliseconds": {
+            "baseline": 144.729333,
+            "grouped": 32.165250000000015
+          },
+          "speedup": 4.499555669550211
+        },
+        {
+          "scenario": "middle-byte",
+          "expected": [
+            2097152,
+            2097153
+          ],
+          "medianMilliseconds": {
+            "baseline": 59.36020899999994,
+            "grouped": 27.346958000000086
+          },
+          "speedup": 2.170632982286357
+        },
+        {
+          "scenario": "last-byte",
+          "expected": [
+            4194303,
+            4194304
+          ],
+          "medianMilliseconds": {
+            "baseline": 37.02162499999986,
+            "grouped": 36.938084000000345
+          },
+          "speedup": 1.0022616495213859
+        },
+        {
+          "scenario": "whole-image",
+          "expected": [
+            0,
+            4194304
+          ],
+          "medianMilliseconds": {
+            "baseline": 0.010333000000173342,
+            "grouped": 0.0037910000000920263
+          },
+          "speedup": 2.725666051153392
+        },
+        {
+          "scenario": "unchanged",
+          "expected": null,
+          "medianMilliseconds": {
+            "baseline": 36.58479100000022,
+            "grouped": 23.659957999999733
+          },
+          "speedup": 1.5462745538263691
+        }
+      ],
+      "limits": "Host microbenchmark under concurrent diagnostic load. Unchanged/full-change timing variation is not claimed as an algorithmic or native FPS improvement."
+    }
+  }
+}
