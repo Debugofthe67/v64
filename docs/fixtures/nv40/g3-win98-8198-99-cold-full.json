@@ -1,0 +1,391 @@
+{
+  "date": "2026-11-14",
+  "stage": "G3 original Win98 81.98 cold full 99 MAX 26-test completion",
+  "status": "Original native congratulations and score; original project and all eighteen IQ BMPs exported after normal OS shutdown. Fixed IQ and performance gates remain open.",
+  "origin": "Cold boot from a normally shut-down driver overlay. One original all-26 benchmark continued through six coherent RAM/disk resumes. No driver, graphics API, result, watchdog or guest-clock changes.",
+  "settings": {
+    "adapter": "NVIDIA GeForce 6800 GT",
+    "display": "800x600, 16-bit color",
+    "zBuffer": "16 bit",
+    "frameBuffer": "Triple",
+    "looping": "No",
+    "repeat": 1,
+    "titles": "Yes",
+    "sounds": "Enabled"
+  },
+  "nativeResult": {
+    "successText": "You have successfully run the benchmark!",
+    "score3DMarks": 130,
+    "cpu3DMarks": 13422,
+    "performanceAccepted": false,
+    "reason": "Concurrent host load and pause/restores exclude this score from performance acceptance."
+  },
+  "tests": {
+    "gameRace": 1,
+    "gameFirstPerson": 1,
+    "syntheticCPU": 1,
+    "fillRate": 2,
+    "textureRendering": 5,
+    "bumpMapping": 3,
+    "textureFiltering": 1,
+    "nPixelPolygons": 10,
+    "imageQuality": 2,
+    "total": 26
+  },
+  "legs": [
+    {
+      "directory": "build/nv40-win98-99-cold-final",
+      "draws": 23262,
+      "batches": 1684,
+      "gpuFailures": 0,
+      "graphFaults": [],
+      "imageUnchanged": true,
+      "gameImageUnchanged": true
+    },
+    {
+      "directory": "build/nv40-win98-99-cold-continue",
+      "draws": 939,
+      "batches": 664,
+      "gpuFailures": 0,
+      "graphFaults": [],
+      "imageUnchanged": true,
+      "gameImageUnchanged": true
+    },
+    {
+      "directory": "build/nv40-win98-99-cold-continue2",
+      "draws": 525,
+      "batches": 350,
+      "gpuFailures": 0,
+      "graphFaults": [],
+      "imageUnchanged": true,
+      "gameImageUnchanged": true
+    },
+    {
+      "directory": "build/nv40-win98-99-cold-continue3",
+      "draws": 216,
+      "batches": 144,
+      "gpuFailures": 0,
+      "graphFaults": [],
+      "imageUnchanged": true,
+      "gameImageUnchanged": true
+    },
+    {
+      "directory": "build/nv40-win98-99-cold-continue4",
+      "draws": 87,
+      "batches": 58,
+      "gpuFailures": 0,
+      "graphFaults": [],
+      "imageUnchanged": true,
+      "gameImageUnchanged": true
+    },
+    {
+      "directory": "build/nv40-win98-99-cold-continue5",
+      "draws": 6522,
+      "batches": 2570,
+      "gpuFailures": 0,
+      "graphFaults": [],
+      "imageUnchanged": true,
+      "gameImageUnchanged": true
+    },
+    {
+      "directory": "build/nv40-win98-99-cold-continue6",
+      "draws": 6207,
+      "batches": 1141,
+      "gpuFailures": 0,
+      "graphFaults": [],
+      "imageUnchanged": true,
+      "gameImageUnchanged": true
+    }
+  ],
+  "totalDraws": 37758,
+  "shutdown": {
+    "normalDialogConfirmed": true,
+    "finalEIP": "0xfe93d",
+    "halted": 1,
+    "displayMode": null
+  },
+  "artifacts": [
+    {
+      "file": "NV99F.3DP",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/NV99F.3DP",
+      "bytes": 3827,
+      "sha256": "6696533328a4d212342db6eee70b88540b10d2df97d3043019c67c0a5289c2ee"
+    },
+    {
+      "file": "Quality/IQ01I_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ01I_NV99F.bmp",
+      "bytes": 249856,
+      "sha256": "c305d327f852c41d7fe5561f6efb44167a9f289887f50a7da90eb5dfb1f36476"
+    },
+    {
+      "file": "Quality/IQ01T_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ01T_NV99F.bmp",
+      "bytes": 16384,
+      "sha256": "a1d5ae75bd0cb38446437d9a2f988f059c7648b9dfc2cbb71e5a0c607b282348"
+    },
+    {
+      "file": "Quality/IQ02I_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ02I_NV99F.bmp",
+      "bytes": 249856,
+      "sha256": "4820e0ad4e1fa9f30e3945485cfa3ad4e6b4dab9789654e0514c972c59a97c7d"
+    },
+    {
+      "file": "Quality/IQ02T_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ02T_NV99F.bmp",
+      "bytes": 16384,
+      "sha256": "d2f920990e5e1e245d13b95ba107aa8cc8b12453ccae45cfeca4b881a58002a0"
+    },
+    {
+      "file": "Quality/IQ03I_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ03I_NV99F.bmp",
+      "bytes": 249856,
+      "sha256": "a994fec9da1403fca97d4013a53fe591b71e2e92cda997af13dc8700bf837593"
+    },
+    {
+      "file": "Quality/IQ03T_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ03T_NV99F.bmp",
+      "bytes": 16384,
+      "sha256": "e600d2d900816eec7c74135f39fd88ace0ef2e35bc6ac62bf51f6e9488a66cb2"
+    },
+    {
+      "file": "Quality/IQ04I_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ04I_NV99F.bmp",
+      "bytes": 249856,
+      "sha256": "9ba35cd803e64874e97e18b80ab1a9f6000fa2568fdf7bd1cad8a9939854fd22"
+    },
+    {
+      "file": "Quality/IQ04T_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ04T_NV99F.bmp",
+      "bytes": 16384,
+      "sha256": "0649849a72ce41516f1794013464d6956619078926a600aa78f7baf64fc0d561"
+    },
+    {
+      "file": "Quality/IQ05I_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ05I_NV99F.bmp",
+      "bytes": 249856,
+      "sha256": "cb5f831176675df21eb15dd372188aa66b639899354cb6323a5bc500ebc1f15c"
+    },
+    {
+      "file": "Quality/IQ05T_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ05T_NV99F.bmp",
+      "bytes": 16384,
+      "sha256": "11d12edb2b5dac9619ef2cdf7d48cc0b46f8aea3cafdb01563cd7f26b7cb85b5"
+    },
+    {
+      "file": "Quality/IQ06I_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ06I_NV99F.bmp",
+      "bytes": 249856,
+      "sha256": "3bbf7e6ba995eae48b4422ae8075e479fcbdadbebd330fdd6a81f06254fed116"
+    },
+    {
+      "file": "Quality/IQ06T_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ06T_NV99F.bmp",
+      "bytes": 16384,
+      "sha256": "9311db7abf74f79ea5bdcb60aefc5c666a798bd8fac444bf7d014c2303dffd88"
+    },
+    {
+      "file": "Quality/IQ07I_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ07I_NV99F.bmp",
+      "bytes": 249856,
+      "sha256": "a72354061e2ff957478ff4393766b629fdf78ee0d914040708e5b183a8ebd8d3"
+    },
+    {
+      "file": "Quality/IQ07T_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ07T_NV99F.bmp",
+      "bytes": 16384,
+      "sha256": "d1798041e20c31b53c2408f0a24d9d43f78a06d74ba3dce3ee0864a0a9cfc26c"
+    },
+    {
+      "file": "Quality/IQ08I_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ08I_NV99F.bmp",
+      "bytes": 1597696,
+      "sha256": "e0d0211272cda0c555c3281e2e96b36b6f410bbf1ce4151e86ff22ebf230fa73"
+    },
+    {
+      "file": "Quality/IQ08T_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ08T_NV99F.bmp",
+      "bytes": 18496,
+      "sha256": "f5d1ad3f859789fd1790c182e5fa27f67f3f0a99e9fff43ca7a5d9ed2fb01c60"
+    },
+    {
+      "file": "Quality/IQ09I_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ09I_NV99F.bmp",
+      "bytes": 1597696,
+      "sha256": "18e54b2fc9000bcde5f9c43bda50bc0b7bc1aaf19ef5dbc01b2cdd1e2aec68b1"
+    },
+    {
+      "file": "Quality/IQ09T_NV99F.bmp",
+      "output": "build/nv40-win98-99-cold-continue6-artifacts/Quality_IQ09T_NV99F.bmp",
+      "bytes": 18496,
+      "sha256": "ef83b88649e34c66f6223c8e3428b6d9a849882b0886a1393a63a76ef3652d4a"
+    }
+  ],
+  "imageComparison": {
+    "reference": "Original same-scene scalar reference fixture build/d3d-review/stage6-99-scalar; exclude native header rows y<64.",
+    "metrics": [
+      {
+        "case": 1,
+        "width": 256,
+        "height": 320,
+        "roi_y": 64,
+        "different_pixels": 1,
+        "pixels": 65536,
+        "mean_absolute_rgb_error": 0.0038045247395833335,
+        "max_channel_error": 252,
+        "exact_pixel_percent": 99.99847412109375,
+        "native_sha256": "c305d327f852c41d7fe5561f6efb44167a9f289887f50a7da90eb5dfb1f36476",
+        "reference_sha256": "b010eb1527157c6bd27d249833060d1e81b3e98fbfe4efa5bd7a8701a092ef96"
+      },
+      {
+        "case": 2,
+        "width": 256,
+        "height": 320,
+        "roi_y": 64,
+        "different_pixels": 1,
+        "pixels": 65536,
+        "mean_absolute_rgb_error": 2.0345052083333332e-05,
+        "max_channel_error": 4,
+        "exact_pixel_percent": 99.99847412109375,
+        "native_sha256": "4820e0ad4e1fa9f30e3945485cfa3ad4e6b4dab9789654e0514c972c59a97c7d",
+        "reference_sha256": "e073e322a024dc775adefce4b908ea25a84f950dc479717d12d5d9be4317e236"
+      },
+      {
+        "case": 3,
+        "width": 256,
+        "height": 320,
+        "roi_y": 64,
+        "different_pixels": 608,
+        "pixels": 65536,
+        "mean_absolute_rgb_error": 0.017923990885416668,
+        "max_channel_error": 8,
+        "exact_pixel_percent": 99.072265625,
+        "native_sha256": "a994fec9da1403fca97d4013a53fe591b71e2e92cda997af13dc8700bf837593",
+        "reference_sha256": "2748efd53df08b966976ca94f613898293021687ad54674c7bcb4cd7f18010b2"
+      },
+      {
+        "case": 4,
+        "width": 256,
+        "height": 320,
+        "roi_y": 64,
+        "different_pixels": 539,
+        "pixels": 65536,
+        "mean_absolute_rgb_error": 0.0167236328125,
+        "max_channel_error": 8,
+        "exact_pixel_percent": 99.17755126953125,
+        "native_sha256": "9ba35cd803e64874e97e18b80ab1a9f6000fa2568fdf7bd1cad8a9939854fd22",
+        "reference_sha256": "55393fd1fa089d180361b57df9918fc818929b36fc936164c60aac18642681b5"
+      },
+      {
+        "case": 5,
+        "width": 256,
+        "height": 320,
+        "roi_y": 64,
+        "different_pixels": 714,
+        "pixels": 65536,
+        "mean_absolute_rgb_error": 0.02239990234375,
+        "max_channel_error": 8,
+        "exact_pixel_percent": 98.9105224609375,
+        "native_sha256": "cb5f831176675df21eb15dd372188aa66b639899354cb6323a5bc500ebc1f15c",
+        "reference_sha256": "725c91384282e03db2b505e020ce926ee32fee5440c218d62dcb9f84e8195d4c"
+      },
+      {
+        "case": 6,
+        "width": 256,
+        "height": 320,
+        "roi_y": 64,
+        "different_pixels": 548,
+        "pixels": 65536,
+        "mean_absolute_rgb_error": 0.019490559895833332,
+        "max_channel_error": 8,
+        "exact_pixel_percent": 99.163818359375,
+        "native_sha256": "3bbf7e6ba995eae48b4422ae8075e479fcbdadbebd330fdd6a81f06254fed116",
+        "reference_sha256": "02d47a2df3ea5c3cf99e3a49dd49f53aacebac3eb279c3aad93d28286e31ee4a"
+      },
+      {
+        "case": 7,
+        "width": 256,
+        "height": 320,
+        "roi_y": 64,
+        "different_pixels": 478,
+        "pixels": 65536,
+        "mean_absolute_rgb_error": 0.012613932291666666,
+        "max_channel_error": 8,
+        "exact_pixel_percent": 99.2706298828125,
+        "native_sha256": "a72354061e2ff957478ff4393766b629fdf78ee0d914040708e5b183a8ebd8d3",
+        "reference_sha256": "ff472d99c92c1c77d4c4fa74fee298ac5f21606a3ee184885e975dd8eb2cdf70"
+      },
+      {
+        "case": 8,
+        "width": 800,
+        "height": 664,
+        "roi_y": 64,
+        "different_pixels": 200163,
+        "pixels": 480000,
+        "mean_absolute_rgb_error": 1.8248722222222222,
+        "max_channel_error": 120,
+        "exact_pixel_percent": 58.299375,
+        "native_sha256": "e0d0211272cda0c555c3281e2e96b36b6f410bbf1ce4151e86ff22ebf230fa73",
+        "reference_sha256": "4466e3fb5b8133c4cc2bb8e8ef7d8c73e6104329a27c6e107528efcac809a6e1"
+      },
+      {
+        "case": 9,
+        "width": 800,
+        "height": 664,
+        "roi_y": 64,
+        "different_pixels": 117870,
+        "pixels": 480000,
+        "mean_absolute_rgb_error": 1.306788888888889,
+        "max_channel_error": 108,
+        "exact_pixel_percent": 75.44375,
+        "native_sha256": "18e54b2fc9000bcde5f9c43bda50bc0b7bc1aaf19ef5dbc01b2cdd1e2aec68b1",
+        "reference_sha256": "9399f3c5c5f8fc4f59ff6d269abb7a935c8acc1f7825fe2ab82e6a90bad9777e"
+      }
+    ],
+    "imageGateAccepted": false,
+    "reason": "Cold run predates the subsequent dedicated IQ fixes. Remaining differences, especially IQ8/9, require current-code rerun and review."
+  },
+  "evidence": [
+    {
+      "file": "build/nv40-win98-99-cold-continue6/capture-0256.png",
+      "bytes": 34591,
+      "sha256": "82340853b379933c3a816e35065879675f90bc94aca275a96238ef3cd96e8037"
+    },
+    {
+      "file": "build/nv40-win98-99-cold-continue6/capture-0270.png",
+      "bytes": 34753,
+      "sha256": "f12a162d073f5a21a3523a9ec8b0e4916b0bd9aa357e71fc0ce31fac187c768c"
+    },
+    {
+      "file": "build/nv40-win98-99-cold-continue6/capture-0280.png",
+      "bytes": 16822,
+      "sha256": "5e58cb18575fe91824500eee9dc96708ae16bd5a76e411bff6a33713bc54d0c8"
+    },
+    {
+      "file": "build/nv40-win98-99-cold-continue6/capture-0286.png",
+      "bytes": 451,
+      "sha256": "11ca7b11d3121c193a263cfde6f5a112b1b8a6c606bda350cc94f163c6f5359b"
+    }
+  ],
+  "bundle": {
+    "status": "complete",
+    "guest": "win98",
+    "vramMiB": 128,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windows98/windows98hdd.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+    "state": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-99-cold-continue6.state",
+      "bytes": 586523180,
+      "sha256": "d85ce8ab5e5290da8a06ed2fc7d0166a6cb345e02df93552eadf7a27d42b2470"
+    },
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-99-cold-continue6-overlay.bin",
+      "bytes": 198798840,
+      "sha256": "0aee869526550207c6518ac2f309ca55a3fcf562dc7a8490914accdeecef457f"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-99-cold-continue6-game-overlay.bin",
+      "bytes": 5161584,
+      "sha256": "3ff3ab45e400879a35aab950690894c4119d99513978e5e06262c7dcff054191"
+    }
+  }
+}
