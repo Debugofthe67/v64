@@ -3,6 +3,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <tlhelp32.h>
+#ifndef NV_MAP_HOLD_MS
+#define NV_MAP_HOLD_MS 0
+#endif
+#if NV_MAP_HOLD_MS < 0 || NV_MAP_HOLD_MS > 60000
+#error NV_MAP_HOLD_MS must be within 0..60000
+#endif
 
 static HANDLE output;
 static DWORD table[256];
@@ -173,6 +179,15 @@ void __attribute__((stdcall)) entry(void)
         value=crc(value,view+delta,count);
         dump_bytes(dump,view+delta,count);
         if(range)post_write=crc(post_write,view+delta,count);
+        // Optional standalone diagnostic build: keep the mapping alive so a
+        // stopped host snapshot can compare the native CRC with a plain,
+        // non-faulting page-table walk. Never enabled in the normal helper.
+        if(NV_MAP_HOLD_MS && range)
+        {
+            number("HELD_VIEW_ADDRESS",(DWORD)(ULONG_PTR)(view+delta));number("HELD_VIEW_BYTES",count);
+            number("HELD_VIEW_CRC32",crc(0xFFFFFFFF,view+delta,count)^0xFFFFFFFF);
+            Sleep(NV_MAP_HOLD_MS);
+        }
         UnmapViewOfFile(view);position+=count;
         if(!(position&0x3FFFFFF))number("MAP_PROGRESS",position);
     }

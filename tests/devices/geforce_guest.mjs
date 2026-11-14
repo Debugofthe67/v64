@@ -15,6 +15,7 @@ import { site_directory } from "../lib/site.mjs";
 import { read_fat32_file } from "../lib/fat32_reader.mjs";
 import { verify_geforce_checkpoint_bundle } from "../lib/geforce_checkpoint.mjs";
 import { read_geforce_guest_stack } from "../lib/geforce_guest_memory.mjs";
+import { watch_geforce_ide_reads } from "../lib/geforce_ide_watch.mjs";
 const release_build = !!+process.env.TEST_RELEASE_BUILD;
 const { V86 } = await import(release_build ? "../../build/libv86.mjs" : "../../src/main.js");
 
@@ -198,6 +199,12 @@ export async function run_geforce_guest(win98)
         assert(diagnostic.length<=65536 && diagnostic[0]===0x4D && diagnostic[1]===0x5A,"invalid native file/memory diagnostic");
         files["NVCHECK.EXE"]=diagnostic;
     }
+    if(process.env.NV_MEMORY_WATCH_BINARY)
+    {
+        const diagnostic=fs.readFileSync(process.env.NV_MEMORY_WATCH_BINARY);
+        assert(diagnostic.length<=65536 && diagnostic[0]===0x4D && diagnostic[1]===0x5A,"invalid native memory observer");
+        files["NVMEM.EXE"]=diagnostic;
+    }
     const tools_bytes = make_esp(files, 120);
     tools_bytes[450] = 0x0E; // normal FAT16, visible to Win9x/XP rather than an ESP
     new DataView(tools_bytes.buffer).setUint32(440, 0x4E563430, true);
@@ -238,6 +245,7 @@ export async function run_geforce_guest(win98)
     assert(Number.isFinite(run_delay) && run_delay>=1000 && run_delay<=30000);
     let nv, error = null, launches = 0, next_launch = launch, cancelled = false, checkpoint = false, clock_start = 0;
     let profiler=null,barrier_report=null,stall=null,guest_sampler=null;
+    let ide_read_watch=null,ide_read_fd=null,ide_read_rows=0,ide_read_dropped=0;
     const cancel = () => { cancelled = true; };
     process.on("SIGINT", cancel);
     vm.add_listener("emulator-error", e => { error = String(e); });
@@ -276,6 +284,7 @@ export async function run_geforce_guest(win98)
             segments:Array.from(vm.v86.cpu.segment_offsets),romHeader:Array.from(vm.v86.cpu.mem8.subarray(0xC0000,0xC0040)),romCode:Array.from(vm.v86.cpu.mem8.subarray(0xC1700,0xC1740))},
         pic:vm.v86.cpu.get_state_pic(),pirq:Array.from(vm.v86.cpu.devices.pci.isa_bridge_space8.slice(0x60,0x64)),
         gpu: nv.graph.engine3d.backend ? nv.graph.engine3d.backend.stats : null,
+        ...(ide_read_watch?{ideReadWatch:{...ide_read_watch.stats,records:ide_read_rows,dropped:ide_read_dropped}}:{}),
         ...(barrier_report?{batchBarriers:barrier_report()}:{}),
         textureDecode: nv.graph.engine3d.backend ? nv.graph.engine3d.backend.textures.stats : null,
         shaderTranslation:{...nv.graph.engine3d.translation_stats,entries:nv.graph.engine3d.translated.size,bytes:nv.graph.engine3d.translation_bytes},
@@ -322,6 +331,19 @@ export async function run_geforce_guest(win98)
             {const entries=Number(process.env.NV_TEXTURE_CACHE_ENTRIES);assert([256,512,1024].includes(entries));cache.cache_entries=entries;}
         }
         clock_start = cpu.clock.now();
+        if(process.env.NV_IDE_WATCH_FIRST!==undefined)
+        {
+            assert(game,"IDE read observation needs NV_HDB");
+            const first=Number(process.env.NV_IDE_WATCH_FIRST),length=Number(process.env.NV_IDE_WATCH_BYTES);
+            const limit=Number(process.env.NV_IDE_WATCH_LIMIT||262144);
+            assert(Number.isInteger(limit)&&limit>=1&&limit<=262144,"invalid IDE watch record bound");
+            ide_read_fd=fs.openSync(path.join(out,"ide-read-watch.ndjson"),"w");
+            ide_read_watch=watch_geforce_ide_reads(cpu,game,first,length,row=>{
+                if(ide_read_rows>=limit){ide_read_dropped++;return;}
+                fs.writeSync(ide_read_fd,JSON.stringify(row)+"\n");ide_read_rows++;
+            });
+            fs.writeFileSync(path.join(out,"ide-read-watch-range.json"),JSON.stringify({first,length,limit})+"\n");
+        }
         if(process.env.NV_GUEST_WRITE_PAGES)
         {
             const pages=process.env.NV_GUEST_WRITE_PAGES.split(",").map(value=>Number.parseInt(value,16));
@@ -922,6 +944,7 @@ export async function run_geforce_guest(win98)
             finally {profiler.session.disconnect();}
         }
         await vm.stop();
+        ide_read_watch?.close();if(ide_read_fd!==null)fs.closeSync(ide_read_fd);
         if(process.env.NV_FDA)fs.writeFileSync(path.join(out,"fda-final.img"),vm.get_disk_fda());
         if(process.env.NV_STATE_SAVE && !checkpoint)
             await save_bundle(process.env.NV_STATE_SAVE,process.env.NV_OVERLAY_SAVE,process.env.NV_GAME_OVERLAY_SAVE);

@@ -2198,3 +2198,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 磁盘路径独立修复：IDE 传输后 LBA28 head 曾误取地址低 nibble，且未同步 Device 读回；省略第二次 Device 写的真实端口回归会读到错误位置。现保留正确 head/CHS 读回、六字节 LBA48 进位与计数位宽，并按实际 DRQ 推进多扇区读写块。旧源四组分别先红，新源/发布核的地址、负载、CHS、零计数及块中断均绿；磁盘镜像/错误/写回/扇区回归和 33 项 AHCI、Closure 通过。见 `g5-ide-taskfile-and-block-progress.json`。当前原生进程仍载入旧 IDE，尚不把独立设备修复称为素材损坏根因。
 
 - G4 06 HDR 首错：默认六项完成前段 SM2/CPU 后，在 Canyon Flight 首次绘制遇到纹理格式 31，PGRAPH 停止；174358 draws、GPU failure0 不能当作健康运行。按 Nouveau 定义补齐 RG16F：四字节客体半浮点双分量经 crossbar 保留原始位，上传 RGBA16F；浮点 gamma 仍拒绝、TEX BX2 旁路包含该格式。旧回归先红，负零/次正规/NaN payload/padded mip/DMA 与完整真实 GPU 的线性过滤、LOD clamp、半/全输出通过，175 WGSL 和 Closure 通过。见 `g4-06-native-rg16f-texture.json`；已从同一六项运行的故障前健康配套状态继续，完整 HDR/图像门禁仍开放。
+
+- G5 文件损坏调查观测：增加有界、只读 IDE 回调/实际物理写入 SHA 记录及原生一分钟内存采样；独立文件探针可显式保留映射 30 秒，供一致快照页表核对。修复 IDE 后的新 Win98 冷启动中，1 MiB 范围的 1024 次读取及物理写入全部匹配原 DAT；ReadFile、映射、256 页快照和两份磁盘副本 CRC 均为 d27713d7。默认探针不等待，观测不改客体数据/页表/IRQ；单元测试、严格 MinGW 编译及原生短测通过。此前 GT2 后缓存损坏原因和完整 03 门禁仍未解决，见 `g5-native-ide-and-mapped-copy-observer.json`。
