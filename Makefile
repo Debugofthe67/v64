@@ -2126,7 +2126,7 @@ sse-fault-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v8
 
 # docs/iphone4-plan.md "测试": the iOS firmware tools on samples the tests
 # make themselves (made-up keys, no Apple files)
-.PHONY: ios-tests ios-pvrtc-tests
+.PHONY: ios-tests ios-pvrtc-tests ios-amc-tests
 ios-tests:
 	node --test tests/ios/ipa.mjs
 	node --test tests/ios/ipa-prepare.mjs
@@ -2144,6 +2144,14 @@ ios-tests:
 	node tests/ios/nand.mjs
 	node tests/ios/tools.mjs
 	node tests/ios/devices.mjs
+	node tests/ios/amc.mjs
+
+# AMC startup must unblock an actual ARM guest; WebCodecs must deliver
+# real PCM and preserve the stream across snapshots (requires Chrome).
+ios-amc-tests: build/v86-arm64.wasm
+	node tests/ios/amc.mjs
+	node tests/ios/amc-guest.mjs
+	node tests/app/browser_runner.mjs tests/ios/amc-codec.html
 
 ios-pvrtc-tests: build/ios-pvrtc-test
 	./build/ios-pvrtc-test
