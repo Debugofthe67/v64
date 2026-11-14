@@ -2194,3 +2194,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 修复核冷跑续核：关闭原生屏保/显示器断电后，03 在 93902 draws、零 GPU 错误时报 `screens/testloading_gt3.dds` 损坏。第二个 MiB 的原生 ReadFile/只读映射 CRC 均为 ef6acacf，正确值 ea6e7853；CRC 匹配的 ReadFile 转储定位九个错误缓存页，EB4000 含 GT2 hangar 已解码前缀。独立 WP 修复不能据此宣称解决全部损坏。诊断工具新增写入/刷新/客体缓冲及无缓存读回、映射写后 CRC；另有 NVMAP 宿主转储与原生校验不一致，故只采用 CRC 匹配的副本作 RAM 内容证据。见 `g5-win98-03-wp-fixed-cached-pages.json`，继续追查实际写入者。
 
 - G5/G6 写入者诊断：`ir-test-hooks` 构建增加有界物理页观察，复用 checked code-dirty 路径记录 PC/CR3/寄存器和写前前缀，不编辑客体页表或注入调试异常；生产核无对应导出。解释器/JIT 的标量、RMW、跨页 REP/SSE、XCHG 与设备写入覆盖通过，观察前后 RAM 一致；启用观察的 16 组 WP 分页测试仍正确 #PF7。`NV_GUEST_WRITE_PAGES` 有界保存并报告丢弃，见 `g6-native-backing-write-observer.json`。当前从损坏前状态追查九个缓存页，不据此宣称根因或性能验收。
+
+- G5 磁盘路径独立修复：IDE 传输后 LBA28 head 曾误取地址低 nibble，且未同步 Device 读回；省略第二次 Device 写的真实端口回归会读到错误位置。现保留正确 head/CHS 读回、六字节 LBA48 进位与计数位宽，并按实际 DRQ 推进多扇区读写块。旧源四组分别先红，新源/发布核的地址、负载、CHS、零计数及块中断均绿；磁盘镜像/错误/写回/扇区回归和 33 项 AHCI、Closure 通过。见 `g5-ide-taskfile-and-block-progress.json`。当前原生进程仍载入旧 IDE，尚不把独立设备修复称为素材损坏根因。
