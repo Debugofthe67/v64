@@ -2182,3 +2182,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4/G6 长测环境：05 在原生 XP 屏保上报 D3DERR_DEVICELOST；原版导出确认仅 11/16 项完成（余五 batch 未跑）。06 导出确认 SM2/CPU 四项完成、两 HDR 未跑，检查时也有屏保；未捕获其首个退出原因。已在原版显示属性/电源选项关闭屏保与显示器自动关闭，保存配套状态并开始完整重跑。ZIP CRC/XML 有效，原生分数不当作性能或全套验收，见 `g6-native-screen-saver-interruption.json`。
 
 - G5/G6 GT2 等待对照：同一已停滞的配套 RAM/磁盘分别用分页修复前后核执行 90 秒，均零新绘制/零 GPU 错误，512 个相邻计数样本中位约 84.6/101.0 MIPS，仍处于 USER 消息循环。IDT 确认 C0001100 是原生 timer IRQ 入口，不能仅凭该 PC 判为 CPU 卡死。对照未回退 refactor 修复，也不能逆转更早客体状态；已开始修复核的新冷启动检查内存与系统设置。见 `g5-win98-03-gt2-wp-controls.json`，全十一项继续开放。
+
+- G6 原生只读内存诊断：`NVCHECK.EXE /memory` 独立查询 GlobalMemoryStatus、C 空闲簇与有界 Toolhelp 进程/线程，不挂钩或暂停原程序。可选 `NV_FILECHECK_BINARY` 与原 NVPROBE/NVUI 共存；CPU 采样增加相邻退休指令计数。严格 C 构建、harness 语法与真实 Win98 冷启动调用通过；桌面阶段物理可用 153.10 MiB、虚拟可用 2040.63 MiB，驱动 started1/problem0。见 `g6-native-memory-status-diagnostic.json`，不将桌面数值当作 GT2 峰值或全套验收。

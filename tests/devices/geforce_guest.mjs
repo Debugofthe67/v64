@@ -191,6 +191,12 @@ export async function run_geforce_guest(win98)
         assert(ui.length<=65536 && ui[0]===0x4D && ui[1]===0x5A,"invalid native UI helper");
         files["NVUI.EXE"]=ui;
     }
+    if(process.env.NV_FILECHECK_BINARY)
+    {
+        const diagnostic=fs.readFileSync(process.env.NV_FILECHECK_BINARY);
+        assert(diagnostic.length<=65536 && diagnostic[0]===0x4D && diagnostic[1]===0x5A,"invalid native file/memory diagnostic");
+        files["NVCHECK.EXE"]=diagnostic;
+    }
     const tools_bytes = make_esp(files, 120);
     tools_bytes[450] = 0x0E; // normal FAT16, visible to Win9x/XP rather than an ESP
     new DataView(tools_bytes.buffer).setUint32(440, 0x4E563430, true);
@@ -261,7 +267,7 @@ export async function run_geforce_guest(win98)
             startValue:Array.from(vm.v86.cpu.devices.pit.counter_start_value)},
         registers: Array.from(nv.registers, ([offset, value]) => [offset.toString(16), value >>> 0]),
         pci: Array.from(nv.machine.pci_config()),
-        cpu: {eip: vm.v86.cpu.instruction_pointer[0] >>> 0, regs: Array.from(vm.v86.cpu.reg32), halted: vm.v86.cpu.in_hlt[0], flags:vm.v86.cpu.get_eflags(),
+        cpu: {instructionCounter:vm.v86.cpu.instruction_counter[0]>>>0,eip: vm.v86.cpu.instruction_pointer[0] >>> 0, regs: Array.from(vm.v86.cpu.reg32), halted: vm.v86.cpu.in_hlt[0], flags:vm.v86.cpu.get_eflags(),
             segments:Array.from(vm.v86.cpu.segment_offsets),romHeader:Array.from(vm.v86.cpu.mem8.subarray(0xC0000,0xC0040)),romCode:Array.from(vm.v86.cpu.mem8.subarray(0xC1700,0xC1740))},
         pic:vm.v86.cpu.get_state_pic(),pirq:Array.from(vm.v86.cpu.devices.pci.isa_bridge_space8.slice(0x60,0x64)),
         gpu: nv.graph.engine3d.backend ? nv.graph.engine3d.backend.stats : null,
@@ -340,7 +346,7 @@ export async function run_geforce_guest(win98)
             const timer=setInterval(()=>{
                 if(samples.length>=limit){clearInterval(timer);return;}
                 const backend=nv.graph.engine3d.backend;
-                samples.push({elapsed:elapsed(),eip:cpu.instruction_pointer[0]>>>0,registers:[...cpu.reg32].map(x=>x>>>0),
+                samples.push({elapsed:elapsed(),instructionCounter:cpu.instruction_counter[0]>>>0,eip:cpu.instruction_pointer[0]>>>0,registers:[...cpu.reg32].map(x=>x>>>0),
                     halted:cpu.in_hlt[0],stackSegment:{selector:cpu.sreg[2],base:cpu.segment_offsets[2]>>>0,width:cpu.stack_size_32[0]?32:16},
                     stack:read_geforce_guest_stack(cpu,64),draws:backend?.stats.draws||0,
                     backendPending:!!backend?.pending,batchDraws:backend?.batch?.draws||0,

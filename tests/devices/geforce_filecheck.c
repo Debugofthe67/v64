@@ -2,6 +2,7 @@
  * MapViewOfFile CRC32s with a host checksum; do not hook the tested process. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <tlhelp32.h>
 
 static HANDLE output;
 static DWORD table[256];
@@ -36,6 +37,37 @@ static BOOL argument(const char **input,DWORD *value)
     }
     *input=p;return digits!=0;
 }
+static void memory_status(void)
+{
+    MEMORYSTATUS memory;memory.dwLength=sizeof(memory);GlobalMemoryStatus(&memory);
+    text("READ_ONLY_MEMORY_STATUS\r\n");
+    number("MEMORY_LOAD_PERCENT",memory.dwMemoryLoad);
+    number("TOTAL_PHYSICAL",memory.dwTotalPhys);number("AVAILABLE_PHYSICAL",memory.dwAvailPhys);
+    number("TOTAL_PAGEFILE",memory.dwTotalPageFile);number("AVAILABLE_PAGEFILE",memory.dwAvailPageFile);
+    number("TOTAL_VIRTUAL",memory.dwTotalVirtual);number("AVAILABLE_VIRTUAL",memory.dwAvailVirtual);
+    DWORD sectors,bytes,available,total;
+    if(GetDiskFreeSpaceA("C:\\",&sectors,&bytes,&available,&total))
+    {number("C_CLUSTER_BYTES",sectors*bytes);number("C_AVAILABLE_CLUSTERS",available);number("C_TOTAL_CLUSTERS",total);}
+    else number("ERROR_DISK_SPACE",GetLastError());
+    HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS|TH32CS_SNAPTHREAD,0);
+    if(snapshot==INVALID_HANDLE_VALUE){number("ERROR_SNAPSHOT",GetLastError());return;}
+    PROCESSENTRY32 process;process.dwSize=sizeof(process);
+    BOOL more=Process32First(snapshot,&process);unsigned count=0;
+    while(more && count++<128)
+    {
+        number("PROCESS_ID",process.th32ProcessID);text("PROCESS_EXE=");text(process.szExeFile);text("\r\n");
+        number("PROCESS_THREADS",process.cntThreads);
+        more=Process32Next(snapshot,&process);
+    }
+    THREADENTRY32 thread;thread.dwSize=sizeof(thread);more=Thread32First(snapshot,&thread);count=0;
+    while(more && count++<512)
+    {
+        number("THREAD_ID",thread.th32ThreadID);number("THREAD_PROCESS_ID",thread.th32OwnerProcessID);
+        number("THREAD_BASE_PRIORITY",thread.tpBasePri);number("THREAD_DELTA_PRIORITY",thread.tpDeltaPri);
+        more=Thread32Next(snapshot,&thread);
+    }
+    CloseHandle(snapshot);
+}
 void __attribute__((stdcall)) entry(void)
 {
     output=CreateFileA("D:\\NVFILE.TXT",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,0,CREATE_ALWAYS,0,0);
@@ -50,6 +82,8 @@ void __attribute__((stdcall)) entry(void)
     path[length]=0;
     if(quoted && *p)p++;
     while(*p==' ')p++;
+    if(!lstrcmpiA(path,"/memory"))
+    {memory_status();text("END\r\n");CloseHandle(output);ExitProcess(0);}
     HANDLE file=CreateFileA(path,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,0);
     if(file==INVALID_HANDLE_VALUE){number("ERROR_OPEN",GetLastError());ExitProcess(2);}
     DWORD high=0,size=GetFileSize(file,&high);
