@@ -61,7 +61,16 @@ pub fn a32_backdoor_translate(va: u32, write: bool) -> f64 {
     }
     let access = if write { Access::Write } else { Access::Read };
     match crate::aarch64::mmu::translate(va as u64, access, true, 1) {
-        Ok(t) if !t.device => t.pa as f64,
+        Ok(t) => {
+            // IOSurface is ordinary physical DRAM mapped uncached/Device by
+            // the guest. Its memory attributes do not turn it into an MMIO
+            // endpoint. Keep the EL0 translation/permission checks above,
+            // and only allow Device mappings whose backing is real RAM.
+            let ram = matches!(crate::aarch64::bus::bus().lookup(t.pa),
+                crate::aarch64::bus::Lookup::Ram { backing, writable, .. }
+                if backing < unsafe { crate::aarch64::bus::DEVICE_START } && (!write || writable));
+            if !t.device || ram { t.pa as f64 } else { -1.0 }
+        },
         _ => -1.0,
     }
 }

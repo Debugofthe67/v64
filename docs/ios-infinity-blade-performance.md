@@ -54,6 +54,18 @@ Apple Metal 3 WebGPU 上的 38.53 s 原生游戏 drawable 回读采样为 13 帧
 `tests/ios/amc.mjs` 新增正例、错误指纹、错误入口、无输入/PCM 及复位检查，
 CDMA/I2S 回归通过。仍需完整正式构建验证新的睡眠/唤醒路径。
 
+直接回读的完整启动测试暴露出传输层原先拒绝所有 Device 属性页。
+IOSurface 的底层是 DRAM，但客户机会用 uncached/Device 属性映射，因此原生
+直接写入失败。现保留 EL0 页表权限检查，对 Device 属性页额外核对物理 backing
+确为 RAM；MMIO、空洞、只读映射和设备本地银行不放行。
+`tests/ios/iosurface-memory.mjs` 运行真实 A32 EL0 页表与传输：旧核心正常 RAM
+通过、Device/strongly ordered RAM 失败（位图 `6`）；新核心三种 RAM 均收到
+正确像素，RO/MMIO/hole 三种失败且不消耗输出。新版正式 ARM 核心和 fallback 已构建。
+
+generation 7 测试盘已关机分块导出为 `build/ios/infinity-play/direct-fixed.packed`，
+4,002,422,272 bytes，SHA-256
+`23642a4307a64b943ce5e84eae972e87e81b1fdafec20a802cab623f329b9a33`。
+
 ## 测试输入（2026-11-14）
 
 机主本地提供 `Infinity_Blade_1.4.3_ios_6.0.ipa`。原包只读，
