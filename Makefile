@@ -848,6 +848,7 @@ devices-test: build/v86-debug.wasm
 	./tests/devices/virtio_rng.js
 	./tests/devices/ide_large_disk.js
 	./tests/devices/ide_transfer_progress.js
+	node tests/devices/ide_command_irq.js
 	./tests/devices/ide_disk_image.js
 	./tests/devices/disk_error.mjs
 	./tests/devices/disk_writeback.mjs

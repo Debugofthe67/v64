@@ -615,13 +615,16 @@ function IDEChannel(controller, channel_nr, channel_config, command_base, contro
         {
             dbg_log(this.current_interface.name + ": write Command register", LOG_DISK);
         }
-        this.current_interface.status_reg &= ~(ATA_SR_ERR|ATA_SR_DF);
-        this.current_interface.ata_command(data);
         if(LOG_DETAILS & LOG_DETAIL_IRQ)
         {
             dbg_log(this.current_interface.name + ": lower IRQ " + this.irq, LOG_DISK);
         }
+        // A command write acknowledges the previous request. Do this before
+        // executing it: IDENTIFY and synchronous backends can assert a new
+        // completion immediately, which must remain until status is read.
         this.cpu.device_lower_irq(this.irq);
+        this.current_interface.status_reg &= ~(ATA_SR_ERR|ATA_SR_DF);
+        this.current_interface.ata_command(data);
     });
 
     //
