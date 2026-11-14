@@ -858,6 +858,16 @@ static mut STEP_FLOW: Option<Flow> = None;
 /// executing the instruction again
 static mut HELPER_DONE: Option<(u64, Flow)> = None;
 
+/// A native BX/BLX changed only the instruction set. Select that mode's
+/// chaining table before leaving the source function. Privilege and the
+/// data-access epoch/table are unchanged; code entries remain guarded by
+/// the same translation epoch and are invalidated in every mode as usual.
+#[no_mangle]
+pub fn a32_page_interwork(target_t: u32) {
+    cpu::set_pstate(cpu::get_pstate() & !cpu::PSTATE_T | target_t & cpu::PSTATE_T);
+    unsafe { *a64_code_base = chain(current_core()).0[mode() as usize].base() };
+}
+
 fn execute(slot: u32, budget: u32, pc: u64) -> Ran {
     let core = current_core();
     let mode = mode();

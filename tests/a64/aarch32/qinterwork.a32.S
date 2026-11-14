@@ -24,7 +24,7 @@ base:
         bx lr
     .endif
     .endm
-    .macro exercise thumb, pad, reg, reverse, fault=0
+    .macro exercise thumb, pad, reg, reverse, fault=0, smc=0
     .subsection 0
     .word case_\@-base+\thumb,0,0xA
     .subsection 1
@@ -41,6 +41,20 @@ case_\@:
     movw r12,#128
     movw r4,#0
 loop_\@:
+    .if \smc
+        cmp r12,#2
+        bne unchanged_\@
+        ldr r0,replacement_\@
+        .if \thumb
+            adr.w r1,callee_\@
+        .else
+            adr r1,callee_\@
+        .endif
+        str r0,[r1]
+        dsb sy
+        isb sy
+unchanged_\@:
+    .endif
     .if \reg
         .if \thumb
             adr.w lr,callee_\@
@@ -81,6 +95,16 @@ loop_\@:
     .if !\reverse
         callee callee_\@,\thumb,\pad
     .endif
+    .balign 4
+    .if \thumb
+        .arm
+replacement_\@:
+        add r4,r4,#7
+    .else
+        .thumb
+replacement_\@:
+        add.w r4,r4,#7
+    .endif
     .endm
     .irp thumb,0,1
     .irp pad,0,1
@@ -94,5 +118,8 @@ loop_\@:
     exercise 1,0,0,0,1
     exercise 0,0,0,0,2
     exercise 1,1,1,1,3
+    // Replacing hot target code invalidates both mode tables for its page.
+    exercise 0,1,0,0,0,1
+    exercise 1,1,1,1,0,1
     .subsection 0
 table_end:

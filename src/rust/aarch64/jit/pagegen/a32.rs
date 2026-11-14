@@ -2,7 +2,7 @@
 //! code in the A64 page tier's frame. R0-R14 (X0-X14's low halves) use the
 //! state's memory or locals written back around helpers; NZCV stays in
 //! memory. Branches are native (B, BL, B<c>, CBZ, CBNZ, BX and BLX).
-//! An ISA switch exits directly, bypassing the old mode's chaining table.
+//! An ISA switch selects the target mode's chaining table before leaving.
 //! Other writes of the PC (loads, LDM/POP and data processing) use native
 //! templates or a precise retry. What raises an exception (SVC, BKPT, UDF)
 //! or waits (WFE, WFI,
@@ -4466,8 +4466,8 @@ impl Emitter<'_> {
                 self.s(super::PC);
                 self.c32(if thumb { crate::aarch64::cpu::PSTATE_T as i32 } else { 0 });
                 self.exchange_state();
-                // No dispatch or chaining through the old ISA's table.
-                self.b.br(self.f().exit);
+                // No dispatch through the source ISA's page function.
+                self.b.br(self.f().leave);
             },
             Kind::CompareBranch {
                 rn,
@@ -4488,22 +4488,15 @@ impl Emitter<'_> {
         }
     }
 
-    /// Store the target's T bit (an i32 on the stack), preserving the
-    /// current mode, interrupt masks and all other PSTATE bits. Changing
-    /// only T does not select a different banked register set.
+    /// Set the target T bit (an i32 on the stack) and its chaining table.
+    /// The helper preserves privilege, interrupt masks and the GPR banks.
     fn exchange_state(&mut self) {
-        self.si(C0);
-        self.c32(state::pstate as i32);
-        self.load32(state::pstate as u32);
-        self.c32(!crate::aarch64::cpu::PSTATE_T as i32);
-        self.b.and_i32();
-        self.gi(C0);
-        self.b.or_i32();
-        self.b.store_aligned_i32(0);
+        self.b
+            .call_signature("a32_page_interwork", Signature::new(&[WasmType::I32], &[]));
     }
 
-    /// Same-ISA targets dispatch in the page. An ISA switch exits directly
-    /// so the runtime selects the target mode's code and access tables.
+    /// Same-ISA targets dispatch in the page. An ISA switch leaves through
+    /// the target mode's chaining table, falling back to the runtime on a miss.
     fn exchange(&mut self, rm: u8, link: bool, offset: u16, length: u8) {
         self.r32(rm);
         self.b.extend_unsigned_i32_to_i64();
@@ -4528,7 +4521,7 @@ impl Emitter<'_> {
         self.c64(!1);
         self.b.and_i64();
         self.s(super::PC);
-        self.b.br(self.f().exit);
+        self.b.br(self.f().leave);
         self.b.block_end();
         self.g(super::T0);
         self.c64(if self.env.isa == Isa::T32 { 1 } else { 3 });
