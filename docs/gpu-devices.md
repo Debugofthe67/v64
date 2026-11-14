@@ -295,7 +295,9 @@ These functional completions do not establish reference-image or isolated
 performance acceptance. The later
 [XP05 full16 run](fixtures/nv40/g4-xp-9371-05-native-all16.json) exported a
 valid original result with all three graphics, two CPU, five feature and six
-batch tests successful. Its fixed-frame IQ and isolated performance gates remain open.
+batch tests successful. Its [eight original fixed-frame images](fixtures/nv40/g4-xp-9371-05-native-iq.json)
+cover all three game scenes and five feature tests. Proxy-image comparison,
+normal shutdown and isolated performance validation are recorded separately.
 [Win98 2001 SE](fixtures/nv40/g5-win98-8198-2001-native-all21.json) also
 completed all 21, with the native project, eight IQ BMPs and normal shutdown.
 The [XP06 default-six run](fixtures/nv40/g4-xp-9371-06-native-default6.json)
@@ -359,6 +361,15 @@ CPU conversion. A synthetic 70-texture loop reduced cache residency from
 252 MiB to 35 MiB and avoided repeated block decoding. Actual GPU controls
 cover alpha, cube faces, mip tails, partial updates and NPOT expansion;
 these results do not establish native FPS or full benchmark acceptance.
+
+A later native 06 vertex-feature sample identified index callbacks and vertex
+expansion as CPU hotspots. [Direct index and DWORD loops](fixtures/nv40/g6-native-vertex-loop-overhead.json)
+remove per-element callbacks. [Bounded linear VRAM float spans](fixtures/nv40/g6-bounded-float-vertex-spans.json)
+avoid per-vertex copies while preserving original float bits and DMA checks;
+paged, system-memory and sparse inputs retain individual fetches. The latter
+interleaved microbenchmark reduced indexed preparation CPU time from 54.29 to
+32.19 ms with identical output. These concurrent measurements are CPU-work
+diagnostics, not an isolated native FPS comparison.
 
 ## Architecture
 

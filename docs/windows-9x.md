@@ -161,7 +161,14 @@ its `NVAGP.INF` includes GeForce 6800 GT (`PCI\VEN_10DE&DEV_0045`).
    its Windows 98 installation CD. The validation harness installs a live
    `ROOT\*PNP0A03` node; an unattached phantom node does not enumerate the bus.
 2. Install the Microsoft i440FX/PIIX system, IDE and IRQ-steering drivers
-   when requested. If the display reports code 12, check which device owns
+   when requested. If the Intel PCI-to-ISA bridge reports code 8, check
+   `WINDOWS\SYSTEM\ISAPNP.VXD`: the tested image was missing this loader.
+   Install the original `ISA_DRV` section of `MACHINE2.INF` with the matching
+   Windows 98 CD available. The harness supplies the missing original file;
+   [the native repair](fixtures/nv40/g0-win98-isa-loader-completion.json)
+   verifies the bridge starts afterwards. This repair does not establish
+   protected-mode IDE operation; the two IDE child nodes still reported code 10.
+   If the display reports code 12, check which device owns
    the VGA I/O and memory ranges; remove the obsolete standard VGA instance
    when it is the conflicting owner.
 3. Extract ForceWare and update the NV40 display device using `NVAGP.INF`,
