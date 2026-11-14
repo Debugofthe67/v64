@@ -1,0 +1,107 @@
+{
+  "date": "2026-11-14",
+  "status": "06 native default six-test run still fails in the XDDM driver; exact RAMHT object lifetime now captured, cause of premature teardown remains open.",
+  "native": {
+    "guest": "Windows XP SP3",
+    "driver": "NVIDIA 93.71",
+    "benchmark": "Original 3DMark06 Professional Edition",
+    "settings": "1280x1024, no AA, optimal filtering, hardware VS/PS 3_0, default two SM2/two CPU/two HDR tests; CLI -gtall -cpuall -verbose NV06F.3DR",
+    "isolation": "Only one NV guest during the run; host idle is not claimed. Coherent pre-3D pause to fix software callbacks; no benchmark clock/watchdog/driver/API changes.",
+    "gpu": {
+      "batches": 3518,
+      "draws": 9368,
+      "bytes": 7614148320,
+      "readbacks": 9564,
+      "failures": 0,
+      "uploads": 8998,
+      "uploadBytes": 5535655464
+    },
+    "pgraphFaults": 0,
+    "normalCompletion": false,
+    "scoreAccepted": false,
+    "visibleError": "Windows: The nv4_disp display driver has stopped working normally."
+  },
+  "object": {
+    "handle": "0xDD001010",
+    "ramhtEntry": "0x10E60",
+    "validContext": "0x0080E973",
+    "instance": "0xE9730",
+    "channel": 1,
+    "engine": 0,
+    "creationSeconds": 5.384320875000001,
+    "lastSuccessfulLookupSeconds": 545.9872228749999,
+    "firstDeletionSeconds": 546.0290492909999,
+    "deletionCompleteSeconds": 546.0322154999999,
+    "firstFailedLookupSeconds": 546.068585125,
+    "firstCacheHashFaultSeconds": 546.0723571249999,
+    "pusherPteInvalidatedSeconds": 546.105577875,
+    "pusherInvalidPteHex": "0xb3c0000",
+    "firstDmaFaultSeconds": 546.1234375,
+    "gpuDrawsAtDeletion": 9368,
+    "gpuPendingAtDeletion": true,
+    "deleteStackCandidateRvas": [
+      "0x5BD70",
+      "0x124C95",
+      "0x18798B",
+      "0x1EC8CA",
+      "0x1F1C0F",
+      "0x176001",
+      "0x42F5E"
+    ],
+    "stackInterpretation": "Raw captured kernel-stack return candidates mapped to original nv4_mini.sys at 0xF6E9F000; not a proven unwind or root-cause call chain."
+  },
+  "diagnostic": {
+    "variable": "NV_WATCH_RAMHT_HANDLE=DD001010",
+    "enabledByDefault": false,
+    "bounds": "At most 128 changed byte writes for watched RAMHT entries, last 64 lookups, at most 16 failed-lookup file updates; default 48 stack DWORDs, configurable 16..256 with NV_WATCH_STACK_WORDS. CPU registers/ESP are captured by the current source for follow-up investigations.",
+    "semantics": "Original RAMIN write and RAMHT lookup results are preserved. Successful lookups remain in a bounded in-memory ring and are exported with a mutation or failure."
+  },
+  "inference": "The native miniport removes the previously valid entry before the emulator reports CACHE_ERROR. This records the teardown ordering; it does not identify why the driver initiated it.",
+  "cacheObservation": {
+    "textureDecode": {
+      "hits": 116043,
+      "misses": 13201,
+      "evictions": 12518,
+      "bytes": 267868382
+    },
+    "shaderTranslation": {
+      "hits": 9119,
+      "misses": 249,
+      "evictions": 121,
+      "entries": 128,
+      "bytes": 4202398
+    },
+    "gpuResourceEntryCapInThisRun": 64
+  },
+  "evidence": {
+    "build/nv40-xp-mark06-software-target-fixed/ramht-handle-watch.json": {
+      "bytes": 80505,
+      "sha256": "3e2056270699d56ac08d8148a29a4af53eaad2b5e65c5c2ed419b69fc2a231ad"
+    },
+    "build/nv40-xp-mark06-software-target-fixed/fifo-fault-captures.json": {
+      "bytes": 1458728,
+      "sha256": "e725c0549e46ff24fda0fb5974ec2f05c4867af93d40298905e5a32c1c81d61f"
+    },
+    "build/nv40-xp-mark06-software-target-fixed/ramin-watch.json": {
+      "bytes": 497658,
+      "sha256": "026715ee4caf631719003ca4fec3f9256186519d617cb732f5519548ad1eadb2"
+    },
+    "build/nv40-xp-mark06-software-target-fixed/trace.json": {
+      "bytes": 529984,
+      "sha256": "1fea113d2ca12b4c00da3bfbeb8888ee5abc830f79754fad8b20a40b031709e5"
+    },
+    "build/nv40-xp-mark06-software-target-fixed/capture-0105.png": {
+      "bytes": 1139368,
+      "sha256": "74b60fb6bf31f8d9022bf8c523ad007e62985f24d17466a694837ade213a1b75"
+    },
+    "build/nv40-xp-mark06-software-target-fixed/ramht-delete-modules.json": {
+      "bytes": 2565,
+      "sha256": "fb2001d99b4ef6aefe7f38e51c42a85d95cbaf06a976de61630c353bcc0a3052"
+    }
+  },
+  "limits": [
+    "No benchmark score, image or performance gate is accepted.",
+    "Earlier diagnostic trials watched a different handle; only the exact DD001010 records above establish this lifetime.",
+    "The subsequent byte-vertex optimization was not loaded by this native process."
+  ]
+}
