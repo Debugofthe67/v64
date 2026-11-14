@@ -296,11 +296,11 @@ export async function run_geforce_guest(win98)
             const record=nv.trace.record.bind(nv.trace),accesses=[];
             nv.trace.record=(space,offset,size,write,value,implemented)=>{
                 record(space,offset,size,write,value,implemented);
-                if(space!=="mmio" || !offsets.has(offset) || accesses.length>=512)return;
+                if(space!=="mmio" || !offsets.has(offset) || accesses.length>=512) return;
                 const stack=cpu.reg32[4]>>>0;
-                const read=at=>{try{return cpu.mem8[cpu.translate_address_system_read(at)>>>0];}catch{return 0;}};
+                const read=at=>{try {return cpu.mem8[cpu.translate_address_system_read(at)>>>0];} catch{return 0;}};
                 accesses.push({elapsed:elapsed(),offset,size,write,value:value>>>0,eip:cpu.instruction_pointer[0]>>>0,
-                    stack:Array.from({length:16},(_,i)=>{const at=(stack+i*4)>>>0;return(read(at)|read(at+1)<<8|read(at+2)<<16|read(at+3)<<24)>>>0;})});
+                    stack:Array.from({length:16},(_,i)=>{const at=(stack+i*4)>>>0;return (read(at)|read(at+1)<<8|read(at+2)<<16|read(at+3)<<24)>>>0;})});
                 fs.writeFileSync(path.join(out,"mmio-watch.json"),JSON.stringify(accesses,null,2));
             };
         }

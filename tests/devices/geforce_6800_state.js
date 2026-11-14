@@ -88,7 +88,7 @@ for(let value=0;value<256;value++)
     const padded=Uint8Array.from([91,...bytes,17]).subarray(1,5);
     assert.deepEqual(state.vertex_value(state.vertex_layout(0x40),padded),
         [f(bytes[2]/255),f(bytes[1]/255),f(bytes[0]/255),f(bytes[3]/255)],"all packed color component values retain exact f32 bits");
-    for(let size=1;size<=4;size++)for(const type of [4,7])
+    for(let size=1;size<=4;size++) for(const type of [4,7])
     {
         const expected=bytes.slice(0,size).map(byte=>f(type===4?byte/255:byte));
         while(expected.length<4)expected.push(expected.length===3?f(1):0);
