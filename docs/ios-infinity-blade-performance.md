@@ -66,6 +66,13 @@ generation 7 测试盘已关机分块导出为 `build/ios/infinity-play/direct-f
 4,002,422,272 bytes，SHA-256
 `23642a4307a64b943ce5e84eae972e87e81b1fdafec20a802cab623f329b9a33`。
 
+CPU profile 中 SoftFloat `f32_mul` 占约 935 ms / 30 s。为 RN 模式、有限普通
+binary32 乘法增加宿主 f32 路径，并用精确 binary64 乘积计算 IXC；NaN、无穷、
+非默认舍入与 tininess 边界继续使用 SoftFloat。4,800 个随机乘法、4,800 个二元
+浮点、1,200 个 ARM32 VFP/NEON 用例与 QEMU 一致。新增 ARM/Thumb 的精确/
+非精确乘积、初始清零及 sticky IXC、负零和最小 normal 舍入测试；34 个真实
+EL0 用例与 QEMU 一致，MMU/page JIT 与解释器一致。尚未据此宣称游戏 FPS 提升。
+
 ## 测试输入（2026-11-14）
 
 机主本地提供 `Infinity_Blade_1.4.3_ios_6.0.ipa`。原包只读，

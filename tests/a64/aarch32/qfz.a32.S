@@ -3,7 +3,7 @@
     .fpu crypto-neon-fp-armv8
     .arm
 base:
-    .word 22
+    .word 34
     .word af32 - base, 0, 0x130
     .word af64 - base, 0, 0x130
     .word azero - base, 0, 0x130
@@ -26,6 +26,19 @@ base:
     .word tup - base + 1, 0, 0x130
     .word tover - base + 1, 0, 0x130
     .word tnan - base + 1, 0, 0x130
+
+    .word amexact - base, 0, 0x130
+    .word aminexact - base, 0, 0x130
+    .word amsticky - base, 0, 0x130
+    .word amzero - base, 0, 0x130
+    .word ambound - base, 0, 0x130
+    .word amtinyround - base, 0, 0x130
+    .word tmexact - base + 1, 0, 0x130
+    .word tminexact - base + 1, 0, 0x130
+    .word tmsticky - base + 1, 0, 0x130
+    .word tmzero - base + 1, 0, 0x130
+    .word tmbound - base + 1, 0, 0x130
+    .word tmtinyround - base + 1, 0, 0x130
 
     .macro start name, control
 \name:
@@ -129,6 +142,35 @@ base:
     vmrs r3, fpscr
     svc #0
     .endm
+    // Initially clear IXC, exact/inexact, sticky IXC, signed zero and
+    // tininess boundaries must agree in the interpreter and page tier.
+    .macro mul32 name, a, b, flags=0
+\name:
+    movw r0, #\flags
+    vmsr fpscr, r0
+    movw r1, #(\a & 0xffff)
+    movt r1, #(\a >> 16)
+    movw r2, #(\b & 0xffff)
+    movt r2, #(\b >> 16)
+    vmov s0, r1
+    vmov s1, r2
+    movw r12, #128
+1:  vmul.f32 s2, s0, s1
+    subs r12, r12, #1
+    bne 1b
+    vmov r4, s2
+    vmrs r3, fpscr
+    svc #0
+    .endm
+    .macro mul_cases prefix
+    mul32 \prefix\()mexact, 0x3fc00000, 0x40000000
+    mul32 \prefix\()minexact, 0x3dcccccd, 0x3fc00000
+    mul32 \prefix\()msticky, 0x3fc00000, 0x40000000, 0x10
+    mul32 \prefix\()mzero, 0x80000000, 0x3fc00000
+    mul32 \prefix\()mbound, 0x00800000, 0x3f800000
+    mul32 \prefix\()mtinyround, 0x00800000, 0x3f7fffff
+    .endm
+    mul_cases a
     f32 af32, 0xa300
     f64 af64
     zero azero
@@ -141,6 +183,7 @@ base:
     f32 aover, 0xa300, 0xffff, 0x7f7f
     f32 anan, 0xa300, 0, 0x7fc0
     .thumb
+    mul_cases t
     f32 tf32, 0xa300
     f64 tf64
     zero tzero
