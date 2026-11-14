@@ -1,0 +1,283 @@
+{
+  "date": "2026-11-15",
+  "scope": "G4 original XP06 default-six functional completion with valid SM2/HDR/CPU scores. Seven feature tests, six batch tests, IQ and isolated performance remain open.",
+  "environment": {
+    "os": "WindowsXP SP3",
+    "driver": "Original93.71",
+    "vramMiB": 256,
+    "memoryMiB": 1024,
+    "cpu": "Production WP-fixed release Wasm",
+    "renderer": "Actual Chrome WebGPU with RG16F and bounded30s readback deadline; original graphics APIs and executable unchanged.",
+    "source": "Original cold default-six execution, continued only from matching healthy RAM/OS/game checkpoints before the recorded format31 and4s-timeout failures. Failed states were not repaired or resumed as successes."
+  },
+  "originalResult": {
+    "file": "build/nv40-xp-mark06-hdr-readback-30s-resume/NV06N.3DR",
+    "bytes": 4365,
+    "sha256": "cf896645ce21232a01a267cde4d1e18d16b07e65be3184c439353537ca039dcb",
+    "zipCRC": "passed",
+    "results": [
+      {
+        "name": "3DMark Score",
+        "value": "102.000000000",
+        "unit": "3DMarks",
+        "status": "0",
+        "statusText": "",
+        "category": ""
+      },
+      {
+        "name": "SM2.0 Score",
+        "value": "36.000000000",
+        "unit": "",
+        "status": "0",
+        "statusText": "",
+        "category": ""
+      },
+      {
+        "name": "HDR/SM3.0 Score",
+        "value": "36.000000000",
+        "unit": "",
+        "status": "0",
+        "statusText": "",
+        "category": ""
+      },
+      {
+        "name": "CPU Score",
+        "value": "232.000000000",
+        "unit": "",
+        "status": "0",
+        "statusText": "",
+        "category": ""
+      },
+      {
+        "name": "Game Score",
+        "value": "0.000000000",
+        "unit": "points",
+        "status": "1",
+        "statusText": "N/A",
+        "category": ""
+      },
+      {
+        "name": "GT1 - Return To Proxycon",
+        "value": "0.255500346",
+        "unit": "FPS",
+        "status": "0",
+        "statusText": "",
+        "category": "SM2.0 Graphics Tests"
+      },
+      {
+        "name": "GT2 - Firefly Forest",
+        "value": "0.337024540",
+        "unit": "FPS",
+        "status": "0",
+        "statusText": "",
+        "category": "SM2.0 Graphics Tests"
+      },
+      {
+        "name": "CPU1 - Red Valley",
+        "value": "0.079314873",
+        "unit": "FPS",
+        "status": "0",
+        "statusText": "",
+        "category": "CPU Tests"
+      },
+      {
+        "name": "CPU2 - Red Valley",
+        "value": "0.108175345",
+        "unit": "FPS",
+        "status": "0",
+        "statusText": "",
+        "category": "CPU Tests"
+      },
+      {
+        "name": "HDR1 - Canyon Flight",
+        "value": "0.317088634",
+        "unit": "FPS",
+        "status": "0",
+        "statusText": "",
+        "category": "HDR/SM3.0 Graphics Tests"
+      },
+      {
+        "name": "HDR2 - Deep Freeze",
+        "value": "0.395998895",
+        "unit": "FPS",
+        "status": "0",
+        "statusText": "",
+        "category": "HDR/SM3.0 Graphics Tests"
+      },
+      {
+        "name": "Fill Rate - Single-Texturing",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Fill Rate - Multi-Texturing",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Pixel Shader",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Vertex Shader - Simple",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Vertex Shader - Complex",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Shader Particles (SM3.0)",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Perlin Noise (SM3.0)",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "8 Triangles",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "32 Triangles",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "128 Triangles",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "512 Triangles",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "2048 Triangles",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "32768 Triangles",
+        "value": "-1.000000000",
+        "unit": "operations/s",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      }
+    ]
+  },
+  "selectedTests": [
+    {
+      "name": "GT1 - Return To Proxycon",
+      "value": "0.255500346",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "SM2.0 Graphics Tests"
+    },
+    {
+      "name": "GT2 - Firefly Forest",
+      "value": "0.337024540",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "SM2.0 Graphics Tests"
+    },
+    {
+      "name": "CPU1 - Red Valley",
+      "value": "0.079314873",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "CPU Tests"
+    },
+    {
+      "name": "CPU2 - Red Valley",
+      "value": "0.108175345",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "CPU Tests"
+    },
+    {
+      "name": "HDR1 - Canyon Flight",
+      "value": "0.317088634",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "HDR/SM3.0 Graphics Tests"
+    },
+    {
+      "name": "HDR2 - Deep Freeze",
+      "value": "0.395998895",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "HDR/SM3.0 Graphics Tests"
+    }
+  ],
+  "unselectedResults": "Seven feature/six batch tests and a legacy Game Score field remain N/A in the default-only original export.",
+  "run": {
+    "directory": "build/nv40-xp-mark06-hdr-readback-30s-resume",
+    "lastContinuationDraws": 89614,
+    "gpuFailures": 0,
+    "drawFaults": 0,
+    "expectedSoftwarePgraphMethods": [
+      "17D0",
+      "17D4"
+    ],
+    "expectedSoftwarePgraphRecords": 6,
+    "nonSoftwarePgraphFaults": 0,
+    "checkpoint": "checkpoint-native-default6-score-before-export.state and matching disk bundle"
+  },
+  "limits": [
+    "Original102,SM2=36,HDR/SM3=36,CPU=232 are preserved output under concurrent workloads and checkpoint continuation, not performance-gate scores.",
+    "Native success was confirmed after the full-screen capture stopped changing; resultZIP CRC and per-test XML status verified independently.",
+    "Only the selected six tests completed in this run; the unselected feature/batch N/A fields are not claimed successful.",
+    "Fixed-frame image comparison and normal shutdown are still pending."
+  ]
+}

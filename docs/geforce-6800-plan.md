@@ -2211,3 +2211,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G0 Win98 PCI 芯片组安装补齐：原 ISA 桥 Code 8/未启动，MACHINE2.INF 的 ISA_DRV 指向外部 isapnp.vxd，系统却未复制该文件。工具盘现从所有者安装 ISO 同取该原文件；只补缺失文件，并通过原 INF 修复已有失败节点、保留驱动键。原生复核 ISA 桥与 NV40 均为 problem0/started1，系统加载器 SHA 与 CAB 一致。IDE 两子通道仍为 Code10，ESDI_506.PDR 与原 CAB 一致、NoIDE 标记不存在；未把此项当作 03 缓存问题修复。增加有界 RAM 调查选项及配套状态容量验证，512 MiB 仅完成桌面准备。见 `g0-win98-isa-loader-completion.json`。
 
 - G4 XP 05 原版完整 16 项已完成：原生成功窗口 188 分、CPU221；原版 NV05N.3DR 的 ZIP CRC/XML 有效，3GT/2CPU/5feature/6batch 共16项均为 status0、正数结果。全程1920034 draws、GPU failure0、draw fault0，仅17D0/17D4预期软件 PGRAPH 方法。末帧捕获未自动刷新，原生窗口检查后确认已成功，未当成卡死；保留配套结果状态。并行/暂停分数不接受性能门禁，IQ 与正常关机继续后续步骤，见 `g4-xp-9371-05-native-all16.json`。
+
+- G4 XP 06 原版默认六项已完成：原生成功窗口总分102、SM2=36、HDR/SM3=36、CPU=232。原版 NV06N.3DR ZIP CRC/XML 有效，2SM2/2CPU/2HDR均为 status0与正数结果；最后一段89614 draws、GPU/draw/nonsoftwarePGRAPH故障0，只有17D0/17D4预期软件方法。只从首错前的配套健康状态续跑，未修改失败 RAM 来取得成功。7feature/6batch仍未运行，原生分数不作并行/暂停后的性能门禁，见 `g4-xp-9371-06-native-default6.json`。

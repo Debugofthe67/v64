@@ -298,8 +298,10 @@ valid original result with all three graphics, two CPU, five feature and six
 batch tests successful. Its fixed-frame IQ and isolated performance gates remain open.
 [Win98 2001 SE](fixtures/nv40/g5-win98-8198-2001-native-all21.json) also
 completed all 21, with the native project, eight IQ BMPs and normal shutdown.
-Win98 03, full XP 06 and the remaining IQ comparisons are still under
-investigation. The unmodified
+The [XP06 default-six run](fixtures/nv40/g4-xp-9371-06-native-default6.json)
+completed both SM2.0, both CPU and both HDR/SM3.0 tests and exported their
+original successful result. Win98 03, XP06 feature/batch coverage and the
+remaining IQ comparisons are still under investigation. The unmodified
 NVIDIA driver advertises SM3.0 capabilities beyond the validated subset;
 known unsupported draw states and instructions produce bounded faults;
 some other register paths still store values. See
