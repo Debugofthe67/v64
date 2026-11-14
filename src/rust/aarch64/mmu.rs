@@ -390,10 +390,14 @@ pub fn translate(va: u64, access: Access, el0: bool, align: u32) -> Result<Trans
 
 /// (the page tier's access cache, crate::aarch64::jit::pages) The
 /// translation of `va` for a data access at EL0 (`el0`) or EL1 with the MMU
-/// on, if the access cache may keep it: Normal memory the access is allowed
-/// to: the physical address, whether it came from a block (invalidating a
-/// page of it must flush), whether it is global
-pub fn translate_for_cache(va: u64, write: bool, el0: bool) -> Option<(u64, bool, bool)> {
+/// on: physical address, whether it came from a block, whether it is global,
+/// and whether it is Device memory. The page runtime must not cache Device
+/// pointers and must check their alignment before using them even once.
+pub fn translate_for_page_access(
+    va: u64,
+    write: bool,
+    el0: bool,
+) -> Option<(u64, bool, bool, bool)> {
     let entry = entry_of(va).ok()?;
     let needed = match (write, el0) {
         (false, false) => EL1_READ,
@@ -401,7 +405,7 @@ pub fn translate_for_cache(va: u64, write: bool, el0: bool) -> Option<(u64, bool
         (false, true) => EL0_READ,
         (true, true) => EL0_WRITE,
     };
-    if entry.flags & DEVICE != 0 || entry.flags & needed == 0 {
+    if entry.flags & needed == 0 {
         return None;
     }
     // (with FEAT_PAN, EL1's entries are never of memory EL0 may access:
@@ -413,6 +417,7 @@ pub fn translate_for_cache(va: u64, write: bool, el0: bool) -> Option<(u64, bool
         entry.pa | va & 0xFFF,
         entry.size_log > 12,
         entry.flags & GLOBAL != 0,
+        entry.flags & DEVICE != 0,
     ))
 }
 

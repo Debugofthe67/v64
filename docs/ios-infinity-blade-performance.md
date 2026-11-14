@@ -53,6 +53,12 @@ exclusive reservation 沿用拒绝路径。真实 A32 EL0 循环、无 Device ca
 `f4f854b2a6797f89f795915e0331ecca29aa84dbe4b3f2727c230fee6faa8396`。
 该盘正在新的隔离浏览器配置中冷启复测，不使用 RAM 快照。
 
+后续减少该路径的自身开销：一次 TLB 查询同时返回权限、PA 与 Device 属性，
+不再先尝试 Normal cache 后重复翻译；Device MMIO/hole 在 DRAM aperture 外直接拒绝。
+Device 指针继续不缓存，对齐/写保护/代码页/reservation 条件保持。SIMD/fallback
+构建、真实 A32 EL0 宽度及双核保护测试通过；300 组 MMU 用例、4285 个探测与参考
+无差异，PAN 回归通过。正在实际战斗中复测，不据此声称已经接近 60 fps。
+
 为腾出后续验收空间，已清理本轮生成的旧 adapter/query 中间 NAND 文件；原始输入、
 安装后原始备份、generation 7 的完整备份和各阶段哈希记录保留。
 

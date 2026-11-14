@@ -1186,40 +1186,30 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
     let el0 = cpu::el() == 0 || kind & 0x800 != 0;
     // The IOP has a physical RAM window, not active translation tables.
     // RAM below is cached; MMIO, watched code and reservations still refuse.
-    let mut cacheable = true;
     let translated = if mmu_off {
-        crate::aarch64::mmu::mmu_off(address).map(|pa| (pa, false, true))
+        crate::aarch64::mmu::mmu_off(address).map(|pa| (pa, false, true, false))
     }
     else {
-        crate::aarch64::mmu::translate_for_cache(address, write, el0).or_else(|| {
-            // IOSurface DRAM is mapped Device/strongly ordered. Execute an
-            // aligned access without caching its pointer: a later unaligned
-            // access must still take the Device alignment fault. The bus
-            // checks below continue to exclude MMIO, watched code, read-only
-            // stores, device-local memory and exclusive reservations.
-            if !size.is_power_of_two() || address & (size as u64 - 1) != 0 {
-                return None;
-            }
-            let access = if write {
-                crate::aarch64::memory::Access::Write
-            }
-            else {
-                crate::aarch64::memory::Access::Read
-            };
-            let t = crate::aarch64::mmu::translate(address, access, el0, size).ok()?;
-            if !t.device {
-                return None;
-            }
-            cacheable = false;
-            Some((t.pa, false, false))
-        })
+        crate::aarch64::mmu::translate_for_page_access(address, write, el0)
     };
-    let Some((pa, _large, global)) = translated
+    let Some((pa, _large, global, device)) = translated
     else {
         r.stats[ACCESS_REFUSED] += 1;
         refused(REFUSED_TRANSLATION);
         return 0;
     };
+    // Device DRAM gets only an aligned, one-shot pointer. MMIO and holes
+    // outside the DRAM aperture cannot use it; reject without a bus search.
+    let cacheable = !device;
+    if device
+        && (!size.is_power_of_two()
+            || address & (size as u64 - 1) != 0
+            || pa.wrapping_sub(bus::RAM_BASE) >= bus::bus().ram_size())
+    {
+        r.stats[ACCESS_REFUSED] += 1;
+        refused(REFUSED_TRANSLATION);
+        return 0;
+    }
     let host = match bus::bus().lookup(pa) {
         // The ARM7 scheduler reads the PMGR clock extremely often. Supply
         // one scalar read from the same machine clock without leaving the
