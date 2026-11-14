@@ -2352,10 +2352,13 @@ fn t32_return(word: u32, length: u8) -> Option<Kind> {
 }
 
 /// An instruction of an IT block as a native form of condition `cond`: the
-/// 16-bit forms that set the flags outside one do not inside; None for
-/// what might leave (loads and stores, branches)
-fn t32_native_it(word: u32, length: u8, cond: u8) -> Option<Kind> {
-    let mut kind = t32_native(word, length)?;
+/// 16-bit forms that set flags outside one do not inside. Returns may only
+/// occupy the last slot; retry exits materialize that slot's precise mask.
+fn t32_native_it(word: u32, length: u8, itstate: u8) -> Option<Kind> {
+    let cond = itstate >> 4;
+    let last = itstate & 7 == 0;
+    let mut kind =
+        t32_native(word, length).or_else(|| last.then(|| t32_return(word, length)).flatten())?;
     match &mut kind {
         Kind::Nop => {},
         Kind::Data { op, s, cond: c, .. } => {
@@ -2371,7 +2374,8 @@ fn t32_native_it(word: u32, length: u8, cond: u8) -> Option<Kind> {
         | Kind::MultiplyLong { cond: c, .. }
         | Kind::Extend { cond: c, .. }
         | Kind::Bits { cond: c, .. } => *c = cond,
-        Kind::Mem { rt, cond: c, .. } if *rt != 15 => *c = cond,
+        Kind::Mem { rt, cond: c, .. } if *rt != 15 || last => *c = cond,
+        Kind::Multiple { list, cond: c, .. } if last && *list & 0x8000 != 0 => *c = cond,
         _ => return None,
     }
     Some(kind)
@@ -2424,7 +2428,7 @@ pub(super) fn discover(
         // (an instruction of an IT block whose instructions are all native)
         if let Some(&itstate) = native_it.borrow().get(&o) {
             return (
-                t32_native_it(word, length, itstate >> 4).map(|kind| Inst32 {
+                t32_native_it(word, length, itstate).map(|kind| Inst32 {
                     word,
                     length,
                     kind,
@@ -2515,12 +2519,12 @@ pub(super) fn discover(
                 it = if it & 7 == 0 { 0 } else { it & 0xE0 | it << 1 & 0x1F };
                 at += instruction.map_or(2, |(_, l)| l as u16);
             }
-            // (all native, none that may leave: the block runs with its
-            // conditions and no ITSTATE)
+            // Successful native instructions keep ITSTATE clear. A retry
+            // restores its precise mask before any architectural effect.
             let native = block.len() as u32 == it_count(word)
                 && unsafe { crate::aarch64::jit::pages::AARCH32_DEBUG } < 2
                 && block.iter().all(|&(_, instruction, it)| {
-                    instruction.is_some_and(|(w, l)| t32_native_it(w, l, it >> 4).is_some())
+                    instruction.is_some_and(|(w, l)| t32_native_it(w, l, it).is_some())
                 });
             if native && matches!(kind, Some(Kind::Helper)) {
                 for &(at, _, cond) in &block {

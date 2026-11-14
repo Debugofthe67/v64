@@ -669,7 +669,15 @@ pub fn compile(bytes: &[u8], entries: &[u16], env: CompileEnv, name: String) -> 
                     block
                         .insts32
                         .iter()
-                        .all(|(_, inst)| !matches!(inst.kind, a32::Kind::Helper))
+                        .all(|(_, inst)| {
+                            // These pages previously used an IT helper. Keep
+                            // their register policy while making the return
+                            // native, avoiding a new full-GPR reload/writeback.
+                            !matches!(inst.kind, a32::Kind::Helper)
+                                && !(inst.itstate != 0
+                                    && (matches!(inst.kind, a32::Kind::Multiple { list, .. } if list & 0x8000 != 0)
+                                        || matches!(inst.kind, a32::Kind::Mem { rt: 15, .. })))
+                        })
                 })),
         a32_itstate: 0,
         access: None,
