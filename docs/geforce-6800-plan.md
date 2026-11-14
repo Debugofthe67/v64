@@ -2154,3 +2154,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 06 缓存结果续记：新预算运行到 9705 draws、零 GPU/PGRAPH/非软件 FIFO 错误，仍出现原版 Display Driver Stopped Responding 对话框；已保存原始失败状态。缓存的等工作量复用收益成立，但真实驱动超时仍未解决，默认六项未完成。
 
 - G2 旧快照迁移补全：v4 原先只恢复缓存 notifier，之后 SET_OBJECT 会重读旧 RAMIN 的零值。现仅在记录一致、RAMIN 类仍匹配且低 24 位为空时恢复缺失写回；冲突、类复用与非零字段不改。原生 06 M2MF 快照中的 notifier 从 0 恢复为 37676、真实 DMA 描述符可解析；旧快照重绑定、冲突/复用保护与完整 GPU 回归通过，见 `g2-legacy-notifier-writeback-migration.json`。此前零绘制的迁移失败试验不当作硬件故障；05 与 06 已重新继续。
+
+- G4 TEX8/9 控制范围：原生 05 的 `B60=0` 暴露 XF 坐标控制只接收前八组，硬件实际为 B40–B64 共十组。已接收新增两组禁用零值、检查保留位；未知非零 TEX8/9 控制明确拒绝。真实 TEX8/9 GPU 像素用例现在先提交控制方法，完整 GPU/图形单测与 Closure 通过，见 `g4-disabled-tex89-coordinate-controls.json`。原生默认五项从之前健康状态继续，未据此完成整套或图像验收。

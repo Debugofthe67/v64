@@ -158,6 +158,19 @@ migrationGraph.set_state(ambiguousLegacy);
 assert.equal(ramin.getUint32(0x5E04,true),0xEE000000,"conflicting old channel records cannot invent a shared RAMIN notifier");
 assert.equal(ramin.getUint32(0x5F04,true),0xDD000000,"a slot reused for another class is not repaired from a stale saved object");
 device.registers.set(0x400720,1);
+for(let at=0xB40;at<=0xB64;at+=4)
+{
+    graph.method(3,5,0x5C00,at,0);
+    assert.equal(device.registers.get(0x400720),1,"all ten disabled texture-coordinate controls are accepted");
+    assert.equal(graph.bindings.get("3:5").methods.get(at),0);
+}
+for(const [at,value,reason] of [[0xB60,2,/invalid texture coordinate/],[0xB64,1,/extended texture coordinate/]])
+{
+    graph.method(3,5,0x5C00,at,value);
+    assert.equal(device.registers.get(0x400720),0);assert.match(graph.faults.at(-1).reason,reason);
+    device.registers.set(0x400720,1);
+}
+device.registers.set(0x400720,1);
 // Capture programs when a draw begins, while the driver's BO is still alive.
 // Later releases can overwrite its VRAM without destroying diagnostic input.
 word(0x4400,0x4097);word(0x4300,0x3002);word(0x4304,0x9FFF);word(0x4308,3);

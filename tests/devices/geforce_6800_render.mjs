@@ -552,6 +552,7 @@ try
         method(0x1FCC,0x55);
         for(let channel=8;channel<10;channel++)
         {
+            method(0xB40+channel*4,0);
             method(0x1FF4,1<<(channel+4));
             [1<<24|(4+channel)<<13|15<<9|128|1,7<<18|0x1C801,0,0]
                 .forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));

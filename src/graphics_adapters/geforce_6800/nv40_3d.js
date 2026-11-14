@@ -23,7 +23,7 @@ const STATE_RANGES = [
     [0xA0C, 0xA0C],
     [0xA1C, 0xA3C],
     [0xA60, 0xB3C],
-    [0xB40, 0xB5C],
+    [0xB40, 0xB64],
     [0xB80, 0xBFC],
     [0x1428, 0x1430],
     [0x1438, 0x1438],
@@ -178,6 +178,11 @@ export class NV40_3D
         // kernel rather than reproducing NV40's physical sampling optimizer.
         if(at >= 0xB00 && at <= 0xB3C && (value & ~0x000FFFDF || (value >>> 15 & 7) > 4))
             throw new RangeError("NV40 invalid texture filter optimization");
+        // Curie has ten XF texture-coordinate controls, including TEX8/9.
+        // A zero word disables all three controls. Nonzero TEX8/9 controls
+        // remain explicit refusals until their raster semantics are modeled.
+        if(at>=0xB40 && at<=0xB64 && value&~0x111)throw new RangeError("NV40 invalid texture coordinate control");
+        if(at>=0xB60 && at<=0xB64 && value)throw new RangeError("NV40 extended texture coordinate control is not connected");
         if(at === 0x1D6C && (value & ~0x0F000FF0 || (value >>> 24) > 4)) throw new RangeError("NV40 invalid fence offset");
         if([0x1E9C, 0x1EA0, 0x1EFC].includes(at) && value >= 0x220) throw new RangeError("NV40 invalid vertex program address");
         if(at === 0x1E9C) o.methods.set(VP_WORD, value);

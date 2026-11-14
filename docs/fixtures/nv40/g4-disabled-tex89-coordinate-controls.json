@@ -1,0 +1,111 @@
+{
+  "date": "2026-11-14",
+  "stage": "G4 disabled TEX8/TEX9 coordinate control methods",
+  "nativeTrigger": {
+    "run": "build/nv40-xp-mark05-clip-cold-full",
+    "class": "Curie4097, channel1 subchannel6",
+    "faults": [
+      {
+        "channel": 1,
+        "subc": 6,
+        "method": 2912,
+        "value": 0,
+        "source": 64,
+        "status": 16384,
+        "reason": "unimplemented PGRAPH method",
+        "sequence": 101639680
+      },
+      {
+        "channel": 1,
+        "subc": 6,
+        "method": 2912,
+        "value": 0,
+        "source": 64,
+        "status": 16384,
+        "reason": "unimplemented PGRAPH method",
+        "sequence": 101776886
+      },
+      {
+        "channel": 1,
+        "subc": 6,
+        "method": 2912,
+        "value": 0,
+        "source": 64,
+        "status": 16384,
+        "reason": "unimplemented PGRAPH method",
+        "sequence": 102340329
+      },
+      {
+        "channel": 1,
+        "subc": 6,
+        "method": 2912,
+        "value": 0,
+        "source": 64,
+        "status": 16384,
+        "reason": "unimplemented PGRAPH method",
+        "sequence": 102424300
+      },
+      {
+        "channel": 1,
+        "subc": 6,
+        "method": 2912,
+        "value": 0,
+        "source": 64,
+        "status": 16384,
+        "reason": "unimplemented PGRAPH method",
+        "sequence": 104466270
+      },
+      {
+        "channel": 1,
+        "subc": 6,
+        "method": 2912,
+        "value": 0,
+        "source": 64,
+        "status": 16384,
+        "reason": "unimplemented PGRAPH method",
+        "sequence": 104573306
+      },
+      {
+        "channel": 1,
+        "subc": 6,
+        "method": 2912,
+        "value": 0,
+        "source": 64,
+        "status": 16384,
+        "reason": "unimplemented PGRAPH method",
+        "sequence": 109434626
+      }
+    ],
+    "observation": "Original 93.71 writes B60=0. The old accepted range ended at B5C, so the ninth hardware control was misclassified as an unimplemented method."
+  },
+  "hardwareReference": "envytools MthdCurieXfTxcUnkb40 instantiates ten words at B40..B64 and permits only bits0/4/8. Zero disables all three controls.",
+  "change": "Accept and preserve zero controls at B60/B64, validate reserved bits across all ten words. Nonzero TEX8/TEX9 controls still fail explicitly because their nonzero raster semantics have not been established. Existing first-eight lowering behavior is unchanged.",
+  "validation": [
+    "All ten disabled controls are accepted and stored",
+    "Reserved bits still fault; nonzero extended controls remain explicit refusals",
+    "Real WebGPU TEX8/TEX9 pixel scenes now issue their actual disabled control methods before drawing; complete GPU suite passes",
+    "Graph test and release Closure pass with zero errors/warnings"
+  ],
+  "continuation": "build/nv40-xp-mark05-clip-cold-continue2 resumes the same cold benchmark from a healthy earlier checkpoint; original full five and final IQ remain pending.",
+  "sources": [
+    "https://github.com/envytools/envytools/blob/master/hwtest/pgraph_class_kelvin.cc"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark05-clip-cold-full/trace.json",
+      "sha256": "e6c6c4500aa29271cbc45f239f53ad34b36cd4bcb981dc752a2a09c65a8284a0"
+    },
+    {
+      "file": "build/nv40-tex89-control-unit.log",
+      "sha256": "c6aec485b53c53ece999006a90a06b1b0039996116d15108aad4a54bd205edcd"
+    },
+    {
+      "file": "build/nv40-tex89-control-gpu.log",
+      "sha256": "033717edce7c81e99268f8c114787bc6de302cf57a86e8a3e28a5b3281b1a93a"
+    },
+    {
+      "file": "build/nv40-tex89-control-build.log",
+      "sha256": "09102427b29434030dac610f07eaf054a721c85a9cf2d8aafd90415ce947d0d3"
+    }
+  ]
+}
