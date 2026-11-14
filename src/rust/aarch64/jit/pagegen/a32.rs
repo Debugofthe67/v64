@@ -1008,32 +1008,12 @@ fn sign_extend(value: u32, bits: u32) -> i64 {
     ((value << (32 - bits)) as i32 >> (32 - bits)) as i64
 }
 
-/// Preload hints whose supported encodings have no architectural side effects.
-fn prefetch(word: u32, thumb: bool) -> bool {
-    if thumb {
-        // PLD/PLI immediate imm12 (including positive PC literals). These
-        // hints neither access memory nor change flags or registers. Leave
-        // the other encodings' reserved/writeback checks to the interpreter.
-        matches!(word >> 16 & 0xFFF0, 0xF890 | 0xF990) && word >> 12 & 15 == 15
-    }
-    else {
-        // The unconditional A32 PLD/PLDW/PLI forms accepted by a32.rs.
-        word & 0xFF30_F000 == 0xF510_F000
-            || word & 0xFF30_F010 == 0xF710_F000
-            || word & 0xFF70_F000 == 0xF450_F000
-            || word & 0xFF70_F010 == 0xF650_F000
-    }
-}
-
 /// A32: the instruction's kind at `offset`; None: a single step
 fn a32(word: u32, offset: u16) -> Option<Kind> {
     let cond = (word >> 28) as u8;
     let rd = word >> 12 & 15;
     let rn = word >> 16 & 15;
     if cond == 0xF {
-        if prefetch(word, false) {
-            return Some(Kind::Nop);
-        }
         if word >> 25 & 7 == 0b101 {
             let displacement = sign_extend(word & 0xFF_FFFF, 24) * 4 + (word >> 23 & 2) as i64;
             return Some(Kind::Interwork {
@@ -1204,9 +1184,6 @@ fn t32(word: u32, length: u8, offset: u16) -> Option<Kind> {
     let rd = hw2 >> 8 & 15;
     let rt = hw2 >> 12 & 15;
     let rn = hw1 & 15;
-    if prefetch(word, true) {
-        return Some(Kind::Nop);
-    }
     match hw1 >> 11 {
         0b11101 => {
             if hw1 >> 9 & 3 == 0 {
@@ -1942,9 +1919,6 @@ fn t32_native(word: u32, length: u8) -> Option<Kind> {
 }
 
 fn t32_native32(hw1: u32, hw2: u32, rn: u8, rd: u8, rt: u8, rm: u8, s: bool) -> Option<Kind> {
-    if prefetch(hw1 << 16 | hw2, true) {
-        return Some(Kind::Nop);
-    }
     if hw1 == 0xF3EF && hw2 & 0xF0FF == 0x8000 && rd != 13 && rd != 15 {
         return Some(Kind::Status { rd, cond: 14 });
     }
