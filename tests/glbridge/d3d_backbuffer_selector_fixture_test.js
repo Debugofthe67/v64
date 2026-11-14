@@ -18,6 +18,6 @@ const P = require("../../src/browser/glbridge/d3d9-webgpu/d9wg_protocol.js");
     }
     assert.equal(Object.keys(targets).length, 7);
     for (const [name, at] of Object.entries(targets)) {const bad = Buffer.from(b); bad.writeUInt32LE((bad.readUInt32LE(at) ^ 1) >>> 0, at); assert.throws(() => inspect_backbuffer_selector_wire(bad, result), undefined, name);}
-    for(const [api,from,to]of[[8,'invalid=10','invalid=9'],[9,'preserved=10','preserved=0']])assert.throws(()=>inspect_backbuffer_selector_wire(b,{...result,logs:{...result.logs,['SEL'+api+'.TXT']:result.logs['SEL'+api+'.TXT'].replace(from,to)}}));
-    console.log('PASS frozen XP backbuffer selectors: fifteen successful queries, thirty preserved invalid outputs, fifteen NULL refusals, two retired devices and nine semantic corruptions');
+    for (const [api,from,to] of [[8,"invalid=10","invalid=9"],[9,"preserved=10","preserved=0"]])assert.throws(()=>inspect_backbuffer_selector_wire(b,{...result,logs:{...result.logs,["SEL"+api+".TXT"]:result.logs["SEL"+api+".TXT"].replace(from,to)}}));
+    console.log("PASS frozen XP backbuffer selectors: fifteen successful queries, thirty preserved invalid outputs, fifteen NULL refusals, two retired devices and nine semantic corruptions");
 })().catch(e => {console.error(e); process.exitCode = 1;});

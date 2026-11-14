@@ -15,7 +15,7 @@ const hash=data=>create_hash("sha256").update(data).digest("hex"),out=path.resol
 const restore=()=>{if(!fs.readFileSync(fixture).equals(compressed))fs.writeFileSync(fixture,compressed);};
 process.once("exit",restore);for(const signal of ["SIGINT","SIGTERM"])process.once(signal,()=>{restore();process.exit(130);});
 const results=[];
-try{
+try {
  for(const mode of ["premature-color-quantization","floating-specular-alpha","half-point-size"]){
   const bytes=Buffer.from(original);let frame=0,changed=0;
   for(let carrier=0;carrier<bytes.length;){
@@ -31,8 +31,8 @@ try{
       if(mode==="premature-color-quantization"){
        const color=Array.from({length:4},(_,c)=>Math.max(0,Math.min(255,Math.floor(header.view.getFloat32(base+16+c*4,true)*255+.5))));
        header.view.setUint32(base+16,((color[3]<<24)|(color[0]<<16)|(color[1]<<8)|color[2])>>>0,true);packet.fill(0,base+20,base+32);
-      }else if(mode==="floating-specular-alpha")header.view.setFloat32(base+28,0,true);
-      else{assert.equal(header.view.getFloat32(base+32,true),8.5);header.view.setFloat32(base+32,1,true);}
+      } else if(mode==="floating-specular-alpha")header.view.setFloat32(base+28,0,true);
+      else {assert.equal(header.view.getFloat32(base+32,true),8.5);header.view.setFloat32(base+32,1,true);}
      }changed++;
     }
     if(opcode===P.OP.PRESENT)frame++;
@@ -40,12 +40,12 @@ try{
    }carrier+=12+size;
   }
   assert.equal(changed,mode==="premature-color-quantization"?2:1);fs.writeFileSync(fixture,gzip_sync(bytes));
-  try{
+  try {
    const run=spawn(process.execPath,[root+"tests/glbridge/gl_multipass_browser_runner.js","d3d_typed_clip_replay_browser_test.html"],{cwd:root,env:{...process.env,GL_SWIFTSHADER:"1"},encoding:"utf8",timeout:120000,maxBuffer:8<<20});
    const line=run.stdout.split(/\r?\n/).find(l=>l.startsWith('{"status"'));assert(line,run.stderr.slice(-1200)||"GPU runner did not report");const result=JSON.parse(line);
    assert.equal(result.status,"FAIL","survived: "+mode);assert.match(result.details,/XP typed clipped draw mismatch/);results.push({label:mode,killed:true,mutatedTraceSha256:hash(bytes)});
-  }finally{restore();}
+  } finally {restore();}
  }
  assert(fs.readFileSync(fixture).equals(compressed));fs.writeFileSync(out+"/gpu-mutations.json",JSON.stringify({fixtureSha256:hash(compressed),mutations:results},null,2)+"\n");
  console.log("PASS typed clipping GPU mutations: 3/3, exact compressed fixture restored");
-}finally{restore();}
+} finally {restore();}

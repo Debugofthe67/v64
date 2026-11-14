@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+"use strict";
 const assert=require("node:assert/strict"),fs=require("node:fs"),os=require("node:os"),path=require("node:path");
 const {spawnSync}=require("node:child_process");
 const pipeline=require("../../src/browser/glbridge/d3d9-webgpu/d3d9_shader_pipeline.js");
@@ -12,7 +13,7 @@ const folder=fs.mkdtempSync(path.join(os.tmpdir(),"nv40-shader-"));let validated
 function validate(name,translated)
 {
     const result=pipeline.compileShader(translated.bytecode);assert.equal(result.ok,true,result.error);
-    if(naga)
+    if (naga)
     {
         const file=path.join(folder,name+".wgsl");fs.writeFileSync(file,result.wgsl);
         const checked=spawnSync(naga,[file],{encoding:"utf8"});assert.equal(checked.status,0,checked.stderr+"\n"+result.wgsl);
@@ -42,7 +43,7 @@ try
     const reflected=validate("NV-output-routing",routing).reflection.outputDeclarations;
     assert(reflected.some(item=>item.usage===5&&item.usageIndex===0),"raw TBUF5 becomes TEX0 via the output map");
     assert(!reflected.some(item=>item.usage===11),"raw register numbers are not fixed semantics");
-    for(let channel=8;channel<10;channel++)
+    for (let channel=8;channel<10;channel++)
     {
         const extra=translate_vertex_program(routed,{result_map:[[0,0,-1,true],[7+channel,5,-1,true]]});
         assert(validate("NV-extra-texture-output-"+channel,extra).reflection.outputDeclarations
@@ -59,7 +60,7 @@ try
     assert.equal(dualCode[first+4]&0xFFFFFF,0x41000,"scalar result computed before vector destination commits");
     assert.equal(dualCode[first+7]&65535,1,"both slots commit after reading their old operands");
     validate("dual",{bytecode:dualCode});
-    for(const name of ["MOV","LIT"])
+    for (const name of ["MOV","LIT"])
     {
         const p=structuredClone(vertex),i=p.instructions[0];i.vector={name:"NOP",mask:0};
         i.scalar={name,type:"output",index:0,mask:15};i.sources[2]={...i.sources[0],swizzle:[3,1,0,2]};
@@ -68,13 +69,13 @@ try
         assert.equal(translated.bytecode[instruction+2]>>>16&255,0x87,"MOV/LIT keep the complete source swizzle");
     }
 
-    for(const name of ["MOV","MUL","ADD","MAD","DP3","DP4","DST","MIN","MAX","SLT","SGE","FRC","FLR","RCP","RSQ","EX2","LG2","SIN","COS","DDX","DDY",
+    for (const name of ["MOV","MUL","ADD","MAD","DP3","DP4","DST","MIN","MAX","SLT","SGE","FRC","FLR","RCP","RSQ","EX2","LG2","SIN","COS","DDX","DDY",
         "DPH","DP2","DP2A","NRM","SEQ","SNE","SLE","SGT","SSG","SFL","STR","DIV","LITEX2"])
     {
         const p=structuredClone(fragment);p.instructions[0].name=name;p.instructions[0].sources=Array.from({length:3},()=>p.instructions[0].sources[0]);
         validate("alu-"+name,translate_fragment_program(p));
     }
-    for(const name of ["RCC","EXP","LOG","RCP","RSQ","LG2"])
+    for (const name of ["RCC","EXP","LOG","RCP","RSQ","LG2"])
     {
         const p=structuredClone(vertex),i=p.instructions[0];i.vector={name:"NOP",mask:0};
         i.scalar={name,type:"output",index:0,mask:15};i.sources[2]={...i.sources[0]};
@@ -93,7 +94,7 @@ try
     const badPop=structuredClone(stackPop);badPop.scalar.mask=1;
     assert.throws(()=>translate_vertex_program({entry:0,instructions:[badPop,stackEnd]}),/POPA requires/);
     const indexedOut=structuredClone(vertex);indexedOut.instructions[0].address.output=true;indexedOut.instructions[0].vector.index=7;
-    for(let unit=0;unit<4;unit++)for(const dimension of [1,2])
+    for (let unit=0;unit<4;unit++) for (const dimension of [1,2])
     {
         const p=structuredClone(vertex);p.instructions[0].vector.name="TXL";p.instructions[0].texture=unit;
         const vertex_textures=[];vertex_textures[unit]={dimension,bias:.25,min_lod:.5,max_lod:2.5};
@@ -111,7 +112,7 @@ try
     late.instructions[1].sources[0]={...late.instructions[1].sources[0],type:"constant",index:255};
     const lateCode=translate_vertex_program(late);validate("late-constant",lateCode);
     assert(lateCode.constants.some(index=>index>=544) && lateCode.constants.includes(255),"internal constants cannot shadow a later guest operand");
-    for(const name of ["TEX","TXP","TXB","TXL","TXD"])
+    for (const name of ["TEX","TXP","TXB","TXL","TXD"])
     {
         const p=structuredClone(fragment),i=p.instructions[0];i.name=name;i.sources=Array.from({length:3},()=>({type:"input",index:4,swizzle:[0,1,2,3],negate:false,absolute:false}));
         const t=translate_fragment_program(p);assert.deepEqual(t.samplers,[[0,2]]);validate(name,t);
@@ -120,7 +121,7 @@ try
         const resized=translate_fragment_program(p,{texture_sizes:[[16,16,1]]});
         assert.deepEqual(rect.bytecode,resized.bytecode,"texture dimensions remain uniform values outside the shader cache key");
     }
-    for(let compare=0;compare<8;compare++)
+    for (let compare=0;compare<8;compare++)
     {
         const p=structuredClone(fragment);p.instructions[0].name="TEX";
         const t=translate_fragment_program(p,{depth_samplers:[{compare,crossbar:0xAAE4}]});
@@ -128,13 +129,13 @@ try
         assert.equal(module.reflection.samplers[0].compareFunction,["never","greater","equal","greater-equal","less","not-equal","less-equal","always"][compare]);
         const linked=pipeline.compileShader(t.bytecode,{depthSamplers:[0]});assert(linked.ok,linked.error);
         const file=path.join(folder,"depth-linked-"+compare+".wgsl");fs.writeFileSync(file,linked.wgsl);
-        if(naga)assert.equal(spawnSync(naga,[file],{encoding:"utf8"}).status,0);validated++;
+        if (naga)assert.equal(spawnSync(naga,[file],{encoding:"utf8"}).status,0);validated++;
     }
     const fogged=structuredClone(fragment);fogged.instructions[0].sources[0]={type:"input",index:3,swizzle:[0,1,2,3],negate:false,absolute:false};
-    for(const mode of [0x2601,0x804,0x800,0x801,0x802,0x803])validate("fog-"+mode,translate_fragment_program(fogged,{fog:{mode,constant:1,linear:1}}));
+    for (const mode of [0x2601,0x804,0x800,0x801,0x802,0x803])validate("fog-"+mode,translate_fragment_program(fogged,{fog:{mode,constant:1,linear:1}}));
     assert.throws(()=>translate_fragment_program(fogged,{fog:{mode:0x805,constant:1,linear:1}}),/invalid fog/);
     assert.throws(()=>translate_fragment_program(fogged,{fog:{mode:0x2601,constant:NaN,linear:1}}),/nonfinite fog/);
-    for(let register=0;register<2;register++)for(let condition=0;condition<8;condition++)
+    for (let register=0;register<2;register++) for (let condition=0;condition<8;condition++)
     {
         const p=structuredClone(vertex),update=structuredClone(p.instructions[0]);
         update.predicate={...update.predicate,update:true,vector:true,register};p.instructions.unshift(update);
@@ -143,7 +144,7 @@ try
     }
     const relative=structuredClone(vertex);relative.instructions[0].address.constant=true;
     validate("relative-constant-unused",translate_vertex_program(relative));
-    for(const name of ["ARL","ARR"])
+    for (const name of ["ARL","ARR"])
     {
         const p=structuredClone(vertex),load=structuredClone(p.instructions[0]);load.vector={name,type:"temp",index:1,mask:15};
         p.instructions.unshift(load);p.instructions[1].address={register:1,component:2,input:false,constant:true};
@@ -154,8 +155,8 @@ try
     }
     const conditional=structuredClone(fragment);conditional.instructions[0].predicate.condition=1;
     validate("conditional",translate_fragment_program(conditional));
-    for(let condition=1;condition<7;condition++) {conditional.instructions[0].predicate.condition=condition;conditional.instructions[0].predicate.update=true;validate("cc-"+condition,translate_fragment_program(conditional));}
-    for(let read=0;read<2;read++)for(let write=0;write<2;write++)
+    for (let condition=1;condition<7;condition++) {conditional.instructions[0].predicate.condition=condition;conditional.instructions[0].predicate.update=true;validate("cc-"+condition,translate_fragment_program(conditional));}
+    for (let read=0;read<2;read++) for (let write=0;write<2;write++)
     {
         const p=structuredClone(conditional);p.instructions[0].predicate.register=read;p.instructions[0].predicate.destination=write;
         validate("fragment-cc-banks-"+read+"-"+write,translate_fragment_program(p));
@@ -166,7 +167,7 @@ try
     };
     const final=structuredClone(base);final.pc=1;
     validate("vertex-call",translate_vertex_program({entry:0,instructions:[flowOp("CAL",0,3),final,flowOp("RET",3)]}));
-    for(let condition=0;condition<8;condition++)
+    for (let condition=0;condition<8;condition++)
     {
         const jump=flowOp("BRA",0,1);jump.predicate.condition=condition;
         validate("vertex-branch-"+condition,translate_vertex_program({entry:0,instructions:[jump,final]}));
@@ -177,7 +178,7 @@ try
         i.predicate.condition=condition;return i;
     };
     const fpMove=pc=>{const i=structuredClone(fragment.instructions[0]);i.pc=pc;i.end=false;return i;};
-    for(const condition of [0,1,2,4,7])validate("fragment-if-"+condition,translate_fragment_program({constants:fragment.constants,word_count:28,
+    for (const condition of [0,1,2,4,7])validate("fragment-if-"+condition,translate_fragment_program({constants:fragment.constants,word_count:28,
         instructions:[fpFlow("IF",0,20,12,condition),fpMove(4),fpMove(12),fpMove(20)]}));
     validate("fragment-repeat-break",translate_fragment_program({constants:fragment.constants,word_count:24,
         instructions:[fpFlow("REP",0,16),fpMove(4),fpFlow("BRK",12,0),fpMove(16)]}));
@@ -188,7 +189,7 @@ try
     assert.throws(()=>translate_fragment_program({constants:fragment.constants,word_count:8,instructions:[indexed]}),/outside LOOP/);
     const fpReturn=[5<<24,7<<18,0x80000000,0],fpConstant=end=>[fragment.instructions[0].words[0]&~1|end,...fragment.instructions[0].words.slice(1),...fragment.constants[0]];
     const fpCall=(target,condition=7)=>[1<<24,condition<<18,0x80000000|target,0];
-    for(const condition of [0,1,2,4,7])validate("fragment-call-"+condition,translate_fragment_program(decode_fragment_program(Uint32Array.from([
+    for (const condition of [0,1,2,4,7])validate("fragment-call-"+condition,translate_fragment_program(decode_fragment_program(Uint32Array.from([
         ...fpCall(12,condition),...fpConstant(1),...fpConstant(0),...fpReturn]))));
     validate("fragment-recursion",translate_fragment_program(decode_fragment_program(Uint32Array.from([
         ...fpConstant(0),...fpCall(0),...fpConstant(1)]))));
@@ -197,13 +198,13 @@ try
     assert.throws(()=>translate_fragment_program({constants:fragment.constants,word_count:12,instructions:[fpFlow("IF",0,10),fpMove(4)]}),/scope/);
     const alias=structuredClone(fragment),later=structuredClone(alias.instructions[0]);later.sources[0]={type:"temp",index:0,half:false,swizzle:[0,1,2,3]};alias.instructions.push(later);
     validate("fragment-half-full-alias",translate_fragment_program(alias));
-    for(const half of [false,true])
+    for (const half of [false,true])
     {
         const p=structuredClone(alias);p.instructions[1].sources[0].half=half;
         p.instructions[1].destination.half=half;p.instructions[1].predicate.update=true;
         validate("fragment-raw-copy-"+half,translate_fragment_program(p));
     }
-    for(const name of ["PK2H","PK2US","PK4B","PK4UB","UP2H","UP2US","UP4B","UP4UB"])
+    for (const name of ["PK2H","PK2US","PK4B","PK4UB","UP2H","UP2US","UP4B","UP4UB"])
     {
         const p=structuredClone(fragment);p.instructions[0].name=name;
         p.instructions[0].destination.half=false;
@@ -215,7 +216,7 @@ try
     assert.throws(()=>translate_fragment_program(invalidPack),/pack requires/);
     invalidPack.instructions[0].name="UP2H";invalidPack.instructions[0].sources[0]={type:"temp",index:1,half:true,swizzle:[0,1,2,3]};
     assert.throws(()=>translate_fragment_program(invalidPack),/unpack requires/);
-    for(const full of [false,true])
+    for (const full of [false,true])
     {
         const multiple=structuredClone(fragment);
         multiple.instructions=[0,2,3,4].map(register=>{
@@ -224,8 +225,8 @@ try
         const output=validate("MRT-"+full,translate_fragment_program(multiple,{targets:4,fp32_outputs:full}));
         assert.deepEqual(output.reflection.colorOutputs,[0,1,2,3],"Curie skips the depth register when exporting MRT colors");
     }
-    if(process.env.NV_PROGRAMS)
-        for(const [index,p]of JSON.parse(fs.readFileSync(process.env.NV_PROGRAMS)).entries())
+    if (process.env.NV_PROGRAMS)
+        for (const [index,p] of JSON.parse(fs.readFileSync(process.env.NV_PROGRAMS)).entries())
         {
             assert.deepEqual(p.errors,[]);validate("native-vs-"+index,translate_vertex_program(p.vertex));
             validate("native-ps-"+index,translate_fragment_program(p.fragment));

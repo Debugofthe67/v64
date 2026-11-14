@@ -60,7 +60,7 @@ ram.setUint32(0x2000,0x4097,true);device.fifo.channel(0).bindings[0]=0x2000;
 const method=(at,value)=>{device.registers.set(0x400720,1);graph.method(0,0,0x2000,at,value);assert.equal(device.registers.get(0x400720),1,JSON.stringify(graph.faults));};
 try
 {
-    for(const [at,value]of [[0x194,0x100],[0x184,0x100],[0x1A4,0x100],[0x200,8<<16],[0x204,8<<16],
+    for(const [at,value] of [[0x194,0x100],[0x184,0x100],[0x1A4,0x100],[0x200,8<<16],[0x204,8<<16],
         [0x208,0x148],[0x20C,32],[0x210,0x10000],[0x220,1],[0x8C0,8<<16],[0x8C4,8<<16],
         [0x1740,0x822],[0x1E94,0x101],[0x8E4,0x9001],[0x1E9C,0]])method(at,value);
     [0x401F9C6C,0x0040000D,0x81000000,0x0001EF81].forEach((word,i)=>method(0xB80+i*4,word));
@@ -162,7 +162,7 @@ try
         }
         view.setUint32(0x9000,0x01001E01,true);method(0x1D60,64);
         new Float32Array(vram.buffer,0x9010,4).set([-2,.25,8,1]);
-        for(const [format,pitch,expected]of [[0x14C,128,[-2,.25,8,1]],[0x14D,32,[-2]]])
+        for(const [format,pitch,expected] of [[0x14C,128,[-2,.25,8,1]],[0x14D,32,[-2]]])
         {
             method(0x208,format);method(0x20C,pitch);
             method(0x1808,6);for(const word of new Uint32Array(Float32Array.of(0,0,0,16,16,0).buffer))method(0x1818,word);
@@ -196,7 +196,7 @@ try
         console.log("PASS: real WebGPU native ten-bit vertex constant addresses above c255");
         // Alpha comparison and independent RGB/alpha blending on the same VRAM.
         new Float32Array(vram.buffer,0x9010,4).set([1,0,0,.5]);
-        for(const [at,value]of [[0x310,1],[0x314,0x10021005],[0x318,0x10011006],[0x320,0x00010001]])method(at,value);
+        for(const [at,value] of [[0x310,1],[0x314,0x10021005],[0x318,0x10011006],[0x320,0x00010001]])method(at,value);
         method(0x1808,5);method(0x1814,2<<24);method(0x1808,0);await engine.backend.wait();
         const blended=[...vram.subarray(0x10000,0x10004)];
         [77,51,153,128].forEach((expected,i)=>assert(Math.abs(blended[i]-expected)<=1,"blend component "+i+": "+blended[i]));
@@ -207,7 +207,7 @@ try
         assert.deepEqual([...vram.subarray(0x10000,0x10004)],[0,0,255,128],"passing alpha comparison writes the source");
         method(0x304,0);
         method(0x310,1);method(0x31C,0x40204060);method(0x320,0x80068006);
-        for(const [src,dst,expected]of [[0x8003,0x8004,[115,76,102,128]],[0x8004,0x8003,[38,26,204,128]]])
+        for(const [src,dst,expected] of [[0x8003,0x8004,[115,76,102,128]],[0x8004,0x8003,[38,26,204,128]]])
         {
             for(let at=0x10000;at<0x10100;at+=4)vram.set([153,102,51,255],at);
             method(0x314,0x10000|src);method(0x318,dst);
@@ -221,21 +221,21 @@ try
         new Float32Array(vram.buffer,0x9010,4).set([.2,.4,.6,1]);
         new Float32Array(vram.buffer,0x4000,6).set([-1,1,-1,-3,3,1]);vram.fill(0,0x10000,0x10100);
         const floatWord=value=>new Uint32Array(Float32Array.of(value).buffer)[0];
-        for(const [at,value]of [[0xA20,4],[0xA24,3],[0xA28,0],[0xA30,2],[0xA34,-2],[0xA38,1]])method(at,floatWord(value));
+        for(const [at,value] of [[0xA20,4],[0xA24,3],[0xA28,0],[0xA30,2],[0xA34,-2],[0xA38,1]])method(at,floatWord(value));
         method(0x1E94,0x11);method(0x1808,5);method(0x1814,2<<24);method(0x1808,0);await engine.backend.wait();
-        for(let y=0;y<8;y++)for(let x=0;x<8;x++)
+        for(let y=0;y<8;y++) for(let x=0;x<8;x++)
             assert.deepEqual([...vram.subarray(0x10000+(y*8+x)*4,0x10000+(y*8+x)*4+4)],
                 x>=2 && x<6 && y>=1 && y<5?[0x99,0x66,0x33,255]:[0,0,0,0],"offset clip-space viewport "+x+","+y);
-        for(const [tx,ty,sx,sy,left,top,right,bottom]of [
+        for(const [tx,ty,sx,sy,left,top,right,bottom] of [
             [4.5,4.5,4,-4,0,0,8,8], // native Direct3D half-pixel bias
             [1.75,2.25,3,-3,0,0,5,5], // negative origin, fractional lower edge
             [6.25,5.75,3,-3,3,3,8,8]])
         {
             vram.fill(0,0x10000,0x10100);
-            for(const [at,value]of [[0xA20,tx],[0xA24,ty],[0xA30,sx],[0xA34,sy]])method(at,floatWord(value));
+            for(const [at,value] of [[0xA20,tx],[0xA24,ty],[0xA30,sx],[0xA34,sy]])method(at,floatWord(value));
             method(0x1808,5);method(0x1814,2<<24);method(0x1808,0);await engine.backend.wait();
             assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
-            for(let y=0;y<8;y++)for(let x=0;x<8;x++)
+            for(let y=0;y<8;y++) for(let x=0;x<8;x++)
                 assert.deepEqual([...vram.subarray(0x10000+(y*8+x)*4,0x10000+(y*8+x)*4+4)],
                     x>=left && x<right && y>=top && y<bottom?[0x99,0x66,0x33,255]:[0,0,0,0],"fractional viewport "+tx+","+ty+": "+x+","+y);
         }
@@ -243,7 +243,7 @@ try
         method(0x1808,5);method(0x1814,2<<24);method(0x1808,0);await engine.backend.wait();
         assert.equal(engine.backend.stats.draws,outside,"a fully clipped viewport emits no GPU work");
         method(0x1E94,0x101);
-        for(const [at,value]of [[0x198,0x100],[0x214,0x24000],[0x22C,32],[0x1740,0x1042],[0xA74,1],[0xA70,1],[0xA6C,2]])method(at,value);
+        for(const [at,value] of [[0x198,0x100],[0x214,0x24000],[0x22C,32],[0x1740,0x1042],[0xA74,1],[0xA70,1],[0xA6C,2]])method(at,value);
         for(let at=0x24000;at<0x24100;at+=4)view.setUint32(at,0xFFFFFF5A,true);
         const depthDraw=async(z,color,slope=0)=>{
             new Float32Array(vram.buffer,0x4000,12).set([0,0,z,1,0,16,z,1,16,0,z+slope,1]);
@@ -268,14 +268,14 @@ try
         method(0x17C8,1);method(0x1800,0x01000810);
         assert.equal(view.getUint32(0x818,true),0,"ZPASS reset clears the accumulated count");
         const nearDepth=view.getUint32(0x24000,true);assert(Math.abs((nearDepth>>>8)-Math.round(.25*0xFFFFFF))<=1);
-        for(const [at,value]of [[0xA74,0],[0xA70,0],[0x328,1],[0x330,3],[0x334,0x34],[0x338,255],[0x32C,15],[0x33C,7]])method(at,value);
+        for(const [at,value] of [[0xA74,0],[0xA70,0],[0x328,1],[0x330,3],[0x334,0x34],[0x338,255],[0x32C,15],[0x33C,7]])method(at,value);
         await depthDraw(.5,[0,1,0,1]);assert.equal(view.getUint32(0x24000,true)&255,0x5B,"stencil fail increments through the write mask");
         assert.deepEqual([...vram.subarray(0x10000,0x10004)],[0,0,255,255],"stencil failure preserves color");
         method(0x330,8);method(0x334,0x2C);method(0x344,3);
         await depthDraw(.5,[0,1,0,1]);assert.equal(view.getUint32(0x24000,true)&255,0x5C,"stencil replace preserves masked high bits");
         assert.equal(view.getUint32(0x24000,true)>>>8,nearDepth>>>8,"stencil-only rendering preserves depth");
         assert.deepEqual([...vram.subarray(0x10000,0x10004)],[0,255,0,255]);method(0x328,0);
-        for(const [at,value]of [[0x328,1],[0x348,1],[0x32C,255],[0x34C,255],[0x334,0],[0x354,0],
+        for(const [at,value] of [[0x328,1],[0x348,1],[0x32C,255],[0x34C,255],[0x334,0],[0x354,0],
             [0x338,255],[0x358,255],[0x330,8],[0x350,8],[0x33C,1],[0x35C,1],[0x344,7],[0x364,8]])method(at,value);
         const beforeTwoSided=view.getUint32(0x24000,true)&255;
         method(0x1834,0x901);await depthDraw(.5,[1,0,0,1]);
@@ -297,7 +297,7 @@ try
         method(0xA7C,0);method(0xA78,floatWord(1));method(0xA68,1);await depthDraw(.25,[0,1,0,1],.125);
         assert(gradient>0 && Math.abs((view.getUint32(0x24000,true)>>>8)-sloped-gradient)<=2,"slope factor follows the actual window-space depth derivative");
         method(0xA68,0);method(0xA78,0);method(0xA7C,0);method(0xA6C,2);
-        for(const [at,value]of [[0x208,0x128],[0x214,0x25000],[0x22C,16],[0xA74,1],[0xA70,1],[0x328,1],[0x330,1]])method(at,value);
+        for(const [at,value] of [[0x208,0x128],[0x214,0x25000],[0x22C,16],[0xA74,1],[0xA70,1],[0x328,1],[0x330,1]])method(at,value);
         vram.fill(255,0x25000,0x25080);await depthDraw(.25,[0,1,0,1]);
         assert.deepEqual([...vram.subarray(0x10000,0x10004)],[0,255,0,255],"D16 has no stencil bits: enabled NEVER stencil does not reject the draw");
         assert(Math.abs(view.getUint16(0x25000,true)-Math.round(.25*65535))<=1);
@@ -311,14 +311,14 @@ try
         assert(Math.abs(view.getUint16(0x25000,true)-d16Unbiased-128)<=1,"D16 polygon units use the attachment's own depth step");
         method(0xA68,0);method(0xA7C,0);method(0xA6C,2);
         console.log("PASS: real WebGPU polygon offset units for D24/D16, slope bias and disabled-state restore");
-        for(const [at,value]of [[0x208,0x148],[0x214,0x24000],[0x22C,32],[0xA74,0],[0x328,0]])method(at,value);
+        for(const [at,value] of [[0x208,0x148],[0x214,0x24000],[0x22C,32],[0xA74,0],[0x328,0]])method(at,value);
         console.log("PASS: real WebGPU depth rejection, depth/stencil VRAM round trips and masked stencil operations");
         const colorlessObject=graph.object(0,0x2000),untouchedColor=vram.slice(0x10000,0x10100);
         method(0x220,0);colorlessObject.methods.delete(0x194);
         method(0x20C,0);method(0x210,0xFFFFFFFF);
         const savedFragment=view.getUint32(0x9000,true);
         view.setUint32(0x9000,savedFragment|0x40000000,true); // Native depth-only FP writes no color register.
-        for(const [at,value]of [[0xA74,1],[0xA70,1],[0xA6C,8],[0x328,0]])method(at,value);
+        for(const [at,value] of [[0xA74,1],[0xA70,1],[0xA6C,8],[0x328,0]])method(at,value);
         for(let at=0x24000;at<0x24100;at+=4)view.setUint32(at,0xFFFFFF5A,true);
         const colorlessReadbacks=engine.backend.stats.readbacks;
         await depthDraw(.5,[1,0,1,1]);
@@ -329,35 +329,35 @@ try
             assert(Math.abs((value>>>8)-Math.round(.5*0xFFFFFF))<=1,"colorless D24 writes real depth");
         }
         const colorlessDepth=view.getUint32(0x24000,true)>>>8;
-        for(const [at,value]of [[0xA70,0],[0x328,1],[0x330,8],[0x32C,255],[0x338,255],[0x344,7]])method(at,value);
+        for(const [at,value] of [[0xA70,0],[0x328,1],[0x330,8],[0x32C,255],[0x338,255],[0x344,7]])method(at,value);
         await depthDraw(.25,[0,1,0,1]);
         assert.equal(view.getUint32(0x24000,true)>>>8,colorlessDepth,"native 03 depth-test/no-depth-write preserves Z");
         assert.equal(view.getUint32(0x24000,true)&255,0x5B,"colorless stencil operations remain active");
-        for(const [at,value]of [[0x208,0x128],[0x214,0x25000],[0x22C,16],[0x328,0],[0xA70,1]])method(at,value);
+        for(const [at,value] of [[0x208,0x128],[0x214,0x25000],[0x22C,16],[0x328,0],[0xA70,1]])method(at,value);
         vram.fill(255,0x25000,0x25080);await depthDraw(.25,[1,1,0,1]);
         for(let at=0x25000;at<0x25080;at+=2)assert(Math.abs(view.getUint16(at,true)-16384)<=1,"colorless D16 writes real depth");
         const readOnlyDepth=vram.slice(0x25000,0x25080),readOnlyDownloads=engine.backend.stats.readbacks;
-        for(const [at,value]of [[0xA70,0],[0xA6C,2],[0x17C8,1],[0x17CC,1]])method(at,value);
+        for(const [at,value] of [[0xA70,0],[0xA6C,2],[0x17C8,1],[0x17CC,1]])method(at,value);
         await depthDraw(.125,[1,0,0,1]);method(0x1800,0x01000810);
         assert.equal(view.getUint32(0x818,true),64,"read-only depth query counts visible samples");
         await depthDraw(.5,[1,0,0,1]);method(0x1800,0x01000810);
         assert.equal(view.getUint32(0x818,true),64,"read-only depth query rejects occluded samples");
         assert.equal(engine.backend.stats.readbacks,readOnlyDownloads,"read-only depth queries need no attachment downloads");
         assert.deepEqual(vram.slice(0x25000,0x25080),readOnlyDepth,"query preserves every raw D16 bit");
-        for(const [at,value]of [[0xA70,1],[0xA6C,8],[0x17CC,0]])method(at,value);
+        for(const [at,value] of [[0xA70,1],[0xA6C,8],[0x17CC,0]])method(at,value);
         const beforeDepthFault=engine.backend.stats.draws,originalDepth=vram.slice(0x25000,0x25080);
         ram.setUint32(0x1004,0x2500F,true);method(0x1808,5);method(0x1814,2<<24);
         graph.method(0,0,0x2000,0x1808,0);assert.match(graph.faults.pop().reason,/limit/);
         assert.equal(engine.backend.stats.draws,beforeDepthFault,"bad colorless depth DMA emits no GPU work");
         assert.deepEqual(vram.slice(0x25000,0x25080),originalDepth);ram.setUint32(0x1004,0xFFFFF,true);
-        for(const [at,value]of [[0x208,0x148],[0x220,16],[0xA74,0],[0xA70,0],[0x17C8,1],[0x17CC,1]])method(at,value);
+        for(const [at,value] of [[0x208,0x148],[0x220,16],[0xA74,0],[0xA70,0],[0x17C8,1],[0x17CC,1]])method(at,value);
         colorlessObject.methods.delete(0x198);const queryOnlyReadbacks=engine.backend.stats.readbacks;
         await depthDraw(.5,[1,0,0,1]);method(0x1800,0x01000810);
         assert.equal(view.getUint32(0x818,true),64,"colorless draw without Z still counts occlusion samples");
         assert.equal(engine.backend.stats.readbacks,queryOnlyReadbacks,"scratch attachment never downloads to guest memory");
         assert.deepEqual(vram.slice(0x10000,0x10100),untouchedColor,"disabled color DMA and bogus pitch/offset are never accessed");
         view.setUint32(0x9000,savedFragment,true);
-        for(const [at,value]of [[0x220,1],[0x194,0x100],[0x198,0x100],[0x20C,32],[0x210,0x10000],
+        for(const [at,value] of [[0x220,1],[0x194,0x100],[0x198,0x100],[0x20C,32],[0x210,0x10000],
             [0x214,0x24000],[0x22C,32],[0x17CC,0]])method(at,value);
         console.log("PASS: real WebGPU colorless D16/D24/stencil, inactive color DMA, query-only draws and atomic depth faults");
         method(0x183C,1);method(0x1830,0x405);method(0x1834,0x900);
@@ -378,7 +378,7 @@ try
         [0x401F9C6C,0x0040080D,0x81000000,0x0001EF94,
          0x401F9C6C,0x0040000D,0x81000000,0x0001EF81].forEach((word,i)=>method(0xB80+(i%4)*4,word));
         [23<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
-        for(const [at,value]of [[0x1FC8,5],[0x1FF4,1<<14],[0x1740,0x1022],[0x1760,0x1022],
+        for(const [at,value] of [[0x1FC8,5],[0x1FF4,1<<14],[0x1740,0x1022],[0x1760,0x1022],
             [0x1A00,0x20000],[0x1A04,0x12529],[0x1A08,0x30303],[0x1A0C,0x80000000],
             [0x1A10,0xAAE4],[0x1A14,0x01010000],[0x1A18,2<<16|2],[0x1840,8]])method(at,value);
         vram.set([0,0,255,255,0,255,0,255,255,0,0,255,255,255,255,255],0x20000);
@@ -387,7 +387,7 @@ try
         for(const word of new Uint32Array(floats.buffer))method(0x1818,word);
         method(0x1808,0);await engine.backend.wait();
         assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
-        for(let y=0;y<8;y++)for(let x=0;x<8;x++)
+        for(let y=0;y<8;y++) for(let x=0;x<8;x++)
         {
             const expected=y<4?x<4?[0,0,255,255]:[0,255,0,255]:x<4?[255,0,0,255]:[255,255,255,255];
             assert.deepEqual([...vram.subarray(0x10000+(y*8+x)*4,0x10000+(y*8+x)*4+4)],expected,"sampled checker "+x+","+y);
@@ -399,7 +399,7 @@ try
         const perspective=Float32Array.of(0,0,.25,1,0,0,0,16,.25,4,0,2,16,0,.25,2,2,0);
         for(const word of new Uint32Array(perspective.buffer))method(0x1818,word);
         method(0x1808,0);await engine.backend.wait();
-        for(let y=0;y<8;y++)for(let x=0;x<8;x++)
+        for(let y=0;y<8;y++) for(let x=0;x<8;x++)
         {
             const b=(y+.5)/16,c=(x+.5)/16,a=1-b-c,denominator=a+b/4+c/2;
             const u=c/denominator,v=b/2/denominator;
@@ -418,7 +418,7 @@ try
         vram.fill(0,0x10000,0x10100);method(0x1808,0x1001);
         for(const word of new Uint32Array(Float32Array.of(4,4,99,99).buffer))method(0x1818,word);
         method(0x1808,0);await engine.backend.wait();
-        for(let y=0;y<8;y++)for(let x=0;x<8;x++)
+        for(let y=0;y<8;y++) for(let x=0;x<8;x++)
         {
             const pixel=[...vram.subarray(0x10000+(y*8+x)*4,0x10000+(y*8+x)*4+4)];
             const expected=x>=2&&x<6&&y>=2&&y<6?(y<4?x<4?[0,0,255,255]:[0,255,0,255]:x<4?[255,0,0,255]:[255,255,255,255]):[0,0,0,0];
@@ -460,7 +460,7 @@ try
         const savedAlphaProgram=vram.slice(0x9000,0x9040);
         [385916544,480102417,116736,116736,20987522,480102406,116736,116736,
             ...Array(4).fill(0x3F800000),37756545,480102660,116992,116736].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
-        for(const [at,value]of [[0x208,0x144],[0x304,1],[0x308,0x204],[0x30C,2],[0x310,1],
+        for(const [at,value] of [[0x208,0x144],[0x304,1],[0x308,0x204],[0x30C,2],[0x310,1],
             [0x314,0x10051005],[0x318,0x10061006],[0x320,0x10001],[0x1A08,0x30303]])method(at,value);
         for(const alpha of [0,1,2,3,128,255])
         {
@@ -500,7 +500,7 @@ try
         console.log("PASS: real WebGPU native RGB sRGB conversion, preserved alpha and filtering in linear space");
         method(0x1A04,0x12519);method(0x1A18,2<<16);method(0x1840,8);method(0x1A08,0x403);method(0x1A14,0x01010000);
         vram.set([0,0,255,255,255,0,0,255],0x20000);
-        for(const [opcode,coordinate,expected]of [[23,[.25,99,0,2],[0,0,255,255]],
+        for(const [opcode,coordinate,expected] of [[23,[.25,99,0,2],[0,0,255,255]],
             [24,[1.5,-99,0,2],[255,0,0,255]]])
         {
             [opcode<<24|128|15<<9|1,7<<18|0x1C802,0,0,...new Uint32Array(Float32Array.from(coordinate).buffer)]
@@ -527,7 +527,7 @@ try
         // Distinct solid levels expose derivative LOD, signed sampler bias and
         // trilinear interpolation without depending on checkerboard placement.
         let mipOffset=0x20000;
-        for(const [size,color]of [[8,[0,0,255,255]],[4,[0,255,0,255]],[2,[255,0,0,255]],[1,[255,255,255,255]]])
+        for(const [size,color] of [[8,[0,0,255,255]],[4,[0,255,0,255]],[2,[255,0,0,255]],[1,[255,255,255,255]]])
         {
             for(let i=0;i<size*size;i++)vram.set(color,mipOffset+i*4);
             mipOffset+=size*size*4;
@@ -550,7 +550,7 @@ try
         method(0x1A0C,0x80004000);await mipDraw(0x01050000,[0,128,128,255]);
         console.log("PASS: real WebGPU mip derivative selection, positive/negative LOD bias, minimum level and trilinear filtering");
         method(0x1A18,4<<16|4);method(0x1A0C,0x80000000);
-        for(const [format,bytes,expected]of [
+        for(const [format,bytes,expected] of [
             [0x10629,[0,0xF8,0x1F,0,0xAA,0xAA,0xAA,0xAA],[85,0,170,255]],
             [0x10729,[...Array(8).fill(0x88),0,0xF8,0,0,0,0,0,0],[0,0,255,136]],
             [0x10829,[128,0,0,0,0,0,0,0,0,0xF8,0,0,0,0,0,0],[0,0,255,128]]])
@@ -559,7 +559,7 @@ try
         }
         console.log("PASS: real WebGPU BC1/BC2/BC3 sampled colors, component routing and alpha");
         const operand=swizzle=>2|swizzle.reduce((bits,value,i)=>bits|value<<(9+i*2),0),identity=[0,1,2,3],reverse=[3,2,1,0];
-        for(const [opcode,swizzle,expected]of [[12,reverse,[0,255,255,0]],[13,reverse,[255,0,0,255]],
+        for(const [opcode,swizzle,expected] of [[12,reverse,[0,255,255,0]],[13,reverse,[255,0,0,255]],
             [15,identity,[255,255,255,255]],[15,reverse,[0,0,0,0]],[14,identity,[0,0,0,0]],[14,reverse,[255,255,255,255]],
             [32,identity,[255,255,255,255]],[33,identity,[0,0,0,0]],[58,[1,1,1,1],[255,255,128,255]],[46,reverse,[153,153,153,153]],
             [56,identity,[51,51,51,51]],[56,reverse,[102,102,102,102]]])
@@ -573,7 +573,7 @@ try
             expected.forEach((value,i)=>assert(Math.abs(pixel[i]-value)<=1,"native ALU opcode "+opcode+" component "+i+": "+pixel));
         }
         console.log("PASS: real WebGPU native SLE/SGT/SEQ/SNE/STR/SFL/DIV/DP2/DP2A instruction pixels");
-        for(const [at,value]of [[0x18C,0x100],[0x1B4,0x100],[0x1B8,0x100],[0x218,0x30000],[0x288,0x31000],
+        for(const [at,value] of [[0x18C,0x100],[0x1B4,0x100],[0x1B8,0x100],[0x218,0x30000],[0x288,0x31000],
             [0x28C,0x60000],[0x21C,32],[0x280,32],[0x284,32],[0x220,0x1F],[0x370,0xFFF0]])method(at,value);
         const mrtColors=[[1,0,0,1],[0,1,0,1],[0,0,1,1],[1,1,0,.5]],mrtOffsets=[0x10000,0x30000,0x31000,0x60000];
         const mrtDraw=async(full=false)=>{
@@ -588,10 +588,10 @@ try
             method(0x1808,0);await engine.backend.wait();
         };
         await mrtDraw();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
-        for(const [index,expected]of [[0,[0,0,255,255]],[1,[0,255,0,255]],[2,[255,0,0,255]],[3,[0,255,255,128]]])
+        for(const [index,expected] of [[0,[0,0,255,255]],[1,[0,255,0,255]],[2,[255,0,0,255]],[3,[0,255,255,128]]])
             assert.deepEqual([...vram.subarray(mrtOffsets[index],mrtOffsets[index]+4)],expected,"MRT color "+index);
         await mrtDraw(true);
-        for(const [index,expected]of [[0,[0,0,255,255]],[1,[0,255,0,255]],[2,[255,0,0,255]],[3,[0,255,255,128]]])
+        for(const [index,expected] of [[0,[0,0,255,255]],[1,[0,255,0,255]],[2,[255,0,0,255]],[3,[0,255,255,128]]])
             assert.deepEqual([...vram.subarray(mrtOffsets[index],mrtOffsets[index]+4)],expected,"FP32 MRT color "+index);
         const rejectFloatTarget=reason=>{
             const draws=engine.backend.stats.draws;
@@ -648,11 +648,11 @@ try
         };
         await fp16Draw([-.5,.25,2,.5]);
         assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,4)],[0xB800,0x3400,0x4000,0x3800],"FP16 target preserves negative and HDR channels in VRAM");
-        for(const [at,value]of [[0x310,1],[0x314,0x00010001],[0x318,0x00010001],[0x320,0x80068006]])method(at,value);
+        for(const [at,value] of [[0x310,1],[0x314,0x00010001],[0x318,0x00010001],[0x320,0x80068006]])method(at,value);
         await fp16Draw([.5,.25,-1,.5]);
         assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,4)],[0,0x3800,0x3C00,0x3C00],"FP16 additive blending uses the previously downloaded target");
         method(0x310,0);
-        for(const [at,value]of [[0x1A04,0x13A29],[0x1A18,2<<16|1],[0x1A10,0xAA6C],[0x1A14,0x02020000],[0x1840,16]])method(at,value);
+        for(const [at,value] of [[0x1A04,0x13A29],[0x1A18,2<<16|1],[0x1A10,0xAA6C],[0x1A14,0x02020000],[0x1840,16]])method(at,value);
         new Uint16Array(vram.buffer,0x20000,8).set([0x4000,0xBC00,0x3800,0x3400,0x4400,0x3C00,0x3C00,0x3A00]);
         [23<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
         method(0x1808,6);
@@ -660,7 +660,7 @@ try
         method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
         assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,4)],[0x4200,0,0x3A00,0x3800],"bilinear FP16 texture sampling retains HDR and signed values");
         console.log("PASS: real WebGPU FP16 render targets, additive blending, exact VRAM half bits and HDR bilinear textures");
-        for(const [at,value]of [[0x1A04,0x13429],[0x1A18,2<<16|1],[0x1A10,0xA9EE],[0x1A14,0x02020000],[0x1840,4]])method(at,value);
+        for(const [at,value] of [[0x1A04,0x13429],[0x1A18,2<<16|1],[0x1A10,0xA9EE],[0x1A14,0x02020000],[0x1840,4]])method(at,value);
         new Uint16Array(vram.buffer,0x20000,2).set([0,65535]);
         method(0x1808,6);
         for(const word of new Uint32Array(Float32Array.of(0,0,.5,.5,0,16,.5,.5,16,0,.5,.5).buffer))method(0x1818,word);
@@ -681,7 +681,7 @@ try
         method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
         assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,4)],[0,0,0x3C00,0x3C00],"native signed L/A filter across zero and preserve crossbar one constants");
         console.log("PASS: real WebGPU signed normalized byte pairs, native B/G aliases and bilinear filtering");
-        for(const [code,values,expected]of [[27,[2,-1,.5,.25],[0x4000,0xBC00,0x3800,0x3400]],
+        for(const [code,values,expected] of [[27,[2,-1,.5,.25],[0x4000,0xBC00,0x3800,0x3400]],
             [28,[.5],[0x3800,0,0,0x3C00]]])
         {
             method(0x1A04,0x12029|code<<8);method(0x1A10,0xAA6C);method(0x1A14,0x01010000);
@@ -696,7 +696,7 @@ try
         method(0x208,0x148);method(0x20C,32);method(0x1FC4,0x06144321);method(0x1FF4,(1<<14)|(1<<4));
         [1<<24|3<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800]
             .forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
-        for(const [mode,coordinate,constant,linear,factor]of [[0x2601,.25,1,1,.25],[0x2601,.75,1.5,-1,0],
+        for(const [mode,coordinate,constant,linear,factor] of [[0x2601,.25,1,1,.25],[0x2601,.75,1.5,-1,0],
             [0x2601,.25,1.5,3,1],[0x804,-.25,1,2,.5],
             [0x800,.5,1.5,-1/16,Math.SQRT1_2],[0x802,-.5,1.5,-1/16,Math.SQRT1_2],
             [0x801,.5,1.5,.25,Math.SQRT1_2],[0x803,-.5,1.5,.25,Math.SQRT1_2],
@@ -745,13 +745,13 @@ try
             ...fpLiteral(1,false,[new Float32Array(Uint32Array.of(0x7fff3800).buffer)[0],0,0,0]),
             ...fpMove(0,false,1,false),...fpLiteral(0,true,[0,1,.25,.75],{mask:14,end:true})]),[64,255,128,191],
             "raw MOV preserves NaN payload bits across full/half aliases");
-        for(const [value,expected]of [[2**-24,255],[2**-25,0],[2**-25+2**-35,255]])
+        for(const [value,expected] of [[2**-24,255],[2**-25,0],[2**-25+2**-35,255]])
         {
             const multiply=[2<<24|128|15<<9|1,7<<18|0x1C900,0x1C802,0,...new Uint32Array(Float32Array.of(2**24,2**24,2**24,2**24).buffer)];
             assert.deepEqual(await conditionalDraw([...fpLiteral(0,true,Array(4).fill(value)),...multiply]),Array(4).fill(expected),
                 "FP16 subnormal rounding " + value);
         }
-        for(const [value,expected]of [[1+2**-11,0],[1+3*2**-11,255]])
+        for(const [value,expected] of [[1+2**-11,0],[1+3*2**-11,255]])
         {
             const add=[3<<24|128|15<<9,7<<18|0x1C900,0x1C802,0,...new Uint32Array(Float32Array.of(-1,-1,-1,-1).buffer)];
             const scale=[2<<24|128|15<<9|1,7<<18|0x1C900,0x1C802,0,...new Uint32Array(Float32Array.of(512,512,512,512).buffer)];
@@ -766,7 +766,7 @@ try
         const fpPacked=(opcode,destination,half,source,{swizzle=[0,1,2,3],mask=15,condition=7,end=false}={})=>[
             (opcode<<24|destination<<1|+half<<7|mask<<9|+end)>>>0,
             source<<2|swizzle.reduce((bits,value,i)=>bits|value<<(9+i*2),0)|condition<<18,0,0];
-        for(const [pack,unpack,values,expected]of [
+        for(const [pack,unpack,values,expected] of [
             [36,37,[.25,.75,0,0],[64,191,64,191]],
             [41,42,[.25,1,0,0],[64,255,64,255]],
             [39,40,[.25,.5,1,127/255],[255,128,64,127]],
@@ -791,14 +791,14 @@ try
             ...fpPacked(40,0,true,3,{mask:5,end:true})]),[64,128,255,128],
             "pack and unpack honor masks and per-component predicates");
         console.log("PASS: real WebGPU all pack/unpack formats, biased signed bytes, replication, raw NaN payloads and predicates");
-        for(const [values,expected]of [
+        for(const [values,expected] of [
             [[.9,.5,.8,-2],[64,128,255,255]],[[.9,0,.8,-2],[0,0,255,255]],
             [[.9,-.5,.8,1],[0,0,255,255]],[[0,.25,0,0],[255,64,255,255]]])
             assert.deepEqual(await conditionalDraw([
                 0x3C<<24|128|15<<9|1,7<<18|0x1C802,0,0,...new Uint32Array(Float32Array.from(values).buffer)]),expected,
                 "native LITEX2 uses Y/W and suppresses specular for nonpositive diffuse");
         console.log("PASS: real WebGPU native LITEX2 diffuse/specular final lighting stage");
-        for(const [values,expected]of [[[3,4,0,NaN],[0,204,153,64]],[[-3,4,0,Infinity],[0,204,0,64]]])
+        for(const [values,expected] of [[[3,4,0,NaN],[0,204,153,64]],[[-3,4,0,Infinity],[0,204,0,64]]])
             assert.deepEqual(await conditionalDraw([
                 ...fpLiteral(0,true,[0,0,0,.25]),0x39<<24|128|7<<9|1,7<<18|0x1C802,0,0,
                 ...new Uint32Array(Float32Array.from(values).buffer)]),expected,
@@ -852,7 +852,7 @@ try
             ...ccInstruction([.25,.25,.25,.25]),...ccInstruction([-1,.5,2,NaN],{update:true,disabled:true,saturate:true}),
             ...ccInstruction([.75,.75,.75,.75],{condition:5,end:true})]);
         assert.deepEqual(saturated,[191,191,64,64],"CC classification follows result saturation, including NaN to zero");
-        for(const [component,killed]of [[1,false],[0,true]])
+        for(const [component,killed] of [[1,false],[0,true]])
         {
             for(let at=0x10000;at<0x10100;at+=4)vram.set([13,17,19,23],at);
             const pixel=await conditionalDraw([...ccInstruction([1,1,1,1]),
@@ -861,7 +861,7 @@ try
             assert.deepEqual(pixel,killed?[13,17,19,23]:[255,255,255,255],"KIL tests swizzled condition codes");
         }
         console.log("PASS: real WebGPU all fragment conditions, NaN/unordered, masked CC updates, saturation and conditional discard");
-        for(let read=0;read<2;read++)for(let condition=0;condition<8;condition++)
+        for(let read=0;read<2;read++) for(let condition=0;condition<8;condition++)
         {
             const values=[[-1,0,1,NaN],[1,-1,0,NaN]],pixel=await conditionalDraw([
                 ...ccInstruction([.25,.25,.25,.25]),
@@ -948,7 +948,7 @@ try
         console.log("PASS: real WebGPU fragment calls, conditional/empty returns, callee END and bounded recursion");
 
         method(0x1FF4,1<<14);method(0xA74,1);method(0xA70,0);method(0xA6C,8);
-        for(const [at,value]of [[0x1A04,0x12529],[0x1A18,1<<16|1],[0x1A10,0xAAE4],[0x1A14,0x01010000],[0x1840,4]])method(at,value);
+        for(const [at,value] of [[0x1A04,0x12529],[0x1A18,1<<16|1],[0x1A10,0xAAE4],[0x1A14,0x01010000],[0x1840,4]])method(at,value);
         [23<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
         for(let frame=0;frame<70;frame++)
         {
@@ -962,9 +962,9 @@ try
         console.log("PASS: real WebGPU color/depth attachments survive 70 rotating textures in the bounded resource cache");
         const cubeColors=[[0,0,255,255],[0,255,0,255],[255,0,0,255],[0,255,255,255],[255,0,255,255],[255,255,0,255]],
             directions=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
-        for(const [at,value]of [[0x1A00,0x50000],[0x1A04,0x1052D],[0x1A18,1<<16|1],[0x1760,0x1032]])method(at,value);
+        for(const [at,value] of [[0x1A00,0x50000],[0x1A04,0x1052D],[0x1A18,1<<16|1],[0x1760,0x1032]])method(at,value);
         cubeColors.forEach((color,face)=>vram.set(color,0x50000+face*128));
-        for(const [face,direction]of directions.entries())
+        for(const [face,direction] of directions.entries())
         {
             method(0x1808,6);
             for(const word of new Uint32Array(Float32Array.of(0,0,...direction,0,16,...direction,16,0,...direction).buffer))method(0x1818,word);
@@ -983,11 +983,11 @@ try
             method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
             return [...vram.subarray(0x10000,0x10004)];
         };
-        for(const [corner,direction]of [[1,.5,.5],[1,.5,-.5],[1,-.5,.5],[1,-.5,-.5]].entries())
+        for(const [corner,direction] of [[1,.5,.5],[1,.5,-.5],[1,-.5,.5],[1,-.5,-.5]].entries())
             assert.deepEqual(await cubeDraw(direction),cubeColors[corner],"cube +X face coordinate orientation "+corner);
         [47<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
         method(0x1A14,0x01030000);
-        for(const [face,direction]of directions.entries())
+        for(const [face,direction] of directions.entries())
             assert.deepEqual(await cubeDraw(direction),cubeColors[5-face],"explicit cube mip retains guest face alignment "+face);
         method(0x1A14,0x01010000);vram.set(cubeColors[4],0x50008);const beforePartialCube=engine.backend.stats.uploadBytes;
         assert.deepEqual(await cubeDraw([1,-.5,.5]),cubeColors[4],"partial cube upload changes the selected face row");
@@ -997,7 +997,7 @@ try
         vram.set(cubeColors[2],0x50008);method(0x1A14,0x01030000);
         console.log("PASS: real WebGPU NV cubemap face directions, coordinate orientation and per-face mip chains");
 
-        for(const [at,value]of [[0x1A00,0x60000],[0x1A04,0x20539],[0x1840,2<<20],[0x1A08,0x30303],[0x1A14,0x01010000]])method(at,value);
+        for(const [at,value] of [[0x1A00,0x60000],[0x1A04,0x20539],[0x1840,2<<20],[0x1A08,0x30303],[0x1A14,0x01010000]])method(at,value);
         for(let pixel=0;pixel<8;pixel++)vram.set(cubeColors[pixel<4?0:2],0x60000+pixel*4);
         vram.set(cubeColors[3],0x60020);
         [23<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
@@ -1031,13 +1031,13 @@ try
             method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
             return [...vram.subarray(0x10000,0x10004)];
         };
-        for(const [code,bpp,word]of [[16,4,0x8000005A],[18,2,0x8000]])
+        for(const [code,bpp,word] of [[16,4,0x8000005A],[18,2,0x8000]])
         {
-            for(const [at,value]of [[0x1A00,0x70000],[0x1A04,0x12021|code<<8],[0x1A18,1<<16|1],[0x1840,bpp],
+            for(const [at,value] of [[0x1A00,0x70000],[0x1A04,0x12021|code<<8],[0x1A18,1<<16|1],[0x1840,bpp],
                 [0x1A0C,0x80000000],[0x1A14,0x01010000]])method(at,value);
             if(bpp===4)view.setUint32(0x70000,word,true);else view.setUint16(0x70000,word,true);
             const depth=Math.fround(bpp===4?(word>>>8)/0xFFFFFF:word/65535);
-            for(let compare=0;compare<8;compare++)for(const reference of [.25,depth,.75])
+            for(let compare=0;compare<8;compare++) for(const reference of [.25,depth,.75])
             {
                 method(0x1A08,compare<<28|0x303);
                 assert.deepEqual(await shadowDraw(reference),Array(4).fill(compareTests[compare](reference,depth)?255:0),
@@ -1056,7 +1056,7 @@ try
         // Feed decoded VLIW programs through the actual GPU, retaining native
         // fetch, interpolators and fragment exports around vertex predicates.
         for(let attribute=0;attribute<16;attribute++)method(0x1740+attribute*4,attribute?0:0x42);
-        for(const [at,value]of [[0x1E94,0x101],[0xA74,0],[0x328,0],[0x8C0,8<<16],[0x8C4,8<<16],[0x1FF4,1]])method(at,value);
+        for(const [at,value] of [[0x1E94,0x101],[0xA74,0],[0x328,0],[0x8C0,8<<16],[0x8C4,8<<16],[0x1FF4,1]])method(at,value);
         [1<<24|1<<13|15<<9|128|1,7<<18|0x1C801,0,0].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
         method(0x1EFC,0);
         [...new Uint32Array(Float32Array.of(-1,0,1,NaN,.25,.25,.25,.25,.75,.75,.75,.75).buffer)].forEach((word,i)=>method(0x1F00+(i%4)*4,word));
@@ -1074,7 +1074,7 @@ try
             method(0x1EFC,0);
             new Uint32Array(Float32Array.of(.5,.5,.5,.5,-1,-1,-1,-1).buffer)
                 .forEach((word,i)=>method(0x1F00+(i%4)*4,word));
-            for(const [semantic,input]of [[1,1],[2,2],[7,4]])
+            for(const [semantic,input] of [[1,1],[2,2],[7,4]])
             {
                 vertexRoutes=[[0,0,-1,true],[semantic,1,-1,true]];
                 // Native MUL of the interpolated value by 1/4 makes values
@@ -1088,7 +1088,7 @@ try
                 // Endpoint values are -1 and 3. Clamp each color endpoint
                 // before interpolation. This decoded test position samples
                 // at x+0.5: the color at x=1 is (1.5/8)/4.
-                for(const [x,color,texture]of [[1,12,0],[6,52,143]])
+                for(const [x,color,texture] of [[1,12,0],[6,52,143]])
                 {
                     const pixel=[...vram.subarray(0x10000+x*4,0x10000+(x+1)*4)];
                     assert.deepEqual(pixel,Array(4).fill(semantic===7?texture:color),"routed interpolator "+semantic+" clamps before interpolation only for colors at "+x);
@@ -1110,12 +1110,12 @@ try
             for(let unit=0;unit<4;unit++)
             {
                 const at=0x900+unit*32,offset=0x80000+unit*128;
-                for(const [field,value]of [[0,offset],[4,0x1BB21],[8,0x303],[12,0x80000000],[16,16],[20,0],[24,1<<16|1]])method(at+field,value);
+                for(const [field,value] of [[0,offset],[4,0x1BB21],[8,0x303],[12,0x80000000],[16,16],[20,0],[24,1<<16|1]])method(at+field,value);
                 vram.set(new Uint8Array(Float32Array.of(.25,unit/4,.75,1).buffer),offset);
                 assert.deepEqual(await vertexTextureDraw(unit,[.5,.5,0,0]),[191,Math.round(unit/4*255),64,255],
                     "vertex texture unit " + unit + " uses independent RGBA32F storage and vertex sampler binding");
             }
-            for(const [at,value]of [[0x904,0x2BC11],[0x910,12],[0x918,2<<16|1],[0x90C,0x80008000]])method(at,value);
+            for(const [at,value] of [[0x904,0x2BC11],[0x910,12],[0x918,2<<16|1],[0x90C,0x80008000]])method(at,value);
             vram.set(new Uint8Array(Float32Array.of(.25,.75,123,.5).buffer),0x80000);
             assert.deepEqual(await vertexTextureDraw(0,[.75,999,0,0]),[0,0,191,255],"1D R32F ignores Y and supplies zero G/B and one alpha");
             assert.deepEqual(await vertexTextureDraw(0,[.75,999,0,1]),[0,0,128,255],"vertex TXL W selects the padded mip level");
@@ -1127,7 +1127,7 @@ try
             console.log("PASS: real WebGPU four vertex samplers, RGBA32F/R32F, 1D coordinates, explicit LOD, bias and fractional clamp");
             method(0x1EFC,0);
             [...new Uint32Array(Float32Array.of(.25,.5,0,2).buffer)].forEach((word,i)=>method(0x1F00+i*4,word));
-            for(const [name,swizzle,expected]of [["MOV",[0,1,2,3],[0,128,64,255]],
+            for(const [name,swizzle,expected] of [["MOV",[0,1,2,3],[0,128,64,255]],
                 ["LIT",[0,1,2,3],[64,64,255,255]],["LIT",[1,0,2,3],[16,128,255,255]]])
             {
                 const position=structuredClone(base),color=structuredClone(base);
@@ -1138,7 +1138,7 @@ try
                 method(0x1808,0);await engine.backend.wait();
                 assert.deepEqual([...vram.subarray(0x10000,0x10004)],expected,"scalar-slot "+name+" retains vector source swizzle");
             }
-            for(const [name,value,scale,bias,expected]of [
+            for(const [name,value,scale,bias,expected] of [
                 ["EXP",-.25,[1,1,1,1],0,[214,191,128,255]],
                 ["LOG",-3,[.5,.5,.25,1],0,[101,191,128,255]],
                 ["LOG",1.9999998807907104,[1,.25,.5,1],0,[127,127,0,255]],
@@ -1184,7 +1184,7 @@ try
             }
             method(0x1EFC,0);
             [...new Uint32Array(Float32Array.of(-1,0,1,NaN,.25,.25,.25,.25,.75,.75,.75,.75).buffer)].forEach((word,i)=>method(0x1F00+(i%4)*4,word));
-            for(let register=0;register<2;register++)for(let condition=0;condition<8;condition++)
+            for(let register=0;register<2;register++) for(let condition=0;condition<8;condition++)
             {
                 const position=structuredClone(base),update=structuredClone(base),initial=structuredClone(base),conditional=structuredClone(base);
                 update.vector={name:"MOV",type:"temp",index:0,mask:15};update.sources[0]={...update.sources[0],type:"constant",index:0};
@@ -1214,7 +1214,7 @@ try
                 method(0x1808,0);await engine.backend.wait();
                 assert.deepEqual([...vram.subarray(0x10000,0x10004)],Array(4).fill(vector?64:191),"CDST selects the original vector/scalar VLIW result");
             }
-            for(const [name,value,baseIndex,relativeInput,expected,component=0]of [
+            for(const [name,value,baseIndex,relativeInput,expected,component=0] of [
                 ["ARL",1.75,1,false,Array(4).fill(191)],["ARR",1.75,1,false,Array(4).fill(128)],
                 ["ARL",-.25,3,false,Array(4).fill(191)],["ARR",-.25,3,false,Array(4).fill(128)],
                 ["ARL",300,200,false,[128,255,0,255]],["ARL",1.75,1,true,[128,0,255,255]],
@@ -1234,7 +1234,7 @@ try
                 method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
                 assert.deepEqual([...vram.subarray(0x10000,0x10004)],expected,name+" relative "+(relativeInput?"attribute":"constant")+" value "+value);
             }
-            for(const [values,component,mask,expected]of [
+            for(const [values,component,mask,expected] of [
                 [[1,2,1,1],1,15,191],[[1,2,1,1],1,1,64],[[400,0,400,0],0,15,128]])
             {
                 method(0x1EFC,0);[...new Uint32Array(Float32Array.of(...values,.25,.25,.25,.25,.25,.25,.25,.25,.75,.75,.75,.75).buffer)]
@@ -1309,7 +1309,7 @@ try
                 flowInstruction(11,"CAL",15),white(12),terminal(13),flowInstruction(15,"RET")],0);
             await flowDraw([position,black(1),...Array.from({length:9},(_,i)=>addressPush(2+i)),white(11),terminal(12)],0);
             method(0x1EFC,7);[...new Uint32Array(Float32Array.of(-2,-2,-2,-2).buffer)].forEach((word,i)=>method(0x1F00+i*4,word));
-            for(const [baseIndex,constant,mask,condition,expected]of [[0,4,15,7,128],[15,4,15,7,64],
+            for(const [baseIndex,constant,mask,condition,expected] of [[0,4,15,7,128],[15,4,15,7,64],
                 [1,7,15,7,64],[0,4,1,7,[64,64,128,64]],[0,4,15,0,64]])
             {
                 const indexedColor=instruction(3,"MOV",baseIndex,"output",2);indexedColor.vector.mask=mask;
@@ -1339,7 +1339,7 @@ try
         queuedDraw();queuedDraw();queue(0x50,0x76543210);
         const start=device.registers.get(0x3270)||0;
         queued.forEach(([at,value],i)=>{const slot=(start+i*4)&0xFFC,offset=0x90000+(slot&0x7FC)*2;device.registers.set(offset,at);device.registers.set(offset+4,value);});
-        for(const [at,value]of [[0x3210,(start+queued.length*4)&0xFFC],[0x3240,0],[0x3244,0],[0x3248,0],[0x3228,0],[0x322C,0x100],
+        for(const [at,value] of [[0x3210,(start+queued.length*4)&0xFFC],[0x3240,0],[0x3244,0],[0x3248,0],[0x3228,0],[0x322C,0x100],
             [0x3200,1],[0x3220,1],[0x2504,1],[0x2508,1],[0x3254,0]])device.registers.set(at,value);
         const beforeBatch={...engine.backend.stats};device.fifo.run();
         assert.equal(engine.backend.stats.draws-beforeBatch.draws,2);assert.equal(engine.backend.stats.batches-beforeBatch.batches,1);
@@ -1378,7 +1378,7 @@ try
         const uploadMethod=(at,value)=>graph.method(0,1,0x5000,at,value);
         const savedUploadProgram=vram.slice(0x9000,0x9040);
         method(0x8E4,0x9001);method(0x1A0C,0);
-        for(const [at,value]of [[0x208,0x148],[0x214,0x24000],[0x22C,32],[0xA74,1],[0xA70,0],[0xA6C,2],[0x328,0]])method(at,value);
+        for(const [at,value] of [[0x208,0x148],[0x214,0x24000],[0x22C,32],[0xA74,1],[0xA70,0],[0xA6C,2],[0x328,0]])method(at,value);
         vram.fill(255,0x24000,0x24100);
         [0x01001E81,0x001DC802,0,0,...Array(4).fill(floatWord(.25))].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
         vram.fill(0,0x10000,0x10100);
@@ -1492,7 +1492,7 @@ try
         method(0x310,0);method(0x8E4,0x9001);vram.fill(0,0x10000,0x10100);
         [23<<24|1<<13|15<<9|128|1,7<<18|0x1C801,0,0].forEach((word,i)=>view.setUint32(0x9100+i*4,word,true));
         queued.length=0;queuedDraw();
-        for(const [at,value]of [[0x8E4,0x9101],[0x1A00,0x10000],[0x1A04,0x12529],[0x1A08,0x303],[0x1A0C,0x80000000],
+        for(const [at,value] of [[0x8E4,0x9101],[0x1A00,0x10000],[0x1A04,0x12529],[0x1A08,0x303],[0x1A0C,0x80000000],
             [0x1A10,0xAAE4],[0x1A14,0x01010000],[0x1A18,8<<16|8],[0x1840,32]])queue(at,value);
         queuedDraw();queue(0x50,0x11223344);
         const feedbackStart=device.registers.get(0x3270),beforeFeedback={...engine.backend.stats};
@@ -1508,7 +1508,7 @@ try
         const loopVertex={stage:"vertex",instructions:[loopPosition,...loopValues.map((_,index)=>{
             const i=structuredClone(base);i.vector.index=7+index;i.sources[0]={...i.sources[0],type:"constant",index};return i;
         })]};
-        method(0x1EFC,0);for(const value of loopValues)for(let component=0;component<4;component++)method(0x1F00+component*4,floatWord(value));
+        method(0x1EFC,0);for(const value of loopValues) for(let component=0;component<4;component++)method(0x1F00+component*4,floatWord(value));
         engine.shaders=function(o,options){return {...loopShaders.call(this,o,options),vertex:translate_vertex_program(loopVertex,
             {...options,result_map:[[0,0,-1,true],...loopValues.map((_,index)=>[7+index,7+index,-1,true]) ]})};};
         const indexedMove=offset=>[1<<24|15<<9|128,7<<18|0x1C801,0,0x40000000|offset<<19];
@@ -1521,7 +1521,7 @@ try
         };
         try
         {
-            for(const [initial,step,offset]of [[1,1,0],[0,1,1],[0,2,0]])
+            for(const [initial,step,offset] of [[1,1,0],[0,1,1],[0,2,0]])
                 assert.deepEqual(await indexedDraw([...ccInstruction([0,0,0,0]),...loopHeader(2,initial,step,16),
                     ...indexedMove(offset),1,7<<18,0,0]),Array(4).fill(128),"LOOP initial/index step and relative TEX offset");
             assert.deepEqual(await indexedDraw([...ccInstruction([0,0,0,0]),...loopHeader(2,0,1,24),
@@ -1532,8 +1532,7 @@ try
         console.log("PASS: real WebGPU fragment LOOP counters, indexed texture attributes and nested index restoration");
 
 
-
     }
     console.log("PASS: NV40 primitive expansion, partial draw snapshot, GPU readback ordering and delayed fence"+(remote?"; real WebGPU pixels matched":""));
 }
-finally {if(remote)await remote.close();}
+finally {if(remote) await remote.close();}

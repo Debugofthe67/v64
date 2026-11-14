@@ -109,7 +109,7 @@ jobs:
         with:
           node-version: '24.17.0'
       - name: Native guest-test toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang gcc-mingw-w64-i686
+        run: sudo apt-get update && sudo apt-get install -y clang gcc-mingw-w64-i686 xvfb
       - name: Cache naga
         id: naga
         uses: actions/cache@v5
@@ -124,13 +124,19 @@ jobs:
         env:
           GL_CHROME: /usr/bin/google-chrome
           GL_SWIFTSHADER: '1'
+          GL_HEADFUL: '1'
         run: |
+          set -o pipefail
           mkdir -p build/browser-test-output
-          make d3d-review-gpu-tests | tee build/browser-test-output/d3d-review-ci.log
+          xvfb-run -a make d3d-review-gpu-tests | tee build/browser-test-output/d3d-review-ci.log
       - name: Execute guest-side protocol and API fixtures
         working-directory: retro-gaming-site
         env:
           V86_ROOT: ${{ github.workspace }}/v86
+          # Match the native Clang fixture builds used by the local ABI gate;
+          # D9WG_CC still selects MinGW for Windows SDK preprocessing.
+          HOST_CC: clang
+          CC_HOST: clang
         run: |
           for test in glbridge/tests/*_test.js; do node "$test" || exit 1; done
       - name: Retain browser evidence

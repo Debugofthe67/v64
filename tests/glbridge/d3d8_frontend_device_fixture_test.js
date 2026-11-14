@@ -18,18 +18,18 @@ const assert=require("node:assert/strict"),fs=require("node:fs"),path=require("n
         [P.OP.READBACK_SURFACE,["device_handle","texture_handle","request_id","width","height","destination_pitch","destination_bytes","format","level","face"]],
         [P.OP.DESTROY_RESOURCE,["resource_handle","resource_kind"]],
     ]);
-    for(let at=0;at<bytes.length;) {
+    for (let at=0;at<bytes.length;) {
         const size=bytes.readUInt32LE(at+8),packet=at+20,end=at+12+size;
         mutations.add(at);mutations.add(at+8);mutations.add(packet+P.F.BatchHeader.command_count);
-        for(let x=packet+32;x<end;) {
+        for (let x=packet+32;x<end;) {
             const op=bytes.readUInt16LE(x),n=bytes.readUInt32LE(x+4),kind=P.commandStruct(op);
-            if(fields.has(op))for(const field of fields.get(op))mutations.add(x+16+P.F[kind][field]);
-            if(P.F[kind]&&"device_handle"in P.F[kind])mutations.add(x+16+P.F[kind].device_handle);
+            if (fields.has(op)) for (const field of fields.get(op))mutations.add(x+16+P.F[kind][field]);
+            if (P.F[kind]&&"device_handle"in P.F[kind])mutations.add(x+16+P.F[kind].device_handle);
             x+=n;
         }
         at=end;
     }
-    for(const offset of mutations){const changed=Buffer.from(bytes);changed[offset]^=0x40;assert.throws(()=>inspect(changed,result),undefined,"corruption at "+offset);}
+    for (const offset of mutations){const changed=Buffer.from(bytes);changed[offset]^=0x40;assert.throws(()=>inspect(changed,result),undefined,"corruption at "+offset);}
     assert.throws(()=>inspect(bytes,{...result,releases:[]}));
     assert.throws(()=>inspect(bytes,{...result,logs:{"DEVICE8.TXT":""}}));
     assert.throws(()=>inspect(bytes.subarray(0,bytes.length-1),result));

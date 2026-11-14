@@ -30,7 +30,7 @@ while(carrier<bytes.length){
    const first=name==="GUEST_LOG"?payload+P.STRUCTS.GuestLog.size:value.data_offset,count=name==="GUEST_LOG"?value.text_bytes:value.data_bytes;
    assert(first>=payload&&first+count<=at+length);
    const keep=name==="UPDATE_TEXTURE"&&procedural_textures.has(value.resource_handle)&&value.width===2&&value.height===2&&value.row_pitch===8&&count===16&&packet.subarray(first,first+count).equals(expected_texels);
-   if(keep)preserved++;else{bytes.fill(0,start+first,start+first+count);removed.push({command:name,bytes:count});}
+   if(keep)preserved++;else {bytes.fill(0,start+first,start+first+count);removed.push({command:name,bytes:count});}
   }
   if(name==="PRESENT")frames++;
   at+=length;

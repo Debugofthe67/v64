@@ -5,8 +5,8 @@ const require=createRequire(import.meta.url),P=require("../../src/browser/glbrid
 const dim=(n,l)=>Math.max(1,n>>>l);
 function uploads(scene,role){
  const shape=role===0?scene.source:scene.destination,result=[];
- function append(sentinel,skip,levels){for(let face=0;face<(scene.kind===1?6:1);face++)for(let mip=0;mip<levels;mip++)for(let z=0;z<(scene.kind===2?dim(shape.depth,mip):1);z++)result.push({mip,face,z,width:dim(shape.width,mip),height:dim(shape.height,mip),color:sentinel?reference.sentinelARGB:reference.paletteARGB[(mip+skip+(scene.kind===1?face:scene.kind===2?z:0))%6]});}
- if(role===1){append(true,0,shape.levels);append(false,scene.sourceSkip,scene.copyLevels);}else append(role===2,0,shape.levels);return result;
+ function append(sentinel,skip,levels){for(let face=0;face<(scene.kind===1?6:1);face++) for(let mip=0;mip<levels;mip++) for(let z=0;z<(scene.kind===2?dim(shape.depth,mip):1);z++)result.push({mip,face,z,width:dim(shape.width,mip),height:dim(shape.height,mip),color:sentinel?reference.sentinelARGB:reference.paletteARGB[(mip+skip+(scene.kind===1?face:scene.kind===2?z:0))%6]});}
+ if(role===1){append(true,0,shape.levels);append(false,scene.sourceSkip,scene.copyLevels);} else append(role===2,0,shape.levels);return result;
 }
 export function inspect_texture_copy_wire(bytes,result){
  const summaries=new Map(result.owners.map((owner,i)=>[owner,{owner,api:[8,9][i],frames:0,textures:0,releasedTextures:0,updates:0,uploadedBytes:0}])),resources=new Map(),bindings=new Map(),pending=new Set(),frames=[];
@@ -23,5 +23,5 @@ export function inspect_texture_copy_wire(bytes,result){
    x+=length;
   }at+=12+size;
  }
- assert.equal(resources.size,0);assert.equal(pending.size,0);assert.equal(frames.length,84);for(const s of summaries.values()){assert.equal(s.frames,42);assert.equal(s.textures,21);assert.equal(s.releasedTextures,21);assert(result.logs["COPY"+s.api+".TXT"].includes("PASS texture copy API="+s.api));}return{perAPI:[...summaries.values()],frames};
+ assert.equal(resources.size,0);assert.equal(pending.size,0);assert.equal(frames.length,84);for(const s of summaries.values()){assert.equal(s.frames,42);assert.equal(s.textures,21);assert.equal(s.releasedTextures,21);assert(result.logs["COPY"+s.api+".TXT"].includes("PASS texture copy API="+s.api));} return {perAPI:[...summaries.values()],frames};
 }

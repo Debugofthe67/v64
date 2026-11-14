@@ -12,5 +12,5 @@ export function inspect_surface_readback_wire(bytes,result){
    if(op===P.OP.DESTROY_RESOURCE&&decode("DestroyResource").resource_handle===target){assert.equal(requests.length,7);destroyed=true;}x+=length;
   }at+=12+size;
  }
- assert(target&&destroyed&&draws===1);assert.equal(requests.length,7);for(let phase=0;phase<5;phase++)assert(result.logs["READ.TXT"].includes(`READ ${phase} ${phase===0||phase===4?"00000000":"88760827"}`));assert(result.logs["READ.TXT"].includes("PASS shared readback API=9"));return{owner,draws,requests,pixelsPerSuccessfulCopy:1048576,successfulCopies:2,faults:["stale-id","failed","short-size"],expectedARGB:0xffd02060};
+ assert(target&&destroyed&&draws===1);assert.equal(requests.length,7);for(let phase=0;phase<5;phase++)assert(result.logs["READ.TXT"].includes(`READ ${phase} ${phase===0||phase===4?"00000000":"88760827"}`));assert(result.logs["READ.TXT"].includes("PASS shared readback API=9"));return {owner,draws,requests,pixelsPerSuccessfulCopy:1048576,successfulCopies:2,faults:["stale-id","failed","short-size"],expectedARGB:0xffd02060};
 }

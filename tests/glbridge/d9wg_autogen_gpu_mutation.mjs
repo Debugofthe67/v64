@@ -6,7 +6,7 @@ import {spawnSync} from "node:child_process";
 import {fileURLToPath} from "node:url";
 const root=fileURLToPath(new URL("../../",import.meta.url)),directory=path.join(root,"build/d3d-review/stage4f2c-gpu-mutations");fs.mkdirSync(directory,{recursive:true});
 const html=fs.readFileSync(root+"tests/glbridge/d3d9_conformance_browser_test.html","utf8").replaceAll('src="../../src/','src="/src/').replace(/src="(d3d[^"/]+\.js)"/g,'src="/tests/glbridge/$1"'),results=[];
-for(const [name,file,before,after,failure]of [
+for(const [name,file,before,after,failure] of [
  ["point-filter-ignored","d9wg_surface_ops.js","filterPoint: op.filterType === 1","filterPoint: false","2D filter 1"],
  ["GPU-write-stale-mips","d3d9_executor.js","this.markTextureSubresourceWritten(resource, level, face);\n            resource.frameReferenced = frame.serial;","resource.frameReferenced = frame.serial;","autogen observes GPU writes to level zero"],
 ]){

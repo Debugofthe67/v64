@@ -278,16 +278,16 @@
                 const handle=dev+0x500000,ps=dev+0x600000,format=fourcc("ATI"+channels);
                 const commands=[wire(cube?"CreateTextureCube":"CreateTexture2D",{device_handle:dev,resource_handle:handle,
                     ...(cube?{edge_length:edge}:{width:edge,height}),level_count:levels,format})];
-                for(let level=0;level<levels;level++)for(let face=0;face<(cube?6:1);face++) {
+                for (let level=0;level<levels;level++) for (let face=0;face<(cube?6:1);face++) {
                     const w=Math.max(1,edge>>level),h=Math.max(1,height>>level),columns=Math.ceil(w/4),rows=Math.ceil(h/4),pitch=columns*channels*8;
                     const data=new Uint8Array(pitch*rows);
-                    for(let block=0;block<columns*rows;block++)for(let c=0;c<channels;c++)
+                    for (let block=0;block<columns*rows;block++) for (let c=0;c<channels;c++)
                         data[block*channels*8+c*8]=value(level,face,cube?0:block)+c*20;
                     commands.push(wire("UpdateTexture",{resource_handle:handle,level,z:face,width:w,height:h,depth:1,
                         row_pitch:pitch,slice_pitch:data.length,data_bytes:data.length},[blob("UpdateTexture","data_offset",data)]));
                 }
                 commands.push(wire("SetTexture",{device_handle:dev,texture_handle:handle}),...autoShader(dev,ps,cube));
-                for(let level=0;level<levels;level++)for(let face=0;face<(cube?6:1);face++)commands.push(
+                for (let level=0;level<levels;level++) for (let face=0;face<(cube?6:1);face++)commands.push(
                     autoCoordinates(dev,[...(cube?cubeAxes[face]:[.9,.9,0]),level]),
                     wire("SetScissorRect",{device_handle:dev,left:cube?face*10:0,right:cube?face*10+10:64,top:level*20,bottom:level*20+20}),
                     ...drawXYZ(dev,fullXYZ(.5,0xffffffff)));
@@ -298,25 +298,25 @@
                 return {at:[cube?face*10+5:32,level*20+10],expect:channels===1?[v,v,v,v]:[v+20,v,255,255],tolerance:1};
             })});
     }
-    for(const dxt of [1,2,3,4,5])for(const cube of [false,true])for(const edge of [1,3,7]) {
+    for (const dxt of [1,2,3,4,5]) for (const cube of [false,true]) for (const edge of [1,3,7]) {
         const levels=edge===1?1:edge===3?2:3,colors=[0xf800,0x07e0,0x001f];
         add("bc-edges",{name:`DXT${dxt} odd ${cube?"cube":"2D"} ${edge} mip chain`,body:dev=>{
             const handle=dev+0x500000,ps=dev+0x600000,commands=[wire(cube?"CreateTextureCube":"CreateTexture2D",{
                 device_handle:dev,resource_handle:handle,...(cube?{edge_length:edge}:{width:edge,height:edge}),level_count:levels,format:fourcc("DXT"+dxt)})];
-            for(let level=0;level<levels;level++)for(let face=0;face<(cube?6:1);face++) {
+            for (let level=0;level<levels;level++) for (let face=0;face<(cube?6:1);face++) {
                 const w=Math.max(1,edge>>level),color=bcColorBlock(colors[(level+face)%3]);
                 const block=Uint8Array.from(dxt===1?color:[...(dxt<=3?new Array(8).fill(255):[255,0,0,0,0,0,0,0]),...color]);
                 const pitch=Math.ceil(w/4)*block.length,data=new Uint8Array(pitch*Math.ceil(w/4));
-                for(let at=0;at<data.length;at+=block.length)data.set(block,at);
+                for (let at=0;at<data.length;at+=block.length)data.set(block,at);
                 commands.push(wire("UpdateTexture",{resource_handle:handle,level,z:face,width:w,height:w,depth:1,row_pitch:pitch,slice_pitch:data.length,data_bytes:data.length},[blob("UpdateTexture","data_offset",data)]));
             }
             commands.push(wire("SetTexture",{device_handle:dev,texture_handle:handle}),...autoShader(dev,ps,cube));
-            for(let level=0;level<levels;level++)for(let face=0;face<(cube?6:1);face++)commands.push(
+            for (let level=0;level<levels;level++) for (let face=0;face<(cube?6:1);face++)commands.push(
                 autoCoordinates(dev,[...(cube?cubeAxes[face]:[.9,.9,0]),level]),wire("SetScissorRect",{device_handle:dev,left:cube?face*10:0,right:cube?face*10+10:64,top:level*20,bottom:level*20+20}),...drawXYZ(dev,fullXYZ(.5,0xffffffff)));
             return commands;
         },probes:Array.from({length:levels*(cube?6:1)},(_,i)=>{
             const level=cube?Math.floor(i/6):i,face=cube?i%6:0;
-            return{at:[cube?face*10+5:32,level*20+10],expect:bcRGBA(colors[(level+face)%3]),tolerance:1};
+            return {at:[cube?face*10+5:32,level*20+10],expect:bcRGBA(colors[(level+face)%3]),tolerance:1};
         })});
     }
     for (const [format, channels, bytes, bgra] of autoGenFormats) for (const cube of [false, true]) for (const filter of [0, 1, 2, 3]) add("autogen", {
@@ -658,10 +658,10 @@
     for (const table of [0,3,1,2]) for (const vertex of [0,3,1,2]) for (const mode of [0,1,2,3]) for (const ortho of [false,true]) {
         const zs=[.2,.2,.5,.5],ws=[.5,.9,.5,.9],spec=[192/255,64/255,64/255,64/255];
         const fogAt=i=>{
-            if(!table) {
-                if(mode===3)return .8;
-                if(mode===2)return .96;
-                if(mode===0||!vertex)return 1-spec[i];
+            if (!table) {
+                if (mode===3) return .8;
+                if (mode===2) return .96;
+                if (mode===0||!vertex) return 1-spec[i];
             }
             const distance=!table?zs[i]*3:!ortho?(mode===0?1/ws[i]:mode===1?2.02:ws[i]):(mode===0?zs[i]:mode===1?zs[i]*3:zs[i]);
             const fn=table||vertex;
@@ -684,7 +684,7 @@
                     wire("DrawPrimitiveUP",{device_handle:dev,primitive_type:4,primitive_count:4,stride:24,vertex_count:12,vertex_bytes:data.length},[blob("DrawPrimitiveUP","vertex_data_offset",data)])];
             },probes:[[30,30],[34,30],[30,34],[34,34]].map((at,i)=>({at,expect:[0,clamp(fogAt(i)),255,255],tolerance:1}))});
     }
-    for(const inputW of [.25,.5,2])for(const translation of [0,1]) add("fixed-position-w",{
+    for (const inputW of [.25,.5,2]) for (const translation of [0,1]) add("fixed-position-w",{
         name:`FFP POSITION float4 W=${inputW} world translation=${translation}`,clear:0xffff0000,
         body:dev=>{
             const list=[[-.5,-.5],[-.5,.5],[.5,-.5],[.5,-.5],[-.5,.5],[.5,.5]],data=new Uint8Array(6*20),dv=new DataView(data.buffer);
@@ -1432,7 +1432,7 @@
             wire("UpdateBuffer",{resource_handle:ib,byte_count:indices.length},[blob("UpdateBuffer","data_offset",indices)]),
             wire("SetStreamSource",{device_handle:dev,buffer_handle:vb,stride:16}),wire("SetIndices",{device_handle:dev,buffer_handle:ib})];
     }
-    for(const up of [false,true])for(const line of [false,true])for(const wide of [false,true])for(const base of (up?[0]:[-1,1]))
+    for (const up of [false,true]) for (const line of [false,true]) for (const wide of [false,true]) for (const base of (up?[0]:[-1,1]))
         add("max-index",{name:`valid index65535 up=${up} line=${line} wide=${wide} base=${base}`,body:dev=>{
             const {data}=maxIndexVertices(base,line),indices=Uint8Array.from((wide?le32:le16)(...(up?[]:[99]),1,2,3,65535));
             return [rs(dev,7,0),rs(dev,22,1),maxIndexDecl(dev),...(up?[
@@ -1455,8 +1455,8 @@
     const extentClear=(dev,flags,color=0,depth=1,stencil=0)=>wire("Clear",{device_handle:dev,clear_flags:flags,color,depth,stencil});
     const extentDepth=(dev,handle,size,samples=0)=>[wire("CreateTexture2D",{device_handle:dev,resource_handle:handle,width:size,height:size,level_count:1,format:75,usage:2,multisample_type:samples}),wire("SetDepthStencilSurfaceLevel",{device_handle:dev,depth_texture_handle:handle,width:size,height:size})];
     const extentStretch=(dev,from,to,size,extra={})=>wire("StretchRect",{device_handle:dev,source_texture_handle:from,source_right:size,source_bottom:size,destination_texture_handle:to,destination_right:64,destination_bottom:64,filter_point:1,...extra});
-    for(const msaa of [0,4])for(const auto of [false,true])for(const backBuffer of [false,true]){
-        const probes=[];for(let y=8;y<64;y+=16)for(let x=8;x<64;x+=16)probes.push({at:[x,y],expect:x<32&&y<32?[0,0,255,255]:x<48&&y<48?[0,255,0,255]:[255,0,0,255]});
+    for (const msaa of [0,4]) for (const auto of [false,true]) for (const backBuffer of [false,true]){
+        const probes=[];for (let y=8;y<64;y+=16) for (let x=8;x<64;x+=16)probes.push({at:[x,y],expect:x<32&&y<32?[0,0,255,255]:x<48&&y<48?[0,255,0,255]:[255,0,0,255]});
         add("shared-depth",{name:`shared depth across 32/48/64 targets msaa=${msaa} auto=${auto} bb=${backBuffer}`,msaa,backBuffer,body:(dev,rt)=>{
             const small=dev+0x700000,mid=dev+0x700001,depth=dev+0x700002;
             return [...(auto?[]:extentDepth(dev,depth,64,msaa)),extentTarget(dev,small,32,msaa),extentTarget(dev,mid,48,msaa),
@@ -1465,19 +1465,19 @@
                 ...extentBind(dev,backBuffer?0:rt,64),rs(dev,14,0),...drawXYZ(dev,fullXYZ(.33,0xff00ff00)),...drawXYZ(dev,fullXYZ(.66,0xffff0000))];
         },probes});
     }
-    for(const msaa of [0,4])add("shared-depth",{name:"shared stencil preserves regions and increments msaa="+msaa,msaa,body:(dev,rt)=>{
+    for (const msaa of [0,4])add("shared-depth",{name:"shared stencil preserves regions and increments msaa="+msaa,msaa,body:(dev,rt)=>{
         const small=dev+0x700000,mid=dev+0x700001;
         return [extentTarget(dev,small,32,msaa),extentTarget(dev,mid,48,msaa),rs(dev,7,0),rs(dev,22,1),extentClear(dev,5,0xff0000ff,1,0),
             ...extentBind(dev,small,32),extentClear(dev,4,0,1,1),...extentBind(dev,mid,48),rs(dev,52,1),rs(dev,56,8),rs(dev,55,4),rs(dev,59,255),rs(dev,168,0),...drawXYZ(dev,fullXYZ(.5,0xffffffff)),
             ...extentBind(dev,rt,64),rs(dev,168,15),rs(dev,55,1),rs(dev,56,3),rs(dev,57,2),...drawXYZ(dev,fullXYZ(.5,0xff00ff00)),rs(dev,57,1),...drawXYZ(dev,fullXYZ(.5,0xffff0000))];
         },probes:[{at:[16,16],expect:[0,255,0,255]},{at:[40,16],expect:[255,0,0,255]},{at:[16,40],expect:[255,0,0,255]},{at:[56,56],expect:[0,0,255,255]}]});
-    for(const msaa of [0,4])for(const format of [21,113])for(const srgb of (format===21?[false,true]:[false]))add("shared-depth",{name:`promoted color load/store retains untouched pixels msaa=${msaa} format=${format} srgb=${srgb}`,msaa,body:(dev,rt)=>{
+    for (const msaa of [0,4]) for (const format of [21,113]) for (const srgb of (format===21?[false,true]:[false]))add("shared-depth",{name:`promoted color load/store retains untouched pixels msaa=${msaa} format=${format} srgb=${srgb}`,msaa,body:(dev,rt)=>{
         const small=dev+0x700000;
         return [extentTarget(dev,small,32,msaa,format),wire("ColorFill",{device_handle:dev,texture_handle:small,color:0xff804020,right:32,bottom:32}),
             rs(dev,194,+srgb),...extentBind(dev,small,32),extentClear(dev,2),rs(dev,7,0),rs(dev,22,1),rs(dev,174,1),wire("SetScissorRect",{device_handle:dev,right:16,bottom:32}),...drawXYZ(dev,fullXYZ(.5,0xff00ff00)),
             rs(dev,174,0),...extentBind(dev,rt,64),extentStretch(dev,small,rt,32)];
         },probes:[{at:[16,32],expect:[0,255,0,255]},{at:[48,32],expect:[128,64,32,255]}]});
-    for(const format of [21,113])add("shared-depth",{name:"multisample color adapter preserves distinct sample values format="+format,msaa:4,body:(dev,rt)=>{
+    for (const format of [21,113])add("shared-depth",{name:"multisample color adapter preserves distinct sample values format="+format,msaa:4,body:(dev,rt)=>{
         const small=dev+0x700000,depth=dev+0x700002;
         return [extentTarget(dev,small,32,4,format),wire("SetDepthStencilSurfaceLevel",{device_handle:dev}),...extentBind(dev,small,32),extentClear(dev,1,0xff000000),
             rs(dev,7,0),rs(dev,22,1),rs(dev,161,1),rs(dev,162,1),...drawXYZ(dev,fullXYZ(.5,0xffff0000)),
@@ -1492,14 +1492,14 @@
             rs(dev,174,0),...extentBind(dev,rt,64),extentStretch(dev,cube,rt,32,{source_level:1,source_face:3})];
         },probes:[{at:[16,32],expect:[0,255,0,255]},{at:[48,32],expect:[255,0,0,255]}]});
 
-    for(const size of [32,128])add("shared-depth",{name:"MRT extent adapter preserves slot identity and pixels outside target0 size="+size,mrt:true,body:(dev,rt)=>{
+    for (const size of [32,128])add("shared-depth",{name:"MRT extent adapter preserves slot identity and pixels outside target0 size="+size,mrt:true,body:(dev,rt)=>{
         const other=dev+0x700000;
         return [extentTarget(dev,other,size),wire("ColorFill",{device_handle:dev,texture_handle:other,color:0xff0000ff,right:size,bottom:size}),
             wire("SetRenderTarget",{device_handle:dev,target_index:1,color_texture_handle:other}),extentClear(dev,1,0xff00ff00),rs(dev,7,0),draw(dev,quad(0,0,64,64,.5,0xffff0000)),
             wire("SetRenderTarget",{device_handle:dev,target_index:1}),extentStretch(dev,other,rt+1,size)];
         },probes:[{at:[16,16],expect:[255,0,0,255]},{at:[16,16],target:1,expect:[0,255,0,255]},{at:[48,48],target:1,expect:size===32?[0,255,0,255]:[0,0,255,255]}]});
 
-    for(const msaa of [0,4])add("shared-depth",{name:"implicit back buffer restores promoted color before present msaa="+msaa,msaa,backBuffer:true,body:dev=>[
+    for (const msaa of [0,4])add("shared-depth",{name:"implicit back buffer restores promoted color before present msaa="+msaa,msaa,backBuffer:true,body:dev=>[
         extentClear(dev,1,0xffff0000),...extentDepth(dev,dev+0x700000,128,msaa),extentClear(dev,2),rs(dev,7,1),rs(dev,22,1),rs(dev,174,1),
         wire("SetScissorRect",{device_handle:dev,right:32,bottom:64}),...drawXYZ(dev,fullXYZ(.5,0xff00ff00))],
         probes:[{at:[16,32],expect:[0,255,0,255]},{at:[48,32],expect:[255,0,0,255]}]});
@@ -1533,13 +1533,13 @@
     const transformedDraw=(dev,fields=transformedFields,data=transformedData())=>[
         cmd(P.OP.SET_FVF,cat([P.encode("SetFVF",{device_handle:dev,fvf:4,element_count:fields.length}),...fields.map(([offset,type,usage,index])=>element(offset,type,usage,index))])),
         wire("DrawPrimitiveUP",{device_handle:dev,primitive_type:5,primitive_count:2,stride:152,vertex_count:4,vertex_bytes:data.length},[blob("DrawPrimitiveUP","vertex_data_offset",data)])];
-    for(const [usage,index,expected] of [[1,0,[26,26,26,26]],[2,0,[51,51,51,51]],[3,0,[77,77,77,77]],
+    for (const [usage,index,expected] of [[1,0,[26,26,26,26]],[2,0,[51,51,51,51]],[3,0,[77,77,77,77]],
         [11,0,[102,102,102,102]],[5,0,[128,140,140,140]],[6,0,[153,153,153,179]],[7,0,[179,179,179,153]],
         [12,0,[204,204,204,204]],[10,0,[230,230,230,230]],[10,1,[68,136,255,34]],[5,1,[0,0,0,0]],
         [8,0,[204,204,204,204]],[13,0,[204,204,204,204]]])add("transformed-semantics",{
         name:`POSITIONT to ps3 semantic ${usage}:${index}`,body:dev=>{
             const ps=dev+0x600001,fields=transformedFields.map(row=>row.slice());
-            if(usage===8||usage===13)fields[8][2]=usage;
+            if (usage===8||usage===13)fields[8][2]=usage;
             return [pixelShader(dev,ps,semanticPS([{usage,index,register:7,mask:15}],[[S.MOV,dst(R.COLOROUT,0),src(R.INPUT,7)]])),bindPS(dev,ps),rs(dev,22,1),
                 ...transformedDraw(dev,fields)];
         },probes:[{at:[36,24],expect:expected,tolerance:1}]});
@@ -1549,10 +1549,10 @@
             [[S.MOV,dst(R.COLOROUT,0),src(R.INPUT,3)]])),bindPS(dev,ps),rs(dev,22,1),...transformedDraw(dev)];
         },probes:[{at:[36,24],expect:[26,204,26,204],tolerance:1}]});
 
-    for(const flat of [false,true])for(const rhw of [false,true])add("transformed-semantics",{
+    for (const flat of [false,true]) for (const rhw of [false,true])add("transformed-semantics",{
         name:`POSITIONT ps3 separates flat color and perspective normal flat=${flat} rhw=${rhw}`,body:dev=>{
             const ps=dev+0x600001,data=transformedData(),view=new DataView(data.buffer);
-            for(let i=0;i<4;i++){
+            for (let i=0;i<4;i++){
                 const right=i%2;view.setFloat32(i*152+12,rhw&&right?2:1,true);
                 view.setFloat32(i*152+52,right,true);view.setUint32(i*152+144,right?0xffff0000:0xff000000,true);
             }
@@ -1561,7 +1561,7 @@
                 [S.MOV,dst(R.COLOROUT,0,3),src(R.INPUT,3)]])),bindPS(dev,ps),rs(dev,9,flat?1:2),rs(dev,22,1),
                 ...transformedDraw(dev,transformedFields,data)];
         },probes:[16,48].map(x=>{const value=rhw?2*x/(64+x):x/64;return {at:[x,x],expect:[flat?(x===16?0:255):clamp(value),clamp(value),0,255],tolerance:1};})});
-    for(const flat of [false,true])add("transformed-semantics",{name:"POSITIONT ps3 forty consumed components flat="+flat,body:dev=>{
+    for (const flat of [false,true])add("transformed-semantics",{name:"POSITIONT ps3 forty consumed components flat="+flat,body:dev=>{
         const ps=dev+0x600001,declarations=transformedFields.slice(1).map(([,type,usage,index],register)=>({usage,index,register,mask:15}));
         return [pixelShader(dev,ps,semanticPS(declarations,[[S.DEF,dst(R.CONST,0),f(.1),f(.1),f(.1),f(.1)],
             [S.MOV,dst(R.TEMP,0),src(R.INPUT,0)],...Array.from({length:9},(_,i)=>[S.ADD,dst(R.TEMP,0),src(R.TEMP,0),src(R.INPUT,i+1)]),
@@ -1570,7 +1570,7 @@
     add("transformed-semantics",{name:"POSITIONT ps3 normalized SHORT2 input expands absent components",body:dev=>{
         const ps=dev+0x600001,data=transformedData(),view=new DataView(data.buffer),fields=transformedFields.map(r=>r.slice());
         fields[3][1]=9;
-        for(let i=0;i<4;i++){view.setInt16(i*152+48,16384,true);view.setInt16(i*152+50,8192,true);}
+        for (let i=0;i<4;i++){view.setInt16(i*152+48,16384,true);view.setInt16(i*152+50,8192,true);}
         return [pixelShader(dev,ps,semanticPS([{usage:3,index:0,register:8,mask:15}],[[S.MOV,dst(R.COLOROUT,0),src(R.INPUT,8)]])),bindPS(dev,ps),rs(dev,22,1),...transformedDraw(dev,fields,data)];
         },probes:[{at:[36,24],expect:[128,64,0,255],tolerance:1}]});
     add("transformed-semantics",{name:"POSITIONT ps3 missing diffuse defaults to white",body:dev=>{
@@ -1585,7 +1585,7 @@
             wire("DrawPrimitiveUP",{device_handle:dev,primitive_type:1,primitive_count:1,stride:20,vertex_count:1,vertex_bytes:20},[blob("DrawPrimitiveUP","vertex_data_offset",data)])];
         },probes:[{at:[24,24],expect:[64,64,0,255],tolerance:5},{at:[40,40],expect:[191,191,0,255],tolerance:5}]});
 
-    for(const format of [70,75,80])for(const linear of [false,true])for(const auto of (format===75?[0,1,2]:[0]))add("depth-copy",{name:`whole depth copy preserves draw depth format=${format} linear=${linear} auto=${auto}`,body:dev=>{
+    for (const format of [70,75,80]) for (const linear of [false,true]) for (const auto of (format===75?[0,1,2]:[0]))add("depth-copy",{name:`whole depth copy preserves draw depth format=${format} linear=${linear} auto=${auto}`,body:dev=>{
         const from=auto===1?0xffffffff:dev+0x700000,to=auto===2?0xffffffff:dev+0x700001;
         const depth=handle=>handle===0xffffffff?[]:[wire("CreateTexture2D",{device_handle:dev,resource_handle:handle,width:64,height:64,level_count:1,format,usage:2})];
         const bind=handle=>wire("SetDepthStencilSurfaceLevel",{device_handle:dev,depth_texture_handle:handle,width:64,height:64});
@@ -1602,11 +1602,11 @@
             extentClear(dev,1,0xffff0000),rs(dev,7,0),rs(dev,22,1),rs(dev,52,1),rs(dev,56,3),rs(dev,57,5),...drawXYZ(dev,fullXYZ(.5,0xff00ff00))];
         },probes:[{at:[32,32],expect:[0,255,0,255]}]});
 
-    for(const screen of [false,true])for(const programmable of [false,true])
-    for(const [low,high] of [[0,0],[.5,0],[.5,.5002],[.5,.5],[1,1],[-.001,-.001]])for(const side of [-1,1]){
+    for (const screen of [false,true]) for (const programmable of [false,true])
+    for (const [low,high] of [[0,0],[.5,0],[.5,.5002],[.5,.5],[1,1],[-.001,-.001]]) for (const side of [-1,1]){
         const z=.5,mapped=screen?z:Math.min(1,Math.max(0,low+(Math.max(high,Math.fround(low+.001))-low)*z));
         const limit=mapped+side*.0001;
-        if(limit<0||limit>1)continue;
+        if (limit<0||limit>1) continue;
         add("viewport-minimum",{name:`minimum native viewport span ${low}:${high} screen=${screen} ps=${programmable} side=${side}`,body:dev=>[
             clearDepth(dev,limit),rs(dev,7,1),rs(dev,23,side<0?5:2),rs(dev,22,1),
             wire("SetViewport",{device_handle:dev,width:64,height:64,min_z:low,max_z:high}),
@@ -1614,15 +1614,15 @@
             ...(screen?[draw(dev,quad(0,0,64,64,z,0xff00ff00))]:drawXYZ(dev,fullXYZ(z,0xff00ff00)))],probes:[{at:[32,32],expect:[0,255,0,255]}]});
     }
     const streamOrder={position:[0,1,2],color:[1,0,2],unused:[1,2,3]};
-    for(const [order,streams] of Object.entries(streamOrder))for(const divisor of [0,1,2])for(const indexed of [false,true])
-    for(const count of [0,4])add("stream-frequency",{name:`stream zero owns instance count ${order} divisor=${divisor} indexed=${indexed} count=${count}`,body:dev=>{
+    for (const [order,streams] of Object.entries(streamOrder)) for (const divisor of [0,1,2]) for (const indexed of [false,true])
+    for (const count of [0,4])add("stream-frequency",{name:`stream zero owns instance count ${order} divisor=${divisor} indexed=${indexed} count=${count}`,body:dev=>{
         const vs=dev+0x600000,ib=dev+0x600001;
         const tokens=legacyShader("vertex",2,[semanticDcl(0,0,R.INPUT,0),semanticDcl(10,0,R.INPUT,1),semanticDcl(5,0,R.INPUT,2),
             [S.ADD,dst(R.RASTOUT,0),src(R.INPUT,0),src(R.INPUT,2)],[S.MOV,dst(R.ATTROUT,0),src(R.INPUT,1)]]);
         const arrays=[[-.25,.25,0,1,.25,.25,0,1,-.25,-.25,0,1,.25,-.25,0,1],Array(4).fill([1,0,0,1]).flat(),[-.5,.5,0,0,.5,.5,0,0,-.5,-.5,0,0,.5,-.5,0,0]];
         const commands=[vertexShader(dev,vs,tokens),bindSemanticVS(dev,vs),rs(dev,7,0),rs(dev,22,1),
             cmd(P.OP.SET_FVF,cat([P.encode("SetFVF",{device_handle:dev,element_count:3}),...[0,10,5].map((usage,i)=>P.encode("VertexElement",{stream:streams[i],offset:0,type:3,usage,usage_index:0}))]))];
-        for(let i=0;i<3;i++){
+        for (let i=0;i<3;i++){
             const data=Uint8Array.from(floats(...arrays[i])),handle=dev+0x700000+i;
             commands.push(wire("CreateBuffer",{device_handle:dev,resource_handle:handle,resource_kind:1,byte_count:data.length}),
                 wire("UpdateBuffer",{resource_handle:handle,byte_count:data.length},[blob("UpdateBuffer","data_offset",data)]),
@@ -1630,7 +1630,7 @@
                 wire("SetStreamSourceFreq",{device_handle:dev,stream:streams[i],divider:i===2?(0x80000000|divisor)>>>0:0x40000007}));
         }
         commands.push(wire("SetStreamSourceFreq",{device_handle:dev,stream:0,divider:0x40000000|count}));
-        if(indexed){const data=Uint8Array.from(le16(0,1,2,3));commands.push(wire("CreateBuffer",{device_handle:dev,resource_handle:ib,resource_kind:2,byte_count:8,fvf:101}),
+        if (indexed){const data=Uint8Array.from(le16(0,1,2,3));commands.push(wire("CreateBuffer",{device_handle:dev,resource_handle:ib,resource_kind:2,byte_count:8,fvf:101}),
             wire("UpdateBuffer",{resource_handle:ib,byte_count:8},[blob("UpdateBuffer","data_offset",data)]),wire("SetIndices",{device_handle:dev,buffer_handle:ib}),
             wire("DrawIndexedPrimitive",{device_handle:dev,primitive_type:5,primitive_count:2}));}
         else commands.push(wire("DrawPrimitive",{device_handle:dev,primitive_type:5,primitive_count:2}));
@@ -1652,8 +1652,8 @@
         body: dev => {
             const reg=bankedConst(index),vs=dev+0x600000;
             const instructions=[semanticDcl(0,0,R.INPUT,0),[S.MOV,dst(R.RASTOUT,0),src(R.INPUT,0)]];
-            if(local) instructions.push([S.DEF,dst(...reg),f(0),f(1),f(0),f(1)]);
-            if(relative) instructions.push([S.MOVA,dst(R.ADDR,0,1),src(R.CONST,0,0)],
+            if (local) instructions.push([S.DEF,dst(...reg),f(0),f(1),f(0),f(1)]);
+            if (relative) instructions.push([S.MOVA,dst(R.ADDR,0,1),src(R.CONST,0,0)],
                 [S.MOV,dst(R.ATTROUT,0),relativeToken(src(R.CONST,0)),src(R.ADDR,0,0)]);
             else instructions.push([S.MOV,dst(R.ATTROUT,0),src(...reg)]);
             return [vertexShader(dev,vs,legacyShader("vertex",2,instructions)),bindSemanticVS(dev,vs),rs(dev,7,0),rs(dev,22,1),
@@ -1663,7 +1663,7 @@
                 ...drawXYZ(dev,fullXYZ(.5,0xffffffff).map(v=>[v[0]*.5+.5,...v.slice(1)]))];
         },probes:[{at:[16,32],expect:local?[0,255,0,255]:[255,0,0,255]},
             {at:[48,32],expect:local?[0,255,0,255]:[0,0,255,255]}]});
-    for (const behaviorFlags of [0x20,0x80]) for (const index of [15,16,2047]) for(const enabled of [false,true])
+    for (const behaviorFlags of [0x20,0x80]) for (const index of [15,16,2047]) for (const enabled of [false,true])
     add("software-constants",{name:`extended integer/boolean flags=${behaviorFlags} i${index} b${index} enabled=${enabled}`,behaviorFlags,
         body:dev=>{const vs=dev+0x600000;return [vertexShader(dev,vs,legacyShader("vertex",2,[semanticDcl(0,0,R.INPUT,0),
             [S.DEF,dst(R.CONST,0),f(1),f(0),f(0),f(1)],[S.MOV,dst(R.RASTOUT,0),src(R.INPUT,0)],
@@ -1675,16 +1675,16 @@
     // Independent native table from Wine test_texture_transform_flags: four
     // input widths, fixed/screen/generated/programmed VS and four pixel paths.
     const transformFlags=[0,1,2,3,4,0x100,0x101,0x102,0x103,0x104,0xfffffeff,0xffffffff,0xffffff03];
-    for(const width of [1,2,3,4])for(const vertex of ["screen","fixed","normal","shader"])
-    for(const pixel of ["fixed","ps1","ps2","coords"])for(const flags of transformFlags){
+    for (const width of [1,2,3,4]) for (const vertex of ["screen","fixed","normal","shader"])
+    for (const pixel of ["fixed","ps1","ps2","coords"]) for (const flags of transformFlags){
         const projected=!!(flags&0x100),count=(flags&~0x100)>>>0,transforms=count>=2&&count<=4;
-        if(projected&&vertex==="screen"&&(pixel==="fixed"||pixel==="ps1"))continue; // Native driver-dependent cases are excluded upstream.
+        if (projected&&vertex==="screen"&&(pixel==="fixed"||pixel==="ps1")) continue; // Native driver-dependent cases are excluded upstream.
         const source=(vertex==="normal"?[.1,.3,.6]:[.8,.2,.4,.5].slice(0,width)).map(Math.fround),coord=[0,0,0,0];
-        if(vertex==="fixed"||vertex==="normal"){
-            if(transforms){const attrib=[...source];if(attrib.length<4)attrib.push(1);while(attrib.length<4)attrib.push(0);
-                for(let k=0;k<count;k++)coord[k]=attrib[3-k];if(projected&&count<4)coord[3]=coord[count-1];}
-            else{source.forEach((v,i)=>coord[i]=v);if(projected)coord[3]=source.at(-1);}
-        }else{coord[3]=1;source.forEach((v,i)=>coord[i]=v);}
+        if (vertex==="fixed"||vertex==="normal"){
+            if (transforms){const attrib=[...source];if (attrib.length<4)attrib.push(1);while (attrib.length<4)attrib.push(0);
+                for (let k=0;k<count;k++)coord[k]=attrib[3-k];if (projected&&count<4)coord[3]=coord[count-1];}
+            else {source.forEach((v,i)=>coord[i]=v);if (projected)coord[3]=source.at(-1);}
+        } else {coord[3]=1;source.forEach((v,i)=>coord[i]=v);}
         const uv=coord.slice(0,2).map(v=>projected&&pixel!=="ps2"?(coord[3]?Math.fround(v/coord[3]):0):v);
         const expected=pixel==="coords"?coord.map(clamp):[...uv.map(v=>Math.round(Math.floor((v-Math.floor(v))*64)*255/64)),0,0];
         add("texture-transform-flags",{name:`texture transform width=${width} vs=${vertex} ps=${pixel} flags=${flags.toString(16)}`,body:dev=>{
@@ -1695,9 +1695,9 @@
                 wire("SetTexture",{device_handle:dev,texture_handle:tex}),rs(dev,7,0),rs(dev,22,1),rs(dev,137,0),tss(dev,0,1,2),tss(dev,0,2,2),tss(dev,0,4,2),tss(dev,0,5,2),
                 tss(dev,0,24,flags),tss(dev,0,11,vertex==="normal"?0x10000:0),
                 wire("SetTransform",{device_handle:dev,state:16,matrix:[0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0]})];
-            if(vertex==="shader")commands.push(vertexShader(dev,vs,legacyShader("vertex",2,[semanticDcl(0,0,R.INPUT,0),semanticDcl(5,0,R.INPUT,1),
+            if (vertex==="shader")commands.push(vertexShader(dev,vs,legacyShader("vertex",2,[semanticDcl(0,0,R.INPUT,0),semanticDcl(5,0,R.INPUT,1),
                 [S.MOV,dst(R.RASTOUT,0),src(R.INPUT,0)],[S.MOV,dst(R.OUTPUT,0),src(R.INPUT,1)]])),bindSemanticVS(dev,vs));
-            if(pixel!=="fixed"){
+            if (pixel!=="fixed"){
                 const tokens=pixel==="ps1"?ps1(1,[[S.TEX,dst(R.TEXTURE,0)],[S.MOV,dst(R.TEMP,0),src(R.TEXTURE,0)]])
                     :legacyShader("pixel",2,[[S.DCL,0x80000000,dst(R.TEXTURE,0)],...(pixel==="coords"?[[S.MOV,dst(R.COLOROUT,0),src(R.TEXTURE,0)]]:
                         [[S.DCL,0x90000000,dst(R.SAMPLER,0)],[S.TEX,dst(R.TEMP,0),src(R.TEXTURE,0),src(R.SAMPLER,0)],[S.MOV,dst(R.COLOROUT,0),src(R.TEMP,0)]])]);
@@ -1713,15 +1713,15 @@
         },probes:[{at:[32,32],expect:expected,tolerance:pixel==="coords"?1:4}]});
     }
 
-    for(const stage of ["vertex","pixel"])for(const major of [2,3])for(const mask of [7,15])for(const swizzle of [0xe4,0x39])
-    for(const value of [[2,0,0,.5],[1,1,1,1],[0,0,0,0],[1,1,0,2],[-2,0,0,.5],[.1,.3,.6,.5]]){
+    for (const stage of ["vertex","pixel"]) for (const major of [2,3]) for (const mask of [7,15]) for (const swizzle of [0xe4,0x39])
+    for (const value of [[2,0,0,.5],[1,1,1,1],[0,0,0,0],[1,1,0,2],[-2,0,0,.5],[.1,.3,.6,.5]]){
         const input=Array.from({length:4},(_,i)=>value[swizzle>>(i*2)&3]),length=Math.hypot(...input.slice(0,3));
         const expected=input.map((v,i)=>i===3&&mask===7?.4:length?v/length:0).map(clamp);
         add("shader-normalize",{name:`NRM ${stage}${major} mask=${mask} swizzle=${swizzle} value=${value}`,body:dev=>{
             const handle=dev+0x600000,body=[[S.DEF,dst(R.CONST,0),...value.map(f)],[S.DEF,dst(R.CONST,1),f(.1),f(.2),f(.3),f(.4)],
                 [S.MOV,dst(R.TEMP,0),src(R.CONST,1)],[S.NRM,dst(R.TEMP,0,mask),src(R.CONST,0,swizzle)]];
             let tokens;
-            if(stage==="pixel")tokens=legacyShader("pixel",major,[...body,[S.MOV,dst(R.COLOROUT,0),src(R.TEMP,0)]]);
+            if (stage==="pixel")tokens=legacyShader("pixel",major,[...body,[S.MOV,dst(R.COLOROUT,0),src(R.TEMP,0)]]);
             else tokens=legacyShader("vertex",major,[semanticDcl(0,0,R.INPUT,0),...(major===3?[semanticDcl(0,0,R.OUTPUT,11),semanticDcl(10,0,R.OUTPUT,0)]:[]),
                 ...body,[S.MOV,dst(major===3?R.OUTPUT:R.RASTOUT,major===3?11:0),src(R.INPUT,0)],
                 [S.MOV,dst(major===3?R.OUTPUT:R.ATTROUT,0),src(R.TEMP,0)]]);
@@ -1906,13 +1906,13 @@
                     wire("DrawPrimitiveUP",{device_handle:dev,primitive_type:4,primitive_count:1,stride:24,vertex_count:3,vertex_bytes:72},[blob("DrawPrimitiveUP","vertex_data_offset",data)])];
             },probes:[[32,32],[24,36],[40,40]].map(at=>({at,expect:expected(...at),tolerance:1}))});
     }
-    for (const format of [70,71,73,75,77,79,80]) for(const dynamic of [false,true]) add("sampled-depth-storage",{
+    for (const format of [70,71,73,75,77,79,80]) for (const dynamic of [false,true]) add("sampled-depth-storage",{
         name:`depth format ${format} upload and comparison without attachment usage dynamic=${dynamic}`,body:dev=>{
             const depth=dev+0x500000,bpp=[70,73,80].includes(format)?2:4,pitch=64*bpp+8,data=new Uint8Array(pitch*64).fill(0xa5),v=new DataView(data.buffer);
-            for(let y=0;y<64;y++)for(let x=0;x<64;x++){
+            for (let y=0;y<64;y++) for (let x=0;x<64;x++){
                 const d=x<32?.25:.75,at=y*pitch+x*bpp;
-                if(format===73)v.setUint16(at,Math.round(d*32767)*2+1,true);
-                else if(bpp===2)v.setUint16(at,Math.round(d*65535),true);
+                if (format===73)v.setUint16(at,Math.round(d*32767)*2+1,true);
+                else if (bpp===2)v.setUint16(at,Math.round(d*65535),true);
                 else v.setUint32(at,format===71?Math.round(d*4294967295):(Math.round(d*16777215)*256+0xa5)>>>0,true);
             }
             const vertices=new Uint8Array(6*24),vv=new DataView(vertices.buffer);

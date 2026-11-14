@@ -13,5 +13,5 @@ for(const test of numerical_cases().filter(x=>x.name.includes("nested-loop"))) {
     assert.deepEqual(run(test.tokens,{f:Array.from({length:8},(_,i)=>[i+1,i+1,i+1,i+1]),i:[[3,0,1,0],[2,4,1,0]]}),Array(4).fill(4+12+(early?15:33)),test.name);
 }
 let executions=0;
-for(const test of numerical_cases())for(const input of numerical_inputs()) {run(test.tokens,input);executions++;}
+for(const test of numerical_cases()) for(const input of numerical_inputs()) {run(test.tokens,input);executions++;}
 console.log(`PASS independent shader arithmetic/flow reference: ${executions} executions and hand-calculated contracts`);

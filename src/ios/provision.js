@@ -21,8 +21,8 @@ export function offline_setup_file()
         uid: 501, gid: 501, mode: 0o600, dir_mode: 0o755,
         bytes: ascii('<?xml version="1.0" encoding="UTF-8"?>\n' +
             '<plist version="1.0"><dict><key>SetupDone</key><true/>' +
-            '<key>SetupFinishedAllSteps</key><true/>' +
-            '<key>SetupVersion</key><integer>3</integer><key>ForceNoBuddy</key><true/></dict></plist>\n'),
+            "<key>SetupFinishedAllSteps</key><true/>" +
+            "<key>SetupVersion</key><integer>3</integer><key>ForceNoBuddy</key><true/></dict></plist>\n"),
     };
 }
 

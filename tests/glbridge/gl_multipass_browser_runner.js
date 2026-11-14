@@ -3,6 +3,8 @@
 // GL_CHROME can select a Chromium executable on non-macOS hosts; GL_TIMEOUT_MS
 // the time a page has (60 s). A page can save files (screenshots) by POSTing
 // them to /__test_file?name=<name>: they land in build/browser-test-output/.
+// GL_HEADFUL=1 uses a real window (under Xvfb in software-GPU CI), including
+// the canvas swap-chain lifecycle that an offscreen adapter probe cannot test.
 "use strict";
 const http = require("http"), fs = require("fs"), path = require("path");
 const { spawn } = require("child_process");
@@ -70,7 +72,8 @@ server.listen(0, "127.0.0.1", () => {
     const url = `http://127.0.0.1:${server.address().port}/tests/glbridge/${page}${page.includes("?") ? "&" : "?"}report=1`;
     browser = spawn(process.env.GL_CHROME ||
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", [
-        "--headless=new", "--enable-unsafe-webgpu", "--no-first-run",
+        ...(process.env.GL_HEADFUL === "1" ? [] : ["--headless=new"]),
+        "--enable-unsafe-webgpu", "--no-first-run",
         ...(process.env.GL_SWIFTSHADER === "1" ? ["--use-webgpu-adapter=swiftshader", "--use-gpu-in-tests"] : []),
         "--no-default-browser-check", "--disable-background-networking",
         `--user-data-dir=${profile}`, url,

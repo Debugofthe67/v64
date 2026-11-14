@@ -266,7 +266,7 @@ export class NV2D
         // INDEX is a packed image stream: a DWORD can cross row boundaries.
         // Old snapshots retained a row and bytes already committed in it.
         const first=m(o,INDEX_PROGRESS,(o.stream[0]||0)*width+m(o,UPLOAD_COMMITTED)/bpp);
-        if(first>=width*height)throw new RangeError("NV INDEX excess data");
+        if(first>=width*height) throw new RangeError("NV INDEX excess data");
         const count=Math.min(format?8:4,width*height-first),lutBpp=input<=3?2:4;
         const lut=this.device.dma.read(this.dma(o,0x184),m(o,0x3F0),(format?16:256)*lutBpp);
         const [x,y]=xy(m(o,0x3F4)),[outw,outh]=wh(m(o,0x3F8)),clip=this.clip(o,0x18C),dst=this.surface(o,0x1A0),jobs=[];
@@ -275,13 +275,13 @@ export class NV2D
         {
             const pixel=first+consumed,row=Math.floor(pixel/width),column=pixel%width,n=Math.min(count-consumed,width-column);
             const rect=this.bounds(x+column,y+row,Math.max(0,Math.min(n,outw-column)),row<outh?1:0,clip);
-            if(rect[2] && rect[3])this.row(dst,rect[0],rect[1],rect[2],true);
+            if(rect[2] && rect[3]) this.row(dst,rect[0],rect[1],rect[2],true);
             jobs.push({rect,column,consumed});consumed+=n;
         }
         const operation=m(o,0x2FC);o.methods.set(0x2FC,m(o,0x3E4));
         try
         {
-            for(const {rect,column,consumed}of jobs)this.render(o,dst,rect,px=>{
+            for(const {rect,column,consumed} of jobs) this.render(o,dst,rect,px=>{
                 const pixel=consumed+px-x-column,shift=format?(pixel>>>1)*8+((pixel&1)^1)*4:pixel*8;
                 const index=value>>>shift&(format?15:255),color=this.raw(lut,index*lutBpp,lutBpp);
                 return key && color===m(key,0x304)?null:this.input_color(color,input);
@@ -312,7 +312,7 @@ export class NV2D
     }
     upload(o, value, indexed)
     {
-        if(indexed)return this.indexed_upload(o,value);
+        if(indexed) return this.indexed_upload(o,value);
         const {input,bpp,stride,row,x,dst,rect}=this.upload_plan(o);
         if(!o.stream.length) o.stream = [0];
         for(let i = 0; i < 4; i++) o.stream.push(value >>> (i * 8) & 255);
@@ -359,11 +359,11 @@ export class NV2D
         // NVIDIA cl004a: fixed 8..512-byte records, each beginning with a
         // height/width DWORD and followed by packed monochrome DWORDs.
         const font=m(o,0xFF0),pitch=font>>>28;
-        if(pitch<3 || pitch>9)throw new RangeError("NV GDI font record pitch");
+        if(pitch<3 || pitch>9) throw new RangeError("NV GDI font record pitch");
         const length=1<<pitch,offset=(font&0x0FFFFFFF)+index*length;
         const bytes=this.device.dma.read(this.dma(o,0x184),offset,length),view=new DataView(bytes.buffer);
         const [width,height]=wh(view.getUint32(0,true));
-        if(Math.ceil(width*height/32)*4>length-4)throw new RangeError("NV GDI character exceeds font record");
+        if(Math.ceil(width*height/32)*4>length-4) throw new RangeError("NV GDI character exceeds font record");
         const clip=[...xy(m(o,0xFF4)),...xy(m(o,0xFF8))],dst=this.surface(o,0x198),format=this.bitmap_format(o);
         this.render(o,dst,this.bounds(x,y,width,height,clip),(px,py)=>{
             const bit=(py-y)*width+px-x,shift=format===1?(bit&~7)%32+7-(bit&7):bit&31;
@@ -428,8 +428,8 @@ export class NV2D
         const rect = this.bounds(x, y, w, h, [cx, cy, cx + cw, cy + ch]);
         const dst = this.surface(o, 0x198), [u0, v0] = xy(m(o, 0x40C));
         const du = (m(o, 0x318) | 0) / 1048576, dv = (m(o, 0x31C) | 0) / 1048576;
-        if(!rect[2] || !rect[3])return;
-        if(rect[2]*rect[3]*dst.bpp>this.device.vram_size)throw new RangeError("NV 2D rectangle too large");
+        if(!rect[2] || !rect[3]) return;
+        if(rect[2]*rect[3]*dst.bpp>this.device.vram_size) throw new RangeError("NV 2D rectangle too large");
         const center=(fmt>>>16&255)===1,linear=!!(fmt>>>24&1);
         // Source coordinates address texel corners. Convert to center-indexed
         // interpolation for both origins; CENTER additionally locates the
@@ -439,7 +439,7 @@ export class NV2D
         const taps=(first,count,start,origin,step,limit,pairs=false)=>{
             const indices=new Set(),add=value=>{
                 value=Math.max(0,Math.min(limit-1,value));
-                if(pairs){indices.add(value&~1);indices.add(value|1);}else indices.add(value);
+                if(pairs){indices.add(value&~1);indices.add(value|1);} else indices.add(value);
             };
             for(let i=0;i<count;i++)
             {
@@ -565,7 +565,7 @@ export class NV2D
             {
                 if(at === 0x584) o.stream=[];
                 const p=xy(value);
-                if(o.stream.length===4)this.triangle(o,o.stream.slice(0,2),o.stream.slice(2),p);
+                if(o.stream.length===4) this.triangle(o,o.stream.slice(0,2),o.stream.slice(2),p);
                 o.stream.push(...p);if(o.stream.length>4)o.stream.splice(0,2);
             }
         }
@@ -592,7 +592,7 @@ export class NV2D
         {
             if(at===0xFF0 || at===0x17F0)
             {
-                if(value>>>28<3 || value>>>28>9)throw new RangeError("NV GDI font record pitch");
+                if(value>>>28<3 || value>>>28>9) throw new RangeError("NV GDI font record pitch");
                 o.methods.set(0xFF0,value);o.methods.set(0x17F0,value);
             }
             if(at>=0x1800 && at<0x2000 && !(at&4))o.methods.set(0x1800,value);
@@ -615,7 +615,7 @@ export class NV2D
             const x=value<<12>>20,y=value>>20;o.methods.set(0x1800,(y<<16|x&65535)>>>0);
             this.character(o,value&255,x,y);
         }
-        else if(type===0x4A && at>=0x1800 && at<0x2000 && at&4)this.character(o,value&65535,...xy(m(o,0x1800)));
+        else if(type===0x4A && at>=0x1800 && at<0x2000 && at&4) this.character(o,value&65535,...xy(m(o,0x1800)));
         else if((ifc || indexed) && at >= 0x400) this.upload(o, value, indexed);
         else if([0x77, 0x89, 0x3089].includes(type) && at === 0x40C) this.scaled(o);
         else if(sifc && at >= 0x400) this.scaled_upload(o, value);

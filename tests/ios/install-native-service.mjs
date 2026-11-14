@@ -6,7 +6,7 @@ import path from "node:path";
 import { V86 } from "../../src/main.js";
 import { prepare_ipa } from "../../src/ios/ipa_prepare.js";
 const [directory,source]=process.argv.slice(2);
-if(!directory||!source)throw new Error("usage: install-native-service.mjs disposable-service-probe app.ipa");
+if(!directory||!source) throw new Error("usage: install-native-service.mjs disposable-service-probe app.ipa");
 const input=fs.readFileSync(source),chunks=[];
 const manifest=await prepare_ipa((at,n)=>input.subarray(at,at+n),input.length,b=>chunks.push(b),{graphics:!process.env.IPA_NO_GLES});
 const ipa=Buffer.concat(chunks),nand=path.resolve(directory,"flash.img");
@@ -17,7 +17,7 @@ const emulator=new V86({machine_type:"s5l8930",graphics_adapter:"none",log_level
 let serial="",timer;const start=performance.now();
 emulator.add_listener("serial0-output-byte",b=>serial+=String.fromCharCode(b));
 emulator.add_listener("ios-install-progress",event=>console.log("installer",JSON.stringify(event)));
-try{
+try {
  await new Promise((ok,no)=>{emulator.add_listener("emulator-loaded",ok);emulator.add_listener("emulator-error",no);});
  timer=setInterval(async()=>{
   fs.writeFileSync(path.join(directory,"serial.log"),serial);
@@ -27,16 +27,16 @@ try{
  const until=performance.now()+1200000;
  while(!(await emulator.ios_install_status()).available){
   assert.ok(performance.now()<until,"Native helper did not authenticate");assert.ok(!serial.includes("panic(cpu"),serial.slice(-4000));
-  if(fs.existsSync(path.join(directory,"STOP")))throw new Error("Stopped diagnostic run");
+  if(fs.existsSync(path.join(directory,"STOP"))) throw new Error("Stopped diagnostic run");
   await new Promise(ok=>setTimeout(ok,1000));
  }
  const task=await emulator.ios_install_begin(manifest);console.log("begin",task);
- for(let at=0;at<ipa.length;at+=65536)await emulator.ios_install_write(task.install_id,at,ipa.subarray(at,at+65536));
+ for(let at=0;at<ipa.length;at+=65536) await emulator.ios_install_write(task.install_id,at,ipa.subarray(at,at+65536));
  await emulator.ios_install_stage(task.install_id);
  const result=await emulator.ios_install_commit(task.install_id);assert.equal(result.installed,true);
  const found=await emulator.ios_install_lookup(manifest.bundle_id);assert.equal(found.installed,true);
  console.log("PASS: authenticated native transfer, durable trust publication, installation and exact application lookup");
-}finally{
+} finally {
  clearInterval(timer);fs.writeFileSync(path.join(directory,"serial.log"),serial);
- try{await emulator.destroy();}finally{renderer?.close();}
+ try {await emulator.destroy();} finally {renderer?.close();}
 }

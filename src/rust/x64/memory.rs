@@ -140,7 +140,10 @@ unsafe fn locked_write(address: u64, size: usize, value: u128) -> bool {
     let at = crate::cpu::memory::mem8.add(operand.backing as usize);
     let value = if crate::cpu::memory::shadow_write_protected(operand.backing) {
         operand.old
-    } else {value};
+    }
+    else {
+        value
+    };
     let committed = if size == 16 {
         crate::parallel::compare_exchange128(at, operand.old, value)
     }

@@ -30,7 +30,7 @@ export function show_ios_install(controller,name)
         transferring:"Transferring IPA…",staged:"The IPA is staged on the iPhone.",committing:"Committing installation…",
         installing:"Installing through iOS…",verifying:"Verifying the installed application…",installed:"Installed. Return to the Home screen and tap the application icon.",
         failed:"Installation failed.",cancelled:"Installation cancelled.",opening:"Opening application…",interrupted:"The previous installation was interrupted.",recoverable:"Checking the previous installation result."};
-    const older=(a,b)=>{const x=String(a).split(/[.-]/).map(Number),y=String(b).split(/[.-]/).map(Number);for(let i=0;i<Math.max(x.length,y.length);i++){if((x[i]||0)!==(y[i]||0))return(x[i]||0)<(y[i]||0);}return false;};
+    const older=(a,b)=>{const x=String(a).split(/[.-]/).map(Number),y=String(b).split(/[.-]/).map(Number);for(let i=0;i<Math.max(x.length,y.length);i++){if((x[i]||0)!==(y[i]||0)) return (x[i]||0)<(y[i]||0);} return false;};
     let shown=null;
     const render=()=>{
         const s=controller.state,c=s.capability,r=s.report;

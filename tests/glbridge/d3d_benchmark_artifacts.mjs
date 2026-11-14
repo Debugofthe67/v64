@@ -17,7 +17,7 @@ try {
     manifest = await new Promise((resolve, reject) => {
         const timeout=setTimeout(()=>reject(new Error("Guest disk export timed out")),300000);
         ws.onmessage=({data})=>{
-            const message=JSON.parse(data);if(message.id!==1)return;
+            const message=JSON.parse(data);if(message.id!==1) return;
             clearTimeout(timeout);
             if(message.error || message.result.exceptionDetails) reject(new Error(JSON.stringify(message)));
             else resolve(message.result.result.value);
@@ -45,22 +45,22 @@ for(const chunk of manifest.chunks) {
 const disk={byteLength:length,get(at,size,callback){
     const bytes=Buffer.alloc(size);let used=0;
     for(const chunk of manifest.chunks) {
-        if(at>=chunk.offset+chunk.size || at+size<=chunk.offset)continue;
+        if(at>=chunk.offset+chunk.size || at+size<=chunk.offset) continue;
         const start=Math.max(at,chunk.offset),end=Math.min(at+size,chunk.offset+chunk.size);
         const fd=fs.openSync(path.join(output,chunk.name),"r");
         try {
             const count=fs.readSync(fd,bytes,start-at,end-start,start-chunk.offset);
-            if(count!==end-start)throw new Error("Short disk read");used+=count;
+            if(count!==end-start) throw new Error("Short disk read");used+=count;
         } finally {fs.closeSync(fd);}
     }
-    if(used!==size)throw new Error("Missing disk bytes");callback(bytes);
+    if(used!==size) throw new Error("Missing disk bytes");callback(bytes);
 }};
 const files=[];
 for(const request of requested) {
     if(request.endsWith("/*")) {
         const dirname=request.slice(0,-2),entries=await list_fat32_directory(disk,dirname);
-        if(!entries?.length)throw new Error("Missing artifact directory: "+dirname);
-        for(const entry of entries)if(!entry.directory)files.push(dirname+"/"+entry.name);
+        if(!entries?.length) throw new Error("Missing artifact directory: "+dirname);
+        for(const entry of entries) if(!entry.directory)files.push(dirname+"/"+entry.name);
     } else files.push(request);
 }
 const evidence=[],names=new Set();
@@ -68,11 +68,11 @@ for(const file of files) {
     const bytes=await read_fat32_file(disk,file);
     if(!bytes) {evidence.push({file,missing:true});continue;}
     const name=file.replaceAll(/[^a-zA-Z0-9._-]/g,"_");
-    if(name==="." || name===".." || names.has(name))throw new Error("Ambiguous artifact name: "+file);
+    if(name==="." || name===".." || names.has(name)) throw new Error("Ambiguous artifact name: "+file);
     names.add(name);fs.writeFileSync(path.join(output,name),bytes);
     evidence.push({file,name,bytes:bytes.length,sha256:crypto.createHash("sha256").update(bytes).digest("hex")});
 }
 fs.writeFileSync(path.join(output,"extracted-artifacts.json"),JSON.stringify(evidence,null,2)+"\n");
-if(evidence.some(entry=>entry.missing))throw new Error("Missing artifacts; export chunks retained for inspection");
+if(evidence.some(entry=>entry.missing)) throw new Error("Missing artifacts; export chunks retained for inspection");
 for(const chunk of manifest.chunks)fs.unlinkSync(path.join(output,chunk.name));
 console.log(JSON.stringify(evidence,null,2));

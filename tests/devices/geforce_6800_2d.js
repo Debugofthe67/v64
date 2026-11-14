@@ -102,11 +102,11 @@ assert.deepEqual(engine.sample(new Uint8Array([16,128,235,128]), 2, 1, 4, 5, 1, 
 assert.deepEqual(engine.sample(new Uint8Array([128,16,128,235]), 2, 1, 4, 6, 1, 0), [255,255,255,255]);
 // SIFM's clamp width does not impose a minimum source row pitch.
 target.methods.set(0x300,4);vram.fill(0,256,384);
-for(const [at,value]of [[0x300,7],[0x400,3<<16|4],[0x404,1<<16|4],[0x30C,3<<16|2],
+for(const [at,value] of [[0x300,7],[0x400,3<<16|4],[0x404,1<<16|4],[0x30C,3<<16|2],
     [0x314,3<<16|2],[0x318,0x100000],[0x31C,0x100000]])scale.methods.set(at,value);
 new Uint16Array(vram.buffer,0x1000,8).set([0xF800,0x07E0,0x001F,0xFFFF,0x1234,0x5678,0x9ABC,0xDEF0]);
 call(scale,0x40C,0);
-for(let y=0;y<3;y++)for(let x=0;x<2;x++)assert.equal(view.getUint16(256+y*32+x*2,true),view.getUint16(0x1000+y*4+x*2,true),"overlapping source rows");
+for(let y=0;y<3;y++) for(let x=0;x<2;x++)assert.equal(view.getUint16(256+y*32+x*2,true),view.getUint16(0x1000+y*4+x*2,true),"overlapping source rows");
 scale.methods.set(0x404,1<<16);call(scale,0x40C,0);
 for(let y=0;y<3;y++)assert.equal(view.getUint16(256+y*32,true),0xF800,"zero source pitch repeats the row");
 word(0x1004,0x1006);const beforeShort=vram.slice(256,384);
@@ -115,19 +115,19 @@ word(0x1004,0x1002);
 assert.throws(()=>call(scale,0x40C,0),/limit/);assert.deepEqual(vram.subarray(256,384),beforeShort,"source bounds are checked before any destination writes");
 word(0x1004,0x1FFF);target.methods.set(0x300,10);
 // A large clamp can describe unmapped texels outside the actual copy.
-for(const [at,value]of [[0x300,4],[0x400,1023<<16|1024],[0x404,1<<16|8],
+for(const [at,value] of [[0x300,4],[0x400,1023<<16|1024],[0x404,1<<16|8],
     [0x30C,2<<16|2],[0x314,2<<16|2],[0x318,0x100000],[0x31C,0x100000]])scale.methods.set(at,value);
 const footprintColors=[0xFF102030,0xFF405060,0xFF708090,0xFFA0B0C0];
 footprintColors.forEach((value,index)=>view.setUint32(0x1000+index*4,value,true));
 word(0x1004,0x100F);call(scale,0x40C,0);
-for(let y=0;y<2;y++)for(let x=0;x<2;x++)assert.equal(view.getUint32(256+y*32+x*4,true),footprintColors[y*2+x]);
+for(let y=0;y<2;y++) for(let x=0;x<2;x++)assert.equal(view.getUint32(256+y*32+x*4,true),footprintColors[y*2+x]);
 // Native Win98 uploads use CORNER with POINT=(0.5,0.5). Rounding that
 // already centered coordinate again shifted both axes and read the next row.
 for(const filter of [0,1])
 {
     if(filter)scale.methods.set(0x400,2<<16|2);
     scale.methods.set(0x404,filter<<24|2<<16|8);call(scale,0x40C,0x80008);
-    for(let y=0;y<2;y++)for(let x=0;x<2;x++)assert.equal(view.getUint32(256+y*32+x*4,true),footprintColors[y*2+x],
+    for(let y=0;y<2;y++) for(let x=0;x<2;x++)assert.equal(view.getUint32(256+y*32+x*4,true),footprintColors[y*2+x],
         "CORNER half-texel upload preserves each source pixel and its checked footprint");
 }
 scale.methods.set(0x400,1023<<16|1024);
@@ -139,15 +139,15 @@ scale.methods.set(0x318,4<<20);scale.methods.set(0x31C,4<<20);
 const sparseOffsets=[0x1000,0x1010,0x1100,0x1110],sourceReads=[],dmaRead=device.dma.read.bind(device.dma);
 sparseOffsets.forEach((at,index)=>view.setUint32(at,footprintColors[index],true));
 device.dma.read=(dma,at,length)=>{if(at>=0x1000)sourceReads.push([at,length]);return dmaRead(dma,at,length);};
-try {call(scale,0x40C,0);}finally {device.dma.read=dmaRead;}
+try {call(scale,0x40C,0);} finally {device.dma.read=dmaRead;}
 assert.deepEqual(sourceReads,sparseOffsets.map(at=>[at,4]),"point sampling skips unused columns and rows inside its footprint");
 scale.methods.set(0x318,-(4<<20));call(scale,0x40C,64);
-for(let y=0;y<2;y++)for(let x=0;x<2;x++)assert.equal(view.getUint32(256+y*32+x*4,true),footprintColors[y*2+1-x],"negative source steps preserve reflected sampling");
+for(let y=0;y<2;y++) for(let x=0;x<2;x++)assert.equal(view.getUint32(256+y*32+x*4,true),footprintColors[y*2+1-x],"negative source steps preserve reflected sampling");
 scale.methods.set(0x400,0xFFFFFFFF);scale.methods.set(0x404,2<<16);
 scale.methods.set(0x318,2047<<20);scale.methods.set(0x31C,2047<<20);word(0x1004,0x2FFF);
 view.setUint32(0x2FFC,footprintColors[1],true);sourceReads.length=0;
 device.dma.read=(dma,at,length)=>{if(at>=0x1000)sourceReads.push([at,length]);return dmaRead(dma,at,length);};
-try {call(scale,0x40C,0);}finally {device.dma.read=dmaRead;}
+try {call(scale,0x40C,0);} finally {device.dma.read=dmaRead;}
 assert.deepEqual(sourceReads,[[0x1000,4],[0x2FFC,4]],"maximum clamp and sparse zero-pitch rows retain only two used texels");
 word(0x1004,0x1FFF);
 const swz = object(0x5800, 0x309E, [[0x184, 0x100], [0x300, 1 << 24 | 2 << 16 | 1], [0x304, 512]]);
@@ -191,7 +191,7 @@ const tri=object(0x5F00,0x5D,[[0x198,0x500],[0x2FC,1],[0x18C,0x510],[0x304,255]]
 graph.object(0,0x5100).methods.set(0x300,0x66);vram.fill(0,1024,1280);
 call(tri,0x310,0);call(tri,0x314,2);call(tri,0x318,2<<16);
 call(tri,0x310,2);call(tri,0x314,2<<16|2);call(tri,0x318,2<<16);
-for(let y=0;y<3;y++)for(let x=0;x<3;x++)assert.equal(vram[1024+y*32+x],x<2&&y<2?255:0,"top-left rule covers shared triangle edge once");
+for(let y=0;y<3;y++) for(let x=0;x<3;x++)assert.equal(vram[1024+y*32+x],x<2&&y<2?255:0,"top-left rule covers shared triangle edge once");
 console.log("PASS: NV40 8/16/32-bit fills, exhaustive ROP3, clipped/overlapping blits, PCI M2MF and atomic completion/faults");
 console.log("PASS: IFC row padding/crop and mid-row snapshot, GDI transparent/opaque bitmap expansion and bit order");
 console.log("PASS: nearest/bilinear scaling, both packed YUV orders, rectangular Morton surfaces and premultiplied blending");
@@ -214,14 +214,14 @@ fonts.methods.set(0x184,0x110);fonts.methods.set(0x198,0x500);call(fonts,0x2FC,3
 call(fonts,0xFF0,3<<28|0x200);call(fonts,0xFF4,0);call(fonts,0xFF8,8<<16|8);call(fonts,0xFFC,0x12345678);
 fontRam.setUint32(0x1210,3<<16|3,true);fontRam.setUint32(0x1214,0x155,true);
 vram.fill(0,1800,2056);call(fonts,0x1000,1<<20|0xFFF<<8|2);
-for(let y=0;y<4;y++)for(let x=0;x<8;x++)assert.equal(view.getUint32(1800+y*32+x*4,true),
+for(let y=0;y<4;y++) for(let x=0;x<8;x++)assert.equal(view.getUint32(1800+y*32+x*4,true),
     y>=1 && y<4 && x<2 && ((y-1)*3+x+1)%2===0?0x12345678:0,"F signed twelve-bit origin and transparent pixels");
 call(fonts,0x17F0,3<<28|0x200);call(fonts,0x17FC,0x87654321);
 fontRam.setUint32(0x1000+0x200+0x101*8,3<<16|3,true);fontRam.setUint32(0x1000+0x204+0x101*8,0x000080AA,true);
 call(fonts,0x304,1);call(fonts,0x1FF8,2<<16|1);
 const fontState=graph.get_state();graph.set_state(fontState);
 const restoredFonts=graph.object(0,0x5200);vram.fill(0,1800,2056);call(restoredFonts,0x1804,0xABCD0101);
-for(let y=0;y<8;y++)for(let x=0;x<8;x++)assert.equal(view.getUint32(1800+y*32+x*4,true),
+for(let y=0;y<8;y++) for(let x=0;x<8;x++)assert.equal(view.getUint32(1800+y*32+x*4,true),
     y>=2 && y<5 && x>=1 && x<4 && ((y-2)*3+x-1)%2===0?0x87654321:0,
     "G unsigned sixteen-bit index, shared aliased origin, CGA6 bit order and snapshot");
 const fontBefore=vram.slice(1800,2056);
@@ -256,11 +256,11 @@ assert.deepEqual(vram.slice(3000,3096),packedBefore,"a cross-row INDEX DWORD val
 call(packed,0x400,indexWords[0]);assert.equal(view.getUint16(3034,true),8*0x1111,"first DWORD already reaches the next INDEX row");
 const packedSnapshot=graph.get_state();graph.set_state(packedSnapshot);const packedRestored=graph.object(0,0x6200);
 call(packedRestored,0x404,indexWords[1]);call(packedRestored,0x408,indexWords[2]);
-for(let y=0;y<3;y++)for(let x=0;x<6;x++)assert.equal(view.getUint16(3000+y*32+x*2,true),x<5?indices[y*6+x]*0x1111:0,"packed I4 rows, output crop and final DWORD padding");
+for(let y=0;y<3;y++) for(let x=0;x<6;x++)assert.equal(view.getUint16(3000+y*32+x*2,true),x<5?indices[y*6+x]*0x1111:0,"packed I4 rows, output crop and final DWORD padding");
 assert.throws(()=>call(packedRestored,0x400,0),/excess/);
 call(packedRestored,0x3EC,0);call(packedRestored,0x3F8,2<<16|3);call(packedRestored,0x3FC,2<<16|3);call(packedRestored,0x3F4,0);vram.fill(0,3000,3096);
 call(packedRestored,0x400,0x04030201);call(packedRestored,0x404,0xFFFF0605);
-for(let y=0;y<2;y++)for(let x=0;x<3;x++)assert.equal(view.getUint16(3000+y*32+x*2,true),(y*3+x+1)*0x1111,"I8 DWORDs also span packed image rows");
+for(let y=0;y<2;y++) for(let x=0;x<3;x++)assert.equal(view.getUint16(3000+y*32+x*2,true),(y*3+x+1)*0x1111,"I8 DWORDs also span packed image rows");
 // Compatibility with a snapshot made by the previous per-row implementation.
 call(packedRestored,0x3FC,2<<16|6);call(packedRestored,0x3F8,2<<16|6);call(packedRestored,0x3F4,0);
 packedRestored.stream=[0,1,2,3,4];packedRestored.methods.set(0x40000,4);vram.fill(0,3000,3096);

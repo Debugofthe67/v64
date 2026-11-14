@@ -6,7 +6,7 @@ import {fileURLToPath} from "node:url";
 const root=fileURLToPath(new URL("../../",import.meta.url));
 const html=fs.readFileSync(root+"tests/glbridge/d3d_remote_renderer.html","utf8");
 const script=/<script id="d3d-browser-errors">([\s\S]*?)<\/script>/.exec(html);
-assert(script && html.indexOf(script[0])<html.indexOf('<script src='),"Install observer before dependencies");
+assert(script && html.indexOf(script[0])<html.indexOf("<script src="),"Install observer before dependencies");
 const handlers=new Map(),reported=[];
 const context=vm.createContext({console:{error(...args){reported.push(args);}},addEventListener(name,handler){handlers.set(name,handler);}});
 vm.runInContext(script[1],context);
@@ -39,9 +39,9 @@ if(process.env.D3D_BROWSER_ERRORS_REAL === "1") {
         ["after-ready",'const original=WebSocket.prototype.send;WebSocket.prototype.send=function(data){if(data instanceof Uint8Array&&data.length===1&&data[0]===6)setTimeout(()=>console.error("EXPECTED observer after-ready mutation"),0);return original.call(this,data);};'],
     ];
     const results=[];
-    for(const [label,code]of cases) {
+    for(const [label,code] of cases) {
         const file=out+"/"+label+".html";
-        fs.writeFileSync(file,template.replace('</script>','</script>\n<script>'+code+'</script>'));
+        fs.writeFileSync(file,template.replace("</script>","</script>\n<script>"+code+"</script>"));
         let rejected=false,remote;
         const relative=file.slice(root.length);
         try {

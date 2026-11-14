@@ -744,14 +744,12 @@ fn code_page(pc: u64, mode: u32) -> Option<u32> {
     }
     let pa = if cpu::sctlr() & cpu::SCTLR_M == 0 {
         crate::aarch64::mmu::mmu_off(pc)?
-    } else { crate::aarch64::mmu::translate(
-        pc,
-        crate::aarch64::memory::Access::Fetch,
-        cpu::el() == 0,
-        4,
-    )
-    .ok()?
-    .pa };
+    }
+    else {
+        crate::aarch64::mmu::translate(pc, crate::aarch64::memory::Access::Fetch, cpu::el() == 0, 4)
+            .ok()?
+            .pa
+    };
     let code_key = bus::bus().code_key(pa)?;
     // (code in extended RAM: compiled with the cores in one instance; in
     // workers it is interpreted, P8.5)
@@ -1189,7 +1187,10 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
     // RAM below is cached; MMIO, watched code and reservations still refuse.
     let translated = if mmu_off {
         crate::aarch64::mmu::mmu_off(address).map(|pa| (pa, false, true))
-    } else { crate::aarch64::mmu::translate_for_cache(address, write, el0) };
+    }
+    else {
+        crate::aarch64::mmu::translate_for_cache(address, write, el0)
+    };
     let Some((pa, _large, global)) = translated
     else {
         r.stats[ACCESS_REFUSED] += 1;
@@ -1201,8 +1202,13 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
         // one scalar read from the same machine clock without leaving the
         // compiled function. Never cache a changing device register, and
         // never use this for LDM/LDRD whose host pointer spans more words.
-        Lookup::Mmio { .. } if bus::iop_active() && !write && size == 4
-            && kind & 0x1000 != 0 && matches!(pa, 0xBF10_2000 | 0xBF10_2004) => {
+        Lookup::Mmio { .. }
+            if bus::iop_active()
+                && !write
+                && size == 4
+                && kind & 0x1000 != 0
+                && matches!(pa, 0xBF10_2000 | 0xBF10_2004) =>
+        {
             let ticks = (unsafe { crate::isa::microtick() } * 24_000.0) as u64;
             let value = if pa & 4 == 0 { ticks as u32 } else { (ticks >> 32) as u32 };
             let target = bounce_address() + (kind >> 10 & 1) * 32;

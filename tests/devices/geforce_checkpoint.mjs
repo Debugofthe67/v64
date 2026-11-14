@@ -9,7 +9,7 @@ const directory=fs.mkdtempSync(path.join(os.tmpdir(),"nv40-checkpoint-"));
 try
 {
     const options={guest:"xp",vramMiB:128,osImage:"/original-os.img",gameImage:"/original-game.img"},bundle={status:"complete",...options};
-    for(const [field,text]of [["state","RAM at checkpoint"],["osOverlay","pagefile sectors"],["gameOverlay","project sectors"]])
+    for(const [field,text] of [["state","RAM at checkpoint"],["osOverlay","pagefile sectors"],["gameOverlay","project sectors"]])
     {
         const file=path.join(directory,field),bytes=Buffer.from(text);fs.writeFileSync(file,bytes);options[field]=file;
         bundle[field]={file,bytes:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex")};

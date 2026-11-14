@@ -32,9 +32,9 @@ export function decode_vertex_program(words, first = 0, entry = first)
     const decoded=new Map(),pending=[entry];let ended=false,last=0;
     while(pending.length)
     {
-        const pc=pending.pop();if(decoded.has(pc))continue;
+        const pc=pending.pop();if(decoded.has(pc)) continue;
         const at=(pc-first)*4;
-        if(at<0 || at+4>words.length)throw new RangeError("NV40 vertex program has no end or branch outside program");
+        if(at<0 || at+4>words.length) throw new RangeError("NV40 vertex program has no end or branch outside program");
         const i=decode_vertex_instruction(words.slice(at,at+4),pc);decoded.set(pc,i);last=Math.max(last,at+4);
         if(i.end){ended=true;continue;}
         const flow=i.scalar.name,condition=i.predicate.condition;
@@ -46,7 +46,7 @@ export function decode_vertex_program(words, first = 0, entry = first)
         }
         else if(flow!=="RET" || condition!==7)pending.push(pc+1);
     }
-    if(!ended)throw new RangeError("NV40 vertex program has no end instruction");
+    if(!ended) throw new RangeError("NV40 vertex program has no end instruction");
     return {stage:"vertex",instructions:[...decoded.values()].sort((a,b)=>a.pc-b.pc),entry,word_count:last};
 }
 
@@ -54,19 +54,19 @@ export function decode_fragment_program(words,read=null)
 {
     const storage=Array.from(words),decoded=new Map(),inline=new Map(),pending=[0];let last=0,ended=false;
     const ensure=count=>{
-        if(count>16384)throw new RangeError("NV40 fragment program size");
+        if(count>16384) throw new RangeError("NV40 fragment program size");
         while(storage.length<count && read)
         {
             const block=read(storage.length);
-            if(!block.length || block.length&3)throw new RangeError("NV40 invalid fragment fetch block");
+            if(!block.length || block.length&3) throw new RangeError("NV40 invalid fragment fetch block");
             storage.push(...block);
         }
-        if(storage.length<count)throw new RangeError("NV40 truncated fragment instruction or branch outside program");
+        if(storage.length<count) throw new RangeError("NV40 truncated fragment instruction or branch outside program");
     };
     while(pending.length)
     {
-        let at=pending.pop();if(decoded.has(at))continue;
-        if(at<0 || at&3)throw new RangeError("NV40 invalid fragment branch target");
+        let at=pending.pop();if(decoded.has(at)) continue;
+        if(at<0 || at&3) throw new RangeError("NV40 invalid fragment branch target");
         ensure(at+4);
         const pc=at, a=storage[at++], b=storage[at++], c=storage[at++], d=storage[at++], branch=!!(c & 0x80000000);
         const opcode=a>>>24&63, input=a>>>13&15;
@@ -76,7 +76,7 @@ export function decode_fragment_program(words,read=null)
         let constant=-1;
         if(!branch && sources.some(source=>source.type==="constant"))
         {
-            try {ensure(at+4);}catch(error){throw new RangeError("NV40 truncated inline fragment constant");}
+            try {ensure(at+4);} catch(error){throw new RangeError("NV40 truncated inline fragment constant");}
             inline.set(pc,storage.slice(at,at+4));constant=0;at+=4;
         }
         const instruction={pc,words:[a>>>0,b>>>0,c>>>0,d>>>0],opcode,
@@ -91,7 +91,7 @@ export function decode_fragment_program(words,read=null)
         if(instruction.end){ended=true;continue;}
         if(branch && instruction.name==="RET")
         {
-            ended=true;if(instruction.predicate.condition===7)continue;
+            ended=true;if(instruction.predicate.condition===7) continue;
         }
         if(branch && instruction.name==="CAL" && instruction.predicate.condition!==0)pending.push(instruction.else_offset);
         if(branch && ["IF","LOOP","REP"].includes(instruction.name))
@@ -101,11 +101,11 @@ export function decode_fragment_program(words,read=null)
         }
         pending.push(at);
     }
-    if(!ended)throw new RangeError("NV40 fragment program has no end instruction");
+    if(!ended) throw new RangeError("NV40 fragment program has no end instruction");
     const instructions=[...decoded.values()].sort((a,b)=>a.pc-b.pc),constants=[],normalized=new Uint32Array(last);
     for(const i of instructions)
     {
-        if(inline.has(i.pc-4))throw new RangeError("NV40 fragment branch targets an inline constant");
+        if(inline.has(i.pc-4)) throw new RangeError("NV40 fragment branch targets an inline constant");
         normalized.set(i.words,i.pc);
         if(inline.has(i.pc)){i.constant=constants.length;constants.push(inline.get(i.pc));}
     }

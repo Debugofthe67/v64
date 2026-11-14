@@ -18,7 +18,7 @@ const restore=()=>{if(!fs.readFileSync(fixture).equals(compressed))fs.writeFileS
 process.once("exit",restore);for(const signal of ["SIGINT","SIGTERM"])process.once(signal,()=>{restore();process.exit(130);});
 function run(page){const result=spawn(process.execPath,[root+"tests/glbridge/gl_multipass_browser_runner.js",page],{cwd:root,env:{...process.env,GL_SWIFTSHADER:"1"},encoding:"utf8",timeout:120000,maxBuffer:8<<20});const line=result.stdout.split(/\r?\n/).find(l=>l.startsWith('{"status"'));assert(line,result.stderr.slice(-1200)||"GPU runner did not report");return JSON.parse(line);}
 const results=[];
-try{
+try {
  for(const mode of ["restore","texture-offset","colour-offset"]){const bytes=Buffer.from(original);let changed=0,pending=false;
   for(let carrier=0;carrier<bytes.length;){const size=bytes.readUInt32LE(carrier+8),packet=bytes.subarray(carrier+20,carrier+12+size),header=W.readHeader(packet);W.checkStream(header.view,header.end,header.commandCount);
    for(let at=P.STRUCTS.BatchHeader.size;at<header.end;){const opcode=header.view.getUint16(at,true),length=header.view.getUint32(at+P.F.CommandHeader.size,true),payload=at+P.STRUCTS.CommandHeader.size;
@@ -31,11 +31,11 @@ try{
    }
    carrier+=12+size;
   }
-  assert.equal(changed,3);fs.writeFileSync(fixture,gzip_sync(bytes));try{const result=run("d3d_stream_clip_replay_browser_test.html");assert.equal(result.status,"FAIL","survived: "+mode);assert.match(result.details,/XP multi-stream clipped draw mismatch/);results.push({label:mode,killed:true,mutatedTraceSha256:hash(bytes)});}finally{restore();}
+  assert.equal(changed,3);fs.writeFileSync(fixture,gzip_sync(bytes));try {const result=run("d3d_stream_clip_replay_browser_test.html");assert.equal(result.status,"FAIL","survived: "+mode);assert.match(result.details,/XP multi-stream clipped draw mismatch/);results.push({label:mode,killed:true,mutatedTraceSha256:hash(bytes)});} finally {restore();}
  }
  const before="const clipPlaneCount = pretransformed ? 0 : state.clipPlaneCapacity || 0;";assert.equal(source.split(before).length,2);
- fs.writeFileSync(executor,source.replace(before,"const clipPlaneCount = state.clipPlaneCapacity || 0;"));try{const result=run("d3d9_conformance_browser_test.html");assert.equal(result.status,"FAIL","POSITIONT plane regression survived");assert.match(result.details,/POSITIONT bypasses enabled user clipping planes/);results.push({label:"POSITIONT applies user planes again",killed:true});}finally{restore();}
+ fs.writeFileSync(executor,source.replace(before,"const clipPlaneCount = state.clipPlaneCapacity || 0;"));try {const result=run("d3d9_conformance_browser_test.html");assert.equal(result.status,"FAIL","POSITIONT plane regression survived");assert.match(result.details,/POSITIONT bypasses enabled user clipping planes/);results.push({label:"POSITIONT applies user planes again",killed:true});} finally {restore();}
  assert(fs.readFileSync(fixture).equals(compressed));assert.equal(fs.readFileSync(executor,"utf8"),source);
  fs.writeFileSync(out+"/gpu-mutations.json",JSON.stringify({fixtureSha256:hash(compressed),executorSha256:hash(source),mutations:results},null,2)+"\n");
  console.log("PASS multi-stream clipping GPU mutations: 4/4, exact fixture and executor restored");
-}finally{restore();}
+} finally {restore();}

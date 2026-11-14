@@ -7,7 +7,7 @@ import {fileURLToPath} from "node:url";
 const frame = (width = 800, height = 600) => ({width, height, raw: new Uint8Array(height * (width * 3 + 1))});
 const before = frame(), same = frame(), clock = frame(), consolePicture = frame();
 clock.raw.fill(255, 560 * (800 * 3 + 1));
-for (let y = 120; y < 420; ++y) consolePicture.raw.fill(255, y * 2401 + 301, y * 2401 + 1801);
+for(let y = 120; y < 420; ++y) consolePicture.raw.fill(255, y * 2401 + 301, y * 2401 + 1801);
 assert.equal(probe_screen_changed(before, same), false);
 assert.equal(probe_screen_changed(before, clock), false);
 assert.equal(probe_screen_changed(before, consolePicture), true);
@@ -17,7 +17,7 @@ assert.equal(probe_screen_changed(before, null), false);
 const base = {launchBatches: 0, batches: 0, launchWrites: 4, writes: 4,
     result: "", logs: {"START.TXT": ""}, before, after: same};
 assert(Object.values(probe_launch_activity(base)).every(v => !v));
-for (const change of [{batches: 1}, {writes: 5}, {result: "START"},
+for(const change of [{batches: 1}, {writes: 5}, {result: "START"},
     {logs: {"START.TXT": "START"}}, {after: consolePicture}])
     assert(Object.values(probe_launch_activity({...base, ...change})).some(Boolean));
 assert.deepEqual(probe_run_scancodes("cmd /c"), [46,174,50,178,32,160,57,185,53,181,46,174]);
@@ -26,13 +26,13 @@ assert.deepEqual(probe_run_scancodes("A"), [42,30,158,170]);
 assert.deepEqual(probe_run_scancodes("()"), [42,10,138,170,42,11,139,170]);
 assert.throws(() => probe_run_scancodes("cmd\n"), /US keyboard ASCII/);
 assert.throws(() => probe_run_scancodes("中文"), /US keyboard ASCII/);
-for (const text of ["cmd /c for %d in (d e f g h i j k) do @if exist %d:\\probe.cmd %d:\\probe.cmd",
+for(const text of ["cmd /c for %d in (d e f g h i j k) do @if exist %d:\\probe.cmd %d:\\probe.cmd",
     Array.from({length:95}, (_, i) => String.fromCharCode(i+32)).join("")])
 {
     const pressed = new Set();
-    for (const code of probe_run_scancodes(text))
+    for(const code of probe_run_scancodes(text))
     {
-        if (code & 128) { assert(pressed.delete(code & 127)); }
+        if(code & 128) { assert(pressed.delete(code & 127)); }
         else { assert(!pressed.has(code)); pressed.add(code); }
     }
     assert.equal(pressed.size, 0);
@@ -59,7 +59,7 @@ const fixtures=fileURLToPath(new URL("./fixtures/xp_run_dialog/",import.meta.url
 for(const row of JSON.parse(fs.readFileSync(fixtures+"origin.json")).cases) {
     assert.equal(createHash("sha256").update(fs.readFileSync(fixtures+row.file)).digest("hex"),row.sha256);
     const p=read_png(fixtures+row.file),raw=new Uint8Array(p.height*(p.width*3+1));
-    for(let y=0;y<p.height;y++)for(let x=0;x<p.width;x++)
+    for(let y=0;y<p.height;y++) for(let x=0;x<p.width;x++)
         raw.set(p.rgba.subarray((y*p.width+x)*4,(y*p.width+x)*4+3),y*(p.width*3+1)+1+x*3);
     assert.equal(probe_run_dialog_visible({width:p.width,height:p.height,raw}),row.runVisible,row.file);
 }

@@ -18,6 +18,6 @@ const P = require("../../src/browser/glbridge/d3d9-webgpu/d9wg_protocol.js");
     }
     assert.equal(Object.keys(targets).length, 9);
     for (const [name, at] of Object.entries(targets)) {const bad = Buffer.from(b); bad.writeUInt32LE((bad.readUInt32LE(at) ^ 1) >>> 0, at); assert.throws(() => inspect_present_geometry_wire(bad, result), undefined, name);}
-    for(const [api,from,to]of[[8,'callerWidth=0','callerWidth=128'],[9,'callerWidth=128','callerWidth=0'],[8,'count=1','count=0']])assert.throws(()=>inspect_present_geometry_wire(b,{...result,logs:{...result.logs,['GEO'+api+'.TXT']:result.logs['GEO'+api+'.TXT'].replace(from,to)}}));
-    console.log('PASS frozen XP present geometry: six frames, four Resets, guest viewport/color/depth and version-specific caller parameters, twelve semantic corruptions');
+    for (const [api,from,to] of [[8,"callerWidth=0","callerWidth=128"],[9,"callerWidth=128","callerWidth=0"],[8,"count=1","count=0"]])assert.throws(()=>inspect_present_geometry_wire(b,{...result,logs:{...result.logs,["GEO"+api+".TXT"]:result.logs["GEO"+api+".TXT"].replace(from,to)}}));
+    console.log("PASS frozen XP present geometry: six frames, four Resets, guest viewport/color/depth and version-specific caller parameters, twelve semantic corruptions");
 })().catch(e => {console.error(e); process.exitCode = 1;});

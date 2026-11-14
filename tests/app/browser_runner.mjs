@@ -73,18 +73,18 @@ async function focus_page(endpoint)
     let target;
     for(let i=0;i<100&&!target;i++)
     {
-        if(finished)return;
+        if(finished) return;
         const list=await(await fetch(origin.origin+"/json/list")).json();
         target=list.find(t=>t.type==="page"&&t.url.includes("/"+page));
-        if(!target)await new Promise(resolve=>setTimeout(resolve,100));
+        if(!target) await new Promise(resolve=>setTimeout(resolve,100));
     }
-    if(!target)throw new Error("The acceptance page did not become available for focus emulation");
-    if(finished)return;
+    if(!target) throw new Error("The acceptance page did not become available for focus emulation");
+    if(finished) return;
     focus_socket=new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve,reject)=>{focus_socket.onopen=resolve;focus_socket.onerror=reject;});
     await new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>reject(new Error("Focus emulation timed out")),10000);
-        focus_socket.onmessage=({data})=>{const result=JSON.parse(data);if(result.id!==1)return;
+        focus_socket.onmessage=({data})=>{const result=JSON.parse(data);if(result.id!==1) return;
             clearTimeout(timer);result.error?reject(new Error(result.error.message)):resolve();};
         focus_socket.send(JSON.stringify({id:1,method:"Emulation.setFocusEmulationEnabled",params:{enabled:true}}));
     });
@@ -251,7 +251,7 @@ const server = http.createServer((req, res) =>
 
 function finish(code)
 {
-    if(finished)return;
+    if(finished) return;
     finished=true;
     focus_socket?.close();
     timing_pause(false);

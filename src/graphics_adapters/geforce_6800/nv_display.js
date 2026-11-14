@@ -43,7 +43,7 @@ export class NVDisplay
         this.machine.register_write(0x3C5, this, value => this.write_seq(value));
         this.machine.register_write(0x3C9, this, value => this.dac_write(value));
         this.machine.register_read(0x3C9, this, () => this.dac_read());
-        for(const port of [0x3BA,0x3DA])this.machine.register_read(port,this,()=>this.status());
+        for(const port of [0x3BA,0x3DA]) this.machine.register_read(port,this,()=>this.status());
         // NV CRTC 1D/1E select independent 32 KiB write/read banks. Keep the
         // VGA core's planar/text path for the legacy pixel format.
         this.machine.mmap_register_range(0xA0000, 0x20000, address => {
@@ -131,7 +131,7 @@ export class NVDisplay
         if(port === 0x3D4 || port === 0x3B4) return second ? this.index2 : this.vga.index_crtc;
         if(port === 0x3D5 || port === 0x3B5) return second ? this.crtc2[this.index2] : this.read_crtc();
         if(second) return 255; // disconnected second head
-        if(port===0x3DA || port===0x3BA)return this.status();
+        if(port===0x3DA || port===0x3BA) return this.status();
         if(port === 0x3C9) return this.dac_read();
         const readers = { 0x3C0: "port3C0_read", 0x3C1: "port3C1_read", 0x3C4: "port3C4_read", 0x3C5: "port3C5_read",
             0x3C6: "port3C6_read", 0x3C7: "port3C7_read", 0x3C8: "port3C8_read", 0x3C9: "port3C9_read",
@@ -170,7 +170,7 @@ export class NVDisplay
     release_semaphore(value)
     {
         const mode=this.mode(),length=mode?(mode.height-1)*mode.pitch+mode.width*mode.bytes:4;
-        if(value&3 || value+length>this.device.vram_size)throw new RangeError("NV40 display semaphore outside VRAM");
+        if(value&3 || value+length>this.device.vram_size) throw new RangeError("NV40 display semaphore outside VRAM");
         // Queue head 0's byte address exactly like PCRTC_START. The scanout
         // front remains unchanged until on_vblank, including across snapshots.
         this.device.registers.set(0x600800,value);this.invalidate();
@@ -190,19 +190,19 @@ export class NVDisplay
     }
     status()
     {
-        if(!(this.crtc[0x28]&3))return this.vga.port3DA_read();
+        if(!(this.crtc[0x28]&3)) return this.vga.port3DA_read();
         const raster=this.raster(),retrace=raster.retrace || this.vga.retrace_pending;
         this.vga.retrace_pending=false;this.vga.attribute_controller_index=-1;
         return (raster.blank?1:0)|(retrace?9:0);
     }
     read(offset, mask = -1)
     {
-        if(![0x600808,0x600868,0x60086C].includes(offset))return null;
+        if(![0x600808,0x600868,0x60086C].includes(offset)) return null;
         const raster=this.raster();
-        if(offset===0x600868)return raster.line&0x1FFF;
-        if(offset===0x60086C)return raster.hpos&0x1FFF;
+        if(offset===0x600868) return raster.line&0x1FFF;
+        if(offset===0x60086C) return raster.hpos&0x1FFF;
         const retrace=raster.retrace || this.raster_pending;
-        if(mask&0x10000)this.raster_pending=false;
+        if(mask&0x10000) this.raster_pending=false;
         return (raster.line&0x1FFF)|(raster.blank?0x2000:0)|(retrace?0x10000:0);
     }
     implemented(offset)

@@ -43,7 +43,8 @@ pub unsafe fn set_pam_write_mask(mask: u32) {
 
 #[inline(always)]
 pub fn shadow_write_protected(address: u32) -> bool {
-    address >= 0xC0000 && address < 0x100000
+    address >= 0xC0000
+        && address < 0x100000
         && unsafe { PAM_WRITE_MASK & (1 << ((address - 0xC0000) >> 14)) == 0 }
 }
 
@@ -372,7 +373,9 @@ pub unsafe fn write8_ram(addr: u32, value: i32) {
 }
 
 pub unsafe fn write8_no_mmap_or_dirty_check(addr: u32, value: i32) {
-    if shadow_write_protected(addr) { return; }
+    if shadow_write_protected(addr) {
+        return;
+    }
     parallel::store8(mem8.offset(addr as isize), value as u8)
 }
 
@@ -407,8 +410,10 @@ pub unsafe fn write16_ram(addr: u32, value: i32) {
     write16_no_mmap_or_dirty_check(addr, value);
 }
 pub unsafe fn write16_no_mmap_or_dirty_check(addr: u32, value: i32) {
-    if shadow_write_split(addr,2) {
-        for i in 0..2 { write8_no_mmap_or_dirty_check(addr+i,value>>(i*8)); }
+    if shadow_write_split(addr, 2) {
+        for i in 0..2 {
+            write8_no_mmap_or_dirty_check(addr + i, value >> (i * 8));
+        }
         return;
     }
     parallel::store16(mem8.offset(addr as isize), value as u16)
@@ -431,26 +436,28 @@ pub unsafe fn write32_ram(addr: u32, value: i32) {
 }
 
 pub unsafe fn write32_no_mmap_or_dirty_check(addr: u32, value: i32) {
-    if shadow_write_split(addr,4) {
-        for i in 0..4 { write8_no_mmap_or_dirty_check(addr+i,value>>(i*8)); }
+    if shadow_write_split(addr, 4) {
+        for i in 0..4 {
+            write8_no_mmap_or_dirty_check(addr + i, value >> (i * 8));
+        }
         return;
     }
     parallel::store32(mem8.offset(addr as isize), value as u32)
 }
 
 pub unsafe fn write64_no_mmap_or_dirty_check(addr: u32, value: u64) {
-    if shadow_write_split(addr,8) {
-        write32_no_mmap_or_dirty_check(addr,value as i32);
-        write32_no_mmap_or_dirty_check(addr+4,(value>>32) as i32);
+    if shadow_write_split(addr, 8) {
+        write32_no_mmap_or_dirty_check(addr, value as i32);
+        write32_no_mmap_or_dirty_check(addr + 4, (value >> 32) as i32);
         return;
     }
     parallel::store64(mem8.offset(addr as isize), value)
 }
 
 pub unsafe fn write128_no_mmap_or_dirty_check(addr: u32, value: reg128) {
-    if shadow_write_split(addr,16) {
-        write64_no_mmap_or_dirty_check(addr,value.u64[0]);
-        write64_no_mmap_or_dirty_check(addr+8,value.u64[1]);
+    if shadow_write_split(addr, 16) {
+        write64_no_mmap_or_dirty_check(addr, value.u64[0]);
+        write64_no_mmap_or_dirty_check(addr + 8, value.u64[1]);
         return;
     }
     parallel::store128(mem8.offset(addr as isize), value.u64)
@@ -465,7 +472,7 @@ pub unsafe fn compare_exchange_no_mmap_or_dirty_check(
     expected: u64,
     value: u64,
 ) -> bool {
-    let value = if shadow_write_split(addr,bytes) {expected} else {value};
+    let value = if shadow_write_split(addr, bytes) { expected } else { value };
     parallel::compare_exchange(mem8.offset(addr as isize), bytes, expected, value)
 }
 
