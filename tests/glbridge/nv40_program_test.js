@@ -9,6 +9,13 @@ const vertex=decode_vertex_program(mov),v=vertex.instructions[0];
 assert.equal(v.vector.name,"MOV");assert.equal(v.vector.type,"output");assert.equal(v.vector.index,0);assert.equal(v.vector.mask,15);
 assert.deepEqual(v.sources[0],{type:"input",index:0,swizzle:[0,1,2,3],negate:false,absolute:false});
 assert.equal(v.scalar.name,"NOP");assert.equal(vertex.word_count,4);assert.equal(v.end,true);
+const nativeColor=decode_vertex_instruction([0x40061C6C,0x0049D00D,0x8186C083,0x6041FF8C]);
+assert.equal(nativeColor.vector.type,"output");assert.equal(nativeColor.vector.index,3);
+assert.deepEqual(nativeColor.vector.secondary,{type:"temp",index:12},"native ambient MOV also seeds its lighting accumulator");
+const scalarBoth=decode_vertex_instruction([0x001F9C6C,0x0809D000,3,0x607E060C]);
+assert.equal(scalarBoth.scalar.name,"MOV");assert.equal(scalarBoth.scalar.type,"output");assert.equal(scalarBoth.scalar.index,3);
+assert.deepEqual(scalarBoth.scalar.secondary,{type:"temp",index:12},"shared output selects scalar independently of the temporary destination");
+assert.equal(scalarBoth.vector.discard,true,"temporary destination 63 is disabled");
 for(let unit=0;unit<4;unit++)
 {
     const instruction=mov.slice();instruction[1]=(instruction[1]&~(31<<22))|25<<22;instruction[2]|=unit<<8;

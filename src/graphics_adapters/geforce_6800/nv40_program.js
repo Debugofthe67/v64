@@ -15,11 +15,19 @@ export function decode_vertex_instruction(words, pc = 0)
         index: (bits & 3) === 1 ? bits >>> 2 & 31 : (bits & 3) === 2 ? input : constant,
         swizzle: swizzle(bits,[14,12,10,8]), negate: !!(bits & 0x10000), absolute: !!(a & 1 << (21+i))}));
     const output = d >>> 2 & 31, vec = b >>> 22 & 31, sca = b >>> 27;
+    const vectorOutput=!!(a&0x40000000)&&output!==31,scalarOutput=!(a&0x40000000)&&output!==31;
+    const vectorTemp=a>>>15&63,scalarTemp=d>>>7&63;
     return {pc, words: Array.from(words), sources,
-        vector: {opcode: vec, name: VEC[vec] || null, type: a & 0x40000000 ? "output" : "temp",
-            index: a & 0x40000000 ? output : a >>> 15 & 63, mask: reverse_mask(d >>> 13 & 15)},
-        scalar: {opcode: sca, name: SCA[sca] || null, type: d & 0x1000 ? "output" : "temp",
-            index: d & 0x1000 ? output : d >>> 7 & 31, mask: reverse_mask(d >>> 17 & 15)},
+        // Each issue slot has an independent temporary destination. The
+        // shared TBUF address additionally receives the selected slot's
+        // result; it does not replace its temporary write. 63/31 disable
+        // the corresponding temporary/TBUF destination.
+        vector: {opcode: vec, name: VEC[vec] || null, type: vectorOutput ? "output" : "temp",
+            index: vectorOutput ? output : vectorTemp, mask: reverse_mask(d >>> 13 & 15),discard:!vectorOutput&&vectorTemp===63,
+            secondary:vectorOutput&&vectorTemp!==63?{type:"temp",index:vectorTemp}:null},
+        scalar: {opcode: sca, name: SCA[sca] || null, type: scalarOutput ? "output" : "temp",
+            index: scalarOutput ? output : scalarTemp, mask: reverse_mask(d >>> 17 & 15),discard:!scalarOutput&&scalarTemp===63,
+            secondary:scalarOutput&&scalarTemp!==63?{type:"temp",index:scalarTemp}:null},
         predicate: {enabled: !!(a & 0x2000), update: !!(a & 0x4000), vector: !!(a & 0x20000000), register: a >>> 25 & 1,
             condition: a >>> 10 & 7, swizzle: swizzle(a,[8,6,4,2])},
         address: {register: a >>> 24 & 1, component: a & 3, input: !!(a & 0x08000000), output: !!(a & 0x10000000), constant: !!(d & 2)},

@@ -2020,3 +2020,13 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   直到真实 RAM release=42 才提交 REF=99。回归先红后绿，完整真实 GPU
   的 REF/像素/别名/快照套件和 Closure 通过。它与 06 过早释放资源现象
   相符，但原生整套仍需重跑；见 `g6-prefetched-acquire-ordering.json`。
+
+- G3/G4 顶点双目标写入：2000 原生 MOV 同时写 TBUF3/R12，后续 MAD
+  从 R12 累积光照；此前 output 选择错误丢掉 temp 写入，造成黑桶和暗场景。
+  现按独立六位 temp 目标及共享 output 选择同时提交，保留 mask/predicate
+  和双发射读先于写；标量亦修正。解码、真实 GPU 双目标/掩码/条件/
+  read-before-write、171 个 WGSL 与 Closure 通过。原生两项 IQ 正常结束、
+  保存 NVDIQ 并 safe-off 后导出 18 图；IQ8 MAD 5.7627→0.2198，
+  IQ9 4.0030→0.1121，木桶恢复棕色，三类真实故障为零。最大残差
+  88/64 尚需复核，完整图像门禁继续；见
+  `g3-native-vertex-dual-destination.json`。

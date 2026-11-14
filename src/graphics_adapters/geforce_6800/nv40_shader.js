@@ -215,7 +215,7 @@ export function translate_vertex_program(program,options={})
     for(const i of program.instructions)
     {
         if(i.address.input || i.address.constant || i.address.output || i.vector.name==="ARA" || i.scalar.name==="PUSHA")address(i.address.register);
-        if(["ARL","ARR","ARA"].includes(i.vector.name))address(i.vector.index);
+        if(["ARL","ARR","ARA"].includes(i.vector.name) && !i.vector.discard)address(i.vector.secondary?.index??i.vector.index);
         if(i.scalar.name==="POPA")
         {
             address(i.scalar.index);
@@ -349,12 +349,14 @@ export function translate_vertex_program(program,options={})
                 shader.emit(OP.MIN,dst(0,30+slot,op.mask),src(0,30+slot),shader.literal(511));
             }
             const relative=!addressOp && op.type==="output" && i.address.output;
-            const index=relative?-1:addressOp?address(op.index):op.type==="output"?output(op.index):shader.temp("r"+op.index);
-            results.push({index,mask:op.mask,slot,relative});
+            const index=op.discard?-1:relative?-1:addressOp?address(op.secondary?.index??op.index):op.type==="output"?output(op.index):shader.temp("r"+op.index);
+            const destinations=op.discard?[]:[{index,relative}];
+            if(!addressOp && op.secondary)destinations.push({index:shader.temp("r"+op.secondary.index),relative:false});
+            results.push({destinations,mask:op.mask,slot});
         }
-        for(const {index,mask,slot,relative}of results)
+        for(const {destinations,mask,slot}of results)
         {
-            for(const register of relative?indexedRegisters:[-1])
+            for(const {index,relative}of destinations)for(const register of relative?indexedRegisters:[-1])
             {
                 const target=relative?output(register):index;
                 if(relative)shader.emit(OP.IFC|2<<16,src(0,outputIndex),shader.literal(register));

@@ -1097,6 +1097,46 @@ try
             vertexRoutes=[[0,0,-1,true],[1,1,-1,true]];
             [1<<24|1<<13|15<<9|128|1,7<<18|0x1C801,0,0].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
             console.log("PASS: real WebGPU routed primary/secondary colors clamp before interpolation while texture coordinates retain signed values");
+            {
+                const native=decode_vertex_program(Uint32Array.of(
+                    0x40061C6C,0x0049D00D,0x8186C083,0x6041FF8C,
+                    0x40061C6C,0x0109F07F,0x8286C0C3,0x6621DF8D));
+                const [ambient,accumulate]=native.instructions;
+                method(0x1EFC,157);
+                new Uint32Array(Float32Array.of(.125,.25,.5,1).buffer).forEach((word,i)=>method(0x1F00+i*4,word));
+                method(0x1EFC,159);
+                new Uint32Array(Float32Array.of(.75,.75,.75,.75).buffer).forEach((word,i)=>method(0x1F00+i*4,word));
+                vertexRoutes=[[0,0,-1,true],[1,3,-1,true]];
+                const drawProgram=async(instructions)=>{
+                    vertexProgram={instructions:[structuredClone(base),...instructions]};
+                    method(0x1808,5);
+                    for(const word of new Uint32Array(Float32Array.of(0,0,0,1,0,16,0,1,16,0,0,1).buffer))method(0x1818,word);
+                    method(0x1808,0);await engine.backend.wait();
+                    assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
+                    return [...vram.subarray(0x10000,0x10004)];
+                };
+                assert.deepEqual(await drawProgram([ambient,accumulate]),[128,64,32,255],
+                    "native TBUF3/R12 ambient survives the following MAD accumulator read");
+                const scalarAmbient=decode_vertex_program(Uint32Array.of(0x001F9C6C,0x0809D000,3,0x607E060D)).instructions[0];
+                assert.deepEqual(await drawProgram([scalarAmbient,accumulate]),[128,64,32,255],
+                    "scalar result reaches both the selected output and its independent temporary");
+                const issue=structuredClone(ambient),readOld=structuredClone(base);
+                issue.sources[0]={...issue.sources[0],index:159};
+                issue.scalar={name:"MOV",type:"temp",index:5,mask:15};
+                issue.sources[2]={...issue.sources[2],type:"temp",index:12};
+                readOld.vector={name:"MOV",type:"output",index:3,mask:15};
+                readOld.sources[0]={...readOld.sources[0],type:"temp",index:5};
+                assert.deepEqual(await drawProgram([ambient,issue,readOld]),[128,64,32,255],
+                    "scalar source sees R12 before the paired vector output/temporary commits");
+                const masked=structuredClone(issue);masked.scalar={name:"NOP",mask:0};masked.vector.mask=3;
+                assert.deepEqual(await drawProgram([ambient,masked,accumulate]),[128,191,191,255],
+                    "temporary and output retain unmasked components independently");
+                masked.vector.mask=15;masked.predicate={...masked.predicate,enabled:true,condition:1};
+                assert.deepEqual(await drawProgram([ambient,masked,accumulate]),[128,64,32,255],
+                    "a failed predicate suppresses both output and temporary writes");
+                vertexRoutes=[[0,0,-1,true],[1,1,-1,true]];
+                console.log("PASS: real WebGPU native vertex output/temporary dual writes, scalar selection, masks, predicates and read-before-write");
+            }
             const vertexTextureDraw=async(unit,coordinate)=>{
                 const position=structuredClone(base),color=structuredClone(base);
                 color.vector={name:"TXL",type:"output",index:1,mask:15};color.texture=unit;
