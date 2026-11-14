@@ -1,5 +1,30 @@
 # Infinity Blade 安装与帧率验证
 
+## 当前对照口径：固定完成帧数（2026-11-15）
+
+截图检查发现 60 秒长窗口会进入“Swipe to strike”教学提示；不同吞吐的构建在
+提示页停留时长不同，不能将这样的混合窗口当作纯战斗 FPS 提升。CLCD 首轮
+107 帧/60 秒（1.783 FPS）和其长窗口控制组 96 帧（1.600 FPS）因此不参加该项验收。
+
+当前改为同一 God King 检查点、相同输入、预热 12 帧后**再完成 60 个完整游戏帧**，
+以真实 elapsed host time 计算 FPS，最多等待 180 秒。每轮核对结束截图没有教学
+提示，主角 HP 1396、盾 19、敌人 HP 50，亮屏和完整帧计数的要求保持不变。
+旧核心首个固定工作量控制组完成 60 帧耗时 39.666 秒（1.513 FPS）。
+这一短窗口用于当前瓶颈 A/B；最终 60 FPS 验收仍需完成教学后的较长实际战斗窗口。
+
+```sh
+node tests/ios/clone-battle-profile.mjs \
+  build/ios/infinity-next/battle-master-profile \
+  build/ios/infinity-next/battle-work-profile
+BROWSER_PROFILE=build/ios/infinity-next/battle-work-profile \
+BROWSER_PORT=64978 BROWSER_DEBUG_PORT=9493 BROWSER_FOCUS=1 \
+BROWSER_WASM=build/ios/infinity-next/perf/nohist.wasm \
+TEST_ARTIFACT_DIR=build/ios/infinity-next/perf/fixed-control-1 TIMEOUT_MS=1200000 \
+node tests/app/browser_runner.mjs tests/ios/battle-performance.html \
+vm=9e3aab9c-cbd7-4ec0-9f6d-9887fa2e4410 warmup=12 frames=60 duration=180000 \
+label=fixed-control-1 webgpu=1 autoplay=1
+```
+
 ## 同一战斗检查点对照（2026-11-14 晚）
 
 新增 `tests/ios/battle-performance.html`：从真实 God King 战斗 RAM 检查点恢复，

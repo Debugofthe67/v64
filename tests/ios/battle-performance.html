@@ -47,13 +47,17 @@ try {
     const host_before = await (await fetch("/__host_metrics")).json();
     const before = await sample();log("Warmup completed: " + (frames(before) - frames(initial)) + " frames");
     const duration = Number(query.get("duration") || 60000);
-    await sleep(duration);
+    const frame_limit = Number(query.get("frames") || 0);
+    if(frame_limit > 0)
+        await until(async () => { await sleep(200);return frames(await sample()) - frames(before) >= frame_limit; }, "fixed-work battle frames", duration);
+    else await sleep(duration);
     const after = await sample();
     await emulator.stop();clearInterval(input);touch([]);
     const host_after = await (await fetch("/__host_metrics")).json();
     const ms = after.host_time - before.host_time, count = frames(after) - frames(before);
     const result = { label: query.get("label") || "unlabelled", checkpoint: { name: file.name, bytes: file.size, modified: file.lastModified },
         input: "shield at (45/46,480), move every 2000 ms, release 100 ms every 16 s", warmup_frames: frames(before) - frames(initial),
+        frame_limit, measurement: frame_limit ? "fixed completed-frame workload" : "fixed duration",
         screen_states,
         duration_ms: ms, game_frames: count, game_fps: count * 1000 / ms,
         panel_frames: after.graphics.panel.frames - before.graphics.panel.frames,
