@@ -292,7 +292,7 @@ export class NV40Texture
         {
             const at=pixel*texture.bpp,word=texture.bpp===1?source[at]:texture.bpp===2?view.getUint16(at,true):view.getUint32(at,true);
             let components;
-            if(texture.code===1)components=[word,0,0,255];
+            if(texture.code===1)components=[word,word,word,255];
             else if(texture.code===2)components=[unit5(word&31),unit5(word>>>5&31),unit5(word>>>10&31),word&0x8000?255:0];
             else if(texture.code===3)components=[(word&15)*17,(word>>>4&15)*17,(word>>>8&15)*17,(word>>>12)*17];
             else if(texture.code===4)components=[unit5(word&31),unit6(word>>>5&63),unit5(word>>>11),255];

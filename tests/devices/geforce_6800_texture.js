@@ -95,6 +95,12 @@ o.methods.set(0x1A18,4<<16|2);o.methods.set(0x1A04,0x10529);o.methods.set(0x1A00
 const morton=texture.read(texture.describe(o,0));assert.deepEqual(Array.from({length:8},(_,i)=>morton[i*4]),[1,2,3,4,5,6,7,8]);
 o.methods.set(0x1A04,0x12429);o.methods.set(0x1A18,1<<16|1);o.methods.set(0x1A10,0xAAE4);o.methods.set(0x1840,2);
 vram.set([0,0xF8],0x2000);assert.deepEqual([...texture.read(texture.describe(o,0))],[255,0,0,255],"RGB565 storage components expand before swizzling");
+o.methods.set(0x1A04,0x12129);o.methods.set(0x1A10,0xAAE4);o.methods.set(0x1840,1);
+for(const value of [0,1,64,128,254,255])
+{
+    vram[0x2000]=value;
+    assert.deepEqual([...texture.read(texture.describe(o,0))],[value,value,value,255],"native B8/L8 exposes luminance in all RGB storage aliases");
+}
 o.methods.set(0x1A04,0x12129);o.methods.set(0x1A10,0xA9FC);o.methods.set(0x1840,1);vram[0x2000]=128;
 assert.deepEqual([...texture.read(texture.describe(o,0))],[128,128,128,255],"luminance and constant-one component selection");
 o.methods.set(0x1A04,0x12B29);o.methods.set(0x1A10,0xAAFC);o.methods.set(0x1840,2);vram.set([64,128],0x2000);

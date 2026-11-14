@@ -1,0 +1,111 @@
+{
+  "date": "2026-11-14",
+  "scope": "G4 unsigned B8/L8 texture storage-component aliases.",
+  "nativeTrigger": "Original 05 GT1 lighting draw 84 samples a 1024x1024 B8/L8 lightmap on unit 4 with ordinary 0xAAE4 remap. Unsigned decode returned (0,0,L,1), while the existing signed path already replicated luminance. The lightmap multiplied into only the blue channel.",
+  "sources": [
+    "https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Emu/RSX/GL/GLTexture.cpp (B8 native ARGB readout is ONE, RED, RED, RED)",
+    "https://github.com/chaotic-cx/mesa-mirror/blob/main/src/gallium/drivers/nouveau/nv30/nv30_format.c (L8 and I8 component mapping)"
+  ],
+  "change": "Replicate the unsigned B8/L8 byte into all RGB storage aliases before the existing component crossbar. Preserve hardcoded alpha one, constant selectors, checked DMA and other texture formats.",
+  "validation": {
+    "red": "Texture regression fails at byte 1: actual [0,0,1,255], expected [1,1,1,255].",
+    "green": "Zero, low, mid and maximum bytes retain gray under identity remap; existing custom luminance/crossbar tests pass. Actual GPU identity-remap L8 sampling returns [128,128,128,255]. Full real WebGPU, texture suite and Closure pass (0 errors/warnings; 81.8% typed)."
+  },
+  "nativeReplay": {
+    "guest": "Original XP 93.71 05 GT1, same coherent saved scene, release build.",
+    "comparison": "Original native frame 24 at test time 0:55.47: blue floor/walls/armor become gray. Earlier BX2-only replay remains blue, isolating the remaining channel defect.",
+    "pixelProof": [
+      {
+        "path": "build/nv40-xp-mark05-blue-pixel/capture-0002.png",
+        "width": 1024,
+        "height": 768,
+        "point": [
+          40,
+          720
+        ],
+        "RGB": [
+          0,
+          0,
+          255
+        ],
+        "bluePixelsInTop730Rows": 28616
+      },
+      {
+        "path": "build/nv40-xp-mark05-texture-bx2/capture-0010.png",
+        "width": 1024,
+        "height": 768,
+        "point": [
+          40,
+          720
+        ],
+        "RGB": [
+          0,
+          0,
+          255
+        ],
+        "bluePixelsInTop730Rows": 26333
+      },
+      {
+        "path": "build/nv40-xp-mark05-l8-alias/capture-0010.png",
+        "width": 1024,
+        "height": 768,
+        "point": [
+          40,
+          720
+        ],
+        "RGB": [
+          255,
+          255,
+          255
+        ],
+        "bluePixelsInTop730Rows": 0
+      }
+    ],
+    "gpu": {
+      "batches": 893,
+      "draws": 3402,
+      "bytes": 2069677048,
+      "readbacks": 1248,
+      "failures": 0,
+      "uploads": 2875,
+      "uploadBytes": 1133060116
+    },
+    "graphFaults": [],
+    "imageGate": false,
+    "limits": "This establishes the native material fix at one scene, not full-suite/fixed-IQ/performance acceptance. The earlier before image used diagnostic single-draw flushing and is not a performance baseline."
+  },
+  "evidence": {
+    "build/nv40-l8-alias-red.log": {
+      "bytes": 1104,
+      "sha256": "7a7eae1bfeab0637b52da480086b31664ae45fbe27131568bdb47c59d721a146"
+    },
+    "build/nv40-l8-alias-texture.log": {
+      "bytes": 641,
+      "sha256": "69859b2609c5d67080c9fca6c3bf1ebcc52e73ff79125d12b1a751c67102e446"
+    },
+    "build/nv40-l8-alias-gpu.log": {
+      "bytes": 5460,
+      "sha256": "a9627a22dba6812405607bc6a4df17a47ab30219f0d8dff482d897e4faf63831"
+    },
+    "build/nv40-l8-alias-build.log": {
+      "bytes": 13154,
+      "sha256": "9004d53f27b4cd8c08cc4b977a55e4d63b74906a43498a7b7cfdd6f09fa570d1"
+    },
+    "build/nv40-l8-alias-pixel-proof.json": {
+      "bytes": 712,
+      "sha256": "fe68ad85905b02bbcb5eeedb344fca48d45e43de055ba4f7a63e545e7867a2bf"
+    },
+    "build/nv40-xp-mark05-blue-pixel/capture-0002.png": {
+      "bytes": 1202887,
+      "sha256": "0fb72d79ebf0983a6a6bf47ae9152e369012589adf1fa200742d28e74ca3f3ee"
+    },
+    "build/nv40-xp-mark05-texture-bx2/capture-0010.png": {
+      "bytes": 1127646,
+      "sha256": "8a6d6958a517e1d2ffb9e6821449307edf7b840f88124051bed5d161a4379b53"
+    },
+    "build/nv40-xp-mark05-l8-alias/capture-0010.png": {
+      "bytes": 1233650,
+      "sha256": "b0b05d1931da5d4328bff76fb51d6f6a0865d14ee34f0945437ab7979b678284"
+    }
+  }
+}

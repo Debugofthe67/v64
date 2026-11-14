@@ -565,6 +565,11 @@ try
             method(0x1A04,format);vram.set(bytes,0x20000);await mipDraw(0x01010000,expected);
         }
         console.log("PASS: real WebGPU BC1/BC2/BC3 sampled colors, component routing and alpha");
+        for(const [at,value] of [[0x1A04,0x12129],[0x1A18,1<<16|1],[0x1840,1],
+            [0x1A0C,0x80000000],[0x1A14,0x01010000],[0x1A08,0x30303],[0x1A10,0xAAE4]])method(at,value);
+        vram[0x20000]=128;
+        assert.deepEqual(await gammaDraw(),[128,128,128,255],"native L8 lightmap with identity crossbar remains gray");
+        console.log("PASS: real WebGPU native L8 identity-crossbar lightmap RGB aliases");
         // Native 05 normal maps set TEX's BX2 bit. Read negative results from
         // an FP32 attachment so UNORM clipping cannot hide a missing expand.
         for(const [at,value] of [[0x208,0x14C],[0x20C,128],[0x1A04,0x10529],

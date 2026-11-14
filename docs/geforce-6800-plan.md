@@ -2121,3 +2121,12 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   常量、浮点旁路与完整 GPU、texture/graph、Closure 均通过。原生
   GT1 继续绘制但蓝色材质仍在，图像与整套门禁未通过；见
   `g4-fragment-texture-bx2.json`。
+
+- G4 原生 L8 光照：05 实际单字节 lightmap 使用普通 AAE4 remap，
+  无符号解码却只填 B，有符号路径已复制 RGB。现先复制三个存储别名
+  再走原 crossbar，保留 alpha=1。字节 1 回归先红后绿，真实 GPU 灰色
+  采样、完整 GPU、texture 与 Closure 通过。同一原生 GT1 frame24/
+  0:55.47 的蓝色地面、墙和护甲恢复灰色，点(40,720)从(0,0,255)
+  到(255,255,255)，顶部 730 行纯蓝像素从 28,616 到 0；BX2 单独修复
+  仍蓝的对照保留。整套/固定 IQ/性能继续验证，见
+  `g4-native-l8-lightmap-aliases.json`。
