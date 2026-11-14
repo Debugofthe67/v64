@@ -565,6 +565,35 @@ try
             method(0x1A04,format);vram.set(bytes,0x20000);await mipDraw(0x01010000,expected);
         }
         console.log("PASS: real WebGPU BC1/BC2/BC3 sampled colors, component routing and alpha");
+        // Native 05 normal maps set TEX's BX2 bit. Read negative results from
+        // an FP32 attachment so UNORM clipping cannot hide a missing expand.
+        for(const [at,value] of [[0x208,0x14C],[0x20C,128],[0x1A04,0x10529],
+            [0x1A18,1<<16|1],[0x1840,4],[0x1A0C,0x80000000],[0x1A14,0x01010000],
+            [0x1A08,0x30303],[0x1A10,0xAAE4]])method(at,value);
+        vram.set([0,64,128,255],0x20000);
+        const expandDraw=async({expand=true,full=false,saturate=false,scale=0,crossbar=0xAAE4}={})=>{
+            method(0x1D60,0x04000000|+full<<6);method(0x1A10,crossbar);
+            const code=[23<<24|4<<13|15<<9|+!full<<7|+expand<<21|+saturate<<31|1,
+                7<<18|0x1C801,0x1C800|scale<<28,0x1C800];
+            code.forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+            await gammaDraw();
+            return [...new Float32Array(vram.buffer,0x10000+(3*8+3)*16,4)];
+        };
+        const near=(actual,expected,label)=>expected.forEach((value,i)=>
+            assert(Math.abs(actual[i]-value)<.002,label+" lane "+i+": "+actual));
+        for(const full of [false,true])
+        {
+            near(await expandDraw({expand:false,full}),[128/255,64/255,0,1],"ordinary TEX");
+            near(await expandDraw({full}),[1/255,-127/255,-1,1],"TEX BX2 signed range");
+            near(await expandDraw({full,scale:1}),[2/255,-254/255,-2,2],"TEX BX2 precedes instruction scale");
+            near(await expandDraw({full,saturate:true}),[1/255,0,0,1],"TEX BX2 precedes saturation");
+            near(await expandDraw({full,crossbar:0xA4E4}),[1,-127/255,-1,0],"TEX BX2 preserves remapped constants");
+        }
+        method(0x1A04,0x11A29);method(0x1840,8);
+        [0xC000,0x3800,0x4400,0x3C00].forEach((word,i)=>view.setUint16(0x20000+i*2,word,true));
+        near(await expandDraw({full:true}),[4,.5,-2,1],"floating texture ignores BX2");
+        for(const [at,value] of [[0x208,0x148],[0x20C,32],[0x1D60,0],[0x1A10,0xAAE4]])method(at,value);
+        console.log("PASS: real WebGPU TEX BX2 negatives, half/full exports, scale, saturation, constant lanes and float bypass");
         const operand=swizzle=>2|swizzle.reduce((bits,value,i)=>bits|value<<(9+i*2),0),identity=[0,1,2,3],reverse=[3,2,1,0];
         for(const [opcode,swizzle,expected] of [[12,reverse,[0,255,255,0]],[13,reverse,[255,0,0,255]],
             [15,identity,[255,255,255,255]],[15,reverse,[0,0,0,0]],[14,identity,[0,0,0,0]],[14,reverse,[255,255,255,255]],

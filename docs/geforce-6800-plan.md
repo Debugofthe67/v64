@@ -2113,3 +2113,11 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   256 字边界回归通过；同一原生现场采到 136 个缺失字，ISR 仍完整
   读取 4097/E9B6 并恢复 FIFO，没有采样 panic/重置。见
   `g6-safe-native-stack-inspection.json`，整套图形门禁继续验证。
+
+- G4 TEX BX2：05 实际法线采样 17269C82 设置 bit21，旧解码丢失。
+  现归一化分量先做 2x−1，再缩放/饱和/半精度/条件提交；保留 crossbar
+  常量，浮点纹理忽略，未连接的 depth/gamma/signed 组合明确陷阱。
+  原转换器在真实 GPU 的负值回归先失败，修复后半/全寄存器、缩放、
+  常量、浮点旁路与完整 GPU、texture/graph、Closure 均通过。原生
+  GT1 继续绘制但蓝色材质仍在，图像与整套门禁未通过；见
+  `g4-fragment-texture-bx2.json`。

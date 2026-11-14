@@ -1,0 +1,72 @@
+{
+  "date": "2026-11-14",
+  "scope": "G4 Curie fragment TEX BX2 decoding and lowering.",
+  "nativeTrigger": {
+    "fixture": "build/nv40-xp-mark05-blue-floor/blue-cause84.json",
+    "programCounter": 24,
+    "word": "0x17269C82",
+    "sampler": 3,
+    "format": "BC3, unsigned, no gamma",
+    "operation": "TEX.H1.yzw has instruction bit 21 set. That bit was previously discarded by the decoder."
+  },
+  "sources": [
+    "https://github.com/chaotic-cx/mesa-mirror/blob/main/src/gallium/drivers/nouveau/nv30/nvfx_shader.h",
+    "https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Emu/RSX/Program/GLSLSnippets/RSXProg/RSXFragmentTextureOps.glsl",
+    "https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Emu/RSX/Common/TextureUtils.cpp"
+  ],
+  "change": "Decode the TEX expansion flag. For normalized sampled components, apply 2*x-1 before instruction scaling, saturation, half conversion and predicate commit. Preserve crossbar constant lanes. Float texture formats ignore BX2. Unsupported combined depth/gamma/signed conversions trap explicitly before any GPU draw.",
+  "validation": {
+    "red": "Real WebGPU regression with the original converter fails: TEX BX2 signed range lane 0 remains 0.501953125, 0.2509765625, 0, 1.",
+    "green": "Actual WebGPU tests cover signed negative results through RGBA32F targets, H/R destinations, instruction scaling, saturation, crossbar constants and float-format bypass. Entire existing GPU suite passes.",
+    "other": [
+      "Full texture and graph suites pass.",
+      "Closure: 0 errors, 0 warnings; 81.8% typed."
+    ]
+  },
+  "nativeReplay": {
+    "guest": "Original XP 93.71 05 GT1, same saved active scene, release build and standard batching.",
+    "observedGPU": {
+      "batches": 1419,
+      "draws": 4883,
+      "bytes": 2759774520,
+      "readbacks": 1854,
+      "failures": 0,
+      "uploads": 4127,
+      "uploadBytes": 1515429948
+    },
+    "graphFaults": [],
+    "imageGate": false,
+    "finding": "The original scene continues to render, but blue materials persist. BX2 was a real missing operation, not the complete explanation of that image defect. No score or full-suite completion is claimed."
+  },
+  "diagnostics": "Default-off NV_DIAGNOSTIC_DRAW_CAUSE_ALL optionally retains bounded pixel-event causes for non-black colors; this identified the original lighting instruction.",
+  "evidence": {
+    "build/nv40-texture-bx2-red.log": {
+      "bytes": 2275,
+      "sha256": "55a162fab0082fb23e0ca202dd0ca988a7c565a83f2512a404ce56f3f86b730c"
+    },
+    "build/nv40-texture-bx2-gpu.log": {
+      "bytes": 5393,
+      "sha256": "58057796c95f8dc8230ede4baaabdfa1e41a8771b724ad6fc6e6972a3da0a803"
+    },
+    "build/nv40-texture-bx2-texture.log": {
+      "bytes": 641,
+      "sha256": "69859b2609c5d67080c9fca6c3bf1ebcc52e73ff79125d12b1a751c67102e446"
+    },
+    "build/nv40-texture-bx2-graph.log": {
+      "bytes": 1011,
+      "sha256": "f86864fb0281291322caedee9faf456017af651caee5d3457b62b239f17e36c0"
+    },
+    "build/nv40-texture-bx2-build.log": {
+      "bytes": 13154,
+      "sha256": "49a38f013301d2db38d25fe86a9d3bfddb1359379ae731752c298059d63fff65"
+    },
+    "build/nv40-xp-mark05-blue-floor/blue-cause84.json": {
+      "bytes": 294960,
+      "sha256": "7e8aeaa5a874617493a55a29fd1831c7a3345bc9bca9c154744c22e3838dd627"
+    },
+    "build/nv40-xp-mark05-texture-bx2/capture-0020.png": {
+      "bytes": 999638,
+      "sha256": "082388dfa6fb679cdd933abb5258b9c1df3e951feb5c17c7b30db97788af14e4"
+    }
+  }
+}

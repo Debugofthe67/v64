@@ -561,7 +561,7 @@ export async function run_geforce_guest(win98)
                         const depth=[75,80].includes(target.d3d);
                         if(before.some((value,index)=>value!==after[index]))events.push({elapsed:elapsed(),x,y,target:target.offset,format:target.d3d,depth,before,after,
                             draw:item?.ordinal,mode:item?.mode,fragment:item?.methods.find(([at])=>at===0x8E4)?.[1],
-                            ...(depth || after.slice(0,3).every(value=>value===0)&&before.slice(0,3).some(Boolean)?{cause:item}:{})});
+                            ...(process.env.NV_DIAGNOSTIC_DRAW_CAUSE_ALL || depth || after.slice(0,3).every(value=>value===0)&&before.slice(0,3).some(Boolean)?{cause:item}:{})});
                     }
                     metadata.delete(pending);fs.writeFileSync(file,JSON.stringify(events,null,2));
                 }

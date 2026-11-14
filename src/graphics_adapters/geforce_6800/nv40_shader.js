@@ -739,7 +739,7 @@ export function translate_fragment_program(program,options={})
             }
             const sampler=src(10,i.texture);
             const depth=options.depth_samplers?.[i.texture],sample=depth?shader.temp("depth-sample"):30;
-            const sampled=depth?dst(0,sample):destination;
+            const sampled=depth?dst(0,sample):dst(0,30,i.destination.mask);
             if(i.name==="TXD") shader.emit(OP.TXD,sampled,sources[0],sampler,sources[1],sources[2]);
             else shader.emit((i.name==="TXL"?OP.TXL:OP.TEX) | (i.name==="TXP"?1:i.name==="TXB"?2:0)<<16,
                 sampled,sources[0],sampler);
@@ -747,9 +747,17 @@ export function translate_fragment_program(program,options={})
             {
                 const crossbarShift=[2,4,6,0][lane],select=depth.crossbar>>>(crossbarShift+8)&3,component=3-(depth.crossbar>>>crossbarShift&3);
                 if(select===3) throw new RangeError("NV40 invalid depth texture component selection");
-                shader.emit(OP.MOV,dst(0,30,1<<lane,false,shift),
+                shader.emit(OP.MOV,dst(0,30,1<<lane),
                     select===2?src(0,sample,Array(4).fill(component)):shader.literal(select));
             }
+            if(i.expand)
+            {
+                const expand=options.texture_expand?.[i.texture] || {mask:15};
+                if(expand.unsupported)throw new RangeError("NV40 texture BX2 with depth/gamma/signed conversion is not connected");
+                const mask=i.destination.mask&expand.mask;
+                if(mask)shader.emit(OP.MAD,dst(0,30,mask),src(0,30),shader.literal(2),shader.literal(-1));
+            }
+            if(shift)shader.emit(OP.MOV,destination,src(0,30));
         }
         else if(unpack>=0)
         {

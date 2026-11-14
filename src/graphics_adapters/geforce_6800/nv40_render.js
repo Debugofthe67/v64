@@ -360,12 +360,20 @@ export class NV40Render
             const at=0x1A00+unit*32,code=get(o,at+4)>>>8&31;
             return [16,18].includes(code)?{compare:get(o,at+8)>>>28,crossbar:get(o,at+16)}:null;
         });
+        const texture_expand=Array.from({length:16},(_,unit)=>{
+            const at=0x1A00+unit*32,code=get(o,at+4)>>>8&31,crossbar=get(o,at+16);
+            // Float formats ignore BX2. For normalized formats it applies to
+            // fetched storage components; remapped constant 0/1 lanes survive.
+            const mask=[26,27,28].includes(code)?0:[2,4,6,0].reduce((mask,shift,lane)=>
+                mask|((crossbar>>>(shift+8)&3)===2?1<<lane:0),0);
+            return {mask,unsupported:mask!==0 && ([16,18].includes(code) || !!(get(o,at+8)>>>20&15) || !!(get(o,at+20)>>>28))};
+        });
         const control=get(o,0x1D60);
         const sprite=mode===1?get(o,0x1EE8):0,pointSize=mode===1?float_value(get(o,0x1EE0,0x3F800000)):1;
         if(mode===1 && (!Number.isFinite(pointSize) || pointSize<0 || sprite!==0 && sprite!==0x101))
             throw new RangeError("NV40 unsupported point size/sprite control");
         const shaders=this.engine.shaders(o,{viewport,targets:active?(enable&16?4:1):0,depth:!!(control&14),fp32_outputs:!!(control&64),
-            samplers,sampler_1d,texture_sizes,vertex_textures,depth_samplers});
+            samplers,sampler_1d,texture_sizes,vertex_textures,depth_samplers,texture_expand});
         if(sprite && shaders.fragment.samplers.some(([unit])=>unit!==0))
             throw new RangeError("NV40 point sprite only replaces TEX0 coordinates");
         const textures=shaders.fragment.samplers.map(([unit])=>{
