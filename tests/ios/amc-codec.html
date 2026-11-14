@@ -82,6 +82,12 @@ try {
     v.setUint32(0x30104,9216,true);d.setUint32(0x10c,9216,true);
     dma.write(base,2);dma.write(base+8,0x8480002c);dma.write(base+12,9216);dma.write(base+20,0x40000100);dma.write(base,0x19);
     amc.write(0,0x30002);amc.write(0x100,0x20002);
+    // Restore after the native output list and compressed input were
+    // queued, before creating an opaque WebCodecs decoder. Losing either
+    // the program or the deferred move used to stall this real DMA path.
+    const queued = amc.get_state();amc.reset();amc.set_state(queued);
+    assert(amc.codec.initialized&&amc.codec.program==='mp3'&&amc.codec.moves.length===1,'idle MP3 program and deferred output survive snapshot');
+    assert(!(amc.pending[0]&4),'acknowledged ready is not manufactured on restore');
     const mp3end=performance.now()+10000;
     while(amc.codec.stats.pcm_bytes!==8192+9216*(iteration+1)&&performance.now()<mp3end){amc.poll();await new Promise(r=>setTimeout(r,5));}
     assert(amc.codec.stats.failures===0&&amc.codec.stats.decoded_samples===2048+2304*(iteration+1)&&amc.codec.stats.pcm_bytes===8192+9216*(iteration+1),'both MP3 programs cross the real engine-0 and CDMA path '+JSON.stringify(amc.codec.stats));

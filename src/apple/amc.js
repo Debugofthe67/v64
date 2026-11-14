@@ -108,8 +108,8 @@ export class AppleAMC
 
     get_state()
     {
-        if(this.codec?.decoder || this.codec?.busy) throw new Error("Stop the AMC audio stream before saving a snapshot");
-        return [this.regs.slice(), this.mask.slice(), this.pending.slice(), this.memory().slice(), this.memory(1).slice()];
+        const codec = this.codec?.get_state() || null;
+        return [this.regs.slice(), this.mask.slice(), this.pending.slice(), this.memory().slice(), this.memory(1).slice(), codec];
     }
 
     set_state(state)
@@ -118,6 +118,7 @@ export class AppleAMC
         if(!state) return;
         this.regs.set(state[0]); this.mask.set(state[1]); this.pending.set(state[2]);
         this.memory().set(state[3]); this.memory(1).set(state[4]);
+        this.codec?.set_state(state[5]);
         this.update_irq();
     }
 

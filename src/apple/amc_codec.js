@@ -56,6 +56,36 @@ export class AMCCodec
         this.polling = false;
     }
 
+    get_state()
+    {
+        // WebCodecs does not expose its Layer III bit reservoir. Saving
+        // its live stream would produce a discontinuity after restoration.
+        if(this.decoder || this.busy) throw new Error("Stop the AMC audio stream before saving a snapshot");
+        return [1, this.initialized, this.program, this.input, this.resume,
+            this.moves.map(move => [move.bytes, move.from, move.to]),
+            this.output.map(block => block.slice()), this.fifo.slice(), this.slot, this.input_pending];
+    }
+
+    set_state(state)
+    {
+        this.reset();
+        // Legacy snapshots contain no evidence of an issued start command.
+        // Do not infer completion merely from code in local memory.
+        if(!state) return;
+        if(state[0] !== 1 || !["", "aac", "mp3"].includes(state[2])) throw new Error("Unsupported AMC codec snapshot");
+        this.initialized = state[1];
+        this.program = state[2];
+        this.input = state[3];
+        this.resume = state[4];
+        this.moves = state[5].map(move => ({ bytes: move[0], from: move[1], to: move[2] }));
+        this.output = state[6].map(block => block.slice());
+        this.fifo = state[7].slice();
+        this.slot = state[8];
+        this.input_pending = state[9];
+        // Source bits and the result header belong to the device snapshot;
+        // restoring an already acknowledged program cannot raise ready again.
+    }
+
     failure(error)
     {
         this.stats.failures++;
