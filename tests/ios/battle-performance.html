@@ -30,8 +30,16 @@ try {
     const sample = () => emulator.get_diagnostics();
     const frames = d => (d.graphics?.native?.drawables || []).filter(x => x.width === 960 && x.height === 640).reduce((n, x) => n + x.frames, 0);
     const touch = points => emulator.bus.send("touch", { width: 640, height: 960, touches: points });
-    let tick = 0;const block = () => touch([[1, 45 + (tick++ % 2), 480]]);
-    block();input = setInterval(block, 2000);
+    // Finish any finger stored in the checkpoint. An indefinitely held
+    // finger does not reset this iOS build's auto-lock timer.
+    let tick = 0;
+    const block = async () => {
+        if(tick % 8 === 0) { touch([]);await sleep(100); }
+        touch([[1, 45 + (tick++ % 2), 480]]);
+    };
+    const screen_states = [];
+    emulator.add_listener("ios-screen-state", state => screen_states.push(state));
+    await block();input = setInterval(block, 2000);
     await emulator.run();
     const initial = await sample(), warmup = Number(query.get("warmup") || 12);
     if(!initial.graphics?.native) throw Error("Build lacks native presentation counters");
@@ -39,22 +47,42 @@ try {
     const before = await sample();log("Warmup completed: " + (frames(before) - frames(initial)) + " frames");
     const duration = Number(query.get("duration") || 60000);
     await sleep(duration);
-    const after = await sample(), image = emulator.screen_make_screenshot();
+    const after = await sample();
     await emulator.stop();clearInterval(input);touch([]);
     const ms = after.host_time - before.host_time, count = frames(after) - frames(before);
     const result = { label: query.get("label") || "unlabelled", checkpoint: { name: file.name, bytes: file.size, modified: file.lastModified },
-        input: "hold shield at (45/46,480), move every 2000 ms", warmup_frames: frames(before) - frames(initial),
+        input: "shield at (45/46,480), move every 2000 ms, release 100 ms every 16 s", warmup_frames: frames(before) - frames(initial),
+        screen_states,
         duration_ms: ms, game_frames: count, game_fps: count * 1000 / ms,
         panel_frames: after.graphics.panel.frames - before.graphics.panel.frames,
         panel_fps: (after.graphics.panel.frames - before.graphics.panel.frames) * 1000 / ms,
         before, after };
     await artifact("battle-fps.json", JSON.stringify(result, null, 2));
-    if(image?.src) await artifact("battle.png", await (await fetch(image.src)).blob());
+    if(!before.graphics.panel.awake || !after.graphics.panel.awake || screen_states.some(s => !s.awake))
+        throw Error("Panel slept during the battle benchmark; reject this FPS window");
+    // Repaint after the timing window. A canvas may have been cleared by
+    // presentation; never accept a black screenshot as visual battle evidence.
+    let screenshot;
+    for(let attempt = 0; attempt < 10 && !screenshot; attempt++) {
+        emulator.worker_controller.request_frame(true);
+        await until(() => !emulator.worker_controller.frame_pending, "panel repaint", 5000);
+        const image = await new Promise(resolve => frame.contentWindow.requestAnimationFrame(() => resolve(emulator.screen_make_screenshot())));
+        if(!image?.src) continue;
+        await image.decode();
+        const canvas = document.createElement("canvas");canvas.width = image.width;canvas.height = image.height;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });ctx.drawImage(image, 0, 0);
+        const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        if(rgba.some((value, i) => i % 4 !== 3 && value > 8)) screenshot = await (await fetch(image.src)).blob();
+    }
+    if(!screenshot) throw Error("No visible battle screenshot after full panel repaint");
+    await artifact("battle.png", screenshot);
     if(count < 1) throw Error("No complete game frame in measurement window");
     log(JSON.stringify({ duration_ms: ms, game_frames: count, game_fps: result.game_fps, panel_fps: result.panel_fps }));
-    document.getElementById("result").textContent = "PASS: same-checkpoint measurement completed; 60 FPS acceptance requires inspecting battle-fps.json";
+    window.battle_complete = result;
+    if(!query.has("hold")) document.getElementById("result").textContent = "PASS: same-checkpoint measurement completed; 60 FPS acceptance requires inspecting battle-fps.json";
 } catch(error) {
     clearInterval(input);await emulator?.stop().catch(() => {});log(error.stack);
-    document.getElementById("result").textContent = "FAIL: " + error.stack;
+    window.battle_error = error.stack;
+    if(!query.has("hold")) document.getElementById("result").textContent = "FAIL: " + error.stack;
 }
 </script>

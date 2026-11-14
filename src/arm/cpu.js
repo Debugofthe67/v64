@@ -1455,7 +1455,10 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
         "page_tier": this.page_tier_stats(),
         ...(this.machine_type === "s5l8930" ? { "graphics": {
             "native": this.devices.gles?.device["performance"]?.() || null,
-            "panel": this.devices.apple_clcd ? Object.assign({}, this.devices.apple_clcd.performance) : null,
+            "panel": this.devices.apple_clcd ? Object.assign({
+                "awake": this.devices.apple_clcd.panel_on && this.devices.apple_clcd.backlight > 0,
+                "backlight": this.devices.apple_clcd.backlight,
+            }, this.devices.apple_clcd.performance) : null,
         } } : {}),
         ...(include_steps ? { "steps": this.step_stats(25) } : {}),
         ...(nand ? { "nand": { "bytes_read": nand.bytes_read, "bytes_written": nand.bytes_written } } : {}),
