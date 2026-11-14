@@ -10,7 +10,7 @@ const http = require("http"), fs = require("fs"), path = require("path");
 const { spawn } = require("child_process");
 const root = path.resolve(__dirname, "../..");
 const profile = fs.mkdtempSync(path.join(require("os").tmpdir(), "gl-multipass-"));
-let browser, timeout;
+let browser, timeout, finished = false;
 const server = http.createServer((req, res) => {
     if (req.method === "POST" && req.url.startsWith("/__test_file?")) {
         const name = path.basename(new URL(req.url, "http://localhost").searchParams.get("name") || "file");
@@ -41,22 +41,42 @@ const server = http.createServer((req, res) => {
         if (error) { res.writeHead(404).end(); return; }
         res.setHeader("Content-Type", file.endsWith(".wasm") ? "application/wasm" :
             /\.(js|mjs)$/.test(file) ? "text/javascript" : "text/html");
-        if (file.endsWith(".html")) data = Buffer.concat([data, Buffer.from(`<script>
-            const reporter = new MutationObserver(() => {
+        if (file.endsWith(".html")) data = Buffer.from(data.toString().replace(/<script\b/i, `<script>(() => {
+            let reported = false;
+            const report = (status, details) => {
+                if (reported) return;
+                reported = true;
+                fetch("/__test_result", { method: "POST", body: JSON.stringify({ status, details }) }).catch(() => {});
+            };
+            const inspect = () => {
                 const result = document.getElementById("result");
                 const text = result && result.textContent || "";
                 if (!/^(PASS|FAIL)\\b/.test(text)) return;
                 reporter.disconnect();
-                fetch("/__test_result", { method: "POST", body: JSON.stringify({
-                    status: text.startsWith("PASS") ? "PASS" : "FAIL", details: text
-                }) });
+                report(text.startsWith("PASS") ? "PASS" : "FAIL", text);
+            };
+            const reporter = new MutationObserver(inspect);
+            reporter.observe(document, { subtree: true, childList: true, characterData: true });
+            document.addEventListener("DOMContentLoaded", inspect);
+            window.addEventListener("error", event => {
+                queueMicrotask(() => {
+                    if (!event.defaultPrevented && event.message)
+                        report("FAIL", event.error && event.error.stack || event.message);
+                });
             });
-            reporter.observe(document.body || document.documentElement, { subtree: true, childList: true, characterData: true });
-        </script>`)]);
+            window.addEventListener("unhandledrejection", event => {
+                queueMicrotask(() => {
+                    if (!event.defaultPrevented)
+                        report("FAIL", event.reason && event.reason.stack || String(event.reason));
+                });
+            });
+        })();</script><script`));
         res.end(data);
     });
 });
 function finish(code) {
+    if (finished) return;
+    finished = true;
     clearTimeout(timeout);
     const clean = () => fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     if (browser) {
@@ -69,6 +89,7 @@ function finish(code) {
 }
 server.listen(0, "127.0.0.1", () => {
     const page = process.argv[2] || "gl_multipass_browser_test.html";
+    console.log("RUN " + page);
     const url = `http://127.0.0.1:${server.address().port}/tests/glbridge/${page}${page.includes("?") ? "&" : "?"}report=1`;
     browser = spawn(process.env.GL_CHROME ||
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", [
@@ -81,6 +102,9 @@ server.listen(0, "127.0.0.1", () => {
     let stderr = "";
     browser.stderr.on("data", data => { stderr = (stderr + data).slice(-4000); });
     browser.on("error", error => { console.error(error); finish(1); });
+    browser.on("exit", (code, signal) => {
+        if (!finished) { console.error("FAIL: browser exited before reporting", code, signal);finish(1); }
+    });
     timeout = setTimeout(() => {
         console.error("FAIL: real GPU test timed out\n" + stderr);
         finish(1);

@@ -78,7 +78,7 @@ ci-tests: rust-test test-glbridge app-check platform-contract-tests ios-tests gl
 	./tests/persistence/disk_service_sync.mjs
 
 .PHONY: glbridge test-glbridge
-glbridge:
+glbridge: node_modules/.bin/esbuild
 	node tools/build_glbridge.mjs
 
 test-glbridge: glbridge
@@ -94,7 +94,7 @@ GLBRIDGE_GPU_PAGES = gl_presented_frame_browser_test.html gl_wgl_swap_browser_te
 .PHONY: glbridge-gpu-tests glbridge-mutations
 D3D_REVIEW_GPU_PAGES = d3d_independent_chains_replay_browser_test.html d3d_window_state_replay_browser_test.html 'd3d_window_state_replay_browser_test.html?capture=probe' 'd3d_window_state_replay_browser_test.html?capture=events' d3d_buffer_lock_replay_browser_test.html d3d_draw_hints_replay_browser_test.html d3d_mapped_draw_replay_browser_test.html d3d_texture_copy_replay_browser_test.html d3d_surface_readback_replay_browser_test.html d3d8_surface_copy_replay_browser_test.html d3d8_render_target_replay_browser_test.html d3d8_multisample_replay_browser_test.html d3d_texture_lod_replay_browser_test.html d3d_gamma_replay_browser_test.html d3d_cursor_replay_browser_test.html d9wg_host_caps_browser_test.html 'd9wg_host_caps_browser_test.html?omit_float32=1' 'd9wg_host_caps_browser_test.html?omit_bc=1' 'd3d9_conformance_browser_test.html?group=format-filter-capabilities&omit_float32_filter=1' 'd3d9_conformance_browser_test.html?group=autogen&omit_float32_filter=1' 'd3d9_conformance_browser_test.html?group=format-blend-capabilities&omit_float32=1' d3d8_tween_replay_browser_test.html d3d9_tween_browser_test.html d3d_palette_replay_browser_test.html d3d_typed_clip_replay_browser_test.html d3d_stream_clip_replay_browser_test.html d3d_constant_streams_browser_test.html d3d_software_vertex_colors_browser_test.html d3d_fixed_vertex_formats_browser_test.html d3d_vertex_formats_browser_test.html 'd3d7_clip_draw_replay_browser_test.html?planes=1&api=7' 'd3d7_clip_draw_replay_browser_test.html?planes=1&api=8' 'd3d7_clip_draw_replay_browser_test.html?planes=1&api=9' d3d7_clip_draw_replay_browser_test.html d3d7_clip_draw_replay_browser_test.html?api=8 d3d7_clip_draw_replay_browser_test.html?api=9 d3d9_software_blend_browser_test.html d3d9_software_texcoord_browser_test.html d3d9_software_lighting_browser_test.html d3d9_software_lighting_browser_test.html?pipeline=1 d3d9_conformance_browser_test.html d3d9_conformance_browser_test.html?uniform_overflow=1 d3d9_conformance_browser_test.html?upload_budget=small d3d9_indexed_overlay_browser_test.html d3d9_swapchain_lifetime_browser_test.html d3d9_diagnostics_browser_test.html d3d9_session_isolation_browser_test.html d3d9_session_isolation_browser_test.html?mode=device d3d9_session_isolation_browser_test.html?mode=owner 'd3d9_session_isolation_browser_test.html?mode=owner&upload=1' d3d9_session_isolation_browser_test.html?upload=1 'd3d9_session_isolation_browser_test.html?mode=device&upload=1' d3d9_shader_tint_browser_test.html d3d9_webgpu_browser_test.html d3d_game_trace_replay_browser_test.html?prefix=d9wg-fixture 'd3d_game_trace_replay_browser_test.html?prefix=d9wg-journal-fixture&journal=1'
 .PHONY: d3d-review-gpu-tests
-d3d-review-gpu-tests:
+d3d-review-gpu-tests: glbridge
 	node tools/d3d_game_trace_fixture.mjs
 	node tests/glbridge/gl_multipass_browser_runner.js 'webgpu_adapter_browser_test.html?required=$(if $(filter 1,$(GL_SWIFTSHADER)),swiftshader,any)'
 	set -e; for page in $(D3D_REVIEW_GPU_PAGES); do GL_TIMEOUT_MS=300000 node tests/glbridge/gl_multipass_browser_runner.js "$$page"; done

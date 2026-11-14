@@ -134,6 +134,11 @@ jobs:
       - name: Install naga
         if: steps.naga.outputs.cache-hit != 'true'
         run: cargo install naga-cli --version 30.0.0 --locked
+      - name: Graphics bundle toolchain
+        working-directory: v86
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add wasm32-unknown-unknown
       - name: Browser WebGPU through SwiftShader
         working-directory: v86
         env:
