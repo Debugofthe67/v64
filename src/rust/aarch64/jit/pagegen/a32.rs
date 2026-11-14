@@ -17,7 +17,7 @@
 use super::{Block, CompileEnv, Emitter, End, Isa, A0, A1, A2, C0, C1, NZCV, PAGE};
 use crate::aarch64::state;
 use crate::pagegen::frame::PageEmitter;
-use crate::wasmgen::wasm_builder::{Signature, WasmType};
+use crate::wasmgen::wasm_builder::{Signature, WasmLocalV128, WasmType};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// An AArch32 instruction of a page function
@@ -192,6 +192,15 @@ pub enum Kind {
         m: u8,
         cond: u8,
     },
+    /// VCMP/VCMPE: write FPSCR.NZCV, preserving every cumulative flag.
+    /// Ordinary inputs only; denormals and NaNs use the exact helper.
+    FpCompare {
+        double: bool,
+        d: u8,
+        m: u8,
+        zero: bool,
+        cond: u8,
+    },
     /// VFP's moves (Q6.3): `kind` 0 VMOV (register), 1 VABS, 2 VNEG of S or
     /// D registers (`double`) m to d; 3 core register `n` to S[d]; 4 S[m] to
     /// core register `d`; 5 core registers `n`, `m` to D[d]; 6 D[d] to them
@@ -248,7 +257,8 @@ pub enum Kind {
 #[derive(Clone, Copy)]
 pub enum NeonForm {
     /// VADD, VSUB, VMUL, VMLA, VMLS (0-4), standard RN/FZ/DN arithmetic;
-    /// ordinary lanes and sticky IXC only, otherwise the exact helper.
+    /// ordinary lanes with sticky IXC or a proven exact result; otherwise
+    /// the exact helper preserves cumulative flags and exceptional values.
     Fp { op: u8, scalar: Option<u8> },
     /// d = op(n, m), the lanes' operation `op`; `invert_m`: VORN's m
     /// inverted first; `test`: VTST, (n & m) != 0 with `op` the lanes' ne
@@ -289,6 +299,7 @@ pub fn kind_name(kind: &Kind) -> String {
         Kind::Bits { cond, .. } => format!("bits/{}", cond),
         Kind::FpMemory { .. } => "fpmem".into(),
         Kind::FpArith { .. } => "fparith".into(),
+        Kind::FpCompare { .. } => "fpcmp".into(),
         Kind::FpMove { .. } => "fpmove".into(),
         Kind::Vld1 { .. } => "vld1".into(),
         Kind::It => "it".into(),
@@ -822,6 +833,19 @@ fn fp_data(word: u32, thumb: bool) -> Option<Kind> {
     let (bd, bn, bm) = (word >> 22 & 1, word >> 7 & 1, word >> 5 & 1);
     let reg = |v: u32, bit: u32| (if double { bit << 4 | v } else { v << 1 | bit }) as u8;
     let (d, n, m) = (reg(vd, bd), reg(vn, bn), reg(vm, bm));
+    if word & 0x0FBE_0E50 == 0x0EB4_0A40 {
+        let zero = word & 1 << 16 != 0;
+        if zero && m != 0 {
+            return None;
+        }
+        return Some(Kind::FpCompare {
+            double,
+            d,
+            m,
+            zero,
+            cond,
+        });
+    }
     let op = match word & 0x0FB0_0E50 {
         0x0E30_0A00 => Some(0),
         0x0E30_0A40 => Some(1),
@@ -2415,6 +2439,7 @@ pub(super) fn discover(
                     Kind::FpMemory { .. }
                     | Kind::Vld1 { .. }
                     | Kind::FpArith { .. }
+                    | Kind::FpCompare { .. }
                     | Kind::FpMove { .. }
                     | Kind::Neon { .. }
                     | Kind::Transfer { .. } => 2048,
@@ -3321,6 +3346,62 @@ impl Emitter<'_> {
         }
     }
 
+    fn fp_compare(
+        &mut self,
+        double: bool,
+        d: u8,
+        m: u8,
+        zero: bool,
+        word: u32,
+        length: u8,
+        offset: u16,
+    ) {
+        use super::{T0, T1};
+        self.fp_access(offset);
+        let done = self.b.block_void();
+        self.a32_fp_load(d, double, T0);
+        if zero {
+            self.c64(0);
+            self.s(T1);
+        }
+        else {
+            self.a32_fp_load(m, double, T1);
+        }
+        self.fp_ordinary(T0, double, false);
+        self.fp_ordinary(T1, double, false);
+        self.b.and_i32();
+        self.b.if_void();
+        // RMode/FZ/DN cannot change normal/zero comparisons. Wasm does not
+        // raise ARM flags; exceptional inputs have not changed any state.
+        self.fp_value(T0, double);
+        self.fp_value(T1, double);
+        self.o(if double { 0x61 } else { 0x5B });
+        self.b.if_i32();
+        self.c32(0x6000_0000);
+        self.b.else_();
+        self.fp_value(T0, double);
+        self.fp_value(T1, double);
+        self.o(if double { 0x63 } else { 0x5D });
+        self.b.if_i32();
+        self.c32(0x8000_0000u32 as i32);
+        self.b.else_();
+        self.c32(0x2000_0000);
+        self.b.block_end();
+        self.b.block_end();
+        self.si(A2);
+        self.c32(state::fpsr as i32);
+        self.load32(state::fpsr as u32);
+        self.c32(0x0FFF_FFFF);
+        self.b.and_i32();
+        self.gi(A2);
+        self.b.or_i32();
+        self.b.store_aligned_i32(0);
+        self.b.br(done);
+        self.b.block_end();
+        self.a32_helper(word, length, offset);
+        self.b.block_end();
+    }
+
     /// VADD, VSUB, VMUL, VNMUL, VDIV (FpArith): pagegen's scalar rules
     #[allow(clippy::too_many_arguments)]
     fn fp_arith(
@@ -3520,6 +3601,20 @@ impl Emitter<'_> {
         }
     }
 
+    /// After ordinary-input/result checks, a sum with a zero operand or
+    /// zero result is exact. Two f32 operands cannot round a nonzero sum
+    /// below half a minimum subnormal: both are multiples of 2^-149.
+    fn neon_exact_sum(&mut self, a: &WasmLocalV128, b: &WasmLocalV128, result: &WasmLocalV128) {
+        for l in [a, b, result] {
+            self.b.get_local_v128(l);
+            self.b.simd_zero();
+            self.b.simd(0x41); // f32x4.eq (includes both signs of zero)
+        }
+        self.b.simd(0x50);
+        self.b.simd(0x50); // v128.or
+        self.b.simd(0xA3); // i32x4.all_true
+    }
+
     /// Standard NEON single-precision arithmetic. Check every lane and
     /// retain all results in locals before any architectural write, so a
     /// fallback with overlapping operands observes the original registers.
@@ -3542,8 +3637,7 @@ impl Emitter<'_> {
         self.load32(state::fpsr as u32);
         self.c32(16);
         self.b.and_i32();
-        self.b.eqz_i32();
-        self.b.br_if(slow);
+        let sticky = self.b.set_new_local();
         self.neon_load(n, q);
         let a = self.b.set_new_local_v128();
         self.neon_load(m, scalar.is_none() && q);
@@ -3579,6 +3673,25 @@ impl Emitter<'_> {
             self.b.simd(0x4E);
             self.b.simd(0x53); // v128.any_true
             self.b.br_if(slow);
+            self.b.get_local(&sticky);
+            self.b.eqz_i32();
+            self.b.if_void();
+            // A zero or power-of-two factor has no fractional significand
+            // bits. Its product is exact when the guarded result is normal
+            // or zero, so clear IXC can stay clear without a helper call.
+            for l in [&a, &b] {
+                self.b.get_local_v128(l);
+                self.b
+                    .const_v128(0x007F_FFFF_007F_FFFF_007F_FFFF_007F_FFFFu128.to_le_bytes());
+                self.b.simd(0x4E);
+                self.b.simd_zero();
+                self.b.simd(0x37);
+            }
+            self.b.simd(0x50);
+            self.b.simd(0xA3);
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+            self.b.block_end();
         }
         let accumulator = if op >= 3 {
             self.neon_load(d, q);
@@ -3597,9 +3710,25 @@ impl Emitter<'_> {
             None
         };
         let result = self.b.set_new_local_v128();
-        self.v_ordinary(&result, false, true);
-        self.b.eqz_i32();
-        self.b.br_if(slow);
+        if op >= 3 {
+            self.v_ordinary(&result, false, true);
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+        }
+        if op != 2 {
+            self.b.get_local(&sticky);
+            self.b.eqz_i32();
+            self.b.if_void();
+            if let Some(ref acc) = accumulator {
+                self.neon_exact_sum(acc, &product, &result);
+            }
+            else {
+                self.neon_exact_sum(&a, &b, &result);
+            }
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+            self.b.block_end();
+        }
         // No architectural writes before every lane passes. D forms load
         // duplicate halves and store only 64 bits, preserving the adjacent D.
         self.c32(state::v as i32 + 8 * d as i32);
@@ -3615,6 +3744,7 @@ impl Emitter<'_> {
         self.b.block_end();
         self.a32_helper(word, length, offset);
         self.b.block_end();
+        self.b.free_local(sticky);
         for l in [Some(a), Some(b), Some(product), accumulator, Some(result)]
             .into_iter()
             .flatten()
@@ -4257,6 +4387,15 @@ impl Emitter<'_> {
                 cond,
             } => self.when(cond, |e| {
                 e.fp_arith(op, double, d, n, m, i.word, i.length, offset)
+            }),
+            Kind::FpCompare {
+                double,
+                d,
+                m,
+                zero,
+                cond,
+            } => self.when(cond, |e| {
+                e.fp_compare(double, d, m, zero, i.word, i.length, offset);
             }),
             Kind::FpMove {
                 kind,

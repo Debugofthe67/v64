@@ -388,7 +388,11 @@ base:
             vmov.32 d8[\lane], r2
         .endif
     .endif
-    movw r0, #0x10
+    .if (\scalar & 0x7fffffff) == 0
+        movw r0, #0
+    .else
+        movw r0, #0x10
+    .endif
     movt r0, #0x00c0
     vmsr fpscr, r0
     movw r12, #128

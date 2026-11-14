@@ -79,6 +79,30 @@ scalar-lane 版本交替控制轮 `scalar-2` 为 65 帧/60.002 秒（1.083 FPS�
 但战斗只有 44 帧/60.002 秒（0.733 FPS），高频 vector FP helper 仍在，因此撤下
 运行时改动，仅保留 `qitfp` 的回归覆盖。继续针对实际保留的 VCMP/VCMPE helper 工作。
 
+新增 VCMP/VCMPE 的普通数/零快路径，只更新 FPSCR.NZCV；NaN、无穷大、denorm
+仍由精确 helper 处理。293 个单/双精度、比较零、条件失败、FP trap 及标志组合与
+QEMU/解释器一致，fallback 同样通过。其独立试跑为 0.867 FPS，未单独验收到收益。
+随后优化 NEON 的 guard：合并 f32 的上下界比较，删除非累加运算的重复结果检查；
+对可证明精确的零操作、抵消和乘以二的整数次幂，允许 IXC 保持清零，其他运算仍
+检查 sticky IXC 或回退，VMLA/VMLS 保留两次舍入。
+
+256 个每次运算前清除 IXC 的新增边界用例、364 个 scalar-lane/别名用例、既有
+180 个向量 FP 用例及 600 个 A64 SIMD MMU/JIT 随机用例（77 种形式）均与 QEMU
+一致；SIMD/fallback、单个不精确 lane、tiny/overflow、符号零及标志保留均通过。
+组合构建 `exact-1/exact-2` 同场景完成 **76/66 帧，分别为 1.267/1.100 FPS**，
+面板 76/67 次更新、全程亮屏。相对 scalar-lane 的 0.983/1.083 FPS 有小幅改善，
+样本仍少，不能给出稳定加速比；60 FPS 未达到。
+
+进一步读取原生状态时，按 TTBCR.N=2 的真实 4 KiB TTBR0 对齐解析页表，四个代码页
+与本地 dyld cache 字节匹配得到同一 slide `0x18f6000`。原先最热的
+`0x3242f000/0x324ef000` 实际属于 **AudioToolbox**；`0x32969000` 是
+CoreFoundation，`0x3ab0b000` 是 libsystem_c，不能按未修正 slide 的地址猜库名。
+独立进程观察窗口约 76.6 秒，65.7 秒 core 执行中约 39.6 秒横跨上下文切换，
+无法精确分摊；同一线程窗口中 mediaserverd 占约 13.8 秒、SwordGame 约 4.3 秒。
+这些是近似 CPU 归因，不能当作各进程完整占比，也不混入 FPS 成绩。
+I2S0 为 44100 Hz，控制/模式寄存器 `0x181/0x03000081`；AMC mask/pending 为零，
+没有活动 decoder 或解码失败。后续应继续定位音频处理及调度开销，而不是仅靠 FPS 计数器。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，

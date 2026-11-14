@@ -529,11 +529,20 @@ impl Emitter<'_> {
         self.b.simd(eq);
         self.b.get_local_v128(&m);
         self.splat_const(low, double);
-        self.b.simd(ge_s);
-        self.b.get_local_v128(&m);
-        self.splat_const(inf, double);
-        self.b.simd(lt_s);
-        self.b.simd(V128_AND);
+        if double {
+            self.b.simd(ge_s);
+            self.b.get_local_v128(&m);
+            self.splat_const(inf, double);
+            self.b.simd(lt_s);
+            self.b.simd(V128_AND);
+        }
+        else {
+            // Unsigned subtraction folds both bounds into one comparison.
+            // Values below low wrap above the entire admitted interval.
+            self.b.simd(0xB1); // i32x4.sub
+            self.splat_const(inf - low, false);
+            self.b.simd(0x3A); // i32x4.lt_u
+        }
         self.b.simd(V128_OR);
         self.b.simd(all_true);
         self.b.free_local_v128(m);
