@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { V86 } from "../../src/main.js";
+import { set_jit_switches } from "../../src/jit_switches.js";
 const directory = process.argv[2];
 if(!directory) throw Error("usage: iop-status.mjs owner-provided-10B329-directory");
 const emulator = new V86({machine_type:"s5l8930",graphics_adapter:"none",autostart:false,log_level:0,
@@ -29,6 +30,21 @@ try
     assert.ok(Number.isInteger(diagnostics.cores[0].fpsr));
     assert.ok(Array.isArray(diagnostics.steps.helped_words));
     assert.equal((await emulator.get_diagnostics()).steps,undefined,"instruction counters are opt-in");
+    // The existing profiling switch must gate the exact word histogram
+    // too. Total helper work and architectural behavior remain observable.
+    const ex=cpu.wm.exports,thumb=new Uint32Array(cpu.wasm_memory.buffer,cpu.state_base+332,1)[0]&32;
+    const nop=thumb?0x4600:0xE1A00000,length=thumb?2:4;
+    const count=()=>{for(let i=0;i<4096;i++)if(ex.a32_helper_word(i,false)===nop)return ex.a32_helper_word(i,true);return 0;};
+    const r0=new Uint32Array(cpu.wasm_memory.buffer,cpu.state_base+64,1)[0];
+    for(const enabled of [0,1,0])
+    {
+        set_jit_switches(ex,cpu.wasm_memory,{a64_step_stats:enabled});
+        const before=count(),total=cpu.page_tier_stats().helpers;
+        for(let n=0;n<64;n++)assert.equal(ex.a32_page_helper(nop,BigInt(base),length),0);
+        assert.equal(count()-before,enabled?64:0,"disabled profiling performs no word-histogram updates");
+        assert.equal(cpu.page_tier_stats().helpers-total,64,"total helper diagnostics always count the work");
+        assert.equal(new Uint32Array(cpu.wasm_memory.buffer,cpu.state_base+64,1)[0],r0,"NOP preserves R0 with either profiling mode");
+    }
     console.log("PASS: privileged native IOP MRS preserves flags, GE and interrupt masks without interpreter helpers");
 }
 finally {await emulator.destroy();}

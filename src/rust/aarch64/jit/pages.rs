@@ -1611,14 +1611,16 @@ pub fn a32_helper_word(i: u32, count: bool) -> f64 {
 #[no_mangle]
 pub fn a32_page_helper(word: u32, pc: u64, length: u32) -> u32 {
     unsafe { HELPERS += 1 };
-    note_helper_word(word);
     a32_trace(2, pc as u32, word);
     let thumb = cpu::get_pstate() & cpu::PSTATE_T != 0;
-    note_step(
-        HELPED,
-        crate::aarch64::a32::step_key(word, length, thumb),
-        word,
-    );
+    if unsafe { STEP_STATS } {
+        note_helper_word(word);
+        note_step(
+            HELPED,
+            crate::aarch64::a32::step_key(word, length, thumb),
+            word,
+        );
+    }
     match crate::aarch64::a32::execute_fetched(word, length, pc as u32, thumb) {
         Ok(flow @ (Flow::Next | Flow::Yield | Flow::Wait(_) | Flow::Off)) => {
             crate::core_stats::add_pending(1, 0);

@@ -190,6 +190,20 @@ EL、ASID 和数据访问 epoch，沿原有 epoch/tag 校验连接，miss 时返
 同时修正 runner：Chrome 在结果上报前退出时明确失败、关闭 HTTP 服务；无 VM 的
 提前关闭测试验证失败信息和端口可以重新绑定，避免后续一轮误连旧测试服务。
 
+修正 `a64_step_stats=0` 仍更新 A32 完整 word histogram 的遗漏。普通 iPhone UI
+明确关闭逐指令统计，debug UI 保留；总指令、helper 总数及实际 drawable/panel 计数
+始终保留。新增 0→1→0 各 64 次 NOP 回归，验证只在开启时增加直方图、总 helper
+仍准确计数、R0 不变；22 项配置测试及关闭统计后的 21 个互跳、712 个异常浮点
+QEMU 用例通过。普通 UI 恢复检查点后实查开关为 0，word histogram 为空。
+两轮有效成绩为 88/77 帧，即 1.467/1.283 FPS；无效 `nohist-2` 不计入。
+与前一版 1.383–1.533 FPS 接近，主机负载变化明显，**没有单独验收到 FPS 收益**。
+
+该版本独立 30.07 秒 CPU 采样：CLCD render 包含约 3.42 秒、其中循环自身约
+2.63 秒，surface_words 包含约 0.79 秒；pages::run 自身约 3.00 秒，解释器包含
+约 5.68 秒，各包含时间不可相加。AudioToolbox 的浮点 helper 已不是当前最大的
+采样项。下一步优先缩短未变化面板的完整 JS 像素比较，保留每次真实扫描、像素变化、
+背光、映射切换和 snapshot restore 的显示语义。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，
