@@ -1,4 +1,5 @@
 import { AMCAudioDecoder } from "./audio_decode.js";
+import { begin_state_io } from "../state_io.js";
 
 const RESULT = 0x18000, DMA_DONE = 1 << 20, PORT = 0x8480002c;
 // The MP3 program also starts with a ready interrupt. Its memory windows,
@@ -20,6 +21,7 @@ export class AMCCodec
         this.cpu = device.cpu;
         this.dma = dma;
         this.generation = 0;
+        /** @type {?AMCAudioDecoder} */
         this.decoder = null;
         this.busy = false;
         this.initialized = false;
@@ -58,12 +60,11 @@ export class AMCCodec
 
     get_state()
     {
-        // WebCodecs does not expose its Layer III bit reservoir. Saving
-        // its live stream would produce a discontinuity after restoration.
-        if(this.decoder || this.busy) throw new Error("Stop the AMC audio stream before saving a snapshot");
-        return [1, this.initialized, this.program, this.input, this.resume,
+        if(this.busy) throw new Error("Stop the AMC audio stream before saving a snapshot");
+        const decoder = this.decoder ? this.decoder.get_state() : null;
+        return [2, this.initialized, this.program, this.input, this.resume,
             this.moves.map(move => [move.bytes, move.from, move.to]),
-            this.output.map(block => block.slice()), this.fifo.slice(), this.slot, this.input_pending];
+            this.output.map(block => block.slice()), this.fifo.slice(), this.slot, this.input_pending, decoder];
     }
 
     set_state(state)
@@ -72,7 +73,7 @@ export class AMCCodec
         // Legacy snapshots contain no evidence of an issued start command.
         // Do not infer completion merely from code in local memory.
         if(!state) return;
-        if(state[0] !== 1 || !["", "aac", "mp3"].includes(state[2])) throw new Error("Unsupported AMC codec snapshot");
+        if(![1, 2].includes(state[0]) || !["", "aac", "mp3"].includes(state[2])) throw new Error("Unsupported AMC codec snapshot");
         this.initialized = state[1];
         this.program = state[2];
         this.input = state[3];
@@ -84,6 +85,18 @@ export class AMCCodec
         this.input_pending = state[9];
         // Source bits and the result header belong to the device snapshot;
         // restoring an already acknowledged program cannot raise ready again.
+        if(state[0] === 2 && state[10]) this.restore_decoder(state[10]);
+    }
+
+    async restore_decoder(state)
+    {
+        const generation = this.generation;
+        const complete = begin_state_io(this.cpu);
+        this.busy = true;
+        const decoder = this.decoder = new AMCAudioDecoder();
+        try { await decoder.restore_state(state); }
+        catch(error) { if(generation === this.generation) this.failure(error); }
+        finally { if(generation === this.generation) this.busy = false;complete(); }
     }
 
     failure(error)
@@ -154,6 +167,7 @@ export class AMCCodec
     async decode(head)
     {
         const generation = this.generation;
+        const complete = begin_state_io(this.cpu);
         this.busy = true;
         this.input_pending = true;
         try
@@ -206,7 +220,7 @@ export class AMCCodec
             for(const block of this.decoder.output) this.output.push(block.slice());
         }
         catch(error) { if(generation === this.generation) this.failure(error); }
-        finally { if(generation === this.generation) this.busy = false; }
+        finally { if(generation === this.generation) this.busy = false;complete(); }
     }
 
     engine0(head)

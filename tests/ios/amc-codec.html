@@ -64,11 +64,33 @@ try {
         for(let i=0;i<1152;i++){const s=next[2*i+channel];signal+=s*Math.sin(2*Math.PI*freq*i/44100);quadrature+=s*Math.cos(2*Math.PI*freq*i/44100);energy+=s*s;}
         assert(2*(signal*signal+quadrature*quadrature)/(1152*energy)>0.95,'MP3 retains the generated channel frequency '+JSON.stringify({channel,energy,ratio:2*(signal*signal+quadrature*quadrature)/(1152*energy)}));
     }
+    const history=decoder.get_state(),restored=new AMCAudioDecoder();
+    await restored.restore_state(history);
+    assert(restored.output.length===0,'replay discards PCM preceding the snapshot');
+    const uninterrupted=await decoder.decode(packets[4],44100,2,'mp3'),continued=await restored.decode(packets[4],44100,2,'mp3');
+    assert(uninterrupted.length===continued.length&&uninterrupted.every((sample,i)=>sample===continued[i]),'MP3 reservoir replay preserves every subsequent PCM sample');
+    restored.close();
+    const cancelled=new AMCAudioDecoder(),prime=cancelled.restore_state(history);cancelled.close();
+    let cancelled_ok=false;try{await prime;}catch{cancelled_ok=true;}
+    assert(cancelled_ok&&!cancelled.decoder&&!cancelled.pending,'reset during asynchronous replay cannot reopen or leak a decoder');
+    const oversized=[...history];oversized[6]=new Array(17).fill(new Uint8Array(1<<20));
+    let bounded=false;try{await cancelled.restore_state(oversized);}catch{bounded=true;}
+    assert(bounded&&!cancelled.decoder,'oversized encoded history is rejected before decoding');
     for(const bad of [batch.subarray(0,batch.length-1),new Uint8Array([255,251,0,0])]){
         let rejected=false;try{await decoder.decode(bad,44100,2,'mp3');}catch{rejected=true;}
         assert(rejected,'truncated/free-format MP3 is rejected');
     }
-    decoder.close();
+    // A format switch keeps the original timestamp epoch but starts a new
+    // codec history; AAC restoration must match uninterrupted decoding too.
+    await decoder.decode(packet,44100,2);
+    const aac_history=decoder.get_state(),aac_restored=new AMCAudioDecoder();
+    assert(aac_history[4]>0,'snapshot records the timestamp at the codec switch');
+    await aac_restored.restore_state(aac_history);
+    const aac_next=await decoder.decode(packet,44100,2),aac_continued=await aac_restored.decode(packet,44100,2);
+    assert(aac_next.length===aac_continued.length&&aac_next.every((sample,i)=>sample===aac_continued[i]),'AAC replay preserves subsequent PCM');
+    decoder.close();aac_restored.close();
+    const dma_reference=new AMCAudioDecoder();await dma_reference.decode(packets[0],44100,2,'mp3');
+    const second_pcm=await dma_reference.decode(packets[1],44100,2,'mp3');dma_reference.close();
     const mp3_programs = [[0x21000004,0xb623a100,0x58100000,0x00080a30],
         [0x01c2006a,0x080001d7,0x428007c8,0x083ed008]];
     for(const [iteration,prefix] of mp3_programs.entries()) {
@@ -79,7 +101,7 @@ try {
     assert(v.getUint16(0x18002,true)===2&&v.getUint16(0x18004,true)===2304,'native MP3 output contract differs from AAC');
     amc.write(0xc48,4);v.setUint16(0x1ff00,1,true);
     m.set(packets[0],0x20400);v.setUint32(0x20004,packets[0].length<<16,true);
-    v.setUint32(0x30104,9216,true);d.setUint32(0x10c,9216,true);
+    v.setUint32(0x30104,9216,true);v.setUint32(0x30108,0x18100,true);d.setUint32(0x10c,9216,true);
     dma.write(base,2);dma.write(base+8,0x8480002c);dma.write(base+12,9216);dma.write(base+20,0x40000100);dma.write(base,0x19);
     amc.write(0,0x30002);amc.write(0x100,0x20002);
     // Restore after the native output list and compressed input were
@@ -89,14 +111,52 @@ try {
     assert(amc.codec.initialized&&amc.codec.program==='mp3'&&amc.codec.moves.length===1,'idle MP3 program and deferred output survive snapshot');
     assert(!(amc.pending[0]&4),'acknowledged ready is not manufactured on restore');
     const mp3end=performance.now()+10000;
-    while(amc.codec.stats.pcm_bytes!==8192+9216*(iteration+1)&&performance.now()<mp3end){amc.poll();await new Promise(r=>setTimeout(r,5));}
-    assert(amc.codec.stats.failures===0&&amc.codec.stats.decoded_samples===2048+2304*(iteration+1)&&amc.codec.stats.pcm_bytes===8192+9216*(iteration+1),'both MP3 programs cross the real engine-0 and CDMA path '+JSON.stringify(amc.codec.stats));
+    while(amc.codec.stats.pcm_bytes!==8192+9216*(2*iteration+1)&&performance.now()<mp3end){amc.poll();await new Promise(r=>setTimeout(r,5));}
+    assert(amc.codec.stats.failures===0&&amc.codec.stats.decoded_samples===2048+2304*(2*iteration+1)&&amc.codec.stats.pcm_bytes===8192+9216*(2*iteration+1),'both MP3 programs cross the real engine-0 and CDMA path '+JSON.stringify(amc.codec.stats));
+    // This time the snapshot contains a real, live Layer III decoder.
+    const playing=amc.get_state();amc.reset();amc.set_state(playing);
+    m.set(packets[1],0x20400);v.setUint32(0x20004,packets[1].length<<16,true);
+    v.setUint32(0x30108,0x19300,true);
+    [0,0x103,0x40001000,9216].forEach((w,i)=>d.setUint32(0x100+4*i,w,true));
+    dma.write(base,2);dma.write(base+8,0x8480002c);dma.write(base+12,9216);dma.write(base+20,0x40000100);dma.write(base,0x19);
+    amc.write(0x110,0x20);amc.write(0,0x30002);amc.write(0x100,0x20002);
+    const continuation_end=performance.now()+10000;
+    while(amc.codec.stats.pcm_bytes!==8192+9216*(2*iteration+2)&&performance.now()<continuation_end){amc.poll();await new Promise(r=>setTimeout(r,5));}
+    assert(amc.codec.stats.failures===0&&amc.codec.stats.decoded_samples===2048+2304*(2*iteration+2)&&amc.codec.stats.pcm_bytes===8192+9216*(2*iteration+2),'live MP3 snapshot continues real DMA without counting replayed PCM '+JSON.stringify({stats:amc.codec.stats,slot:amc.codec.slot,flags:[v.getUint16(0x1800a,true),v.getUint16(0x1800e,true)],moves:amc.codec.moves,fifo:amc.codec.fifo.length,channel:Array.from(dma.channel.slice(23*8,24*8))}));
+    assert(second_pcm.every((sample,i)=>d.getInt32(0x1000+4*i,true)===sample*256),'restored native DMA contains the exact next frame, not replayed PCM');
     }
+    // A native input contains multiple frames. Save after retiring only
+    // its first output buffer, then deliver the saved PCM and retire the
+    // original input once, without resubmitting compressed data.
+    amc.write(0x99c,3);amc.write(0x984,0);amc.write(0xc48,4);v.setUint16(0x1ff00,1,true);
+    m.set(batch,0x20400);v.setUint32(0x20004,batch.length<<16,true);
+    const pcm_before=amc.codec.stats.pcm_bytes,samples_before=amc.codec.stats.decoded_samples;
+    async function output_frame(source,target) {
+        v.setUint16(source===0x18100?0x1800a:0x1800e,0,true); // native consumer releases the used slot
+        v.setUint32(0x30108,source,true);
+        [0,0x103,0x40001000,9216].forEach((w,i)=>d.setUint32(0x100+4*i,w,true));
+        dma.write(base,2);dma.write(base+8,0x8480002c);dma.write(base+12,9216);dma.write(base+20,0x40000100);dma.write(base,0x19);
+        amc.write(0,0x30002);
+        const end=performance.now()+10000;
+        while(amc.codec.stats.pcm_bytes<target&&performance.now()<end){amc.poll();await new Promise(r=>setTimeout(r,5));}
+        assert(amc.codec.stats.pcm_bytes===target&&amc.codec.stats.failures===0,'snapshot preserves ordered output DMA');
+    }
+    amc.write(0x100,0x20002);await output_frame(0x18100,pcm_before+9216);
+    assert(amc.codec.output.length===2&&amc.codec.input_pending,'two decoded frames still belong to the input batch');
+    const partial=amc.get_state();amc.reset();amc.set_state(partial);
+    await output_frame(0x19300,pcm_before+2*9216);
+    assert(amc.codec.input_pending&&!(amc.pending[0]&(1<<20)),'partial output does not retire the native input');
+    await output_frame(0x18100,pcm_before+3*9216);
+    assert(!amc.codec.input_pending&&(amc.pending[0]&(1<<20))&&amc.codec.stats.decoded_samples===samples_before+3*2304,'restored queued PCM retires exactly the original batch');
+    const cancelled_state=amc.get_state();amc.reset();amc.set_state(cancelled_state);amc.write(0x99c,3);
+    await new Promise(r=>setTimeout(r,0));
+    assert(!amc.codec.decoder&&!amc.codec.initialized&&amc.pending[0]===0&&amc.codec.stats.failures===0,'reset cancels codec replay without a stale completion or error');
+    assert(cpu.snapshot_io_pending===0,'snapshot drain includes decode and replay cancellation');
     // Malformed linked input is a codec error, never a successful silent frame.
     amc.codec.reset();v.setUint32(0x20000,0x20002,true);amc.codec.initialized=true;amc.codec.input=0x20002;
     amc.poll();await new Promise(r=>setTimeout(r,0));amc.poll();
     assert(amc.codec.stats.failures===1&&v.getUint16(0x1ff28,true)===1,'cyclic input reports the native error contract');
-    document.getElementById('result').textContent='PASS: real AAC/MP3 PCM, MP3 packet batches and channel frequencies, native buffer contracts, ordered CDMA, malformed-input rejection';
+    document.getElementById('result').textContent='PASS: real AAC/MP3 PCM and exact snapshot continuation, replay cancellation and bounds, native buffer contracts, ordered CDMA, malformed-input rejection';
 }catch(error){document.getElementById('result').textContent='FAIL: '+error.stack;}
 finally{amc.codec.reset();}
 </script>
