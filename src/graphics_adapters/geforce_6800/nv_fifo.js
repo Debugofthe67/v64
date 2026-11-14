@@ -197,7 +197,11 @@ export class NVFIFO
             {
                 ch.bindings[subc] = object.instance;
                 this.set(0x3280, this.reg(0x3280) & ~(15 << (subc * 4)) | object.engine << (subc * 4));
-                if(object.engine===1)this.device.graph?.bind?.(this.active,subc,object.instance);
+                if(object.engine===1)
+                {
+                    this.device.graph?.bind?.(this.active,subc,object.instance);
+                    this.set(0x3254,this.reg(0x3254)&~15|object.engine);
+                }
                 return object.engine === 1 || this.cache_error(0x100);
             }
             value = object.instance / 16;
@@ -230,6 +234,7 @@ export class NVFIFO
         // Engine zero objects (e.g. the driver's software DAC class) must trap
         // every method to the miniport, not be interpreted as PGRAPH instances.
         if((this.reg(0x3280) >>> (subc * 4) & 15) !== 1) return this.cache_error(0x100);
+        this.set(0x3254,this.reg(0x3254)&~15|1);
         return this.device.graph ? this.device.graph.method(this.active, subc, ch.bindings[subc], method, value) : this.cache_error(0x100);
     }
 

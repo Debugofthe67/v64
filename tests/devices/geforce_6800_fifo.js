@@ -103,6 +103,21 @@ const header = (method, count = 1, subc = 0, ni = false) => method | count << 18
     assert.equal(f.regs.get(0x3254) & 0x10, 0);
 }
 {
+    const f=fixture();f.fifo.select(0);f.regs.set(0x3254,0x20000);
+    f.word(0x44000,0x3062);f.handle(0x1234,0x44000);
+    f.submit([header(0,1,2),0x1234,header(0x300,1,2),17]);
+    assert.equal(f.regs.get(0x3254),0x20001,"PULL1 reports the last submitted PGRAPH engine, preserving semaphore target bits");
+    f.fifo.method(2,0x50,23);
+    assert.equal(f.regs.get(0x3254),0x20001,"puller builtins do not select another engine");
+    f.fifo.save_channel();f.fifo.select(1);assert.equal(f.regs.get(0x3254),0);
+    f.fifo.select(0);assert.equal(f.regs.get(0x3254),0x20001,"last engine follows its RAMFC channel context");
+    f.handle(0x8807C000,0x40,0);
+    assert.equal(f.fifo.method(7,0,0x8807C000),false);
+    assert.equal(f.regs.get(0x3254),0x20001,"a software object trap does not submit to a new hardware engine");
+    f.regs.set(0x3254,0x30000);f.fifo.method(2,0x304,29);
+    assert.equal(f.regs.get(0x3254),0x30001,"forwarded methods also select their bound engine");
+}
+{
     const f = fixture(); f.object(0x45000, 0x2303D, 4095, 0x8002); f.handle(0x77, 0x45000, 0);
     f.regs.set(0x3250,0); // Prefetch the whole queue before the puller runs.
     f.submit([header(0x60,3),0x77,12,42,header(0x50),99]);
