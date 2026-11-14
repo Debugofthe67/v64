@@ -584,6 +584,8 @@ struct Emitter<'a> {
     env: CompileEnv,
     /// Keep A32 GPRs local when a page has no ordinary helper calls.
     a32_gpr_locals: bool,
+    /// Conservative union of GPRs read or written anywhere in this page.
+    a32_gpr_mask: u16,
     /// Compile-time IT mask of the current native instruction. Successful
     /// accesses keep architectural ITSTATE clear; only a retry materializes it.
     a32_itstate: u8,
@@ -680,6 +682,10 @@ pub fn compile(bytes: &[u8], entries: &[u16], env: CompileEnv, name: String) -> 
                         })
                 })),
         a32_itstate: 0,
+        a32_gpr_mask: blocks
+            .iter()
+            .flat_map(|b| &b.insts32)
+            .fold(0, |mask, (_, i)| mask | i.kind.gpr_mask()),
         access: None,
         step: StepAbi {
             exit_code: state::a64_page_exit as u32,
@@ -751,6 +757,9 @@ impl Emitter<'_> {
         let a64 = self.env.isa == Isa::A64;
         if a64 || self.a32_gpr_locals {
             for i in 0..if a64 { 32 } else { 15 } {
+                if !a64 && self.a32_gpr_mask & (1 << i) == 0 {
+                    continue;
+                }
                 self.load64(x_address(i));
                 self.s(i);
             }
@@ -770,6 +779,9 @@ impl Emitter<'_> {
         if self.env.isa != Isa::A64 {
             if self.a32_gpr_locals {
                 for i in 0..15 {
+                    if self.a32_gpr_mask & (1 << i) == 0 {
+                        continue;
+                    }
                     self.store64_at(x_address(i), i);
                 }
             }

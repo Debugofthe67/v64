@@ -258,6 +258,77 @@ pub enum Kind {
     },
 }
 
+impl Kind {
+    /// A conservative union of every GPR the template may read or write.
+    /// Destinations are included even when conditional: their initial value
+    /// must survive a false condition and the page's eventual writeback.
+    pub(super) fn gpr_mask(self) -> u16 {
+        fn reg(n: u8) -> u16 {
+            if n < 15 {
+                1 << n
+            }
+            else {
+                0
+            }
+        }
+        fn operand(o: Operand) -> u16 {
+            match o {
+                Operand::Imm { .. } | Operand::ThumbPc => 0,
+                Operand::Reg { rm, .. } => reg(rm),
+                Operand::RegShift { rm, rs, .. } => reg(rm) | reg(rs),
+            }
+        }
+        match self {
+            Self::Helper => 0x7FFF,
+            Self::FpHelper
+            | Self::Nop
+            | Self::It
+            | Self::Neon { .. }
+            | Self::FpArith { .. }
+            | Self::FpCompare { .. } => 0,
+            Self::Branch { link, .. } => {
+                if link {
+                    reg(14)
+                }
+                else {
+                    0
+                }
+            },
+            Self::Interwork { .. } => reg(14),
+            Self::CompareBranch { rn, .. } => reg(rn),
+            Self::Exchange { rm, link, .. } => reg(rm) | if link { reg(14) } else { 0 },
+            Self::Data { rd, rn, op2, .. } => reg(rd) | reg(rn) | operand(op2),
+            Self::Wide { rd, .. } | Self::Status { rd, .. } => reg(rd),
+            Self::Bitfield { rd, rn, .. } => reg(rd) | reg(rn),
+            Self::Mem { rt, rn, offset, .. } => {
+                reg(rt)
+                    | reg(rn)
+                    | match offset {
+                        Offset::Imm(_) => 0,
+                        Offset::Reg { rm, .. } => reg(rm),
+                    }
+            },
+            Self::Multiple { rn, list, .. } => reg(rn) | list & 0x7FFF,
+            Self::Multiply { rd, rn, rm, ra, .. } => reg(rd) | reg(rn) | reg(rm) | reg(ra),
+            Self::MultiplyLong { lo, hi, rn, rm, .. } => reg(lo) | reg(hi) | reg(rn) | reg(rm),
+            Self::Extend { rd, rn, rm, .. } => reg(rd) | reg(rn) | reg(rm),
+            Self::Dual { rt, rt2, rn, .. } => reg(rt) | reg(rt2) | reg(rn),
+            Self::Bits { rd, rm, .. } => reg(rd) | reg(rm),
+            Self::FpMemory { rn, .. } => reg(rn),
+            Self::FpMove { kind, d, n, m, .. } => match kind {
+                0..=2 => 0,
+                3 => reg(n),
+                4 => reg(d),
+                _ => reg(n) | reg(m),
+            },
+            // Rm=13 means the transfer size, so including SP here is
+            // conservative. Rm=15 (no writeback) is excluded by reg().
+            Self::Vld1 { rn, rm, .. } => reg(rn) | reg(rm),
+            Self::Transfer { rt, .. } => reg(rt),
+        }
+    }
+}
+
 /// The template of an Advanced SIMD data processing instruction (Wasm SIMD,
 /// neon.rs's lane operations)
 #[derive(Clone, Copy)]
