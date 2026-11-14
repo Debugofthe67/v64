@@ -3,10 +3,13 @@
  * No graphics entry points, driver state or benchmark results are changed. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <tlhelp32.h>
 
 static HANDLE output;
 static unsigned int written, windows;
 static char arguments[3][512];
+static DWORD benchmark_processes[16];
+static unsigned int benchmark_process_count;
 static void text(const char *s)
 {
     DWORD n, length=(DWORD)lstrlenA(s);
@@ -19,23 +22,31 @@ static void hex(DWORD value)
     for(int i=0;i<8;i++)s[i+2]=digits[value>>(28-i*4)&15];
     s[10]=0;text(s);
 }
-static BOOL contains(const char *s,const char *part)
+static void find_benchmarks(void)
 {
-    for(;*s;s++)
+    HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);
+    if(snapshot==INVALID_HANDLE_VALUE)return;
+    PROCESSENTRY32 process;process.dwSize=sizeof(process);
+    if(Process32First(snapshot,&process))do
     {
-        const char *a=s,*b=part;
-        while(*a && *b && *a==*b){a++;b++;}
-        if(!*b)return TRUE;
-    }
-    return FALSE;
+        const char *name=process.szExeFile,*p=name;
+        for(;*p;p++)if(*p=='\\' || *p=='/')name=p+1;
+        const char prefix[]="3DMARK";unsigned int i=0;
+        for(;i<6 && name[i];i++)
+        {char c=name[i];if(c>='a' && c<='z')c-=32;if(c!=prefix[i])break;}
+        unsigned int length=(unsigned int)lstrlenA(name);
+        if(i==6 && length>=10 && !lstrcmpiA(name+length-4,".exe") && benchmark_process_count<16)
+        {
+            benchmark_processes[benchmark_process_count++]=process.th32ProcessID;
+            text("PROCESS PID=");hex(process.th32ProcessID);text(" EXE=");text(name);text("\r\n");
+        }
+    }while(Process32Next(snapshot,&process));
+    CloseHandle(snapshot);
 }
 static BOOL benchmark(HWND window)
 {
-    for(unsigned int i=0;window && i<32;i++,window=GetParent(window))
-    {
-        char title[256];GetWindowTextA(window,title,sizeof(title));
-        if(contains(title,"3DMark"))return TRUE;
-    }
+    DWORD process=0;GetWindowThreadProcessId(window,&process);
+    for(unsigned int i=0;i<benchmark_process_count;i++)if(benchmark_processes[i]==process)return TRUE;
     return FALSE;
 }
 static void describe(HWND window)
@@ -89,6 +100,7 @@ void __attribute__((stdcall)) entry(void)
 {
     output=CreateFileA("D:\\NVUI.TXT",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,0,CREATE_ALWAYS,0,0);
     if(output==INVALID_HANDLE_VALUE)ExitProcess(2);
+    find_benchmarks();
     DWORD result=1;DWORD_PTR response=0;
     if(!parse()){text("ERROR argument too long\r\n");goto done;}
     if(!lstrcmpiA(arguments[0],"/list"))

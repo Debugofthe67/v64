@@ -2084,3 +2084,11 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   GPU 仍 pending，GPU/PGRAPH 故障为零。确认删除先于 HASH 错误，
   发起清理的原因仍开放；不接受 06 完成/分数门禁。纹理/程序缓存
   统计及原始栈候选保留，见 `g6-xp-9371-06-ramht-lifetime.json`。
+
+- G6 原生 UI 工具续修：用 Toolhelp32 的真实 3DMark 进程 PID 约束
+  HWND，保留可见/启用及 Button/Edit 检查，覆盖不带程序名的 modal。
+  `NV_UI_BINARY` 在冷启动工具盘中与原始 NVPROBE 共存；XP 05 准备
+  已验证原探针 started/problem=0、独立工具的进程/控件枚举及原生
+  OK handler 正常退出。严格 C 构建、harness 语法和 Win98 原始 API
+  导出检查通过，Win98 新工具运行仍待验证。见
+  `g6-native-ui-process-scope.json`。

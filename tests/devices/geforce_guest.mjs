@@ -179,6 +179,12 @@ export async function run_geforce_guest(win98)
     const probe = new Uint8Array(65536), executable = fs.readFileSync(process.env.NV_PROBE_BINARY || binary);
     assert(executable.length <= probe.length); probe.set(executable);
     files["NVPROBE.EXE"] = probe;
+    if(process.env.NV_UI_BINARY)
+    {
+        const ui=fs.readFileSync(process.env.NV_UI_BINARY);
+        assert(ui.length<=65536 && ui[0]===0x4D && ui[1]===0x5A,"invalid native UI helper");
+        files["NVUI.EXE"]=ui;
+    }
     const tools_bytes = make_esp(files, 120);
     tools_bytes[450] = 0x0E; // normal FAT16, visible to Win9x/XP rather than an ESP
     new DataView(tools_bytes.buffer).setUint32(440, 0x4E563430, true);
@@ -646,14 +652,14 @@ export async function run_geforce_guest(win98)
             let failedLookups=0;
             fs.writeFileSync(path.join(out,"ramht-handle-watch.json"),JSON.stringify({handle,writes,lookups},null,2));
             const capture=item=>{
-                if(item.kind==="write"&&writes.length>=128)return;
+                if(item.kind==="write"&&writes.length>=128) return;
                 if(item.kind==="lookup"&&!item.result)
-                {if(failedLookups>=16)return;failedLookups++;}
+                {if(failedLookups>=16) return;failedLookups++;}
                 const backend=nv.graph.engine3d.backend,stack=cpu.reg32[4]>>>0;
-                const read=at=>{try{return cpu.mem8[cpu.translate_address_system_read(at)>>>0];}catch{return 0;}};
+                const read=at=>{try {return cpu.mem8[cpu.translate_address_system_read(at)>>>0];} catch{return 0;}};
                 const capture={elapsed:elapsed(),...item,eip:cpu.instruction_pointer[0]>>>0,
                     stackAddress:stack,cpuRegisters:[...cpu.reg32].map(value=>value>>>0),
-                    stack:item.kind==="write"||!item.result?Array.from({length:stackWords},(_,i)=>{const at=(stack+i*4)>>>0;return(read(at)|read(at+1)<<8|read(at+2)<<16|read(at+3)<<24)>>>0;}):null,
+                    stack:item.kind==="write"||!item.result?Array.from({length:stackWords},(_,i)=>{const at=(stack+i*4)>>>0;return (read(at)|read(at+1)<<8|read(at+2)<<16|read(at+3)<<24)>>>0;}):null,
                     channel:nv.fifo.active,registers:[0x3210,0x3270,0x3240,0x3244,0x3248,0x3228,0x3250,0x3254].map(at=>[at,nv.registers.get(at)||0]),
                     graphBusy:!!backend?.pending||nv.graph.flips.some(f=>!!f[3]),backendPending:!!backend?.pending,gpu:{...backend?.stats}};
                 if(item.kind==="write")writes.push(capture);
@@ -666,7 +672,7 @@ export async function run_geforce_guest(win98)
                 const before=inside?[nv.dma.word(at),nv.dma.word(at+4)]:null;
                 if(before?.[0]===handle)tracked.add(at);
                 original(offset,value);
-                if(!inside||writes.length>=128)return;
+                if(!inside||writes.length>=128) return;
                 const after=[nv.dma.word(at),nv.dma.word(at+4)];
                 if(after[0]===handle)tracked.add(at);
                 if(tracked.has(at)&&(before[0]!==after[0]||before[1]!==after[1]))capture({kind:"write",at,offset,value,before,after});
@@ -745,6 +751,7 @@ export async function run_geforce_guest(win98)
                     {
                         assert(Array.isArray(command.pointer) && command.pointer.length===2 &&
                             command.pointer.every(value=>Number.isFinite(value) && Math.abs(value)<=2048),"invalid relative mouse counts");
+                        vm.bus.send("mouse-pointer-lock",true);
                         vm.bus.send("mouse-delta",command.pointer);await delay(300);
                     }
                     if(command.click)

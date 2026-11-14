@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-14",
+  "scope": "Native test UI helper and fresh-boot coexistence with the original driver initialization probe.",
+  "change": {
+    "ownership": "Toolhelp32 enumerates actual 3DMark*.exe PIDs, then verifies each target HWND belongs to one of them. Visible/enabled Button/Edit and action checks remain. Modal captions no longer need to contain the product name.",
+    "coldBoot": "NV_UI_BINARY adds a separate bounded MZ executable as D:/NVUI.EXE in a fresh tools image, leaving the reserved NVPROBE executable intact. Matched restored tools disks remain authoritative.",
+    "relativeInput": "Explicit relative pointer control selects the PS/2 pointer-lock route even when a USB tablet is present; native small-count pointer/dialog input was exercised."
+  },
+  "nativeProof": {
+    "guest": "XP SP3, NVIDIA 93.71",
+    "originalProbe": "Original NVPROBE completed: NVIDIA device problem=0, cm=0, started=1, service=nv; 1024x768 desktop.",
+    "helper": "Separate D:/NVUI.EXE emitted PROCESS PID=0x42c EXE=3DMark05.exe and enumerated original startup modal controls.",
+    "action": "Observed visible enabled standard OK button HWND=0x300fc; normal BM_CLICK returned success and original launcher then reported EXIT_CODE=0.",
+    "benchmarkResult": "No 05 3D run or score yet: the original root-directory path error is recorded separately during setup."
+  },
+  "validation": [
+    "Strict no-CRT Win32 build with -Wall -Wextra -Werror passes",
+    "Original Win98 KERNEL32 exports CreateToolhelp32Snapshot, Process32First and Process32Next (read-only extracted DLL inspection)",
+    "node --check on guest harness",
+    "Native XP probe/helper coexistence, process enumeration and normal modal Button action"
+  ],
+  "evidence": {
+    "build/nv40-xp-mark05-cold-launcher/ui-native-process-list-0.txt": {
+      "bytes": 723,
+      "sha256": "a61e0d080a76aa633ecc4433e973d63c53200be67566e1cc18dc7c3583aeb0d7"
+    },
+    "build/nv40-xp-mark05-cold-launcher/ui-native-process-dismiss-0.txt": {
+      "bytes": 234,
+      "sha256": "b2b5fb92af318f18fdb6d62ac1c1d42ef7e3a8c897e2672807206eb2d95527b1"
+    },
+    "build/NVUI-Process.EXE": {
+      "bytes": 13794,
+      "sha256": "ea5487b20b35e82001a5c3c6d4a3bf279e907fe72b2989ce18bae2148ed78a6a"
+    },
+    "build/nv40-xp-mark05-cold/result.json": {
+      "bytes": 1541,
+      "sha256": "ca349b6dcdc9b45ad45045acc0dd3c9bcdd656e248a985e2060947e5eb9e1082"
+    }
+  },
+  "limits": [
+    "HWND/PID values belong to one observed guest lifetime; enumerate after reload or recreation.",
+    "NV_PROBE_REPLACE is intended before the executable is first opened; Windows may retain already loaded executable pages in warm snapshots.",
+    "Native Win98 execution of the process-scoped helper is still unverified; API exports alone do not prove it."
+  ]
+}
