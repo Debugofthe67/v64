@@ -22,5 +22,5 @@ const { countingWebGPU, frameCommands, batch } = require("./d3d9_webgpu_perf_tes
     await executor.submit(batch(frameCommands(false), true));await executor.idle();
     assert.deepEqual(generated, { vertex: 2, pixel: 2 }, "clearing shaders must invalidate signature-indexed modules too");
     assert.equal(executor.hostErrors.length, 0);assert.equal(executor.gpuErrors.errors.length, 0);
-    console.log("D9WG FFP: signature hits avoid generation across draws and shader clearing invalidates both stages");
+    console.log("PASS D9WG FFP: signature hits avoid generation across draws and shader clearing invalidates both stages");
 })().catch(error => { console.error(error);process.exitCode = 1; });

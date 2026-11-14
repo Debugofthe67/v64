@@ -5,6 +5,10 @@ import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 import {inspect_frontend_texture_wire as inspect_prefix} from "./d3d8_frontend_texture_wire.mjs";
 const require=createRequire(import.meta.url),P=require("../../src/browser/glbridge/d3d9-webgpu/d9wg_protocol.js"),W=require("../../src/browser/glbridge/d3d9-webgpu/d9wg_wire.js");
+// Resolve immutable protocol names once, rather than scanning every opcode
+// for every command in each of the exhaustive corruption replays.
+const opcode_names = Object.create(null);
+for(const name of Object.keys(P.OP)) opcode_names[P.OP[name]] ??= name;
 function frame(outer,header,commands){const h=Buffer.from(header),size=commands.reduce((n,c)=>n+c.length,0);h.writeUInt32LE(size,P.F.BatchHeader.command_bytes);h.writeUInt32LE(commands.length,P.F.BatchHeader.command_count);const carrier=Buffer.from(outer);carrier.writeUInt32LE(8+32+size,8);carrier.writeUInt32LE(32+size,16);return Buffer.concat([carrier,h,...commands]);}
 const setup=["SET_RENDER_STATE","SET_RENDER_STATE","SET_RENDER_STATE","SET_TEXTURE_STAGE_STATE","SET_SAMPLER_STATE","SET_SAMPLER_STATE","SET_TEXTURE"];
 const picture=["CLEAR","BEGIN_SCENE","DRAW_PRIMITIVE_UP","END_SCENE","READBACK_SURFACE"];
@@ -15,7 +19,7 @@ export function inspect_frontend_cube_wire(bytes,result){
  assert.equal(result.owners.length,1);assert.deepEqual(result.releases,result.owners);const owner=result.owners[0],prefix=[],life=[],used=new Set(),frames=[],scenes=frontend_cube_scenes();let deviceCount=0,current,window,finalSession,sessionHeader,sessionOuter,batches=0;
  const unique=h=>{assert(h&&!used.has(h));used.add(h);};
  for(let at=0;at<bytes.length;){assert(at+20<=bytes.length);const size=bytes.readUInt32LE(at+8);assert.equal(bytes.readUInt32LE(at),owner);assert.equal(bytes.readUInt16LE(at+12),0xffe1);assert.equal(bytes.readUInt32LE(at+16),size-8);assert(size>=40&&at+12+size<=bytes.length);const outer=bytes.subarray(at,at+20),packet=bytes.subarray(at+20,at+12+size),h=W.readHeader(packet),kept=[];W.checkStream(h.view,h.end,h.commandCount);assert.equal(h.end,packet.length);batches++;
-  for(let x=32;x<h.end;){const op=packet.readUInt16LE(x),n=packet.readUInt32LE(x+4),command=packet.subarray(x,x+n),name=Object.keys(P.OP).find(k=>P.OP[k]===op),decode=kind=>P.decode(kind,h.view,x+16,n-16);assert(!finalSession);if(op===P.OP.CREATE_DEVICE)deviceCount++;
+  for(let x=32;x<h.end;){const op=packet.readUInt16LE(x),n=packet.readUInt32LE(x+4),command=packet.subarray(x,x+n),name=opcode_names[op],decode=kind=>P.decode(kind,h.view,x+16,n-16);assert(!finalSession);if(op===P.OP.CREATE_DEVICE)deviceCount++;
    if(op===P.OP.SESSION_END){assert.equal(deviceCount,9);finalSession=command;sessionHeader=packet.subarray(0,32);sessionOuter=outer;}
    else if(deviceCount<=7){kept.push(command);if(op===P.OP.CREATE_DEVICE){const q=decode("CreateDevice");window??=q.hwnd;unique(q.device_handle);} else if(op===P.OP.RESET)unique(decode("ResetDevice").new_device_handle);else if([P.OP.CREATE_VERTEX_DECLARATION,P.OP.CREATE_VERTEX_SHADER,P.OP.CREATE_PIXEL_SHADER,P.OP.CREATE_TEXTURE_2D,P.OP.CREATE_TEXTURE_CUBE,P.OP.CREATE_TEXTURE_VOLUME].includes(op))unique(decode(P.commandStruct(op)).resource_handle);else if(op===P.OP.CREATE_SWAP_CHAIN)unique(decode("CreateSwapChain").swap_chain_handle);}
    else if(op===P.OP.CREATE_DEVICE){assert(deviceCount<=9&&(!current||current.retired));const q=decode("CreateDevice");assert.deepEqual([q.width,q.height,q.backbuffer_format,q.windowed,q.behavior_flags,q.enable_auto_depth_stencil,q.auto_depth_stencil_format,q.multisample_type,q.multisample_quality,q.hwnd,q.x,q.y],[8,8,21,1,32,1,80,0,0,window,0,0]);unique(q.device_handle);current={sdk:deviceCount===8?120:220,handle:q.device_handle,position:0,reset:false,retired:false,resources:{},constants:[],materials:0,windows:0,lods:0,uploads:[],rs:0,tss:0,samplers:0,textures:0,shaders:0,layouts:0,draws:0,clears:0,scene:false};life.push(current);}

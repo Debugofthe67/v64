@@ -6,7 +6,10 @@ const { spawnSync } = require("node:child_process");
 let failures = 0;
 for (const file of readdirSync(__dirname).sort()) {
     if (!file.endsWith("_test.js") || file.includes("_perf_") || file.includes("_corpus_")) continue;
-    const result = spawnSync(process.execPath, [join(__dirname, file)], { encoding: "utf8", timeout: 120000 });
+    // Frozen traces exercise tens of thousands of corruptions through nested
+    // inspectors. Keep every corruption, with a bounded budget for CI hosts.
+    const timeout = file.includes("_fixture_") ? 600000 : 120000;
+    const result = spawnSync(process.execPath, [join(__dirname, file)], { encoding: "utf8", timeout });
     // A file that exits 0 without saying what passed has not shown it ran
     // anything; a SKIP is a failure unless the run allows it (a local run
     // without naga, GLBRIDGE_ALLOW_NO_NAGA=1)

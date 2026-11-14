@@ -30,5 +30,5 @@ const command = (opcode, name, payload, blobs) => ({ opcode, payload: P.encode(n
         assert.equal(after.draw - before.draw, 64);
         assert.equal(executor.hostErrors.length, 0);assert.equal(executor.gpuErrors.errors.length, 0);
     }
-    console.log("D9WG clip enables: all 64 masks reuse modules and pipelines after first clipping use");
+    console.log("PASS D9WG clip enables: all 64 masks reuse modules and pipelines after first clipping use");
 })().catch(error => { console.error(error);process.exitCode = 1; });

@@ -30,5 +30,5 @@ const command = (opcode, name, payload, blobs) => ({ opcode, payload: P.encode(n
         assert.equal(after.draw - before.draw, 255);
         assert.equal(executor.hostErrors.length, 0);assert.equal(executor.gpuErrors.errors.length, 0);
     }
-    console.log("D9WG ALPHAREF: all 256 references reuse modules and pipelines across FFP and SM1/2/3");
+    console.log("PASS D9WG ALPHAREF: all 256 references reuse modules and pipelines across FFP and SM1/2/3");
 })().catch(error => { console.error(error);process.exitCode = 1; });

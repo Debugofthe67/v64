@@ -3,6 +3,10 @@ import {createRequire} from "node:module";
 import {inspect_backend_incremental_wire as inspect_renderer,backend_incremental_scenes} from "./d3d8_backend_incremental_wire.mjs";
 export function frontend_texture_scenes(){return [...backend_incremental_scenes(),...Array.from({length:4},(_,i)=>({index:20+i,mode:5+(i>>1),step:i%2,width:8,height:8,format:21,pixels:Array(64).fill(i%2?0xff0000ff:0xffff0000)}))];}
 const require=createRequire(import.meta.url),P=require("../../src/browser/glbridge/d3d9-webgpu/d9wg_protocol.js"),W=require("../../src/browser/glbridge/d3d9-webgpu/d9wg_wire.js");
+// Resolve immutable protocol names once, rather than scanning every opcode
+// for every command in each of the exhaustive corruption replays.
+const opcode_names = Object.create(null);
+for(const name of Object.keys(P.OP)) opcode_names[P.OP[name]] ??= name;
 function frame(outer,header,commands){const h=Buffer.from(header),size=commands.reduce((n,c)=>n+c.length,0);h.writeUInt32LE(size,P.F.BatchHeader.command_bytes);h.writeUInt32LE(commands.length,P.F.BatchHeader.command_count);const carrier=Buffer.from(outer);carrier.writeUInt32LE(8+32+size,8);carrier.writeUInt32LE(32+size,16);return Buffer.concat([carrier,h,...commands]);}
 const setup=["SET_RENDER_STATE","SET_RENDER_STATE","SET_RENDER_STATE","SET_TEXTURE_STAGE_STATE","SET_SAMPLER_STATE","SET_SAMPLER_STATE","SET_TEXTURE"];
 const picture=["SET_VERTEX_SHADER","SET_VERTEX_DECLARATION","CLEAR","BEGIN_SCENE","DRAW_PRIMITIVE_UP","END_SCENE","READBACK_SURFACE"];
@@ -14,7 +18,7 @@ export function inspect_frontend_texture_wire(bytes,result){
  const unique=h=>{assert(h&&!allUsed.has(h));allUsed.add(h);};
  const resource=(key,kind,q)=>{assert(!current.resources[key]);unique(q.resource_handle);current.resources[key]={handle:q.resource_handle,kind,retired:false};};
  for(let at=0;at<bytes.length;){assert(at+20<=bytes.length);const size=bytes.readUInt32LE(at+8);assert.equal(bytes.readUInt32LE(at),owner);assert.equal(bytes.readUInt16LE(at+12),0xffe1);assert.equal(bytes.readUInt32LE(at+16),size-8);assert(size>=40&&at+12+size<=bytes.length);const outer=bytes.subarray(at,at+20),packet=bytes.subarray(at+20,at+12+size),h=W.readHeader(packet),kept=[];W.checkStream(h.view,h.end,h.commandCount);assert.equal(h.end,packet.length);batches++;
-  for(let x=32;x<h.end;){const op=packet.readUInt16LE(x),n=packet.readUInt32LE(x+4),command=packet.subarray(x,x+n),name=Object.keys(P.OP).find(k=>P.OP[k]===op),decode=kind=>P.decode(kind,h.view,x+16,n-16);assert(!finalSession);
+  for(let x=32;x<h.end;){const op=packet.readUInt16LE(x),n=packet.readUInt32LE(x+4),command=packet.subarray(x,x+n),name=opcode_names[op],decode=kind=>P.decode(kind,h.view,x+16,n-16);assert(!finalSession);
    if(op===P.OP.CREATE_DEVICE)deviceCount++;
    if(op===P.OP.SESSION_END){assert.equal(deviceCount,7);finalSession=command;sessionHeader=packet.subarray(0,32);sessionOuter=outer;}
    else if(deviceCount<=5){kept.push(command);if(op===P.OP.CREATE_DEVICE){const q=decode("CreateDevice");rendererWindow??=q.hwnd;rendererHandles.add(q.device_handle);unique(q.device_handle);} else if(op===P.OP.RESET){const q=decode("ResetDevice");rendererHandles.add(q.new_device_handle);unique(q.new_device_handle);} else if([P.OP.CREATE_VERTEX_DECLARATION,P.OP.CREATE_VERTEX_SHADER,P.OP.CREATE_PIXEL_SHADER].includes(op)){const q=decode(P.commandStruct(op));rendererHandles.add(q.resource_handle);unique(q.resource_handle);}}

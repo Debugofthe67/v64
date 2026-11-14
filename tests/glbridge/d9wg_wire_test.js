@@ -36,4 +36,4 @@ assert.throws(() => validate(sequence), /numbering expects 0/);
 const future = P.encodeBatch([{ opcode: 0x7fff, payload: new Uint8Array(4) }]);validate(future);
 for (const [name, opcode] of Object.entries(P.OP)) if (P.COMMANDS[name])
     assert.equal(W.MIN_PAYLOAD[opcode], P.minBytes(P.commandStruct(opcode)));
-console.log("D9WG wire: pure framing, carrier views, minors, sequence wrap, corruption and unknown dispatch checked");
+console.log("PASS D9WG wire: pure framing, carrier views, minors, sequence wrap, corruption and unknown dispatch checked");

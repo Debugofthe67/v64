@@ -42,6 +42,6 @@ const { countingWebGPU, frameCommands, batch } = require("./d3d9_webgpu_perf_tes
     const reset=executor.devices.get(0x100002);
     assert.equal(reset.backBufferD3DFormat,22);
     assert.equal(executor.renderTargetsFor(reset).opaqueTargetMask,1);
-    console.log("D9WG pipeline state: 128 dynamic blend/stencil values create no additional render pipelines");
-    console.log("D9WG pipeline state: logical MRT alpha factors, A8/X8 cache separation and Reset format retained");
+    console.log("PASS D9WG pipeline state: 128 dynamic blend/stencil values create no additional render pipelines");
+    console.log("PASS D9WG pipeline state: logical MRT alpha factors, A8/X8 cache separation and Reset format retained");
 })().catch(error => { console.error(error);process.exitCode = 1; });

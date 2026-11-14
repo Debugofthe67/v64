@@ -24,4 +24,4 @@ ring.reserve(4 << 20);assert.equal(ring.chunks.length, 2, "overflow advances to 
 ring.reset();const reused = ring.buffer(destination, 0, Uint8Array.of(9, 8, 7, 6));assert.equal(reused.sourceOffset, 0);assert.equal(reused.source, first.source);
 ring.reset();ring.reserve(9 << 20);assert.equal(retired[0], first.source, "growing a pooled chunk retires its old GPU allocation");
 ring.release();assert.equal(retired.length, 3);assert.equal(ring.chunks.length, 0);
-console.log("D9WG uploads: input lifetime, padded rows, ordered copies, pooled reuse/growth and owner retirement checked");
+console.log("PASS D9WG uploads: input lifetime, padded rows, ordered copies, pooled reuse/growth and owner retirement checked");

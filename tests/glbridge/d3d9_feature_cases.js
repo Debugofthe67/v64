@@ -564,12 +564,15 @@
             blit(dev, 0, handle, P.C.D9WG_DDBLT_COLOR_FILL, { destination_rect: [0, 0, 4, 4], fill_color: 2 }),
             wire("SetScissorRect", { device_handle: dev, left: 32, right: 64, bottom: 64 }), ...texturedQuad(dev)];
     }, probes: [{ at: [16, 32], expect: [255, 0, 0, 255] }, { at: [48, 32], expect: [0, 255, 0, 255] }] });
-    add("ddraw", { name: "indexed blit palette changes stay between blits", body: (dev, rt) => {
+    add("ddraw", { name: "indexed keyed blit palette changes stay between blits", body: (dev, rt) => {
         const handle = dev + 0x500000;
         return [...indexedSource(dev, handle),
-            blit(dev, handle, rt, 0, { source_rect: [0, 0, 4, 4], destination_rect: [0, 0, 32, 64] }),
+            // Unkeyed P8-to-RGB copies use the native grey ramp. A source key
+            // on unused index zero selects the palette-resolved copy path.
+            wire("DDSetColorKey", { surface_handle: handle, key_kind: 0, color_low: 0, color_high: 0, present: 1 }),
+            blit(dev, handle, rt, P.C.D9WG_DDBLT_KEY_SOURCE, { source_rect: [0, 0, 4, 4], destination_rect: [0, 0, 32, 64] }),
             indexedPalette(dev, 0xff00ff00, 0xff00ff00),
-            blit(dev, handle, rt, 0, { source_rect: [0, 0, 4, 4], destination_rect: [32, 0, 64, 64] })];
+            blit(dev, handle, rt, P.C.D9WG_DDBLT_KEY_SOURCE, { source_rect: [0, 0, 4, 4], destination_rect: [32, 0, 64, 64] })];
     }, probes: [{ at: [16, 32], expect: [255, 0, 0, 255] }, { at: [48, 32], expect: [0, 255, 0, 255] }] });
     add("ddraw", { name: "indexed D3D key resolves alpha by index with duplicate RGB", body: dev => {
         const handle = dev + 0x500000;

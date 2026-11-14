@@ -28,5 +28,5 @@ const { makeExecutor } = require("./d3d9_webgpu_executor_test.js");
     executor.releaseActiveSession("test-owner-release");
     fake.completeSubmittedWork();await Promise.resolve();assert.deepEqual(alive, [false, false]);
     assert.equal(S.SESSION_FIELDS.includes("uniformRingCursor"), true);
-    console.log("D9WG state: isolated device registers, pending session constants and owner GPU retirement checked");
+    console.log("PASS D9WG state: isolated device registers, pending session constants and owner GPU retirement checked");
 })().catch(error => { console.error(error);process.exitCode = 1; });

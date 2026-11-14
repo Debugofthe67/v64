@@ -33,5 +33,5 @@ require("../../src/browser/glbridge/d3d9-webgpu/ddraw_ops.js").installDDrawOps(C
     assert(transient.every(buffer => buffer.destroyed), "overflow storage retires only after the GPU fence");
     assert.equal(ring.destroyed, undefined, "the reusable ring remains alive");
     assert.equal(overflow.executor.hostErrors.length, 0);assert.equal(overflow.executor.gpuErrors.errors.length, 0);
-    console.log("D9WG surfaces: 128 mixed fill/blit passes use distinct uniform ranges and allocate no steady-state buffers");
+    console.log("PASS D9WG surfaces: 128 mixed fill/blit passes use distinct uniform ranges and allocate no steady-state buffers");
 })().catch(error => { console.error(error);process.exitCode = 1; });

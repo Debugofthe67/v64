@@ -38,5 +38,5 @@ const src = (kind, index) => (0x80e40000 | type(kind) | index) >>> 0;
         assert.equal(after.draw - before.draw, 256);
         assert.equal(executor.hostErrors.length, 0);assert.equal(executor.gpuErrors.errors.length, 0);
     }
-    console.log("D9WG LOD bias: 256 float values reuse modules and pipelines across FFP and SM1/2/3");
+    console.log("PASS D9WG LOD bias: 256 float values reuse modules and pipelines across FFP and SM1/2/3");
 })().catch(error => { console.error(error);process.exitCode = 1; });

@@ -33,14 +33,17 @@ typedef uint32_t DWORD,UINT,D3DTEXTUREFILTERTYPE;typedef int BOOL;typedef int32_
 #define D3DERR_DRIVERINTERNALERROR ((HRESULT)0x88760827u)
 #define TRACE_REFUSE(hr) (hr)
 #define D3DUSAGE_AUTOGENMIPMAP 0x400u
+#define D3DPOOL_MANAGED 1u
 #define D3DTEXF_NONE 0u
 #define D3DTEXF_POINT 1u
 #define D3DTEXF_LINEAR 2u
 #define ZeroMemory(p,n) memset(p,0,n)
 typedef struct {UINT handle;} D9Device;
+static UINT device_compatibility_api(D9Device *device){(void)device;return 9;}
 typedef struct {D9Device *device;UINT handle,usage,format,autogen_filter,width,height,edge_length,level_count,pool,multisample,multisample_quality;} D9Texture;
 typedef D9Texture D9CubeTexture,IDirect3DTexture9,IDirect3DCubeTexture9;
 static D9Texture *texture_from_iface(IDirect3DTexture9 *p){return p;}static D9CubeTexture *cube_from_iface(IDirect3DCubeTexture9 *p){return p;}
+static BOOL texture_flush_dirty(D9Texture *texture){(void)texture;return TRUE;}
 static uint32_t host_bits,emissions,fail_emit,last_opcode;static D9WGGenerateMips packet;
 static uint32_t runtime_host_features(void){return host_bits;}
 static BOOL emit_command(uint32_t opcode,const void *data,uint32_t size){emissions++;last_opcode=opcode;if(opcode==D9WG_OP_GENERATE_MIPS){if(size!=16)return FALSE;memcpy(&packet,data,size);}return !fail_emit;}
@@ -57,7 +60,7 @@ int main(void){UINT i=0;D9Device device={101};D9Texture t={0};t.device=&device;t
   }
  }
  for(i=0;i<sizeof(creation)/sizeof(creation[0]);++i){const uint32_t *r=creation[i];CHECK(d9wg_autogen_creation_valid(r[0],r[1],r[2])==(int)r[3]);}
- t.usage=0;emissions=0;CHECK(texture_set_auto_gen_filter_type(&t,1)==D3DERR_INVALIDCALL);CHECK(cube_set_auto_gen_filter_type(&t,1)==D3DERR_INVALIDCALL);CHECK(texture_get_auto_gen_filter_type(&t)==0&&cube_get_auto_gen_filter_type(&t)==0);texture_generate_mip_sublevels(&t);cube_generate_mip_sublevels(&t);CHECK(!emissions);
+ t.usage=0;emissions=0;UINT retained_filter=t.autogen_filter;CHECK(texture_set_auto_gen_filter_type(&t,1)==D3D_OK);CHECK(cube_set_auto_gen_filter_type(&t,1)==D3D_OK);CHECK(t.autogen_filter==retained_filter);CHECK(texture_get_auto_gen_filter_type(&t)==0&&cube_get_auto_gen_filter_type(&t)==0);texture_generate_mip_sublevels(&t);cube_generate_mip_sublevels(&t);CHECK(!emissions);
  puts("PASS actual autogen C: 2856 filter contexts, 175 creation combinations, real setters/getters/generation/config replay, SDK invalid NONE and atomic transport failures");return 0;}
 `;
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "d9wg-autogen-"));

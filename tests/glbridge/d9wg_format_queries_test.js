@@ -37,11 +37,19 @@ typedef uint32_t DWORD,UINT,D3DFORMAT,D3DDEVTYPE,D3DRESOURCETYPE;typedef int BOO
 #define D3D_OK 0
 #define D3DOK_NOAUTOGEN ((HRESULT)0x0876086fu)
 #define D3DERR_NOTAVAILABLE ((HRESULT)0x8876086au)
+#define D3DERR_INVALIDCALL ((HRESULT)0x8876086cu)
+#define TRACE_REFUSE(hr) (hr)
+#define D3DFMT_UNKNOWN 0u
+#define D3DFMT_A8R8G8B8 21u
 #define D3DDEVTYPE_HAL 1u
 #define D3DPOOL_DEFAULT 0u
+#define D3DRTYPE_SURFACE 1u
 #define D3DRTYPE_TEXTURE 3u
 #define D3DRTYPE_VOLUMETEXTURE 4u
 #define D3DRTYPE_CUBETEXTURE 5u
+#define D3DRTYPE_VERTEXBUFFER 6u
+#define D3DRTYPE_INDEXBUFFER 7u
+#define D3DUSAGE_RENDERTARGET 1u
 #define D3DUSAGE_SOFTWAREPROCESSING 0x10u
 #define D3DUSAGE_AUTOGENMIPMAP 0x400u
 #define D3DUSAGE_DYNAMIC 0x200u
@@ -55,6 +63,11 @@ ${Object.entries(ref.queryBits).map(([n, v]) => "#define D3DUSAGE_QUERY_" + (n =
 static UINT host_bits,profile,renderable,base,requests,wanted_usage;static int g_transport_lock;static void *g_process;
 static void EnterCriticalSection(int *lock){++*lock;}static void LeaveCriticalSection(int *lock){--*lock;}
 static BOOL submit_batch_locked(BOOL present){(void)present;return TRUE;}
+/* This fixture exercises the D3D9 branch; native SDK8 entry tests cover
+ * its compatibility dispatch. Refuse an accidental SDK8 call here. */
+typedef struct {UINT compatibility_api;} D9D3D;
+static D9D3D *d3d_from_iface(IDirect3D9 *iface){(void)iface;static D9D3D d3d={9};return &d3d;}
+static HRESULT d3d_check_device_format8(IDirect3D9 *iface,UINT adapter,D3DDEVTYPE type,D3DFORMAT adapter_format,DWORD usage,D3DRESOURCETYPE resource_type,D3DFORMAT check_format){(void)iface;(void)adapter;(void)type;(void)adapter_format;(void)usage;(void)resource_type;(void)check_format;return D3DERR_NOTAVAILABLE;}
 static UINT shader_model_version(void){return profile;}
 static BOOL supported_render_target_format(D3DFORMAT format){(void)format;return renderable;}
 static BOOL texture_create_supported(D3DRESOURCETYPE type,DWORD usage,D3DFORMAT format,DWORD pool){(void)type;(void)format;if(usage!=wanted_usage||pool) return FALSE;return base;}
@@ -64,7 +77,7 @@ ${source.slice(start, end)}
 static const uint32_t contexts[][9]={${contexts.map(r => "{" + r.map(n => n + "u").join(",") + "}").join(",")}};
 static const uint32_t bits[]={${bits.map(n => n + "u").join(",")}};
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"format query line %u context=%u combo=%u: %s\\n",__LINE__,context,combo,#x);return 1;}}while(0)
-int main(void){UINT context=0,combo=0;for(;context<sizeof(contexts)/sizeof(contexts[0]);++context){const uint32_t *r=contexts[context];host_bits=r[2];profile=r[3];renderable=r[4];base=r[6];for(combo=0;combo<128;++combo){UINT query=0;for(UINT i=0;i<7;++i)if(combo&(1u<<i))query|=bits[i];int expected=r[7]&&(query&~r[5])==0;CHECK(d9wg_format_query_supported(r[1],query,r[0],r[2],r[3],r[4])==expected);CHECK(!d9wg_format_query_supported(r[1],query|0x10u,r[0],r[2],r[3],r[4]));requests=0;CHECK((d3d_check_device_format(0,0,1,22,query,r[1],r[0])==0)==(base&&expected));CHECK((d3d_check_device_format(0,0,1,22,query|0x10u,r[1],r[0])==0)==0);CHECK(!!d9wg_autogen_mips_supported(r[1],r[0])==!!r[8]);CHECK(d3d_check_device_format(0,0,1,22,query|0x400u,r[1],r[0])==((base&&expected&&(r[1]==3||r[1]==5))?(r[8]?D3D_OK:D3DOK_NOAUTOGEN):D3DERR_NOTAVAILABLE));wanted_usage=0x200u;CHECK(d3d_check_device_format(0,0,1,22,query|0x600u,r[1],r[0])==D3DERR_NOTAVAILABLE);wanted_usage=0;CHECK(!g_transport_lock);if(!base)CHECK(!requests);}}
+int main(void){UINT context=0,combo=0;for(;context<sizeof(contexts)/sizeof(contexts[0]);++context){const uint32_t *r=contexts[context];host_bits=r[2];profile=r[3];renderable=r[4];base=r[6];for(combo=0;combo<128;++combo){UINT query=0;for(UINT i=0;i<7;++i)if(combo&(1u<<i))query|=bits[i];int expected=r[7]&&(query&~r[5])==0;CHECK(d9wg_format_query_supported(r[1],query,r[0],r[2],r[3],r[4])==expected);CHECK(!d9wg_format_query_supported(r[1],query|0x10u,r[0],r[2],r[3],r[4]));requests=0;CHECK((d3d_check_device_format(0,0,1,22,query,r[1],r[0])==0)==(base&&expected&&!(r[1]==1&&(query&D3DUSAGE_QUERY_SRGBWRITE))));CHECK((d3d_check_device_format(0,0,1,22,query|0x10u,r[1],r[0])==0)==0);CHECK(!!d9wg_autogen_mips_supported(r[1],r[0])==!!r[8]);CHECK(d3d_check_device_format(0,0,1,22,query|0x400u,r[1],r[0])==(r[1]==6?D3DERR_INVALIDCALL:(base&&expected&&(r[1]==3||r[1]==5))?((r[8]&&r[4])?D3D_OK:D3DOK_NOAUTOGEN):D3DERR_NOTAVAILABLE));wanted_usage=0x200u;CHECK(d3d_check_device_format(0,0,1,22,query|0x600u,r[1],r[0])==(r[1]==6?D3DERR_INVALIDCALL:D3DERR_NOTAVAILABLE));wanted_usage=0;CHECK(!g_transport_lock);if(!base)CHECK(!requests);}}
  for(UINT mask=0;mask<4;++mask){host_bits=mask;profile=3;renderable=base=1;wanted_usage=1;CHECK((d3d_check_device_format(0,0,1,22,D3DUSAGE_QUERY_FILTER|1u,3,116)==0)==!!(mask&1u));CHECK((d3d_check_device_format(0,0,1,22,D3DUSAGE_QUERY_POSTPIXELSHADER_BLENDING|1u,1,116)==0)==!!(mask&2u));}
  wanted_usage=2;host_bits=3;renderable=0;base=1;CHECK(d3d_check_device_format(0,0,1,22,D3DUSAGE_QUERY_FILTER|2u,3,75)==0);CHECK(d3d_check_device_format(0,0,1,22,D3DUSAGE_QUERY_FILTER|2u,3,0x5a544e49u)==D3DERR_NOTAVAILABLE);
  CHECK(d3d_check_device_format(0,1,1,22,0,3,21)==D3DERR_NOTAVAILABLE);CHECK(d3d_check_device_format(0,0,2,22,0,3,21)==D3DERR_NOTAVAILABLE);

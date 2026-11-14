@@ -40,5 +40,5 @@ const P = require("../../src/browser/glbridge/d3d9-webgpu/d9wg_protocol.js");
     assert.throws(() => commands(badSize), /command size/);
     const badCount = rectBatch.slice();new DataView(badCount.buffer).setUint32(P.F.BatchHeader.command_count, 4, true);
     assert.throws(() => commands(badCount), /command count/);
-    console.log("D9WG named SVGA writer: " + number + " command layouts match canonical encoder, inline arrays and blobs checked");
+    console.log("PASS D9WG named SVGA writer: " + number + " command layouts match canonical encoder, inline arrays and blobs checked");
 })().catch(error => { console.error(error);process.exitCode = 1; });

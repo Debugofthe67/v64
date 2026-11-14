@@ -35,5 +35,5 @@ const clear = (device, color) => ({ opcode: P.OP.CLEAR, payload: { device_handle
     assert.deepEqual([...unknown.devices.keys()], [99], "state commands and Reset cannot fabricate devices");
     assert.equal(unknown.stats.commandsFailed, 2);assert.equal(unknown.hostErrors.length, 2);
     assert.equal(unknown.gpuErrors.errors.length, 0);
-    console.log("D9WG devices: mixed-size pending frames, captured views and reset/retirement isolation checked");
+    console.log("PASS D9WG devices: mixed-size pending frames, captured views and reset/retirement isolation checked");
 })().catch(error => { console.error(error);process.exitCode = 1; });
