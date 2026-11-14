@@ -4,7 +4,7 @@
     .fpu crypto-neon-fp-armv8
     .thumb
 base:
-    .word 20
+    .word 26
     .word normal_all_0 - base + 1, 0, 0x130
     .word normal_all_16 - base + 1, 0, 0x130
     .word normal_mixed_0 - base + 1, 0, 0x130
@@ -25,6 +25,12 @@ base:
     .word first_trap - base + 1, 0, 0x100
     .word second_trap - base + 1, 0, 0x100
     .word after_flags - base + 1, 0, 0x130
+    .word fp_memory - base + 1, 0, 0x130
+    .word first_mem_fault - base + 1, 0, 0x130
+    .word second_mem_fault - base + 1, 0, 0x130
+    .word fp_store_fault - base + 1, 0, 0x130
+    .word false_memory - base + 1, 0, 0x100
+    .word cross_memory - base + 1, 0, 0x130
 
     .macro exercise name, value, mixed, flags
 \name:
@@ -119,3 +125,74 @@ after_flags:
     vmov r6,r7,d1
     vmrs r3,fpscr
     svc #0
+
+// Warm the same FP memory templates before taking each precise slow exit.
+    .macro warm_memory
+    adr.w r0, memory_data
+    movw r12,#128
+1:  cmp r12,#0
+    itt ne
+    vldrne d0,[r0]
+    vstrne d0,[r0,#8]
+    subs r12,r12,#1
+    bne 1b
+    .endm
+fp_memory:
+    warm_memory
+    cmp r12,#0
+    ite eq
+    vldreq s3,[r0,#4]
+    vstrne s3,[r0,#16]
+    vmov r4,r5,d0
+    vmov r6,r7,d1
+    svc #0
+first_mem_fault:
+    warm_memory
+    movs r0,#0
+    cmp r0,#0
+    itt eq
+    vldreq d1,[r0]
+    moveq r2,#7
+    svc #0
+second_mem_fault:
+    warm_memory
+    movs r2,#0
+    cmp r2,#0
+    itt eq
+    vldreq d1,[r0]
+    vldreq d2,[r2]
+    svc #0
+fp_store_fault:
+    warm_memory
+    movs r0,#0
+    cmp r0,#0
+    itt eq
+    vstreq d0,[r0]
+    moveq r2,#7
+    svc #0
+false_memory:
+    movs r0,#0
+    cmp r0,#0
+    itt ne
+    vldrne d0,[r0]
+    vstrne d0,[r0]
+    svc #0
+cross_memory:
+    warm_memory
+    adr.w r0,cross_data
+    addw r0,r0,#4092
+    cmp r12,#0
+    itt eq
+    vldreq d1,[r0]
+    vmoveq s0,s2
+    vmov r4,r5,d0
+    vmov r6,r7,d1
+    svc #0
+    .balign 4
+memory_data:
+    .word 0x3fc00000,0x3f000000,0xdeadbeef,0xcafebabe
+    .word 0x87654321
+    .balign 4096
+cross_data:
+    .space 4092
+    .word 0x3fc00000,0x3f000000
