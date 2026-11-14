@@ -1,5 +1,15 @@
 # Infinity Blade 安装与帧率验证
 
+## 继续清理无文件系统的旧探针（2026-11-15）
+
+检查生成脚本后清理 8 个 11 月 4 日临时 `.img`：`context-probe`、`context-abs`、
+`context-white`、`lba-probe`、`lba-v2`、`lba-v3`、`lba-v4`、`special-probe`。
+脚本仅调用 `nand_build.mjs bootstrap/format`，写入人工生成的上下文、FTL 或
+分区头，没有调用 `volumes`、导入 HFS 或系统／数据文件，不能包含已安装游戏。
+清理前确认无打开句柄、硬链接和符号链接引用；分配块合计 123.40625 MiB。
+稀疏逻辑长度仍不当作实际释放量。旧安装盘、工厂盘及所有匹配的战斗 master 保留。
+
+
 ## AP 时钟直读候选：未保留（2026-11-15）
 
 独立采样确认内核 `0x800894a4` 的计时入口最终读取虚拟 `0xc02a1000/4`，
