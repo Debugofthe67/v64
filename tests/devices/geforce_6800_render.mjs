@@ -637,6 +637,21 @@ try
         method(0x1A04,0x11A29);method(0x1840,8);
         [0xC000,0x3800,0x4400,0x3C00].forEach((word,i)=>view.setUint16(0x20000+i*2,word,true));
         near(await expandDraw({full:true}),[4,.5,-2,1],"floating texture ignores BX2");
+        method(0x1A04,0x11F29);method(0x1840,4);
+        view.setUint16(0x20000,0xC000,true);view.setUint16(0x20002,0x3800,true);
+        for(const full of [false,true])
+        {
+            near(await expandDraw({full}),[-2,.5,-2,.5],"RG16F paired lanes bypass TEX BX2");
+            near(await expandDraw({full,crossbar:0x2924}),[-2,.5,0,1],"Nouveau RG16F view crossbar");
+        }
+        method(0x1A04,0x23F29);method(0x1840,12);method(0x1A18,2<<16|1);
+        method(0x1A0C,0x80008000);method(0x1A14,0x02020000);
+        [0x4000,0xBC00,0x4400,0x3C00,0xDEAD,0xDEAD,0x4800,0xC000]
+            .forEach((word,i)=>view.setUint16(0x20000+i*2,word,true));
+        near(await expandDraw({full:true}),[3,0,3,0],"RG16F bilinear filtering retains HDR and negative inputs");
+        method(0x1A14,0x02040000);method(0x1A0C,0x88008000);
+        near(await expandDraw({full:true,crossbar:0x2924}),[8,-2,0,1],"RG16F minimum LOD selects the padded second level");
+        console.log("PASS: real WebGPU RG16F paired lanes,half/full exports,BX2 bypass,bilinear filtering and padded mip clamp");
         for(const [at,value] of [[0x208,0x148],[0x20C,32],[0x1D60,0],[0x1A10,0xAAE4]])method(at,value);
         console.log("PASS: real WebGPU TEX BX2 negatives, half/full exports, scale, saturation, constant lanes and float bypass");
         const operand=swizzle=>2|swizzle.reduce((bits,value,i)=>bits|value<<(9+i*2),0),identity=[0,1,2,3],reverse=[3,2,1,0];

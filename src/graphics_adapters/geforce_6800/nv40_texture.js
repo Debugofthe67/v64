@@ -3,7 +3,7 @@
 const get=(o,at,fallback=0)=>o.methods.has(at)?o.methods.get(at):fallback;
 // TEX_SWIZZLE fields are A/R/G/B from low to high (Mesa nv30_texture).
 const CROSSBAR_SHIFT=[2,4,6,0];
-const BYTES=new Map([[1,1],[2,2],[3,2],[4,2],[5,4],[11,2],[16,4],[18,2],[20,2],[21,4],[26,8],[27,16],[28,4]]);
+const BYTES=new Map([[1,1],[2,2],[3,2],[4,2],[5,4],[11,2],[16,4],[18,2],[20,2],[21,4],[26,8],[27,16],[28,4],[31,4]]);
 const BLOCK_BYTES=new Map([[6,8],[7,16],[8,16]]);
 // Normalized byte ratios have odd denominators, so none land on a binary16
 // rounding tie. Precompute their nearest half values once, including -128's
@@ -94,13 +94,13 @@ export class NV40Texture
         const wrap=get(o,at+8),filter=get(o,at+20),s=wrap&15,t=wrap>>>8&15,r=wrap>>>16&15;
         if(![1,2,3,4].includes(s) || ![1,2,3,4].includes(t) || volume && ![1,2,3,4].includes(r)) throw new RangeError("NV40 texture wrap mode is not connected");
         const gamma=wrap>>>20&15;
-        if(gamma && (gamma!==7 || depthCompare || [26,27,28].includes(code)))
+        if(gamma && (gamma!==7 || depthCompare || [26,27,28,31].includes(code)))
             throw new RangeError("NV40 per-component/float texture gamma is not connected");
         const signed=filter>>>28;
         if(signed && (![1,5,11].includes(code) || gamma)) throw new RangeError("NV40 signed texture format/gamma is not connected");
         const min=filter>>>16&15,mag=filter>>>24&15;
         if(min<1 || min>6 || mag<1 || mag>2) throw new RangeError("NV40 texture filter");
-        const fullFloat=code===27 || code===28;
+        const fullFloat=code===27 || code===28,halfFloat=code===26 || code===31;
         const anisotropy=[1,2,4,6,8,10,12,16][get(o,at+12)>>>4&7];
         if(anisotropy>1 && (min!==6 || mag!==2 || depthCompare || volume || fullFloat))
             throw new RangeError("NV40 anisotropic texture needs filterable 1D/2D/cube trilinear sampling");
@@ -117,8 +117,8 @@ export class NV40Texture
         return {dma:this.state.dma(o,selector===1?0x184:0x188),offset:get(o,at),width,height,depth,bpp,pitch,swizzle,u,v,w,code,block,cube,volume,normalized,native_bc,
             crossbar,signed,srgb:gamma===7,anisotropy,wrap_s:s,wrap_t:t,wrap_r:r,min:min&1?1:2,mag,mip:min<=2?0:min<=4?1:2,
             levels,min_lod:0,lod_min,lod_max,level_count:Math.min(levels,Math.ceil(lod_max)+1),
-            d3d:native_bc?[0x31545844,0x33545844,0x35545844][code-6]:depthCompare?code===16?75:80:fullFloat?116:code===26 || signed?113:code===20 || code===21?36:32,
-            upload_bpp:depthCompare?bpp:fullFloat?16:code===26 || signed || code===20 || code===21?8:4,depth_compare:depthCompare,
+            d3d:native_bc?[0x31545844,0x33545844,0x35545844][code-6]:depthCompare?code===16?75:80:fullFloat?116:halfFloat || signed?113:code===20 || code===21?36:32,
+            upload_bpp:depthCompare?bpp:fullFloat?16:halfFloat || signed || code===20 || code===21?8:4,depth_compare:depthCompare,
             bias:new Uint32Array(Float32Array.of((filter<<19>>19)/256).buffer)[0],border:get(o,at+28)};
     }
     images(texture)
@@ -261,8 +261,9 @@ export class NV40Texture
             }
             return result;
         }
-        if(texture.code===26 || texture.code===20 || texture.code===21)
+        if(texture.code===26 || texture.code===31 || texture.code===20 || texture.code===21)
         {
+            const floating=texture.code===26 || texture.code===31;
             const bytes=this.storage(texture,encoded),result=new Uint8Array(texture.width*texture.height*(texture.depth||1)*8),
                 source=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),output=new DataView(result.buffer);
             for(let pixel=0;pixel<texture.width*texture.height*(texture.depth||1);pixel++) for(let channel=0;channel<4;channel++)
@@ -271,13 +272,13 @@ export class NV40Texture
                 if(select===3) throw new RangeError("NV40 invalid texture component selection");
                 // Mesa nv30_format routes the A16 scalar through storage
                 // component 1 (G), before the ordinary A/R/G/B crossbar.
-                // A16 exposes its scalar in G/A and one in B/R. A8L8 and
-                // A16L16 repeat low L in B/R and high A in G/A.
+                // A16 exposes its scalar in G/A and one in B/R. A8L8,
+                // A16L16 and RG16F repeat low X in B/R and high Y in G/A.
                 // Expand UNORM16 RGBA without quantizing either lane to 8 bits.
                 const value=texture.code===20?(component&1?source.getUint16(pixel*2,true):65535):
-                    texture.code===21?source.getUint16(pixel*4+(component&1?2:0),true):
+                    texture.code===21 || texture.code===31?source.getUint16(pixel*4+(component&1?2:0),true):
                         source.getUint16(pixel*8+component*2,true);
-                output.setUint16(pixel*8+channel*2,select===0?0:select===1?(texture.code===26?0x3C00:65535):value,true);
+                output.setUint16(pixel*8+channel*2,select===0?0:select===1?(floating?0x3C00:65535):value,true);
             }
             return result;
         }

@@ -2196,3 +2196,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5/G6 写入者诊断：`ir-test-hooks` 构建增加有界物理页观察，复用 checked code-dirty 路径记录 PC/CR3/寄存器和写前前缀，不编辑客体页表或注入调试异常；生产核无对应导出。解释器/JIT 的标量、RMW、跨页 REP/SSE、XCHG 与设备写入覆盖通过，观察前后 RAM 一致；启用观察的 16 组 WP 分页测试仍正确 #PF7。`NV_GUEST_WRITE_PAGES` 有界保存并报告丢弃，见 `g6-native-backing-write-observer.json`。当前从损坏前状态追查九个缓存页，不据此宣称根因或性能验收。
 
 - G5 磁盘路径独立修复：IDE 传输后 LBA28 head 曾误取地址低 nibble，且未同步 Device 读回；省略第二次 Device 写的真实端口回归会读到错误位置。现保留正确 head/CHS 读回、六字节 LBA48 进位与计数位宽，并按实际 DRQ 推进多扇区读写块。旧源四组分别先红，新源/发布核的地址、负载、CHS、零计数及块中断均绿；磁盘镜像/错误/写回/扇区回归和 33 项 AHCI、Closure 通过。见 `g5-ide-taskfile-and-block-progress.json`。当前原生进程仍载入旧 IDE，尚不把独立设备修复称为素材损坏根因。
+
+- G4 06 HDR 首错：默认六项完成前段 SM2/CPU 后，在 Canyon Flight 首次绘制遇到纹理格式 31，PGRAPH 停止；174358 draws、GPU failure0 不能当作健康运行。按 Nouveau 定义补齐 RG16F：四字节客体半浮点双分量经 crossbar 保留原始位，上传 RGBA16F；浮点 gamma 仍拒绝、TEX BX2 旁路包含该格式。旧回归先红，负零/次正规/NaN payload/padded mip/DMA 与完整真实 GPU 的线性过滤、LOD clamp、半/全输出通过，175 WGSL 和 Closure 通过。见 `g4-06-native-rg16f-texture.json`；已从同一六项运行的故障前健康配套状态继续，完整 HDR/图像门禁仍开放。

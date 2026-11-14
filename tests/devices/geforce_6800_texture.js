@@ -205,6 +205,31 @@ for(const [code,bpp,expected] of [[27,16,[0x7FFF3800,0x80000000,0x40400000,0x3F0
     o.methods.set(0x1A14,0x01010000);
 }
 console.log("PASS: FP32 fragment textures preserve raw bits, expand R32F and apply the component crossbar");
+// Nouveau's RG16F (format1f) routes its two half words through the same
+// paired storage lanes as A16L16. Its R/G view then selects X/Y and literal0/1.
+const rg16={methods:new Map([[0x184,0x10],[0x1A00,0xC000],[0x1A04,0x2BF29],
+    [0x1A08,0x30303],[0x1A0C,0x80008000],[0x1A10,0xAAE4],[0x1A14,0x02060000],
+    [0x1A18,2<<16|2],[0x1840,12]])};
+const pairs=[[0x8000,1],[0x4000,0xBC00],[0x7C00,0x7E55],[0x3C00,0x3400]];
+const halfView=new DataView(vram.buffer);
+pairs.forEach(([x,y],i)=>{const at=0xC000+Math.floor(i/2)*12+i%2*4;halfView.setUint16(at,x,true);halfView.setUint16(at+2,y,true);});
+halfView.setUint16(0xC018,0x0400,true);halfView.setUint16(0xC01A,0x7BFF,true);
+const rg=texture.describe(rg16,0);assert.equal(rg.bpp,4);assert.equal(rg.d3d,113);assert.equal(rg.upload_bpp,8);
+assert.deepEqual(texture.images(rg).map(bytes=>[...new Uint16Array(bytes.buffer)]),
+    [pairs.flatMap(([x,y])=>[x,y,x,y]),[0x0400,0x7BFF,0x0400,0x7BFF]],
+    "RG16F padded mip rows preserve signed zero,subnormal,HDR,Inf and NaN payload bits");
+rg16.methods.set(0x1A10,0x2924);
+assert.deepEqual([...new Uint16Array(texture.read(texture.describe(rg16,0)).buffer)],
+    pairs.flatMap(([x,y])=>[x,y,0,0x3C00]),"Nouveau RG16F view selects X/Y and literal zero/one");
+rg16.methods.set(0x1A10,0x5500);
+assert([...new Uint16Array(texture.read(texture.describe(rg16,0)).buffer)].every(word=>word===0x3C00),"RG16F literal one uses half encoding");
+rg16.methods.set(0x1A10,0xFF00);
+assert.throws(()=>texture.read(texture.describe(rg16,0)),/component selection/);
+rg16.methods.set(0x1A10,0xAAE4);rg16.methods.set(0x1A08,0x730303);
+assert.throws(()=>texture.describe(rg16,0),/float texture gamma/);
+rg16.methods.set(0x1A08,0x30303);
+assert.throws(()=>texture.images({...rg,dma:{...rg.dma,limit:0xC019}}),/limit/);
+console.log("PASS: RG16F paired half lanes,crossbar,padded mip chain,exact bits and DMA bounds");
 // Each packed cube face carries its complete mip chain and starts on a
 // 128-byte boundary. A clamped upload must not move the following faces.
 o.methods.set(0x1A04,0x3052D);o.methods.set(0x1A18,4<<16|4);o.methods.set(0x1A10,0xAA6C);o.methods.set(0x1A0C,0x80010000);

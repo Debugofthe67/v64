@@ -416,7 +416,7 @@ export class NV40Render
             const at=0x1A00+unit*32,code=get(o,at+4)>>>8&31,crossbar=get(o,at+16);
             // Float formats ignore BX2. For normalized formats it applies to
             // fetched storage components; remapped constant 0/1 lanes survive.
-            const mask=[26,27,28].includes(code)?0:[2,4,6,0].reduce((mask,shift,lane)=>
+            const mask=[26,27,28,31].includes(code)?0:[2,4,6,0].reduce((mask,shift,lane)=>
                 mask|((crossbar>>>(shift+8)&3)===2?1<<lane:0),0);
             return {mask,unsupported:mask!==0 && ([16,18].includes(code) || !!(get(o,at+8)>>>20&15) || !!(get(o,at+20)>>>28))};
         });
