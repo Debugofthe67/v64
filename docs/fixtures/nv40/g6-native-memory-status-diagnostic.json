@@ -35,5 +35,13 @@
   "limits": [
     "Desktop availability does not prove peak GT2 memory availability.",
     "This diagnostic does not resolve the original Win98 GT2 wait or establish full03 acceptance."
-  ]
+  ],
+  "nativePreRunSetup": {
+    "screenSaver": "None already selected in originalWin98 DisplayProperties",
+    "monitorPowerOffBefore": "After15mins in originalPowerManagementProperties",
+    "monitorPowerOffAfter": "Never selected and applied through original nativeUI",
+    "native03Selection": "Four GT,2/2CPU,5/5feature,0/3sound;1024x768. Actual mouse closesTip and invokesRun.",
+    "originalDATRange": "ReadFile and read-only mapping both return expected CRC32d98897c1 for offset1108ECF5 length2AB38 before launch.",
+    "causality": "The power setting is an observed environmental risk. It has not been proved to cause the previous GT2 wait."
+  }
 }

@@ -2184,3 +2184,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5/G6 GT2 等待对照：同一已停滞的配套 RAM/磁盘分别用分页修复前后核执行 90 秒，均零新绘制/零 GPU 错误，512 个相邻计数样本中位约 84.6/101.0 MIPS，仍处于 USER 消息循环。IDT 确认 C0001100 是原生 timer IRQ 入口，不能仅凭该 PC 判为 CPU 卡死。对照未回退 refactor 修复，也不能逆转更早客体状态；已开始修复核的新冷启动检查内存与系统设置。见 `g5-win98-03-gt2-wp-controls.json`，全十一项继续开放。
 
 - G6 原生只读内存诊断：`NVCHECK.EXE /memory` 独立查询 GlobalMemoryStatus、C 空闲簇与有界 Toolhelp 进程/线程，不挂钩或暂停原程序。可选 `NV_FILECHECK_BINARY` 与原 NVPROBE/NVUI 共存；CPU 采样增加相邻退休指令计数。严格 C 构建、harness 语法与真实 Win98 冷启动调用通过；桌面阶段物理可用 153.10 MiB、虚拟可用 2040.63 MiB，驱动 started1/problem0。见 `g6-native-memory-status-diagnostic.json`，不将桌面数值当作 GT2 峰值或全套验收。
+
+- G5 原始 03 冷跑准备续核：Win98 原屏保已为 None，电源属性却为 15 分钟关闭显示器；已由原生界面改为 Never。独立文件 ReadFile/只读映射再次验证原 DAT 指定范围 CRC d98897c1；原版 Pro UI 确认 4GT/2CPU/5feature、sound0，保存配套开跑前状态后用实际鼠标启动。设置问题是否导致先前 GT2 等待未据此定论，完整新跑继续；详情并入 `g6-native-memory-status-diagnostic.json`。

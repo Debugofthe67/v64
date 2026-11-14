@@ -170,6 +170,12 @@ its `NVAGP.INF` includes GeForce 6800 GT (`PCI\VEN_10DE&DEV_0045`).
 4. Install a Win98-compatible DirectX 9.0c runtime. Run DxDiag's DirectDraw
    and Direct3D 7/8/9 tests with a WebGPU renderer available in the host.
 
+For long benchmark runs, select **None** under Display Properties → Screen
+Saver, then open its energy-saving Settings and select **Never** for monitor
+power-off. The tested image originally used a 15-minute monitor timeout;
+[the native setup check](fixtures/nv40/g6-native-memory-status-diagnostic.json)
+records this setting separately from the still-open Win98 03 acceptance.
+
 1024×768×32, 640×480×8, 800×600×16 and a DOS mode-13h/text/desktop round trip
 are recorded in the [native display fixture](fixtures/nv40/g1-native-modes-dos.json).
 The [clean DxDiag fixture](fixtures/nv40/g3-win98-8198-dxdiag-clean.json)
