@@ -292,9 +292,10 @@ exported its original project and eight IQ BMPs, and shut down normally.
 [XP 3DMark03](fixtures/nv40/g4-xp-9371-03-cold-full-eleven.json) completed its
 cold-boot eleven-test suite, exported the original result and shut down normally.
 These functional completions do not establish reference-image or isolated
-performance acceptance. The
-[05 export](fixtures/nv40/g4-xp-9371-05-cold-three-gt-cpu1.json) contains three
-graphics tests and CPU1; CPU2 and the full feature/batch selection remain open.
+performance acceptance. The later
+[XP05 full16 run](fixtures/nv40/g4-xp-9371-05-native-all16.json) exported a
+valid original result with all three graphics, two CPU, five feature and six
+batch tests successful. Its fixed-frame IQ and isolated performance gates remain open.
 [Win98 2001 SE](fixtures/nv40/g5-win98-8198-2001-native-all21.json) also
 completed all 21, with the native project, eight IQ BMPs and normal shutdown.
 Win98 03, full XP 06 and the remaining IQ comparisons are still under

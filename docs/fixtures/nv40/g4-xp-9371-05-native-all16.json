@@ -1,0 +1,224 @@
+{
+  "date": "2026-11-15",
+  "scope": "G4 full original XP05 all16 functional completion. Fixed-frame IQ and isolated release performance acceptance remain open.",
+  "environment": {
+    "os": "WindowsXP SP3",
+    "driver": "Original93.71",
+    "cpu": "Production release WP-fixed core",
+    "vramMiB": 256,
+    "memoryMiB": 1024,
+    "renderer": "Actual Chrome WebGPU, native NVIDIA graphics APIs, no benchmark/driver patches or proxy DLL.",
+    "source": "Pre-Run UI checkpoint inherited from the cold-booted original benchmark setup; fresh full benchmark execution, not a new cold boot at this continuation start.",
+    "screensaver": "Disabled and monitor power set to Never before rerun."
+  },
+  "originalResult": {
+    "file": "build/nv40-xp-mark05-all16-no-saver/NV05N.3DR",
+    "bytes": 3674,
+    "sha256": "1f370975587ea5cbc1c6126909733e1579e47a97feb636f89a21c22d66544249",
+    "zipCRC": "passed",
+    "results": [
+      {
+        "name": "3DMark Score",
+        "value": "188.000000000",
+        "unit": "3DMarks",
+        "base": "10",
+        "exponent": "0",
+        "status": "0",
+        "statusText": "",
+        "category": "Game Tests"
+      },
+      {
+        "name": "GT1 - Return To Proxycon",
+        "value": "0.938014388",
+        "unit": "FPS",
+        "base": "10",
+        "exponent": "0",
+        "status": "0",
+        "statusText": "",
+        "category": "Game Tests"
+      },
+      {
+        "name": "GT2 - Firefly Forest",
+        "value": "0.556629300",
+        "unit": "FPS",
+        "base": "10",
+        "exponent": "0",
+        "status": "0",
+        "statusText": "",
+        "category": "Game Tests"
+      },
+      {
+        "name": "GT3 - Canyon Flight",
+        "value": "0.810298562",
+        "unit": "FPS",
+        "base": "10",
+        "exponent": "0",
+        "status": "0",
+        "statusText": "",
+        "category": "Game Tests"
+      },
+      {
+        "name": "CPU Score",
+        "value": "221.000000000",
+        "unit": "CPUMarks",
+        "base": "10",
+        "exponent": "0",
+        "status": "0",
+        "statusText": "",
+        "category": "CPU Tests"
+      },
+      {
+        "name": "CPU Test 1",
+        "value": "0.113351807",
+        "unit": "FPS",
+        "base": "10",
+        "exponent": "0",
+        "status": "0",
+        "statusText": "",
+        "category": "CPU Tests"
+      },
+      {
+        "name": "CPU Test 2",
+        "value": "0.192066729",
+        "unit": "FPS",
+        "base": "10",
+        "exponent": "0",
+        "status": "0",
+        "statusText": "",
+        "category": "CPU Tests"
+      },
+      {
+        "name": "Fill Rate - Single-Texturing",
+        "value": "1656.535278320",
+        "unit": "texels/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Fill Rate - Multi-Texturing",
+        "value": "3310.962158203",
+        "unit": "texels/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Pixel Shader",
+        "value": "20.039878845",
+        "unit": "FPS",
+        "base": "10",
+        "exponent": "0",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Vertex Shader - Simple",
+        "value": "7.806493759",
+        "unit": "vertices/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Vertex Shader - Complex",
+        "value": "3.113153458",
+        "unit": "vertices/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "8 Triangles",
+        "value": "0.030968100",
+        "unit": "triangles/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "32 Triangles",
+        "value": "0.128411472",
+        "unit": "triangles/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "128 Triangles",
+        "value": "0.658601522",
+        "unit": "triangles/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "512 Triangles",
+        "value": "2.433361530",
+        "unit": "triangles/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "2048 Triangles",
+        "value": "4.925115585",
+        "unit": "triangles/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "32768 Triangles",
+        "value": "6.264005184",
+        "unit": "triangles/s",
+        "base": "10",
+        "exponent": "6",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests"
+      }
+    ],
+    "tests": 16,
+    "acceptedResults": 18
+  },
+  "nativeWindow": "Congratulations, You have succesfully run 3DMark05!1883DMarks;3GT,2CPU,5feature,6batch selected.",
+  "run": {
+    "directory": "build/nv40-xp-mark05-all16-no-saver",
+    "gpuDraws": 1920034,
+    "gpuFailures": 0,
+    "drawFaults": 0,
+    "expectedSoftwarePgraphMethods": [
+      "17D0",
+      "17D4"
+    ],
+    "expectedSoftwarePgraphRecords": 22,
+    "nonSoftwarePgraphFaults": 0,
+    "resultCheckpoint": "checkpoint-native-final-batch-frame6-stall.state with matching disk bundle"
+  },
+  "limits": [
+    "Original188/CPU221 are preserved output under concurrent workloads and a checkpoint, not release performance measurements.",
+    "A native success dialog was present while the capture still showed the final batch frame. Run/UI inspection refreshed desktop scanout; this was not a benchmark hang.",
+    "IQ generation and normal shutdown continue after this functional-result commit.",
+    "The full run loaded its renderer before later RG16F/deadline/tail-scan changes; those have separate targeted tests."
+  ]
+}
