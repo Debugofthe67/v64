@@ -1,5 +1,26 @@
 # Infinity Blade 安装与帧率验证
 
+## 优化后重新采样（2026-11-15）
+
+在 `69c545c2` 的相同有效格挡 RAM/NAND 上预热 12 帧，停机保存起始画面，
+开启 CPU Profiler 后恢复正常 rate 1 运行 8 秒，再停机保存结束画面。两端均亮屏，
+盾值 20→19，原生 960×640 完整帧数 12→18。采样会改变运行速度，
+**这 6 帧不作为 FPS 对照或成绩**。
+
+8.024 秒采样中，`pages::run` 自身约 1.238 秒（15.4%），包含时间约 6.602 秒；
+解释器 `interpret_one` 包含约 1.987 秒，`bus::read` 包含约 1.144 秒，
+MMIO 入口自身约 0.379 秒。`a64_page_access` 包含约 0.498 秒，
+`a32_page_helper` 包含约 0.323 秒。包含时间相互重叠，不能相加；
+V8 的函数归属也不能精确代替客户机线程耗时。
+
+随后独立开启 6 秒逐指令诊断，结束恢复原统计开关 0。最热 helper 中仍有
+NEON 算术、IT、独占访存及 VCVT；例如两个 VADD 各约 25.9 万次、两个
+VMUL 各约 19.8 万次，IT `bf1c/bf08/bf18` 约 18.9/14.6/8.0 万次。
+下一项检查 IT 中已有 FP 模板能否继续原生运行，减少 helper 和调度往返；
+保留每槽的精确 fault/ITSTATE、假条件以及异常 FP 回退。
+本地栈为 `build/ios/infinity-next/perf/post-gprmask.cpuprofile`，画面和
+原始诊断位于 `post-gprmask-profile` / `post-profile-*`。
+
 ## 按页面 GPR 引用集合缩小同步：FP 优化后复测（2026-11-15）
 
 纯 FP helper 现在允许更多页面使用 GPR 局部值，因此重新测试之前没有确认收益的
