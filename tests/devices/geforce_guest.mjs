@@ -322,6 +322,39 @@ export async function run_geforce_guest(win98)
             {const entries=Number(process.env.NV_TEXTURE_CACHE_ENTRIES);assert([256,512,1024].includes(entries));cache.cache_entries=entries;}
         }
         clock_start = cpu.clock.now();
+        if(process.env.NV_GUEST_WRITE_PAGES)
+        {
+            const pages=process.env.NV_GUEST_WRITE_PAGES.split(",").map(value=>Number.parseInt(value,16));
+            assert(pages.length<=16 && pages.every(page=>Number.isInteger(page)&&page>=0&&page*4096+4096<=cpu.memory_size[0]),
+                "write watch needs up to 16 ordinary RAM page numbers in hex");
+            const api=cpu.wm.exports;
+            assert(api.ir_test_write_watch,"write watch requires an ir-test-hooks Wasm build");
+            await vm.stop();
+            try {pages.forEach((page,slot)=>assert(api.ir_test_write_watch(slot,page)));}
+            finally {await vm.run();}
+            const file=path.join(out,"guest-write-watch.json"),records=[];let next=0,dropped=0;
+            const poll=()=>{
+                const total=api.ir_test_write_watch_total()>>>0;
+                let changed=false;
+                if(total-next>4096){dropped+=total-next-4096;next=total-4096;}
+                while(next<total)
+                {
+                    const row=Array.from({length:24},(_,word)=>api.ir_test_write_watch_word(next,word)>>>0);
+                    if(records.length===65536){records.shift();dropped++;}
+                    records.push(row);next++;changed=true;
+                }
+                if(records.length)
+                {
+                    const attempts=api.ir_test_write_watch_word(total-1,15)>>>0,last=records[records.length-1];
+                    changed=changed||last[15]!==attempts;last[15]=attempts;
+                }
+                if(!changed)return;
+                fs.writeFileSync(file,JSON.stringify({pages,words:["sequence","physical","bytes","eip","previousEip","cpl","cr3",
+                    "eax","ecx","edx","ebx","esp","ebp","esi","edi","attempts","pagePrefix0..7"],dropped,records}));
+            };
+            const timer=setInterval(poll,500);timer.unref();
+            guest_sampler=()=>{clearInterval(timer);poll();};
+        }
         if(process.env.NV_WATCH_MMIO)
         {
             const offsets=new Set(process.env.NV_WATCH_MMIO.split(",").map(value=>Number.parseInt(value,16)));
@@ -360,7 +393,8 @@ export async function run_geforce_guest(win98)
                 if(samples.length%10===0||samples.length===limit)fs.writeFileSync(file,JSON.stringify({physicalAddress:address,samples}));
             },100);
             timer.unref();
-            guest_sampler=()=>{clearInterval(timer);fs.writeFileSync(file,JSON.stringify({physicalAddress:address,samples}));};
+            const prior_sampler=guest_sampler;
+            guest_sampler=()=>{prior_sampler?.();clearInterval(timer);fs.writeFileSync(file,JSON.stringify({physicalAddress:address,samples}));};
         }
         if(process.env.NV_FIFO_FAULTS)
         {

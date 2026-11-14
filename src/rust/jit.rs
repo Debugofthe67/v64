@@ -153,6 +153,8 @@ pub fn rust_init() {
 /// A write to the page: retire the code compiled from it, here and
 /// (crate::parallel::code) in other cores' workers.
 fn dirty_page(page: Page) {
+    #[cfg(feature = "ir-test-hooks")]
+    crate::write_watch::write(page, None);
     if !jitrt::state().watch.write(page, None) {
         profiler::stat_increment(stat::DIRTY_PAGE_DID_NOT_HAVE_CODE);
     }
@@ -188,6 +190,8 @@ pub fn jit_dirty_bytes(addr: u32, len: u32) {
     let page = Page::page_of(addr);
     dbg_assert!(Page::page_of(addr + len - 1) == page);
     let lo = addr & 0xFFF;
+    #[cfg(feature = "ir-test-hooks")]
+    crate::write_watch::write(page, Some((lo, lo + len)));
     if !jitrt::state().watch.write(page, Some((lo, lo + len))) {
         profiler::stat_increment(stat::DIRTY_PAGE_DID_NOT_HAVE_CODE);
     }
@@ -235,6 +239,8 @@ pub fn jit_page_has_code(page: Page) -> bool { jitrt::state().watch.watched(page
 /// with cores in workers, another core compiled code from it. Used for new
 /// translations (TLB fills, write translation caches).
 pub fn page_needs_notification(page: Page) -> bool {
+    #[cfg(feature = "ir-test-hooks")]
+    if crate::write_watch::watched(page.to_u32()) { return true; }
     jit_page_has_code(page) || unsafe { crate::parallel::code::others_own(page.to_u32()) }
 }
 
@@ -242,6 +248,8 @@ pub fn page_needs_notification(page: Page) -> bool {
 /// instance or (with cores in workers) another: writes must notify.
 #[inline(always)]
 pub fn page_watched(page: u32) -> bool {
+    #[cfg(feature = "ir-test-hooks")]
+    if crate::write_watch::watched(page) { return true; }
     jitrt::watch::bit(page) || unsafe { crate::parallel::code::others_own(page) }
 }
 

@@ -53,6 +53,8 @@ mod decode_rules;
 mod gen;
 #[cfg(not(feature = "aarch64"))]
 mod jit;
+#[cfg(all(not(feature = "aarch64"), feature = "ir-test-hooks"))]
+mod write_watch;
 #[cfg(not(feature = "aarch64"))]
 mod jit_switches;
 #[cfg_attr(feature = "aarch64", allow(dead_code))]

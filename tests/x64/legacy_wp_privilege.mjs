@@ -17,11 +17,14 @@ for(const mode of ["interpreter","pages"]) for(const pae of [false,true]) for(co
         "-o",file,"tests/x64/legacy_wp_privilege.asm"],{encoding:"utf8"});
     assert.equal(assembly.status,0,assembly.stderr);
     const vm=new V86(with_smp_mode({graphics_adapter:"none",multiboot:{url:file},memory_size:16<<20,
+        ...(process.env.TEST_WASM?{wasm_path:process.env.TEST_WASM}:{}),
         disable_jit:mode==="interpreter",ir_sync_publication:true,cpu_quantum:257,autostart:false,log_level:0},mode));
     try
     {
         await new Promise(resolve=>vm.add_listener("emulator-loaded",resolve));
         const cpu=vm.v86.cpu,word=at=>new DataView(cpu.mem8.buffer,cpu.mem8.byteOffset).getUint32(at,true);
+        if(process.env.TEST_WRITE_WATCH)
+            assert(cpu.wm.exports.ir_test_write_watch?.(0,0x400),"arm a host watch on the protected backing page");
         const deadline=performance.now()+15000;
         while(word(0x380018)!==0xD0D0)
         {

@@ -2615,6 +2615,8 @@ pub unsafe fn trigger_pagefault(addr: i32, present: bool, write: bool, user: boo
 }
 
 pub fn tlb_set_has_code(physical_page: Page, has_code: bool) {
+    #[cfg(feature = "ir-test-hooks")]
+    let has_code = has_code || crate::write_watch::watched(physical_page.to_u32());
     for i in 0..unsafe { valid_tlb_entries_count } {
         let page = unsafe { valid_tlb_entries[i as usize] };
         let entry = unsafe { tlb_data[page as usize] };
@@ -2644,6 +2646,8 @@ pub fn tlb_set_has_code_multiple(physical_pages: &HashSet<Page>, has_code: bool)
             );
             if physical_pages.contains(&tlb_physical_page) {
                 unsafe {
+                    #[cfg(feature = "ir-test-hooks")]
+                    let has_code = has_code || crate::write_watch::watched(tlb_physical_page.to_u32());
                     tlb_data[page as usize] =
                         if has_code { entry | TLB_HAS_CODE } else { entry & !TLB_HAS_CODE }
                 }

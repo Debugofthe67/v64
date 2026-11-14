@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-15",
+  "scope": "Optional host-only backing-page write observer for single-core cache-corruption investigations. Not a guest hardware feature or performance/benchmark acceptance.",
+  "source": [
+    "src/rust/write_watch.rs",
+    "src/rust/jit.rs",
+    "src/rust/cpu/cpu.rs",
+    "tests/devices/geforce_guest.mjs"
+  ],
+  "behavior": [
+    "Compiled only with ir-test-hooks; absent from the production/fixed-core Wasm exports.",
+    "At most16 ordinary RAM pages; reject invalid slots, mapped I/O, out-of-range RAM and multiple cores.",
+    "Arm while stopped and invalidate cached translations. Existing checked code-dirty paths observe scalar, RMW, string, vector and host-device stores without page-table edits or injected guest exceptions. Keep observation when JIT code stops watching the same page.",
+    "4096 groups of24words: sequence, physical range, current/previous PC,CPL,CR3,eight registers,coalesced attempt count and32-byte page preimage. Adjacent stores at one PC/page/CR3 coalesce; future/expired ring reads reject.",
+    "NV_GUEST_WRITE_PAGES accepts hexadecimal physical page numbers. Host polling bounds stored records to65536 and reports overwritten/dropped groups. CPU sampling can run at the same time."
+  ],
+  "validation": {
+    "writerForms": "tests/x64/write_watch.asm/.mjs: scalar store,RMW XOR,REP MOVSD across pages,REP STOSD,unaligned SSE store across pages,XCHG; interpreter and compiled cases,watched/unwatched all produce identical8192-byte guest memory.",
+    "ring": "40007 groups per watched case exercises wraparound and coalescing; reject expired/future records; explicit host DMA write observed and disarming stops observation.",
+    "privilege": "All16 tests/x64/legacy_wp_privilege.mjs cases with watch enabled retain exactly one user write #PF,error7,correctCR2 and unchanged legitimate kernel value; ordinary/PAE,small/large pages,read-before-write,interpreter/JIT.",
+    "build": "Release ir-test-hooks Wasm compiles; strict source/harness checks pass."
+  },
+  "limits": [
+    "Records occur before the underlying write and include a page prefix, not a whole-page postimage.",
+    "The observer can slow watched writes and therefore is for diagnosis, not native FPS measurements.",
+    "A matching writer PC still needs instruction/mapping analysis; no Win9803 root cause is claimed from adding the tool."
+  ]
+}
