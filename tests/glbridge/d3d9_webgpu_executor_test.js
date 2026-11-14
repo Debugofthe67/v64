@@ -230,6 +230,7 @@ function makeFakeWebGPU(options) {
             // A lost or errored device accepts the submit and then never
             // signals; makeFakeWebGPU({ hangMapAsync: true }) reproduces it.
             if (options.hangMapAsync) return new Promise(() => {});
+            if (options.mapDelayMs) return new Promise(resolve => setTimeout(resolve, options.mapDelayMs));
             return Promise.resolve();
         }
         getMappedRange() { return this.data.buffer; }
@@ -772,6 +773,29 @@ await test("the host reports liveness once per batch so a backlog is not a timeo
     ], { present: true }));
     await executor.idle();
     assert.equal(beats.length, 3, "no writer, no beat, no error");
+});
+
+await test("a cold readback completing after four seconds still returns its pixels",
+        async () => {
+    const { executor } = makeExecutor({ fakeOptions: { mapDelayMs: 4500 } });
+    const writes = [];
+    await executor.submit(buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(8, 8)),
+        command(OP.READBACK_SURFACE, encodePayload("ReadbackSurface", {
+            device_handle: DEVICE, texture_handle: 0, format: 21, width: 8, height: 8,
+            row_count: 1, destination_pitch: 32, destination_bytes: 32,
+            response_offset: 16 * 1024, request_id: 0x22334456,
+        })),
+    ]), { writeGuestMemory(offset, data) {
+        if (offset !== HEARTBEAT_WRITE_OFFSET) writes.push(Buffer.from(data));
+    } });
+    await executor.idle();
+    assert.equal(executor.stats.renderTargetReadbackFailures, 0);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].readUInt32LE(0), 0x22334456);
+    assert.equal(writes[0].readUInt32LE(4), 32);
+    assert.equal(writes[0].readUInt32LE(12), 1);
+    assert.equal(writes[0].length, 48);
 });
 
 await test("a readback whose map never completes fails instead of hanging the guest",

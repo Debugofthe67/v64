@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-15",
+  "scope": "Bound GPU readback liveness without rejecting legitimate cold native HDR work; not a change to guest clocks, result data, shaders or image thresholds.",
+  "nativeFailure": {
+    "run": "build/nv40-xp-mark06-rg16f-default6-resume",
+    "drawsAtFirstReadbackError": 81254,
+    "elapsedSeconds": 2253.214405584,
+    "message": "format113,1024x1024: readback map did not complete within4000ms",
+    "rendererWindow": {
+      "batches": 2,
+      "maximumBatchMilliseconds": 6598,
+      "continuedSubmittingAfterFailure": true
+    },
+    "interpretation": "The4s host deadline expired during original HDR work. Continued batches show the renderer was not permanently lost, but the actual completion time of the expired individual mapping was not recorded.",
+    "checkpoint": "checkpoint-hdr-invalid-target-readback.state and matching disk bundle retained"
+  },
+  "change": {
+    "defaultMilliseconds": 30000,
+    "minimumExplicitMilliseconds": 250,
+    "explicitOptionsPreserved": true,
+    "failureResponse": "A mapping that remains unresolved still gets a bounded FAILED response; device loss/error behavior is retained."
+  },
+  "validation": {
+    "regression": "Real timer: a fake WebGPU mapping resolves after4500ms and returns its complete32-byte row/OK response with correct request id. Substituting only the old4s default fails this case,190 other executor tests pass.",
+    "current": "All191 D3D9 executor tests pass, including unresolved mapping failure and depth readback paths.",
+    "build": "make glbridge passes and rebuilds the browser executor.",
+    "nativeContinuation": "Original default-six XP06 restored from the matching healthy60000-draw checkpoint before the timeout. Full native result still pending."
+  }
+}

@@ -2200,3 +2200,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 06 HDR 首错：默认六项完成前段 SM2/CPU 后，在 Canyon Flight 首次绘制遇到纹理格式 31，PGRAPH 停止；174358 draws、GPU failure0 不能当作健康运行。按 Nouveau 定义补齐 RG16F：四字节客体半浮点双分量经 crossbar 保留原始位，上传 RGBA16F；浮点 gamma 仍拒绝、TEX BX2 旁路包含该格式。旧回归先红，负零/次正规/NaN payload/padded mip/DMA 与完整真实 GPU 的线性过滤、LOD clamp、半/全输出通过，175 WGSL 和 Closure 通过。见 `g4-06-native-rg16f-texture.json`；已从同一六项运行的故障前健康配套状态继续，完整 HDR/图像门禁仍开放。
 
 - G5 文件损坏调查观测：增加有界、只读 IDE 回调/实际物理写入 SHA 记录及原生一分钟内存采样；独立文件探针可显式保留映射 30 秒，供一致快照页表核对。修复 IDE 后的新 Win98 冷启动中，1 MiB 范围的 1024 次读取及物理写入全部匹配原 DAT；ReadFile、映射、256 页快照和两份磁盘副本 CRC 均为 d27713d7。默认探针不等待，观测不改客体数据/页表/IRQ；单元测试、严格 MinGW 编译及原生短测通过。此前 GT2 后缓存损坏原因和完整 03 门禁仍未解决，见 `g5-native-ide-and-mapped-copy-observer.json`。
+
+- G4/G6 原生 HDR 读回等待：格式 31 续修后原版 06 在 81254 次新增绘制处命中共享执行器的 4000 ms MapAsync 超时（113/1024²）；该窗口有 6598 ms 批次，随后仍继续提交，不能据此称为永久 GPU 丢失。默认读回上限改为 30000 ms，显式超时及永久挂起的失败响应保留。真实 4500 ms 延迟回归旧默认失败、新默认完整返回像素；全部 191 executor 测试及 glbridge 构建通过。从故障前配套健康快照继续原版六项，原生完整验收尚待完成，见 `g6-native-hdr-readback-deadline.json`。

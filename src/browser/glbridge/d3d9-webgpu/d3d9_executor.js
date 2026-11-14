@@ -1132,10 +1132,11 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             // frame are three orders of magnitude below this.
             this.flushThreshold = Math.max(1024,
                 this.options.flushThreshold || 16384);
-            // The guest blocks on a readback, so this is a VM-freeze budget
-            // rather than a GPU-latency one.
+            // The guest blocks on a readback. A cold native HDR pipeline can
+            // legitimately keep the queue busy for more than four seconds;
+            // retain a finite freeze bound without reporting that work lost.
             this.readbackTimeoutMs = Math.max(250,
-                this.options.readbackTimeoutMs || 4000);
+                this.options.readbackTimeoutMs || 30000);
             this.heartbeat = 0;
             this.heartbeatBuffer = new Uint8Array(4);
             this.uploads = null;
