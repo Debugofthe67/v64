@@ -82,6 +82,22 @@ assert.deepEqual(decoded(0x43,[0,60,0,192,1,0,0,124]),[1,-2,2**-24,Infinity]);
 assert.deepEqual(decoded(0x24,[255,0]),[1,0,0,1]);
 assert.deepEqual(decoded(0x25,[0,128,255,127]),[-32768,32767,0,1]);
 assert.deepEqual(decoded(0x27,[255,128]),[255,128,0,1]);
+for(let value=0;value<256;value++)
+{
+    const bytes=[value,255-value,(value+73)&255,(value+149)&255];
+    const padded=Uint8Array.from([91,...bytes,17]).subarray(1,5);
+    assert.deepEqual(state.vertex_value(state.vertex_layout(0x40),padded),
+        [f(bytes[2]/255),f(bytes[1]/255),f(bytes[0]/255),f(bytes[3]/255)],"all packed color component values retain exact f32 bits");
+    for(let size=1;size<=4;size++)for(const type of [4,7])
+    {
+        const expected=bytes.slice(0,size).map(byte=>f(type===4?byte/255:byte));
+        while(expected.length<4)expected.push(expected.length===3?f(1):0);
+        assert.deepEqual(state.vertex_value(state.vertex_layout(size<<4|type),padded),expected);
+    }
+}
+assert.deepEqual(decoded(0x30,[1,2,3,4]),[Math.fround(3/255),Math.fround(2/255),Math.fround(1/255),1]);
+assert.throws(()=>state.vertex_value(state.vertex_layout(0x40),Uint8Array.of(1,2,3)),RangeError,"short vertex data still faults");
+assert.deepEqual(state.vertex_value(state.vertex_layout(0),Uint8Array.of(1,2,3,4)),[0,0,0,f(1)],"disabled formats keep default components");
 o.methods.set(0x1740,0x440);o.methods.set(0x1C00,f(0.75));vram.set([0,255,0,255],0x3000);
 assert.deepEqual(floats(state.array_vertices(o,[0],[[0,[1,0]]]).bytes),[0,1,0,1]);
 o.methods.set(0x1740,0x423);vram.set([0,60,0,64],0x3000);

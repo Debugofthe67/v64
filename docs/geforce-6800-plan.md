@@ -2069,3 +2069,10 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   原生 06 GT1 加载并提交真实绘制，非软件 FIFO/PGRAPH/GPU 故障为零；
   纠正上一条对软件陷阱的假设，整套 06 继续验证。见
   `g2-puller-software-target-native.json`。
+
+- G6 字节顶点转换：原生采样中 vertex_value 自身占 3.86%，06 实际使用
+  DirectX D3DCOLOR。以 2 KiB 共享 f32 位表复用 BGRA/UNORM8/UBYTE
+  的 256 种转换，省去重复除法/舍入及临时 DataView，checked DMA 保留。
+  所有字节值、分量数、偏移视图、缺省分量、短缓冲和完整 state 回归、
+  Closure 通过；50 万次 CPU 微测及相同校验和见
+  `g6-byte-vertex-conversion.json`，不当作原生 FPS 或 06 完成证据。

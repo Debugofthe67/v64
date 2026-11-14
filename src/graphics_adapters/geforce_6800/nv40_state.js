@@ -10,6 +10,13 @@ const RT_DMA=[0x194,0x18C,0x1B4,0x1B8],RT_OFFSET=[0x210,0x218,0x288,0x28C],RT_PI
 // arrays per converted vertex component dominated native GT4 vertex fetch.
 const converted=new Float32Array(1),convertedBits=new Uint32Array(converted.buffer);
 const f32bits=value=>{converted[0]=value;return convertedBits[0];};
+// Native DirectX colors and byte attributes reuse the same 256 conversions.
+// Store canonical f32 bits, preserving the ordinary conversion's rounding.
+const byteUnormBits=new Uint32Array(256),byteIntegerBits=new Uint32Array(256);
+for(let value=0;value<256;value++)
+{
+    byteUnormBits[value]=f32bits(value/255);byteIntegerBits[value]=f32bits(value);
+}
 // Curie's alternate DirectX declaration encoding (VTXFMT bit 16). The
 // replicated low nibble is a type code, not TYPE/SIZE. Native 93.71 uses
 // 0x114BB for FLOAT4 and 0x114CC for D3DCOLOR with a 20-byte stride.
@@ -205,7 +212,20 @@ export class NV40State
     }
     vertex_value(layout,bytes)
     {
-        const {type,size}=layout,view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),values=[0,0,0,0x3F800000];
+        const {type,size}=layout,values=[0,0,0,0x3F800000];
+        if(type===0 && size>=3 && bytes.length>=4)
+        {
+            values[0]=byteUnormBits[bytes[2]];values[1]=byteUnormBits[bytes[1]];values[2]=byteUnormBits[bytes[0]];
+            if(size===4)values[3]=byteUnormBits[bytes[3]];
+            return values;
+        }
+        if((type===4 || type===7) && bytes.length>=size)
+        {
+            const table=type===4?byteUnormBits:byteIntegerBits;
+            for(let i=0;i<size;i++)values[i]=table[bytes[i]];
+            return values;
+        }
+        const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
         for(let i=0;i<size;i++)
         {
             if(type===2) {values[i]=view.getUint32(i*4,true);continue;}

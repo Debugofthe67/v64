@@ -1,0 +1,142 @@
+{
+  "date": "2026-11-14",
+  "scope": "G6 vertex conversion hotspot; byte color and byte vertex attributes only.",
+  "profileEvidence": {
+    "fixture": "g6-xp-9371-06-isolated-window.json",
+    "vertexValueSelfPercent": 3.8561151807756673,
+    "nativeFormatsObserved": [
+      "0x118CC DirectX D3DCOLOR",
+      "0x110CC DirectX D3DCOLOR"
+    ]
+  },
+  "change": "Two shared 256-entry u32 tables (2048 bytes total) replace repeated per-component f32 conversion and per-vertex DataView creation for BGRA, UNORM8 and unscaled UBYTE attributes. Entries use the original f32 conversion and rounding; checked DMA fetches, per-draw index cache and other vertex formats are unchanged.",
+  "validation": {
+    "allByteValues": "All 256 values, component order, 1..4 component widths, normalized/integer byte types, offset Uint8Array views, packed three-component default alpha, disabled format defaults and short-buffer fault. Existing state suite includes inline/indexed/current attributes, CPU changes, repeated indices, base vertex, layout/limit checks and render targets.",
+    "stateLog": "build/nv40-byte-vertex-state.log",
+    "closure": "0 errors/warnings; 77.1% typed",
+    "microbenchmark": {
+      "iterations": 500000,
+      "fixture": "native 06 DirectX color/float formats plus UNORM8/UBYTE4 coverage",
+      "packedColor": {
+        "before": [
+          {
+            "ms": 57.17637500000001,
+            "checksum": 1276519080
+          },
+          {
+            "ms": 71.48250000000007,
+            "checksum": 1276519080
+          },
+          {
+            "ms": 64.16737499999999,
+            "checksum": 1276519080
+          },
+          {
+            "ms": 54.87424999999996,
+            "checksum": 1276519080
+          },
+          {
+            "ms": 96.87895800000001,
+            "checksum": 1276519080
+          }
+        ],
+        "after": [
+          {
+            "ms": 6.522582999999997,
+            "checksum": 1276519080
+          },
+          {
+            "ms": 9.341583000000014,
+            "checksum": 1276519080
+          },
+          {
+            "ms": 8.890292000000045,
+            "checksum": 1276519080
+          },
+          {
+            "ms": 11.287999999999897,
+            "checksum": 1276519080
+          },
+          {
+            "ms": 12.245417000000089,
+            "checksum": 1276519080
+          }
+        ],
+        "medianBefore": 64.16737499999999,
+        "medianAfter": 9.341583000000014
+      },
+      "mixed": {
+        "before": [
+          {
+            "ms": 42.92262499999998,
+            "checksum": 2880340512
+          },
+          {
+            "ms": 58.37158299999999,
+            "checksum": 2880340512
+          },
+          {
+            "ms": 79.87533299999996,
+            "checksum": 2880340512
+          },
+          {
+            "ms": 59.73058299999991,
+            "checksum": 2880340512
+          },
+          {
+            "ms": 64.63854200000014,
+            "checksum": 2880340512
+          }
+        ],
+        "after": [
+          {
+            "ms": 16.053291999999942,
+            "checksum": 2880340512
+          },
+          {
+            "ms": 13.514499999999998,
+            "checksum": 2880340512
+          },
+          {
+            "ms": 28.656749999999988,
+            "checksum": 2880340512
+          },
+          {
+            "ms": 27.283624999999915,
+            "checksum": 2880340512
+          },
+          {
+            "ms": 25.359916999999996,
+            "checksum": 2880340512
+          }
+        ],
+        "medianBefore": 59.73058299999991,
+        "medianAfter": 25.359916999999996
+      }
+    },
+    "actualGpu": "Complete real WebGPU pixel/sync/alias/snapshot suite passes after native 06 stopped."
+  },
+  "evidence": {
+    "build/nv40-byte-vertex-micro.json": {
+      "bytes": 2017,
+      "sha256": "0eedbc75ee3c83d3f2bdc21f865701d0b5265892bfe372ee3b79336bda833008"
+    },
+    "build/nv40-byte-vertex-state.log": {
+      "bytes": 95,
+      "sha256": "3b46c030f7cbdd9d353ab75ba47c23365445405c52fa541ce758ffc113f38667"
+    },
+    "build/nv40-byte-vertex-build.log": {
+      "bytes": 3020,
+      "sha256": "6b9d8970c7c18b6d267ab94868ba727e8fe5de7e427bb4d0e60c686fad358f98"
+    },
+    "build/nv40-byte-vertex-gpu.log": {
+      "bytes": 5286,
+      "sha256": "ba579ecb9d44142b85be586658a4437344da87a3678e8c58210adab030e34e5b"
+    }
+  },
+  "limits": [
+    "Microbenchmark timings are CPU conversion measurements, not native FPS.",
+    "The currently running native 06 process loaded the prior renderer; its progress is not evidence of this optimization.",
+    "No guest clock, driver, graphics API, benchmark settings or score is changed."
+  ]
+}
