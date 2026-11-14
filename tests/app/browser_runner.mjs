@@ -315,6 +315,13 @@ server.listen(Number(process.env.BROWSER_PORT || 0), "127.0.0.1", async () =>
         if(endpoint){focusing=true;focus_page(endpoint).catch(error=>{console.error(error);finish(1);});}
     });
     browser.on("error", error => { console.error(error); finish(1); });
+    browser.on("exit", (code, signal) =>
+    {
+        browser.stderr.destroy();
+        if(finished) return;
+        console.error("FAIL: Chrome exited before the test result (" + (signal || code) + ")");
+        finish(1);
+    });
     timeout = setTimeout(() =>
     {
         console.error("FAIL: timed out\n" + stderr);
