@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import {read_geforce_guest_stack} from "../lib/geforce_guest_memory.mjs";
+
+const memory=new Uint8Array(16<<20),view=new DataView(memory.buffer);
+const cpu={mem8:memory,cr:new Int32Array(5),reg32:new Int32Array(8),
+    translate_address_system_read(){throw new Error("diagnostics must not invoke faulting CPU translation");}};
+const put=(at,value)=>view.setUint32(at,value,true);
+cpu.cr[0]=0x80000000;cpu.cr[2]=0x12345678;cpu.cr[3]=0x1000;
+cpu.reg32[4]=0x80000FFC;
+put(0x1800,0x2001);put(0x2000,0x3001);put(0x2FFC,0x4001);
+put(0x3FFC,0x1234ABCD);
+const before=memory.slice();
+assert.deepEqual(read_geforce_guest_stack(cpu,2),[0x1234ABCD,null],"unmapped next stack page stays missing");
+assert.deepEqual(read_geforce_guest_stack(cpu,256),[0x1234ABCD,...Array(255).fill(null)],"bounded extended capture stops safely at an absent stack page");
+assert.equal(cpu.cr[2],0x12345678,"a diagnostic miss never injects a guest page fault");
+assert.deepEqual(memory,before,"page-table A/D bits and all guest memory stay unchanged");
+put(0x2004,0x5001);put(0x5000,0xDEADBEEF);
+assert.deepEqual(read_geforce_guest_stack(cpu,2),[0x1234ABCD,0xDEADBEEF],"4 KiB mapping crosses a stack page");
+cpu.reg32[4]=0x80000FFE;
+assert.deepEqual(read_geforce_guest_stack(cpu,1),[0xBEEF1234],"one unaligned DWORD spans two mapped pages");
+cpu.reg32[4]=0x80000FFC;
+cpu.cr[4]=16;put(0x1800,0x400081);put(0x400FFC,0x87654321);
+assert.deepEqual(read_geforce_guest_stack(cpu,1),[0x87654321],"PSE 4 MiB stack mapping");
+cpu.cr[4]=32;cpu.cr[3]=0x1000;
+put(0x1010,0x2001);put(0x1014,0);put(0x2000,0x3001);put(0x2004,0);
+put(0x3000,0x4001);put(0x3004,0x80000000);put(0x4FFC,0xABCDEF01);
+assert.deepEqual(read_geforce_guest_stack(cpu,2),[0xABCDEF01,null],"PAE 4 KiB with NX and missing next PTE");
+put(0x2000,0x600081);put(0x600FFC,0xAABBCCDD);
+assert.deepEqual(read_geforce_guest_stack(cpu,1),[0xAABBCCDD],"PAE 2 MiB stack mapping");
+put(0x2004,1);
+assert.deepEqual(read_geforce_guest_stack(cpu,1),[null],"physical pages beyond RAM stay missing");
+cpu.cr[0]=0;cpu.reg32[4]=0x3FFC;
+assert.deepEqual(read_geforce_guest_stack(cpu,1),[0x1234ABCD],"paging-disabled RAM stack");
+cpu.reg32[4]=0xFFFFFFFC;
+assert.deepEqual(read_geforce_guest_stack(cpu,2),[null,null],"unmapped high addresses and wrap do not read low RAM");
+console.log("PASS: side-effect-free native stack reads for absent, 4 KiB, PSE and PAE pages");

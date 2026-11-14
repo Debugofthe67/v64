@@ -2106,3 +2106,10 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   两项恒零；未知方法仍真实陷阱。回归先红后绿、设备、完整真实 GPU
   与 Closure 通过。2001 SE 仍在 26,962 次绘制后遇到 input15，未通过
   整套；保留故障前成套快照继续定位。见 `g2-pgraph-object-mirrors.json`。
+
+- G6 原生栈诊断：扩展采样跨未映射栈页时，CPU 的正常地址翻译曾
+  注入缺页并干扰 ISR；该次采样作废。现直接只读遍历 x86 页表，缺失
+  页保留 null，不改 TLB、A/D、CR2 或 RAM。4 KiB/PSE/PAE、跨页与
+  256 字边界回归通过；同一原生现场采到 136 个缺失字，ISR 仍完整
+  读取 4097/E9B6 并恢复 FIFO，没有采样 panic/重置。见
+  `g6-safe-native-stack-inspection.json`，整套图形门禁继续验证。

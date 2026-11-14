@@ -13,6 +13,7 @@ import { PictureSink, save_png } from "../lib/picture_sink.mjs";
 import { site_directory } from "../lib/site.mjs";
 import { read_fat32_file } from "../lib/fat32_reader.mjs";
 import { verify_geforce_checkpoint_bundle } from "../lib/geforce_checkpoint.mjs";
+import { read_geforce_guest_stack } from "../lib/geforce_guest_memory.mjs";
 const release_build = !!+process.env.TEST_RELEASE_BUILD;
 const { V86 } = await import(release_build ? "../../build/libv86.mjs" : "../../src/main.js");
 
@@ -304,15 +305,15 @@ export async function run_geforce_guest(win98)
         {
             const offsets=new Set(process.env.NV_WATCH_MMIO.split(",").map(value=>Number.parseInt(value,16)));
             assert(offsets.size<=32 && [...offsets].every(value=>Number.isSafeInteger(value)&&value>=0&&value<0x1000000&&!(value&3)));
+            const stackWords=Number(process.env.NV_WATCH_STACK_WORDS||16);
+            assert(Number.isInteger(stackWords)&&stackWords>=16&&stackWords<=256);
             const record=nv.trace.record.bind(nv.trace),accesses=[];
             nv.trace.record=(space,offset,size,write,value,implemented)=>{
                 record(space,offset,size,write,value,implemented);
                 if(space!=="mmio" || !offsets.has(offset) || accesses.length>=512) return;
                 if(process.env.NV_WATCH_MMIO_AFTER_GRAPH_FAULT && !nv.graph.faults.length) return;
-                const stack=cpu.reg32[4]>>>0;
-                const read=at=>{try {return cpu.mem8[cpu.translate_address_system_read(at)>>>0];} catch{return 0;}};
                 accesses.push({elapsed:elapsed(),offset,size,write,value:value>>>0,eip:cpu.instruction_pointer[0]>>>0,
-                    stack:Array.from({length:16},(_,i)=>{const at=(stack+i*4)>>>0;return (read(at)|read(at+1)<<8|read(at+2)<<16|read(at+3)<<24)>>>0;})});
+                    stack:read_geforce_guest_stack(cpu,stackWords)});
                 fs.writeFileSync(path.join(out,"mmio-watch.json"),JSON.stringify(accesses,null,2));
             };
         }
@@ -636,14 +637,9 @@ export async function run_geforce_guest(win98)
                 original(offset,value);
                 if(offset!==address+3 || captures.length>=8) return;
                 const word=nv.dma.word(address);if(word&1) return;
-                const stack=cpu.reg32[4]>>>0,read=at=>{
-                    try {return cpu.mem8[cpu.translate_address_system_read(at)>>>0];} catch{return 0;}
-                };
                 captures.push({elapsed:elapsed(),sequence:nv.trace.sequence,address,word,
                     eip:cpu.instruction_pointer[0]>>>0,regs:Array.from(cpu.reg32,v=>v>>>0),
-                    stack:Array.from({length:48},(_,i)=>{
-                        const at=(stack+i*4)>>>0;return (read(at)|read(at+1)<<8|read(at+2)<<16|read(at+3)<<24)>>>0;
-                    }),fifo:nv.fifo.get_state(),graph:nv.graph.get_state(),gpu:{...nv.graph.engine3d.backend?.stats}});
+                    stack:read_geforce_guest_stack(cpu,48),fifo:nv.fifo.get_state(),graph:nv.graph.get_state(),gpu:{...nv.graph.engine3d.backend?.stats}});
                 fs.writeFileSync(path.join(out,"ramin-watch.json"),JSON.stringify(captures,null,2));
             };
         }
@@ -662,10 +658,9 @@ export async function run_geforce_guest(win98)
                 if(item.kind==="lookup"&&!item.result)
                 {if(failedLookups>=16) return;failedLookups++;}
                 const backend=nv.graph.engine3d.backend,stack=cpu.reg32[4]>>>0;
-                const read=at=>{try {return cpu.mem8[cpu.translate_address_system_read(at)>>>0];} catch{return 0;}};
                 const capture={elapsed:elapsed(),...item,eip:cpu.instruction_pointer[0]>>>0,
                     stackAddress:stack,cpuRegisters:[...cpu.reg32].map(value=>value>>>0),
-                    stack:item.kind==="write"||!item.result?Array.from({length:stackWords},(_,i)=>{const at=(stack+i*4)>>>0;return (read(at)|read(at+1)<<8|read(at+2)<<16|read(at+3)<<24)>>>0;}):null,
+                    stack:item.kind==="write"||!item.result?read_geforce_guest_stack(cpu,stackWords):null,
                     channel:nv.fifo.active,registers:[0x3210,0x3270,0x3240,0x3244,0x3248,0x3228,0x3250,0x3254].map(at=>[at,nv.registers.get(at)||0]),
                     graphBusy:!!backend?.pending||nv.graph.flips.some(f=>!!f[3]),backendPending:!!backend?.pending,gpu:{...backend?.stats}};
                 if(item.kind==="write")writes.push(capture);

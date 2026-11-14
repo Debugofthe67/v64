@@ -1,0 +1,124 @@
+{
+  "date": "2026-11-14",
+  "scope": "Side-effect-free diagnostic stack inspection, not a production graphics behavior change.",
+  "problem": "An extended 256-word MMIO capture crossed an unmapped native stack page. CPU.translate_address_system_read calls the normal faulting translator and unwraps its result; catching its JS exception did not undo the guest #PF. The native-dispatch trial logged a Rust panic and subsequently reset the driver. That trial is invalid as graphics evidence.",
+  "change": "MMIO, RAMIN and RAMHT diagnostic stacks now walk current x86 page tables directly in ordinary RAM. Missing/out-of-RAM addresses remain null. No guest exception, TLB fill, A/D bit update or MMIO is performed. Captures remain bounded at 256 words; default MMIO capture stays 16.",
+  "validation": [
+    "Paging-disabled, 4 KiB, cross-page unaligned DWORD, PSE 4 MiB, PAE 4 KiB/NX and 2 MiB mappings.",
+    "Missing pages, high physical pages, 32-bit wrap and a 256-word capture at a stack boundary preserve CR2 and guest RAM exactly.",
+    "node --check on the shared guest harness."
+  ],
+  "nativeProof": {
+    "guest": "XP 93.71, original cold 2001 SE run restored at its coherent pre-fault checkpoint.",
+    "firstCaptureElapsed": 101.237872292,
+    "words": 256,
+    "missingWords": 136,
+    "sequence": [
+      {
+        "offset": 4196100,
+        "write": false,
+        "value": 1447888
+      },
+      {
+        "offset": 4195116,
+        "write": false,
+        "value": 16825964
+      },
+      {
+        "offset": 4194636,
+        "write": false,
+        "value": 0
+      },
+      {
+        "offset": 4194632,
+        "write": false,
+        "value": 16535
+      },
+      {
+        "offset": 4196104,
+        "write": false,
+        "value": 1073744741
+      },
+      {
+        "offset": 4194648,
+        "write": false,
+        "value": 59830
+      },
+      {
+        "offset": 4194568,
+        "write": false,
+        "value": 64
+      },
+      {
+        "offset": 4194564,
+        "write": false,
+        "value": 16384
+      },
+      {
+        "offset": 4196128,
+        "write": true,
+        "value": 1
+      },
+      {
+        "offset": 4196100,
+        "write": false,
+        "value": 1447892
+      },
+      {
+        "offset": 4195116,
+        "write": false,
+        "value": 16825964
+      },
+      {
+        "offset": 4194636,
+        "write": false,
+        "value": 0
+      },
+      {
+        "offset": 4194632,
+        "write": false,
+        "value": 16535
+      },
+      {
+        "offset": 4196104,
+        "write": false,
+        "value": 2
+      },
+      {
+        "offset": 4194648,
+        "write": false,
+        "value": 59830
+      },
+      {
+        "offset": 4194568,
+        "write": false,
+        "value": 64
+      },
+      {
+        "offset": 4194564,
+        "write": false,
+        "value": 16384
+      },
+      {
+        "offset": 4196128,
+        "write": true,
+        "value": 1
+      }
+    ],
+    "result": "Original ISR read trap, context, class=0x4097, instance=0xE9B6, source/status and resumed via 0x400720=1. Extended capture has no Rust panic or instrumentation-triggered reset. Native suite remains under investigation."
+  },
+  "evidence": {
+    "build/nv40-safe-stack-test.log": {
+      "bytes": 79,
+      "sha256": "d42d628fc0453ab4f033ce2b7dd79ed583aa2fba389911db89cb352e5286a78b"
+    },
+    "build/nv40-xp-mark2001-safe-dispatch/first-mmio-stack.json": {
+      "bytes": 3486,
+      "sha256": "e17ba2d9e3e8be97c543c6c011d816e1221121e9dd675a0aaf0b33cccbf8d26f"
+    }
+  },
+  "limits": [
+    "The earlier 16-word/native runs without absent-page faults remain separate evidence; the invalid extended trial is not used to claim a hardware defect or fix.",
+    "Raw stack values are module candidates, not an unwound call stack."
+  ]
+}
