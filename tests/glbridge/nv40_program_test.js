@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+"use strict";
 const assert = require("node:assert/strict");
 (async () => {
 const {decode_vertex_instruction,decode_vertex_program,decode_fragment_program} = await import("../../src/graphics_adapters/geforce_6800/nv40_program.js");
@@ -16,7 +17,7 @@ const scalarBoth=decode_vertex_instruction([0x001F9C6C,0x0809D000,3,0x607E060C])
 assert.equal(scalarBoth.scalar.name,"MOV");assert.equal(scalarBoth.scalar.type,"output");assert.equal(scalarBoth.scalar.index,3);
 assert.deepEqual(scalarBoth.scalar.secondary,{type:"temp",index:12},"shared output selects scalar independently of the temporary destination");
 assert.equal(scalarBoth.vector.discard,true,"temporary destination 63 is disabled");
-for(let unit=0;unit<4;unit++)
+for (let unit=0;unit<4;unit++)
 {
     const instruction=mov.slice();instruction[1]=(instruction[1]&~(31<<22))|25<<22;instruction[2]|=unit<<8;
     const decoded=decode_vertex_instruction(instruction);assert.equal(decoded.vector.name,"TXL");assert.equal(decoded.texture,unit);
@@ -26,7 +27,7 @@ const dual=decode_vertex_instruction(Uint32Array.of(0x06E11C6C,0x0880730D,0x8106
 assert.equal(dual.vector.name,"MUL");assert.equal(dual.scalar.name,"MOV");assert.equal(dual.sources[1].type,"constant");
 assert.equal(dual.sources[1].index,7);assert.equal(dual.sources[0].index,3);assert.equal(dual.sources[2].negate,true);
 assert.equal(dual.saturate,true);assert.equal(dual.predicate.register,1);assert.equal(dual.sources[0].absolute,true);
-for(const index of [255,256,408,511,512,543,1023])
+for (const index of [255,256,408,511,512,543,1023])
 {
     const words=Uint32Array.of(0x06E11C6C,0x0880730D,0x8106C0E3,0x60AB427D);
     words[1]=(words[1]&~0x3FF000)|index<<12;

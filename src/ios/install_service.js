@@ -7,8 +7,8 @@ import { runtime_trust_node, publish_runtime_trust, validate_runtime_arena, IOS_
 function snapshot_arena(saved)
 {
     const data=saved[2];
-    if(saved[0]===1 || data===null)return data;
-    if(!Array.isArray(data)||data.length!==5)throw new Error("Invalid iPhone snapshot code trust arena");
+    if(saved[0]===1 || data===null) return data;
+    if(!Array.isArray(data)||data.length!==5) throw new Error("Invalid iPhone snapshot code trust arena");
     return {physical:data[0],virtual:data[1],size:data[2],used:data[3],head:data[4]};
 }
 
@@ -151,9 +151,9 @@ export class IOSInstallService
     }
     launch(bundle_id)
     {
-        if(!this.peer?.can_launch)throw new Error("This iPhone helper cannot open applications");
-        if(!this.state.apps.some(a=>a.bundle_id===bundle_id))throw new Error("The application is not in this iPhone's installed application list");
-        if(!/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(bundle_id))throw new Error("Invalid application identifier");
+        if(!this.peer?.can_launch) throw new Error("This iPhone helper cannot open applications");
+        if(!this.state.apps.some(a=>a.bundle_id===bundle_id)) throw new Error("The application is not in this iPhone's installed application list");
+        if(!/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(bundle_id)) throw new Error("Invalid application identifier");
         return this.request(OP.LAUNCH,new TextEncoder().encode(bundle_id));
     }
     get_state()

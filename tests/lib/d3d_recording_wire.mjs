@@ -25,7 +25,7 @@ export function inspect_d3d8_recording_wire(bytes) {
     }
     assert.equal(frames,6);for(const group of groups)assert(group.recordingCommands.every(name=>name==="PRESENT"||name==="WINDOW_STATE"),"recording leaked host commands: "+group.recordingCommands);
     const expected=[["SET_RENDER_STATE","SET_TEXTURE_STAGE_STATE","SET_VIEWPORT","SET_MATERIAL","SET_TRANSFORM","SET_STREAM_SOURCE","SET_INDICES","SET_TEXTURE","SET_FVF"],["SET_VERTEX_SHADER_CONSTANT_F","SET_PIXEL_SHADER_CONSTANT_F","SET_CLIP_PLANE"]];
-    for(let i=0;i<2;++i)for(const name of expected[i])assert(groups[i].applyCommands.includes(name),"missing Apply command: "+name);
+    for(let i=0;i<2;++i) for(const name of expected[i])assert(groups[i].applyCommands.includes(name),"missing Apply command: "+name);
     assert.deepEqual(groups[1].values,[
         {command:"SET_VERTEX_SHADER_CONSTANT_F",index:94,values:[.375,.625,.875,1]},
         {command:"SET_VERTEX_SHADER_CONSTANT_F",index:95,values:[.125,.25,.5,.75]},

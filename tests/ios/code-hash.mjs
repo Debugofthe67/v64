@@ -9,7 +9,7 @@ import { cdhashes } from "../../src/ios/guest_load.js";
 
 test("guest code identity verifies every page and rejects invalid signature bounds",{skip:process.platform!=="darwin"&&"native helper check requires CommonCrypto on the macOS build host"},()=>{
     const temp=fs.mkdtempSync(path.join(os.tmpdir(),"v86-ipa-signature-"));
-    try{
+    try {
         const checker=path.join(temp,"check"),file=path.join(temp,"image");
         execFileSync(process.env.CC||"cc",["-O2","tests/ios/code-hash.c","-o",checker,...process.platform==="darwin"?[]:["-lcrypto"]],{stdio:"pipe"});
         const bytes=new Uint8Array(20000),v=new DataView(bytes.buffer),put=(a,n)=>v.setUint32(a,n,true);
@@ -30,5 +30,5 @@ test("guest code identity verifies every page and rejects invalid signature boun
         const signature=b.getUint32(28+180+8,true),directory=signature+b.getUint32(signature+16);
         b.setUint32(directory+16,0xFFFFFFF0);fs.writeFileSync(file,broken);
         assert.throws(()=>execFileSync(checker,[file],{stdio:"pipe"}));
-    }finally{fs.rmSync(temp,{recursive:true,force:true});}
+    } finally {fs.rmSync(temp,{recursive:true,force:true});}
 });

@@ -30,7 +30,7 @@ export function texture_cases() {
     // Source t0 is produced by a real TEX. Test old addressing modifiers with
     // independent dot/matrix/bump equations, including cube face selection.
     const initial=["t0 = vec4<f32>(0.8125,0.3125,0.0,1.0);","t1 = vec4<f32>(1.0,0.0,0.0,1.0);","t2 = vec4<f32>(0.0,1.0,0.0,1.0);","t3 = vec4<f32>(0.0,0.0,1.0,1.0);"];
-    for(const modifier of [0,4])for(const kind of ["dp3","dp3tex","m3x2","m3x3","spec","vspec","bem","beml","matrix-result","reg2rgb"]) {
+    for(const modifier of [0,4]) for(const kind of ["dp3","dp3tex","m3x2","m3x3","spec","vspec","bem","beml","matrix-result","reg2rgb"]) {
         const value=sample([0.8125,0.3125]).map(x=>modifier===4?2*x-1:x),s=src(3,0,0xe4,modifier),body=[[66,dst(3,0)]];
         let resultIndex=1,expected;
         if(kind==="matrix-result") {
@@ -51,7 +51,7 @@ export function texture_cases() {
         body.push([1,dst(0,0),src(3,resultIndex)]);
         cases.push({name:`ps1/${kind}/modifier${modifier}`,tokens:shader("pixel",1,body,["matrix-result","reg2rgb"].includes(kind)?3:1),options:["m3x3","spec","vspec"].includes(kind)?{legacySamplerTypes:{3:"cube"}}:{},f:[[1,1,1,1]],i:[],init:initial.filter((_,i)=>i<=resultIndex).map((line,i)=>i===1&&kind.startsWith("bem")?"t1 = vec4<f32>(0.5625,0.5625,0.0,1.0);":line).join("\n"),expected:()=>expected,bump:[0.5,0,0,0.5],luminance:[0.5,0.5,0,0]});
     }
-    for(const kind of ["texdepth","texm3x2depth"])for(const [n,d] of [[0,0],[.25,0],[0,1],[.25,1],[.75,1],[-.25,-1],[.125,.5]]) {
+    for(const kind of ["texdepth","texm3x2depth"]) for(const [n,d] of [[0,0],[.25,0],[0,1],[.25,1],[.75,1],[-.25,-1],[.125,.5]]) {
         const body=kind==="texdepth"?[[0xfffd],[87,dst(0,5)]]:[[71,dst(3,1),src(3,0)],[84,dst(3,2),src(3,0)]];
         const init=kind==="texdepth"?`r5 = vec4<f32>(${n},${d},0.0,1.0);`:
             `t0 = vec4<f32>(1.0,0.0,0.0,1.0);t1 = vec4<f32>(${n},0.4,0.7,1.0);t2 = vec4<f32>(${d},0.3,0.8,1.0);`;

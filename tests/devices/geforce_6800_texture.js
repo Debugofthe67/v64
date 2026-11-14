@@ -14,7 +14,7 @@ const vertexObject={methods:new Map([[0x184,0x10]])};
 for(let unit=0;unit<4;unit++)
 {
     const at=0x900+unit*32,offset=0x8000+unit*128;
-    for(const [field,value]of [[0,offset],[4,0x2BB21],[8,0x303],[12,0x80008000],[16,40],[20,0],[24,2<<16|2]])vertexObject.methods.set(at+field,value);
+    for(const [field,value] of [[0,offset],[4,0x2BB21],[8,0x303],[12,0x80008000],[16,40],[20,0],[24,2<<16|2]])vertexObject.methods.set(at+field,value);
     const surface=texture.vertex(vertexObject,unit);assert.equal(surface.d3d,116);assert.equal(surface.bpp,16);
     vram.fill(unit+1,offset,offset+80);vram.fill(unit+11,offset+80,offset+96);
     const levels=texture.images(surface);assert.deepEqual(levels.map(bytes=>bytes.length),[64,16]);
@@ -39,7 +39,7 @@ assert.deepEqual([...new Uint16Array(texture.read(texture.describe(scalar16,0)).
 assert.throws(()=>texture.read({...a16,dma:{...a16.dma,limit:0x9008}}),/limit/,"last A16 row remains DMA checked");
 console.log("PASS: native A16 UNORM16 scalar, G storage component, crossbar replication, padding and DMA bounds");
 const pair16={methods:new Map(scalar16.methods)};
-for(const [at,value]of [[0x1A04,0x13529],[0x1A10,0x694E],[0x1840,12]])pair16.methods.set(at,value);
+for(const [at,value] of [[0x1A04,0x13529],[0x1A10,0x694E],[0x1840,12]])pair16.methods.set(at,value);
 new Uint16Array(vram.buffer,0x9000,10).set([1,65535,32768,2,0xDEAD,0xBEEF,65534,0,3,16384]);
 const la16=texture.describe(pair16,0);assert.equal(la16.bpp,4);assert.equal(la16.d3d,36);
 assert.deepEqual([...new Uint16Array(texture.read(la16).buffer)],
@@ -48,12 +48,12 @@ pair16.methods.set(0x1A10,0xAA6C);
 assert.deepEqual([...new Uint16Array(texture.read(texture.describe(pair16,0)).buffer).slice(0,8)],
     [1,65535,1,65535,32768,2,32768,2],"A16L16 exposes both aliases of each packed lane");
 pair16.methods.set(0x1A10,0x694E);
-for(const [at,value]of [[0x1A04,0x1152D],[0x1A18,1<<16|1],[0x1840,4]])pair16.methods.set(at,value);
-for(let face=0;face<6;face++)new Uint16Array(vram.buffer,0x9000+face*128,2).set([face+1,65535-face]);
+for(const [at,value] of [[0x1A04,0x1152D],[0x1A18,1<<16|1],[0x1840,4]])pair16.methods.set(at,value);
+for(let face=0;face<6;face++) new Uint16Array(vram.buffer,0x9000+face*128,2).set([face+1,65535-face]);
 assert.deepEqual(texture.images(texture.describe(pair16,0)).map(bytes=>[...new Uint16Array(bytes.buffer)].slice(0,2)),
     Array.from({length:6},(_,face)=>[face+1,65535-face]),"A16L16 native cube faces retain 128-byte alignment");
 console.log("PASS: native A16L16 UNORM16 pair, crossbar, padded rows and aligned cube faces");
-for(const [code,bpp,format]of [[16,4,75],[18,2,80]])
+for(const [code,bpp,format] of [[16,4,75],[18,2,80]])
 {
     const depth={methods:new Map([[0x184,0x10],[0x1A00,0x9000],[0x1A04,0x12021|code<<8],[0x1A08,0x60000303],
         [0x1A0C,0x80000000],[0x1A10,0xAAE4],[0x1A14,0x01010000],[0x1A18,2<<16|2],[0x1840,2*bpp]])};
@@ -63,7 +63,7 @@ for(const [code,bpp,format]of [[16,4,75],[18,2,80]])
     depth.methods.set(0x1A04,0x22021|code<<8);assert.throws(()=>texture.describe(depth,0),/depth comparison mip/);
 }
 const anisotropic={methods:new Map(o.methods)};anisotropic.methods.set(0x1A14,0x02060000);
-for(const [code,expected]of [1,2,4,6,8,10,12,16].entries())
+for(const [code,expected] of [1,2,4,6,8,10,12,16].entries())
 {
     anisotropic.methods.set(0x1A0C,0x80000000|code<<4);
     assert.equal(texture.describe(anisotropic,0).anisotropy,expected,"native anisotropy encoding "+code);
@@ -173,7 +173,7 @@ const fp16=texture.describe(o,0);assert.equal(fp16.d3d,113);assert.equal(fp16.up
 assert.deepEqual([...new Uint16Array(texture.read(fp16).buffer)],[0x4000,0xBC00,0x3800,0x3400],"FP16 preserves HDR, negative channels and exact half bits");
 o.methods.set(0x1A10,0xAAE4);assert.deepEqual([...new Uint16Array(texture.read(texture.describe(o,0)).buffer)],
     [0x3800,0xBC00,0x4000,0x3400],"FP16 component crossbar");
-for(const [code,bpp,expected]of [[27,16,[0x7FFF3800,0x80000000,0x40400000,0x3F000000]],
+for(const [code,bpp,expected] of [[27,16,[0x7FFF3800,0x80000000,0x40400000,0x3F000000]],
     [28,4,[0x7FFF3800,0,0,0x3F800000]]])
 {
     o.methods.set(0x1A04,0x12029|code<<8);o.methods.set(0x1840,bpp);o.methods.set(0x1A10,0xAA6C);
@@ -193,7 +193,7 @@ console.log("PASS: FP32 fragment textures preserve raw bits, expand R32F and app
 o.methods.set(0x1A04,0x3052D);o.methods.set(0x1A18,4<<16|4);o.methods.set(0x1A10,0xAA6C);o.methods.set(0x1A0C,0x80010000);
 for(let face=0;face<6;face++)
 {
-    for(const [offset,count,red]of [[0,16,10+face],[64,4,30+face],[80,1,50+face]])
+    for(const [offset,count,red] of [[0,16,10+face],[64,4,30+face],[80,1,50+face]])
         for(let pixel=0;pixel<count;pixel++)vram.set([red,0,0,255],0x2000+face*128+offset+pixel*4);
 }
 const cube=texture.describe(o,0);assert.equal(cube.cube,true);
@@ -202,12 +202,12 @@ o.methods.set(0x1A0C,0x80000000);
 assert.deepEqual(texture.images(texture.describe(o,0)).map(bytes=>bytes[0]),Array.from({length:6},(_,face)=>10+face),"LOD clamp retains full face strides");
 assert.throws(()=>texture.images({...cube,dma:{...cube.dma,limit:0x2000+5*128+82}}),/limit/,"last face mip is checked before any upload");
 o.methods.set(0x1A04,0x3252D);o.methods.set(0x1840,16);o.methods.set(0x1A0C,0x80010000);
-for(let face=0;face<6;face++)for(const [offset,red]of [[0,70+face],[64,90+face],[96,110+face]])vram.set([red,0,0,255],0x2000+face*112+offset);
+for(let face=0;face<6;face++) for(const [offset,red] of [[0,70+face],[64,90+face],[96,110+face]])vram.set([red,0,0,255],0x2000+face*112+offset);
 assert.deepEqual(texture.images(texture.describe(o,0)).map(bytes=>bytes[0]),Array.from({length:6},(_,face)=>[70+face,90+face,110+face]).flat(),"uniform-pitch cube faces are not padded");
 o.methods.set(0x1A18,4<<16|2);assert.throws(()=>texture.describe(o,0),/square/);
 // Three-axis Morton order interleaves only the remaining dimension bits.
 o.methods.set(0x1A04,0x30539);o.methods.set(0x1A18,4<<16|2);o.methods.set(0x1840,2<<20);
-for(let z=0;z<2;z++)for(let y=0;y<2;y++)for(let x=0;x<4;x++)
+for(let z=0;z<2;z++) for(let y=0;y<2;y++) for(let x=0;x<4;x++)
 {
     const index=(x&1)|(y<<1)|(z<<2)|(x&2)<<2;
     vram.set([(z*2+y)*4+x+1,0,0,255],0x2000+index*4);
@@ -219,7 +219,7 @@ assert.deepEqual(Array.from({length:16},(_,i)=>volumeImages[0][i*4]),Array.from(
 assert.deepEqual(volumeImages.map(image=>image.length),[64,8,4]);assert.equal(volumeImages[1][0],21);assert.equal(volumeImages[2][0],31);
 assert.throws(()=>texture.images({...volume,dma:{...volume.dma,limit:0x204A}}),/limit/);
 o.methods.set(0x1A04,0x32539);o.methods.set(0x1840,2<<20|20);
-for(let row=0;row<4;row++)for(let x=0;x<4;x++)vram.set([row*4+x+1,0,0,255],0x2000+row*20+x*4);
+for(let row=0;row<4;row++) for(let x=0;x<4;x++)vram.set([row*4+x+1,0,0,255],0x2000+row*20+x*4);
 vram.set([21,0,0,255,22,0,0,255],0x2050);vram.set([31,0,0,255],0x2064);
 const volumeLinear=texture.images(texture.describe(o,0));assert.deepEqual(volumeLinear.map(image=>image[0]),[1,21,31]);
 assert.deepEqual(Array.from({length:16},(_,i)=>volumeLinear[0][i*4]),Array.from({length:16},(_,i)=>i+1),"linear volume slice and row pitches");

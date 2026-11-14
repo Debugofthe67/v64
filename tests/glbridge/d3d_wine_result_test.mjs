@@ -23,6 +23,6 @@ const cleaned={devices:0,resources:0,sessions:0,sessionCleanup:[{devices:1,resou
 assert_wine_graphics_cleanup(cleaned);
 for(const after of [undefined,{...cleaned.sessionCleanup[0].after,devices:1},{...cleaned.sessionCleanup[0].after,resources:1},{...cleaned.sessionCleanup[0].after,pendingFrame:true},{...cleaned.sessionCleanup[0].after,activeQuery:true}])
     assert.throws(()=>assert_wine_graphics_cleanup({...cleaned,sessionCleanup:[{after}]}));
-for(const field of ['devices','resources','sessions'])assert.throws(()=>assert_wine_graphics_cleanup({...cleaned,[field]:1}));
+for(const field of ["devices","resources","sessions"])assert.throws(()=>assert_wine_graphics_cleanup({...cleaned,[field]:1}));
 assert.throws(()=>assert_wine_graphics_cleanup({...cleaned,sessionCleanup:[]}));
-console.log('PASS owner cleanup gate: retain pre-cleanup counts; reject surviving graphics state, sessions or missing post-cleanup evidence');
+console.log("PASS owner cleanup gate: retain pre-cleanup counts; reject surviving graphics state, sessions or missing post-cleanup evidence");

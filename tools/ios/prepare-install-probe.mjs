@@ -58,16 +58,16 @@ try
         // adapter from the read-only system volume, not the mobile data volume.
         const bytes = await rewrite_daemon(volume,write,p,compress,input=>{
             const parsed=macho_parse(input);
-            if(parsed.dylibs.includes(SYSTEM_GL_LIBRARY))return input;
-            if(!parsed.dylibs.includes(GUEST_GL_LIBRARY))return link_guest_gles(input,SYSTEM_GL_LIBRARY);
+            if(parsed.dylibs.includes(SYSTEM_GL_LIBRARY)) return input;
+            if(!parsed.dylibs.includes(GUEST_GL_LIBRARY)) return link_guest_gles(input,SYSTEM_GL_LIBRARY);
             const v=new DataView(input.buffer,input.byteOffset,input.byteLength);
             for(let at=28,i=0;i<v.getUint32(16,true);i++,at+=v.getUint32(at+4,true)){
-                if(![12,0x80000018].includes(v.getUint32(at,true)))continue;
+                if(![12,0x80000018].includes(v.getUint32(at,true))) continue;
                 const start=at+v.getUint32(at+8,true),end=at+v.getUint32(at+4,true),previous=input.subarray(start,end);
-                if(new TextDecoder().decode(previous).replace(/\0.*$/,"")!==GUEST_GL_LIBRARY)continue;
+                if(new TextDecoder().decode(previous).replace(/\0.*$/,"")!==GUEST_GL_LIBRARY) continue;
                 const replacement=new Uint8Array(previous.length);replacement.set(new TextEncoder().encode(SYSTEM_GL_LIBRARY));
                 return patch_guest_code(input,start,previous,replacement);
-            }throw Error("Missing legacy display adapter command");
+            } throw Error("Missing legacy display adapter command");
         });
         executables.push(bytes);
     }

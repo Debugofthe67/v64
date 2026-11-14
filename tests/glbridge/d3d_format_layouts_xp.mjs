@@ -9,7 +9,7 @@ import {inspect_format_layouts_wire} from "../lib/d3d_format_layouts_wire.mjs";
 import {run_xp_ram_probe} from "../lib/xp_ram_probe.mjs";
 const root = file_url_to_path(new URL("../../", import.meta.url)), site = site_directory(root), out = path.resolve(process.env.D9WG_FORMAT_LAYOUTS_OUT || root + "build/d3d-review/stage4f1-formats-xp"); fs.mkdirSync(out, {recursive: true});
 const files = {"V86GL.SYS": fs.readFileSync(site + "/glbridge/v86gl_driver/v86gl.sys")};
-for (const api of [8, 9]) {
+for(const api of [8, 9]) {
     run("sh", [site + "/glbridge/d3d" + api + "proxy/build.sh", out + "/D3D" + api + ".DLL"], {stdio: "pipe"});
     run(process.env.D9WG_CC || "i686-w64-mingw32-gcc", ["-mwindows", "-std=gnu99", "-Os", "-s", "-nostdlib", "-Wall", "-Wextra", "-Werror", "-DD9WG_FORMAT_API=" + api, "-Wl,--subsystem,windows:5.01", "-Wl,-e,_WinMainCRTStartup@0", "-o", out + "/FORMAT" + api + ".EXE", site + "/glbridge/sample/d3d_format_layout_test.c", "-luser32", "-lkernel32"], {stdio: "pipe"});
     files["FORMAT" + api + ".EXE"] = fs.readFileSync(out + "/FORMAT" + api + ".EXE"); files["D3D" + api + ".DLL"] = fs.readFileSync(out + "/D3D" + api + ".DLL");

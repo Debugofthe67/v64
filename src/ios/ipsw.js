@@ -52,7 +52,7 @@ export function keys_parse(source)
 {
     let keys;
     try { keys = typeof source === "string" ? JSON.parse(source) : source; }
-    catch { throw new Error("The keys file is not valid JSON. Save or paste the full response from JSON → Keys."); }
+    catch{ throw new Error("The keys file is not valid JSON. Save or paste the full response from JSON → Keys."); }
     if(keys && typeof keys === "object" && !keys.format) keys = wiki_n90_keys(keys);
     if(keys?.format !== KEY_FORMAT || keys.version !== 1)
         throw new Error(`Choose the iPhone3,1 (10B329) keys JSON from The Apple Wiki or a ${KEY_FORMAT} version 1 file.`);

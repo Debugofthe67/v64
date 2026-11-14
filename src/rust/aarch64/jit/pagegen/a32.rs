@@ -40,12 +40,24 @@ pub enum Kind {
     /// B, BL, B<c>: to `target` (the page's offset, wrapping), when `cond`
     /// holds (14: always); BL's LR the next instruction's address (T32's
     /// with bit 0 set)
-    Branch { target: u64, cond: u8, link: bool },
+    Branch {
+        target: u64,
+        cond: u8,
+        link: bool,
+    },
     /// CBZ, CBNZ (T32)
-    CompareBranch { rn: u8, nonzero: bool, target: u64 },
+    CompareBranch {
+        rn: u8,
+        nonzero: bool,
+        target: u64,
+    },
     /// BX, BLX of a register: the same instruction set's target (else a
     /// retry), when `cond` holds (A32's may have one)
-    Exchange { rm: u8, link: bool, cond: u8 },
+    Exchange {
+        rm: u8,
+        link: bool,
+        cond: u8,
+    },
     /// data processing (Q6.2): `op` A32's opcode (ORN 16), `rn` 16 for
     /// none (MOV, MVN), 15 the PC as the instruction set reads it (A32 +8,
     /// T32's Align(PC + 4, 4): ADR's); not into the PC
@@ -65,9 +77,20 @@ pub enum Kind {
         cond: u8,
     },
     /// MRS of CPSR/APSR, excluding the execution-state T/IT bits.
-    Status { rd: u8, cond: u8 },
+    Status {
+        rd: u8,
+        cond: u8,
+    },
     /// BFI/BFC and signed/unsigned bitfield extraction; rn NONE clears.
-    Bitfield { rd: u8, rn: u8, lsb: u8, width: u8, insert: bool, signed: bool, cond: u8 },
+    Bitfield {
+        rd: u8,
+        rn: u8,
+        lsb: u8,
+        width: u8,
+        insert: bool,
+        signed: bool,
+        cond: u8,
+    },
     /// LDR, STR and their byte, halfword and signed forms: a size of
     /// 1 << `size` bytes; `index`: the offset address accessed, `writeback`
     /// to Rn; Rn 15: a literal (no writeback); never of the PC
@@ -105,7 +128,15 @@ pub enum Kind {
     },
     /// UMULL, UMLAL, SMULL, SMLAL and UMAAL. Read all operands before
     /// either destination is written (sources may overlap destinations).
-    MultiplyLong { op: u8, s: bool, lo: u8, hi: u8, rn: u8, rm: u8, cond: u8 },
+    MultiplyLong {
+        op: u8,
+        s: bool,
+        lo: u8,
+        hi: u8,
+        rn: u8,
+        rm: u8,
+        cond: u8,
+    },
     /// Byte/halfword extension, optionally added to Rn (NONE: no addend).
     Extend {
         rd: u8,
@@ -129,7 +160,12 @@ pub enum Kind {
         cond: u8,
     },
     /// CLZ (0), REV (1), REV16 (2), REVSH (3)
-    Bits { op: u8, rd: u8, rm: u8, cond: u8 },
+    Bits {
+        op: u8,
+        rd: u8,
+        rm: u8,
+        cond: u8,
+    },
     /// VLDR, VSTR (`single`: one register at Rn plus or minus `imm`; Rn 15
     /// a literal), VLDM, VSTM, VPUSH, VPOP: `count` S (or with `double` D)
     /// registers from `first`, word aligned and in one page (Q6.3)
@@ -1224,7 +1260,9 @@ fn a32_native(word: u32) -> Option<Kind> {
     if cond == 15 {
         return None;
     }
-    if word & 0x0FFF_FFFF == 0x0320_F000 { return Some(Kind::Nop); }
+    if word & 0x0FFF_FFFF == 0x0320_F000 {
+        return Some(Kind::Nop);
+    }
     let rd = (word >> 12 & 15) as u8;
     if word & 0x0FFF_0FFF == 0x010F_0000 && rd != 15 {
         return Some(Kind::Status { rd, cond });
@@ -1242,11 +1280,21 @@ fn a32_native(word: u32) -> Option<Kind> {
                 if word >> 4 & 15 == 9 && word >> 24 & 15 == 0 {
                     let op = (word >> 21 & 7) as u8;
                     let rs = (word >> 8 & 15) as u8;
-                    if (op >= 4 || op == 2 && !l) && rn != 15 && rd != 15
-                        && rm != 15 && rs != 15 && rn != rd
+                    if (op >= 4 || op == 2 && !l)
+                        && rn != 15
+                        && rd != 15
+                        && rm != 15
+                        && rs != 15
+                        && rn != rd
                     {
                         return Some(Kind::MultiplyLong {
-                            op, s: l, lo: rd, hi: rn, rn: rm, rm: rs, cond,
+                            op,
+                            s: l,
+                            lo: rd,
+                            hi: rn,
+                            rn: rm,
+                            rm: rs,
+                            cond,
                         });
                     }
                     // MUL, MLA, MLS (no S)
@@ -1387,11 +1435,22 @@ fn a32_native(word: u32) -> Option<Kind> {
                     let lsb = (word >> 7 & 31) as u8;
                     let limit = (word >> 16 & 31) as u8;
                     let insert = form == 0x07C0_0010;
-                    if rd == 15 || !insert && rm == 15 || insert && limit < lsb { return None; }
+                    if rd == 15 || !insert && rm == 15 || insert && limit < lsb {
+                        return None;
+                    }
                     let width = if insert { limit - lsb + 1 } else { limit + 1 };
-                    if lsb as u32 + width as u32 > 32 { return None; }
-                    return Some(Kind::Bitfield { rd, rn: if rm == 15 { NONE } else { rm }, lsb, width,
-                        insert, signed: form == 0x07A0_0050, cond });
+                    if lsb as u32 + width as u32 > 32 {
+                        return None;
+                    }
+                    return Some(Kind::Bitfield {
+                        rd,
+                        rn: if rm == 15 { NONE } else { rm },
+                        lsb,
+                        width,
+                        insert,
+                        signed: form == 0x07A0_0050,
+                        cond,
+                    });
                 }
                 // REV, REV16, REVSH
                 let bits = match word & 0x0FFF_0FF0 {
@@ -1404,8 +1463,7 @@ fn a32_native(word: u32) -> Option<Kind> {
                     return (rd != 15 && rm != 15).then_some(Kind::Bits { op, rd, rm, cond });
                 }
                 // Byte/halfword extensions and their accumulating forms.
-                if word >> 23 & 3 == 0b01 && word >> 4 & 15 == 7 && rd != 15 && rm != 15
-                {
+                if word >> 23 & 3 == 0b01 && word >> 4 & 15 == 7 && rd != 15 && rm != 15 {
                     let op = word >> 20 & 7;
                     let (signed, half) = match op {
                         0b010 => (true, false),
@@ -1806,11 +1864,22 @@ fn t32_native32(hw1: u32, hw2: u32, rn: u8, rd: u8, rt: u8, rm: u8, s: bool) -> 
             let insert = op == 0b10110;
             let lsb = ((hw2 >> 10 & 0x1C) | (hw2 >> 6 & 3)) as u8;
             let limit = (hw2 & 31) as u8;
-            if rd == 13 || rd == 15 || rn == 13 || !insert && rn == 15 || insert && limit < lsb { return None; }
+            if rd == 13 || rd == 15 || rn == 13 || !insert && rn == 15 || insert && limit < lsb {
+                return None;
+            }
             let width = if insert { limit - lsb + 1 } else { limit + 1 };
-            if lsb as u32 + width as u32 > 32 { return None; }
-            return Some(Kind::Bitfield { rd, rn: if rn == 15 { NONE } else { rn }, lsb, width,
-                insert, signed: op == 0b10100, cond: 14 });
+            if lsb as u32 + width as u32 > 32 {
+                return None;
+            }
+            return Some(Kind::Bitfield {
+                rd,
+                rn: if rn == 15 { NONE } else { rn },
+                lsb,
+                width,
+                insert,
+                signed: op == 0b10100,
+                cond: 14,
+            });
         }
         if rd == 15 || rd == 13 && rn != 13 {
             return None;
@@ -1963,14 +2032,26 @@ fn t32_native32(hw1: u32, hw2: u32, rn: u8, rd: u8, rt: u8, rm: u8, s: bool) -> 
     }
     if hw1 >> 7 == 0b111110111 {
         let op = match (hw1 >> 4 & 7, hw2 >> 4 & 15) {
-            (0, 0) => 6, (2, 0) => 4, (4, 0) => 7, (6, 0) => 5, (6, 6) => 2,
+            (0, 0) => 6,
+            (2, 0) => 4,
+            (4, 0) => 7,
+            (6, 0) => 5,
+            (6, 6) => 2,
             _ => return None,
         };
         let lo = rt;
         if [lo, rd, rn, rm].iter().any(|&r| r == 13 || r == 15) || lo == rd {
             return None;
         }
-        return Some(Kind::MultiplyLong { op, s: false, lo, hi: rd, rn, rm, cond: 14 });
+        return Some(Kind::MultiplyLong {
+            op,
+            s: false,
+            lo,
+            hi: rd,
+            rn,
+            rm,
+            cond: 14,
+        });
     }
     if hw1 >> 7 == 0b111110100 && hw2 >> 12 == 15 && hw2 & 0xF0 == 0 {
         // LSL, LSR, ASR, ROR of a register (Rm the amount)
@@ -2268,7 +2349,12 @@ pub(super) fn discover(
         // (an instruction of an IT block whose instructions are all native)
         if let Some(&itstate) = native_it.borrow().get(&o) {
             return (
-                t32_native_it(word, length, itstate >> 4).map(|kind| Inst32 { word, length, kind, itstate }),
+                t32_native_it(word, length, itstate >> 4).map(|kind| Inst32 {
+                    word,
+                    length,
+                    kind,
+                    itstate,
+                }),
                 length as u16,
             );
         }
@@ -2353,7 +2439,12 @@ pub(super) fn discover(
             }
         }
         (
-            kind.map(|kind| Inst32 { word, length, kind, itstate: 0 }),
+            kind.map(|kind| Inst32 {
+                word,
+                length,
+                kind,
+                itstate: 0,
+            }),
             length as u16,
         )
     };
@@ -2452,18 +2543,27 @@ impl Emitter<'_> {
         if self.a32_gpr_locals {
             self.g(n as usize);
             self.b.wrap_i64_to_i32();
-        } else { self.load32(super::x_address(n as usize)); }
+        }
+        else {
+            self.load32(super::x_address(n as usize));
+        }
     }
     /// LR := the address after the instruction (T32's with bit 0 set)
     fn link(&mut self, offset: u16, length: u8) {
-        if !self.a32_gpr_locals { self.c32(super::x_address(14) as i32); }
+        if !self.a32_gpr_locals {
+            self.c32(super::x_address(14) as i32);
+        }
         self.linear(offset as u64 + length as u64);
         self.c64(if self.env.isa == Isa::T32 { 1 } else { 0 });
         self.b.or_i64();
         self.c64(0xFFFF_FFFF);
         self.b.and_i64();
-        if self.a32_gpr_locals { self.s(14); }
-        else { self.b.store_aligned_i64(0); }
+        if self.a32_gpr_locals {
+            self.s(14);
+        }
+        else {
+            self.b.store_aligned_i64(0);
+        }
     }
 
     // ---- Q6.2's native forms: the registers and NZCV in memory
@@ -2485,11 +2585,17 @@ impl Emitter<'_> {
     }
     /// R[n] := the i32 in local `l`
     fn set_r32(&mut self, n: u8, l: usize) {
-        if !self.a32_gpr_locals { self.c32(super::x_address(n as usize) as i32); }
+        if !self.a32_gpr_locals {
+            self.c32(super::x_address(n as usize) as i32);
+        }
         self.gi(l);
         self.b.extend_unsigned_i32_to_i64();
-        if self.a32_gpr_locals { self.s(n as usize); }
-        else { self.b.store_aligned_i64(0); }
+        if self.a32_gpr_locals {
+            self.s(n as usize);
+        }
+        else {
+            self.b.store_aligned_i64(0);
+        }
     }
     /// Push NZCV (memory's)
     fn nzcv(&mut self) { self.load32(state::nzcv as u32); }
@@ -2906,8 +3012,12 @@ impl Emitter<'_> {
         self.b.extend_unsigned_i32_to_i64();
         self.s(super::ADDR);
         // (a miss, a fault, an access across the page: the interpreter's)
-        if load && size == 2 { self.host_read32(offset); }
-        else { self.host(1 << size, !load, offset); }
+        if load && size == 2 {
+            self.host_read32(offset);
+        }
+        else {
+            self.host(1 << size, !load, offset);
+        }
         if load {
             self.load_value(size as u32, signed, true);
             self.s(super::T1);
@@ -2925,10 +3035,16 @@ impl Emitter<'_> {
             if writeback {
                 self.set_r32(rn, A2);
             }
-            if !self.a32_gpr_locals { self.c32(super::x_address(rt as usize) as i32); }
+            if !self.a32_gpr_locals {
+                self.c32(super::x_address(rt as usize) as i32);
+            }
             self.g(super::T1);
-            if self.a32_gpr_locals { self.s(rt as usize); }
-            else { self.b.store_aligned_i64(0); }
+            if self.a32_gpr_locals {
+                self.s(rt as usize);
+            }
+            else {
+                self.b.store_aligned_i64(0);
+            }
         }
         else {
             self.operand(rt, offset);
@@ -3002,15 +3118,21 @@ impl Emitter<'_> {
         let mut at = 0;
         for r in (0..15u8).filter(|r| list & 1 << r != 0) {
             if load {
-                if !self.a32_gpr_locals { self.c32(super::x_address(r as usize) as i32); }
+                if !self.a32_gpr_locals {
+                    self.c32(super::x_address(r as usize) as i32);
+                }
                 self.gi(super::HH);
                 if at != 0 {
                     self.c32(at);
                     self.b.add_i32();
                 }
                 self.load_value(2, false, true);
-                if self.a32_gpr_locals { self.s(r as usize); }
-                else { self.b.store_aligned_i64(0); }
+                if self.a32_gpr_locals {
+                    self.s(r as usize);
+                }
+                else {
+                    self.b.store_aligned_i64(0);
+                }
             }
             else {
                 self.gi(super::HH);
@@ -3121,7 +3243,9 @@ impl Emitter<'_> {
     /// A helper call: the interpreter's execute of the instruction
     /// (pages::a32_page_helper), a refusal retried in the interpreter
     fn a32_helper(&mut self, word: u32, length: u8, offset: u16) {
-        if self.a32_gpr_locals { self.writeback(); }
+        if self.a32_gpr_locals {
+            self.writeback();
+        }
         self.c32(word as i32);
         self.linear(offset as u64);
         self.c32(length as i32);
@@ -3246,9 +3370,13 @@ impl Emitter<'_> {
                 e.b.and_i64();
                 e.o(crate::wasmgen::wasm_opcodes::OP_I64EQZ);
             };
-            zero(self, T3); self.b.eqz_i32();
+            zero(self, T3);
+            self.b.eqz_i32();
             zero(self, T0);
-            if op != 3 { zero(self, T1); self.b.or_i32(); }
+            if op != 3 {
+                zero(self, T1);
+                self.b.or_i32();
+            }
             self.b.or_i32();
             self.b.and_i32();
         }
@@ -3691,15 +3819,21 @@ impl Emitter<'_> {
         self.si(super::HH);
         for (k, r) in [rt, rt2].into_iter().enumerate() {
             if load {
-                if !self.a32_gpr_locals { self.c32(super::x_address(r as usize) as i32); }
+                if !self.a32_gpr_locals {
+                    self.c32(super::x_address(r as usize) as i32);
+                }
                 self.gi(super::HH);
                 if k != 0 {
                     self.c32(4);
                     self.b.add_i32();
                 }
                 self.load_value(2, false, true);
-                if self.a32_gpr_locals { self.s(r as usize); }
-                else { self.b.store_aligned_i64(0); }
+                if self.a32_gpr_locals {
+                    self.s(r as usize);
+                }
+                else {
+                    self.b.store_aligned_i64(0);
+                }
             }
             else {
                 self.gi(super::HH);
@@ -3801,8 +3935,12 @@ impl Emitter<'_> {
     fn multiply_long(&mut self, op: u8, s: bool, lo: u8, hi: u8, rn: u8, rm: u8) {
         for r in [rn, rm] {
             self.r32(r);
-            if op >= 6 { self.b.extend_signed_i32_to_i64(); }
-            else { self.b.extend_unsigned_i32_to_i64(); }
+            if op >= 6 {
+                self.b.extend_signed_i32_to_i64();
+            }
+            else {
+                self.b.extend_unsigned_i32_to_i64();
+            }
         }
         self.b.mul_i64();
         if op == 2 {
@@ -3872,7 +4010,10 @@ impl Emitter<'_> {
             self.c32(if half { 0xFFFF } else { 0xFF });
             self.b.and_i32();
         }
-        if rn != NONE { self.r32(rn); self.b.add_i32(); }
+        if rn != NONE {
+            self.r32(rn);
+            self.b.add_i32();
+        }
         self.si(A2);
         self.set_r32(rd, A2);
     }
@@ -3889,29 +4030,57 @@ impl Emitter<'_> {
             } => self.when(cond, |e| e.data(op, s, rd, rn, op2, offset)),
             Kind::Wide { rd, imm, top, cond } => self.when(cond, |e| e.wide(rd, imm, top)),
             Kind::Status { rd, cond } => self.when(cond, |e| {
-                use crate::aarch64::cpu::{PSTATE_Q, PSTATE_GE, PSTATE_E, PSTATE_A, PSTATE_I, PSTATE_F};
+                use crate::aarch64::cpu::{
+                    PSTATE_A, PSTATE_E, PSTATE_F, PSTATE_GE, PSTATE_I, PSTATE_Q,
+                };
                 e.load32(state::pstate as u32);
-                e.c32((PSTATE_Q | PSTATE_GE | PSTATE_E | PSTATE_A | PSTATE_I | PSTATE_F | 0x1F) as i32);
+                e.c32(
+                    (PSTATE_Q | PSTATE_GE | PSTATE_E | PSTATE_A | PSTATE_I | PSTATE_F | 0x1F)
+                        as i32,
+                );
                 e.b.and_i32();
                 e.nzcv();
                 e.b.or_i32();
                 e.si(A2);
                 e.set_r32(rd, A2);
             }),
-            Kind::Bitfield { rd, rn, lsb, width, insert, signed, cond } => self.when(cond, |e| {
+            Kind::Bitfield {
+                rd,
+                rn,
+                lsb,
+                width,
+                insert,
+                signed,
+                cond,
+            } => self.when(cond, |e| {
                 if insert {
                     let mask = if width == 32 { u32::MAX } else { ((1u32 << width) - 1) << lsb };
-                    e.r32(rd); e.c32(!mask as i32); e.b.and_i32();
+                    e.r32(rd);
+                    e.c32(!mask as i32);
+                    e.b.and_i32();
                     if rn != NONE {
-                        e.r32(rn); e.c32(lsb as i32); e.b.shl_i32();
-                        e.c32(mask as i32); e.b.and_i32(); e.b.or_i32();
+                        e.r32(rn);
+                        e.c32(lsb as i32);
+                        e.b.shl_i32();
+                        e.c32(mask as i32);
+                        e.b.and_i32();
+                        e.b.or_i32();
                     }
-                } else {
-                    e.r32(rn); e.c32((32 - lsb - width) as i32); e.b.shl_i32();
-                    e.c32((32 - width) as i32);
-                    if signed { e.b.shr_s_i32(); } else { e.b.shr_u_i32(); }
                 }
-                e.si(A2); e.set_r32(rd, A2);
+                else {
+                    e.r32(rn);
+                    e.c32((32 - lsb - width) as i32);
+                    e.b.shl_i32();
+                    e.c32((32 - width) as i32);
+                    if signed {
+                        e.b.shr_s_i32();
+                    }
+                    else {
+                        e.b.shr_u_i32();
+                    }
+                }
+                e.si(A2);
+                e.set_r32(rd, A2);
             }),
             Kind::Mem {
                 load,
@@ -3925,11 +4094,15 @@ impl Emitter<'_> {
                 writeback,
                 cond,
             } => self.when(cond, |e| {
-                if i.itstate != 0 { e.it_memory_state(i.itstate); }
+                if i.itstate != 0 {
+                    e.it_memory_state(i.itstate);
+                }
                 e.memory(load, size, signed, rt, rn, o, add, ix, writeback, offset);
                 // A retry exits before this clear: the interpreter sees
                 // the exact current IT mask, including at a data abort.
-                if i.itstate != 0 { e.it_memory_state(0); }
+                if i.itstate != 0 {
+                    e.it_memory_state(0);
+                }
             }),
             Kind::Multiple {
                 load,
@@ -3950,8 +4123,15 @@ impl Emitter<'_> {
                 sub,
                 cond,
             } => self.when(cond, |e| e.multiply(rd, rn, rm, ra, sub)),
-            Kind::MultiplyLong { op, s, lo, hi, rn, rm, cond } =>
-                self.when(cond, |e| e.multiply_long(op, s, lo, hi, rn, rm)),
+            Kind::MultiplyLong {
+                op,
+                s,
+                lo,
+                hi,
+                rn,
+                rm,
+                cond,
+            } => self.when(cond, |e| e.multiply_long(op, s, lo, hi, rn, rm)),
             Kind::Extend {
                 rd,
                 rn,

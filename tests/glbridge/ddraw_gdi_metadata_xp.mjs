@@ -23,8 +23,8 @@ if(bitmap){
     const locks=result.text.split(/\r?\n/).filter(line=>line.startsWith("LOCK "));
     assert.equal(locks.length,2);assert(locks.every(line=>/hr=00000000 flags=0000100F ptr=(?!00000000)/.test(line)),"Native Lock returns bits without DDSD_LPSURFACE");
     const native=result.text.split(/\r?\n/).filter(line=>line.startsWith("META kind=SystemDirectDraw "));assert.equal(native.length,2);assert(native.every(line=>line.includes("imageSize=0 ")));
-}else{
-    for(const [depth,pixel]of [[16,"00004459"],[32,"004488CC"]]){
+} else {
+    for(const [depth,pixel] of [[16,"00004459"],[32,"004488CC"]]){
         assert(new RegExp("GDI DC depth="+depth+" .*objectSize=84 imageSize=0 bitsAlias=1 ").test(result.text));
         assert(result.text.includes("GDI PIXEL depth="+depth+" value="+pixel));
     }

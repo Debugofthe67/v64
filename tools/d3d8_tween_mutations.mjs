@@ -18,7 +18,7 @@ const cases=[
  {name:"user-plane",command:"SET_RENDER_STATE",frame:10,match:v=>v.state===152,field:"value",value:0},
  {name:"normalization",command:"SET_RENDER_STATE",frame:12,match:v=>v.state===143,field:"value",value:0},
 ];
-try{for(const mutation of cases){const bytes=Buffer.from(input);let frame=0,changed=0;
+try {for(const mutation of cases){const bytes=Buffer.from(input);let frame=0,changed=0;
  for(let at=0;at<bytes.length;){const size=bytes.readUInt32LE(at+8),packet=bytes.subarray(at+20,at+12+size),h=W.readHeader(packet);
   for(let x=P.STRUCTS.BatchHeader.size;x<h.end;){const op=h.view.getUint16(x,true),length=h.view.getUint32(x+P.F.CommandHeader.size,true),payload=x+P.STRUCTS.CommandHeader.size,name=P.OP_NAME[op],v=P.decode(P.commandStruct(op),h.view,payload,length-P.STRUCTS.CommandHeader.size);
    if(frame===mutation.frame&&name===mutation.command&&mutation.match(v)){assert.notEqual(v[mutation.field],mutation.value);packet.writeUInt32LE(mutation.value,payload+P.F[P.commandStruct(op)][mutation.field]);changed++;}
@@ -27,5 +27,5 @@ try{for(const mutation of cases){const bytes=Buffer.from(input);let frame=0,chan
  }
  assert.equal(changed,1,mutation.name);fs.writeFileSync(fixture,gzip_sync(bytes));const run=spawn_sync(process.execPath,["tests/glbridge/gl_multipass_browser_runner.js","d3d8_tween_replay_browser_test.html"],{encoding:"utf8",env:{...process.env,GL_SWIFTSHADER:"1"},timeout:120000});assert.notEqual(run.status,0,"survived "+mutation.name);assert.match(run.stdout,/"status":"FAIL"/,mutation.name+" requires browser pixel failure");const evidence=JSON.parse(fs.readFileSync("build/browser-test-output/d8wg-tween-guest.json"));assert.equal(evidence.gpuErrors.length,0);assert.equal(evidence.hostErrors.length,0);assert.equal(evidence.stats.commandsFailed,0);assert.equal(evidence.stats.droppedDraws,0);assert(evidence.comparisons.some(c=>c.differingPixels||c.coveredPixels<32||c.probe.maximumByteError>1));fs.writeFileSync(out+"/"+mutation.name+".json",JSON.stringify(evidence,null,2)+"\n");results.push({name:mutation.name,killed:true});console.log("PASS killed D3D8 Tween replay mutant: "+mutation.name);
  }
-}finally{fs.writeFileSync(fixture,original);assert.equal(hash(fs.readFileSync(fixture)),hash(original));}
+} finally {fs.writeFileSync(fixture,original);assert.equal(hash(fs.readFileSync(fixture)),hash(original));}
 fs.writeFileSync(out+"/result.json",JSON.stringify({killed:results.length,total:cases.length,restoredFixtureSha256:hash(original),results},null,2)+"\n");console.log("PASS D3D8 Tween GPU mutations: 5/5; factor, primary stride, indexed base, user plane and normal normalization");

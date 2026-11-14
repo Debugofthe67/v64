@@ -10,7 +10,7 @@ fs.mkdirSync(directory, {recursive: true});
 const source = fs.readFileSync(root + "src/browser/glbridge/d3d9-webgpu/d9wg_resources.js", "utf8");
 const html = fs.readFileSync(root + "tests/glbridge/d3d9_conformance_browser_test.html", "utf8").replaceAll('src="../../src/', 'src="/src/').replace(/src="(d3d[^"/]+\.js)"/g, 'src="/tests/glbridge/$1"');
 const results = [];
-for (const [name, before, after, failure] of [
+for(const [name, before, after, failure] of [
     ["reinterpretation-view", "if (isCompressedFormat(texture.format)) {", "if (false && isCompressedFormat(texture.format)) {", "sRGB decode precedes linear filtering"],
     ["stale-copy", "if (resource.srgbCopyTexture) resource.srgbCopyDirty = true;", "/* stale compressed sRGB copy */", "BC sRGB ordered upload and alternating linear sampling"],
 ]) {

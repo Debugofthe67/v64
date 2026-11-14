@@ -61,6 +61,6 @@ int main(void){UINT i=0;D9Device device={101};D9Texture t={0};t.device=&device;t
  puts("PASS actual autogen C: 2856 filter contexts, 175 creation combinations, real setters/getters/generation/config replay, SDK invalid NONE and atomic transport failures");return 0;}
 `;
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "d9wg-autogen-"));
-    try {const input=path.join(directory,"autogen.c"),binary=path.join(directory,"autogen");fs.writeFileSync(input,code);const build=spawnSync(process.env.HOST_CC||"cc",["-std=c11","-Os","-Wall","-Wextra","-Werror",input,"-o",binary],{encoding:"utf8"});assert.equal(build.status,0,build.stderr);const run=spawnSync(binary,[],{encoding:"utf8"});assert.equal(run.status,0,run.stderr);process.stdout.write(run.stdout);}finally{fs.rmSync(directory,{recursive:true,force:true});}
+    try {const input=path.join(directory,"autogen.c"),binary=path.join(directory,"autogen");fs.writeFileSync(input,code);const build=spawnSync(process.env.HOST_CC||"cc",["-std=c11","-Os","-Wall","-Wextra","-Werror",input,"-o",binary],{encoding:"utf8"});assert.equal(build.status,0,build.stderr);const run=spawnSync(binary,[],{encoding:"utf8"});assert.equal(run.status,0,run.stderr);process.stdout.write(run.stdout);} finally {fs.rmSync(directory,{recursive:true,force:true});}
     console.log("PASS independent JS autogen format, filter, default and creation facts");
-})().catch(error=>{console.error(error);process.exitCode=1});
+})().catch(error=>{console.error(error);process.exitCode=1;});

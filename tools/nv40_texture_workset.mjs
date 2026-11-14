@@ -32,14 +32,14 @@ const captures=fs.readFileSync(capturesFile,"utf8").trim().split("\n").map(JSON.
 const surfaces=captures.flatMap(capture=>capture.textures||[]).map(texture=>texture.surface);
 assert(surfaces.length && surfaces.every(surface=>surface.dma.target===0),"workset replay needs captured VRAM textures");
 const configurations=[];
-for(const [mib,entries]of [[64,256],[256,1024]])
+for(const [mib,entries] of [[64,256],[256,1024]])
 {
     const texture=new NV40Texture(state);texture.cache_limit=mib*1048576;texture.cache_entries=entries;
     const digest=createHash("sha256"),rounds=[];
     for(let round=0;round<3;round++)
     {
         const before={...texture.stats};
-        for(const surface of surfaces)for(const image of texture.images(surface))digest.update(image);
+        for(const surface of surfaces) for(const image of texture.images(surface))digest.update(image);
         rounds.push(Object.fromEntries(Object.entries(texture.stats).map(([key,value])=>[key,value-before[key]])));
     }
     configurations.push({mib,entries,rounds,residentBytes:texture.stats.bytes,outputSha256:digest.digest("hex")});

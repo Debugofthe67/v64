@@ -31,4 +31,4 @@ try
     assert.equal((await emulator.get_diagnostics()).steps,undefined,"instruction counters are opt-in");
     console.log("PASS: privileged native IOP MRS preserves flags, GE and interrupt masks without interpreter helpers");
 }
-finally{await emulator.destroy();}
+finally {await emulator.destroy();}

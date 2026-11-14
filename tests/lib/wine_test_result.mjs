@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 export function assert_wine_graphics_cleanup(snapshot) {
     assert(snapshot && snapshot.sessionCleanup?.length, "Missing cleanup evidence");
-    for (const row of snapshot.sessionCleanup)
+    for(const row of snapshot.sessionCleanup)
         assert.deepEqual(row.after, {devices:0,resources:0,pendingFrame:false,activeQuery:false}, "Graphics state survived process-owner cleanup");
     assert.deepEqual([snapshot.devices,snapshot.resources,snapshot.sessions], [0,0,0], "Graphics owner/session remained alive");
 }
@@ -19,7 +19,7 @@ export function parse_wine_result(log, name, {minimumChecks = 1001, inapplicable
     // can be inapplicable. Missing graphics functionality is not an exclusion.
     assert(Array.isArray(inapplicable), "Invalid Wine applicability records");
     const records = new Map();
-    for (const row of inapplicable) {
+    for(const row of inapplicable) {
         assert(row && /^(platform|mutually-exclusive)$/.test(row.category), "Invalid applicability category");
         assert(/^[\w.-]+\.c:\d+$/.test(row.location) && typeof row.message === "string" && row.message.trim(), "Missing exact skip identity");
         assert(typeof row.reason === "string" && row.reason.trim(), "Missing applicability reason");
@@ -31,11 +31,11 @@ export function parse_wine_result(log, name, {minimumChecks = 1001, inapplicable
     }
     const skippedLines = [...log.matchAll(/^([\w.-]+\.c:\d+): Tests skipped: ([^\r\n]*)/gm)];
     assert.equal(skippedLines.length, skipped, "Wine skip lines contradict summary: " + name);
-    for (const [, location, message] of skippedLines) {
+    for(const [, location, message] of skippedLines) {
         const record = records.get(location + ": " + message);
         assert(record, "Unreviewed Wine skip: " + location + ": " + message);
         ++record.observed;
     }
-    for (const {row, observed} of records.values()) assert.equal(observed, row.count, "Applicability evidence does not match this run: " + row.location);
+    for(const {row, observed} of records.values()) assert.equal(observed, row.count, "Applicability evidence does not match this run: " + row.location);
     return {checks,todos,flaky,failures,skipped, ...(skipped ? {inapplicable} : {})};
 }

@@ -10,7 +10,7 @@ assert(directory,"usage: node tools/nv40_profile_report.mjs <native-run-director
 const read=name=>JSON.parse(fs.readFileSync(path.join(directory,name),"utf8"));
 const profile=read("cpu-profile.cpuprofile"),window=read("profile-window.json");
 const nodes=new Map(profile.nodes.map(node=>[node.id,node])),parents=new Map();
-for(const node of profile.nodes)for(const child of node.children||[])parents.set(child,node.id);
+for(const node of profile.nodes) for(const child of node.children||[])parents.set(child,node.id);
 const chain=id=>{
     const frames=[],seen=new Set();
     while(nodes.has(id) && !seen.has(id))
@@ -20,20 +20,20 @@ const chain=id=>{
 const isNV=frame=>/nv40_|nv_(?:device|display|fifo|graph|dma|2d)|v86-geforce-6800/.test(frame.url);
 const classify=id=>{
     const frames=chain(id),top=frames[0];
-    if(top.functionName==="(idle)")return "Node idle";
-    if(top.functionName==="(garbage collector)")return "Garbage collection";
-    if(frames.some(frame=>/picture_sink|png|zlib/i.test(frame.url) || frame.functionName==="save_png"))return "PNG and capture";
-    if(frames.some(frame=>isNV(frame) && frame.functionName==="render"))return "NV scanout";
-    if(frames.some(frame=>/nv40_texture/.test(frame.url) || isNV(frame) && ["decode","blocks","encoded","storage","images"].includes(frame.functionName)))return "NV texture preparation";
+    if(top.functionName==="(idle)") return "Node idle";
+    if(top.functionName==="(garbage collector)") return "Garbage collection";
+    if(frames.some(frame=>/picture_sink|png|zlib/i.test(frame.url) || frame.functionName==="save_png")) return "PNG and capture";
+    if(frames.some(frame=>isNV(frame) && frame.functionName==="render")) return "NV scanout";
+    if(frames.some(frame=>/nv40_texture/.test(frame.url) || isNV(frame) && ["decode","blocks","encoded","storage","images"].includes(frame.functionName))) return "NV texture preparation";
     if(frames.some(frame=>/nv40_shader|nv40_program/.test(frame.url) || /translate_(?:vertex|fragment)_program|decode_(?:vertex|fragment)_program/.test(frame.functionName) ||
-        isNV(frame) && ["program","shaders"].includes(frame.functionName)))return "NV program decode and translation";
-    if(frames.some(frame=>isNV(frame) && /^(?:array_vertices|inline_vertices|vertex_value|vertex_layout)$/.test(frame.functionName)))return "NV vertex fetch";
-    if(frames.some(frame=>isNV(frame) && frame.functionName==="target"))return "NV upload and attachment preparation";
+        isNV(frame) && ["program","shaders"].includes(frame.functionName))) return "NV program decode and translation";
+    if(frames.some(frame=>isNV(frame) && /^(?:array_vertices|inline_vertices|vertex_value|vertex_layout)$/.test(frame.functionName))) return "NV vertex fetch";
+    if(frames.some(frame=>isNV(frame) && frame.functionName==="target")) return "NV upload and attachment preparation";
     // Inspect the leaf before walking its callers: guest WASM entered from
     // NV FIFO wakeup is still guest execution, not NV device CPU work.
-    if(/^wasm:/.test(top.url) || /^wasm-function|^x64_page_|^t0_|^jit_/.test(top.functionName))return "Guest WASM and JIT";
-    if(isNV(top))return "Other NV device CPU";
-    if(/libv86|\/src\/(?:cpu|browser\/main|main|memory|clock|jit)/.test(top.url))return "Guest runtime helpers";
+    if(/^wasm:/.test(top.url) || /^wasm-function|^x64_page_|^t0_|^jit_/.test(top.functionName)) return "Guest WASM and JIT";
+    if(isNV(top)) return "Other NV device CPU";
+    if(/libv86|\/src\/(?:cpu|browser\/main|main|memory|clock|jit)/.test(top.url)) return "Guest runtime helpers";
     return "Node and harness";
 };
 assert.equal(profile.samples.length,profile.timeDeltas.length,"profile samples need their actual time weights");

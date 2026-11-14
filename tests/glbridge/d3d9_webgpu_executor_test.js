@@ -2373,7 +2373,7 @@ await test("SetLOD reaches the host and combines with D3DSAMP_MAXMIPLEVEL",
 await test("MAXMIPLEVEL is ignored with NONE while resource LOD still applies", async () => {
     const elements = [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
         element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD)];
-    for(const [filter, maxMip, lod, expected] of [[0,3,0,0], [0,2,1,1], [0,0,2,2], [1,2,1,2]]) {
+    for (const [filter, maxMip, lod, expected] of [[0,3,0,0], [0,2,1,1], [0,0,2,2], [1,2,1,2]]) {
         const {executor,find}=makeExecutor();
         await executor.submit(buildBatch([
             command(OP.CREATE_DEVICE, createDevicePayload(640,480)),
@@ -2392,7 +2392,7 @@ await test("MAXMIPLEVEL is ignored with NONE while resource LOD still applies", 
         assert.equal(executor.stats.droppedDraws,0);
         const sampler=find("createSampler").pop()[1];
         assert.equal(sampler.lodMinClamp||0,expected);
-        if(filter===0)assert.equal(sampler.lodMaxClamp,expected);
+        if (filter===0)assert.equal(sampler.lodMaxClamp,expected);
     }
 });
 
@@ -2778,7 +2778,7 @@ await test("uint16 strip mirror reuses storage, uploads only touched indices and
     const before=find("createBuffer").length,mirror=executor.stripIndexBufferFor(r);
     assert.equal(find("createBuffer").length,before+1);
     assert.equal(cacheUploads,1);
-    for(let i=0;i<100;i++)assert.equal(executor.stripIndexBufferFor(r),mirror);
+    for (let i=0;i<100;i++)assert.equal(executor.stripIndexBufferFor(r),mirror);
     assert.equal(find("createBuffer").length,before+1);
     assert.equal(cacheUploads,1);
     executor.finishFrame(false);await executor.idle();
@@ -4023,8 +4023,8 @@ await test("legacy lighting keeps camera-space fog and texgen independent", asyn
         const data=new Float32Array(block.buffer,block.byteOffset);
         const diagonal=[0,5,10,15].map(i=>data[20+i]);
         assert.deepEqual(diagonal,[6,1.5,1,1],"fog/texgen retain combined world-view");
-        for(const[i,want]of [[0,1/6],[5,2/3],[10,1]])assert.ok(Math.abs(data[36+i]-want)<1e-6);
-        if(legacy){
+        for (const [i,want] of [[0,1/6],[5,2/3],[10,1]])assert.ok(Math.abs(data[36+i]-want)<1e-6);
+        if (legacy){
             assert.deepEqual([...data.slice(56,72)],world,"lighting position retains world scale");
             assert.deepEqual([...data.slice(72,88)],[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],"legacy basis row normalization");
         }
@@ -6627,7 +6627,7 @@ await test("depth readback retires temporary GPU objects on success and timeout"
         await executor.submit(buildBatch([command(OP.READBACK_SURFACE,encodePayload("ReadbackSurface",{
             device_handle:DEVICE,texture_handle:0x904,format,width:2,height:2,first_row:1,row_count:1,
             destination_pitch:8,destination_bytes:8,response_offset:16*1024,request_id:8,
-        }))]),{writeGuestMemory(at,data){if(at!==HEARTBEAT_WRITE_OFFSET)replies.push(Buffer.from(data));}});
+        }))]),{writeGuestMemory(at,data){if (at!==HEARTBEAT_WRITE_OFFSET)replies.push(Buffer.from(data));}});
         await executor.idle();
         assert.equal(replies.length,1);assert.equal(replies[0].readUInt32LE(12),hang?2:1);
         const allocations=[...find("createBuffer"),...find("createTexture")].filter(c=>

@@ -90,7 +90,7 @@ class Shader
         {
             let index=this.stage==="vertex"?544:223;
             while(index>=0 && this.constants.has(index))index+=this.stage==="vertex"?1:-1;
-            if(index<0)throw new RangeError("NV40 arithmetic constant register budget");
+            if(index<0) throw new RangeError("NV40 arithmetic constant register budget");
             this.constants.add(index);this.literals.set(value,index);
             const word=new Uint32Array(Float32Array.of(value).buffer)[0];
             this.declarations.push(0x05000051,dst(2,index),word,word,word,word);
@@ -110,7 +110,7 @@ class Shader
         {
             this.emit(OP.SUB,dst(0,29),sources[0],sources[1]);this.emit(OP.ABS,dst(0,29),src(0,29));
             // Equality compares against zero, preserving unordered comparisons.
-            if(name==="SEQ")this.emit(OP.SGE,destination,this.literal(0),src(0,29));
+            if(name==="SEQ") this.emit(OP.SGE,destination,this.literal(0),src(0,29));
             else
             {
                 this.emit(OP.SGE,dst(0,29),this.literal(0),src(0,29));
@@ -169,11 +169,11 @@ class Shader
     condition(condition,value,target)
     {
         const destination=dst(0,target),zero=this.literal(0);
-        if(condition===1)this.emit(OP.SLT,destination,value,zero);
-        else if(condition===2 || condition===5)this.alu(condition===2?"SEQ":"SNE",destination,[value,zero]);
-        else if(condition===3)this.emit(OP.SGE,destination,zero,value);
-        else if(condition===4)this.emit(OP.SLT,destination,zero,value);
-        else if(condition===6)this.emit(OP.SGE,destination,value,zero);
+        if(condition===1) this.emit(OP.SLT,destination,value,zero);
+        else if(condition===2 || condition===5) this.alu(condition===2?"SEQ":"SNE",destination,[value,zero]);
+        else if(condition===3) this.emit(OP.SGE,destination,zero,value);
+        else if(condition===4) this.emit(OP.SLT,destination,zero,value);
+        else if(condition===6) this.emit(OP.SGE,destination,value,zero);
         else this.emit(OP.MOV,destination,this.literal(condition===7?1:0));
     }
     finish()
@@ -198,12 +198,12 @@ export function translate_vertex_program(program,options={})
     // routing, plus explicit writes; unrouted indexed destinations are dead.
     const indexedTargets=new Set(options.result_map?options.result_map.filter(r=>r[3]!==false).map(r=>r[1]):
         [0,...Array.from({length:8},(_,i)=>7+i)]);
-    for(const i of program.instructions)for(const op of [i.vector,i.scalar])
+    for(const i of program.instructions) for(const op of [i.vector,i.scalar])
         if(op.type==="output" && !i.address.output)indexedTargets.add(op.index);
     const indexedRegisters=[...indexedTargets].filter(index=>index>=0 && index<16);
     const addresses=new Map();
     const address=register=>{
-        if(register>1)throw new RangeError("NV40 invalid address register");
+        if(register>1) throw new RangeError("NV40 invalid address register");
         if(!addresses.has(register))
         {
             const temp=shader.temp("address"+register);addresses.set(register,temp);
@@ -211,7 +211,7 @@ export function translate_vertex_program(program,options={})
         }
         return addresses.get(register);
     };
-    if(program.instructions.some(i=>i.address.input))for(let input=0;input<16;input++)shader.input(input);
+    if(program.instructions.some(i=>i.address.input)) for(let input=0;input<16;input++)shader.input(input);
     for(const i of program.instructions)
     {
         if(i.address.input || i.address.constant || i.address.output || i.vector.name==="ARA" || i.scalar.name==="PUSHA")address(i.address.register);
@@ -228,7 +228,7 @@ export function translate_vertex_program(program,options={})
     const scalarSource=(i,slot)=>slot===1 && !["MOV","LIT"].includes(i.scalar.name);
     const source=(i,operand,slot,index)=>{
         const relative=operand.type==="constant"?i.address.constant:operand.type==="input" && i.address.input;
-        if(!relative)return shader.source(operand,-1,scalarSource(i,slot));
+        if(!relative) return shader.source(operand,-1,scalarSource(i,slot));
         const component=Array(4).fill(i.address.component),last=operand.type==="constant"?543:15;
         shader.emit(OP.ADD,dst(0,29),src(0,address(i.address.register),component),shader.literal(operand.index));
         shader.emit(OP.MAX,dst(0,29),src(0,29),shader.literal(0));
@@ -248,7 +248,7 @@ export function translate_vertex_program(program,options={})
         return conditions.get(register);
     };
     // Declare condition storage before any instruction can read or update it.
-    for(const i of program.instructions)if(i.predicate.enabled || i.predicate.update || ["BRA","CAL","RET"].includes(i.scalar.name))conditionRegister(i.predicate.register);
+    for(const i of program.instructions) if(i.predicate.enabled || i.predicate.update || ["BRA","CAL","RET"].includes(i.scalar.name))conditionRegister(i.predicate.register);
     const predicate=program.instructions.some(i=>i.predicate.enabled)?shader.temp("predicate"):-1;
     const flow=program.instructions.some(i=>["BRA","CAL","RET","PUSHA","POPA"].includes(i.scalar.name));
     const outputIndex=program.instructions.some(i=>i.address.output)?shader.temp("outputIndex"):-1;
@@ -354,9 +354,9 @@ export function translate_vertex_program(program,options={})
             if(!addressOp && op.secondary)destinations.push({index:shader.temp("r"+op.secondary.index),relative:false});
             results.push({destinations,mask:op.mask,slot});
         }
-        for(const {destinations,mask,slot}of results)
+        for(const {destinations,mask,slot} of results)
         {
-            for(const {index,relative}of destinations)for(const register of relative?indexedRegisters:[-1])
+            for(const {index,relative} of destinations) for(const register of relative?indexedRegisters:[-1])
             {
                 const target=relative?output(register):index;
                 if(relative)shader.emit(OP.IFC|2<<16,src(0,outputIndex),shader.literal(register));
@@ -444,9 +444,9 @@ export function translate_vertex_program(program,options={})
     }
     if(flow)shader.emit(OP.ENDREP);
     const routes=options.result_map || VERTEX_OUTPUTS.map((_,index)=>[index,index,-1,null]);
-    for(const [semantic,register,component,enabled]of routes)
+    for(const [semantic,register,component,enabled] of routes)
     {
-        if(enabled===false || !raw.has(register) || semantic===0 && options.viewport)continue;
+        if(enabled===false || !raw.has(register) || semantic===0 && options.viewport) continue;
         // The dedicated front/back color interpolators are normalized before
         // rasterization. Texture-coordinate routes carry unrestricted floats.
         // Keep this at the routed output, after all writes to the raw TBUF.
@@ -492,15 +492,15 @@ export function translate_fragment_program(program,options={})
     const shader=new Shader("fragment",program.constants.map((_,i)=>i));
     const textureConstants=new Map();
     // The indexed input bank is TEX0..TEX9, independent of other declarations.
-    if(program.instructions.some(i=>i.input_relative))for(let index=4;index<14;index++)shader.input(index);
+    if(program.instructions.some(i=>i.input_relative)) for(let index=4;index<14;index++)shader.input(index);
     // NV fragment FOGC is (coordinate, clamped fog factor, 0, 0), whereas
     // D3D9's FOG varying carries only the coordinate. Generate the factor after
     // interpolation; computing it in the vertex shader changes clamped edges.
     if(program.instructions.some(i=>i.sources.some(s=>s.type==="input" && s.index===3)))
     {
         const [type,index]=shader.input(3),fog=shader.temp("fog"),settings=options.fog || {mode:0x2601,constant:1,linear:1};
-        if(![0x2601,0x804,0x800,0x801,0x802,0x803].includes(settings.mode))throw new RangeError("NV40 invalid fog mode");
-        if(!Number.isFinite(settings.constant) || !Number.isFinite(settings.linear))throw new RangeError("NV40 nonfinite fog equation");
+        if(![0x2601,0x804,0x800,0x801,0x802,0x803].includes(settings.mode)) throw new RangeError("NV40 invalid fog mode");
+        if(!Number.isFinite(settings.constant) || !Number.isFinite(settings.linear)) throw new RangeError("NV40 nonfinite fog equation");
         shader.emit(OP.MOV,dst(0,fog),shader.literal(0));
         shader.emit(OP.MOV,dst(0,fog,1),src(type,index,[0,0,0,0]));
         const linear=settings.mode===0x2601 || settings.mode===0x804,absolute=[0x804,0x802,0x803].includes(settings.mode);
@@ -520,7 +520,7 @@ export function translate_fragment_program(program,options={})
     const flow=program.instructions.some(i=>i.branch),budget=flow?shader.temp("executed"):-1;
     const limit=Math.min(65536,Math.max(1,options.instruction_limit||65536));
     boundaries.add(program.word_count);
-    if(needsCC)for(const index of cc)shader.emit(OP.MOV,dst(0,index),shader.literal(0));
+    if(needsCC) for(const index of cc)shader.emit(OP.MOV,dst(0,index),shader.literal(0));
     if(flow)shader.emit(OP.MOV,dst(0,budget),shader.literal(0));
     const close=pc=>{
         while(blocks.length && blocks[blocks.length-1].end===pc)
@@ -546,9 +546,9 @@ export function translate_fragment_program(program,options={})
         const byPC=new Map(program.instructions.map(i=>[i.pc,i])),seen=new Set(),pending=[entry];
         while(pending.length)
         {
-            const pc=pending.pop();if(seen.has(pc))continue;
-            const i=byPC.get(pc);if(!i)throw new RangeError("NV40 fragment call outside decoded program");
-            seen.add(pc);if(i.end || i.branch && i.name==="RET" && i.predicate.condition===7)continue;
+            const pc=pending.pop();if(seen.has(pc)) continue;
+            const i=byPC.get(pc);if(!i) throw new RangeError("NV40 fragment call outside decoded program");
+            seen.add(pc);if(i.end || i.branch && i.name==="RET" && i.predicate.condition===7) continue;
             if(i.branch && ["IF","LOOP","REP"].includes(i.name))
             {pending.push(i.end_offset);if(i.name==="IF")pending.push(i.else_offset);}
             pending.push(pc+4+(!i.branch && i.constant>=0?4:0));
@@ -570,7 +570,7 @@ export function translate_fragment_program(program,options={})
         {
             if(i.name==="CAL" || i.name==="RET")
             {
-                if(i.predicate.condition===0)continue;
+                if(i.predicate.condition===0) continue;
                 const conditional=i.predicate.condition!==7;
                 if(conditional)
                 {
@@ -617,7 +617,7 @@ export function translate_fragment_program(program,options={})
                 }
                 else
                 {
-                    if(blocks.filter(b=>b.name==="REP" || b.name==="LOOP").length>=4)throw new RangeError("NV40 fragment loop nesting limit");
+                    if(blocks.filter(b=>b.name==="REP" || b.name==="LOOP").length>=4) throw new RangeError("NV40 fragment loop nesting limit");
                     const values=[i.loop.count,i.name==="LOOP"?i.loop.initial:0,i.name==="LOOP"?i.loop.increment:1,0],key=values.join(",");
                     if(!loopConstants.has(key))
                     {
@@ -636,7 +636,7 @@ export function translate_fragment_program(program,options={})
             }
             else if(i.name==="BRK")
             {
-                if(!blocks.some(b=>b.name==="REP" || b.name==="LOOP"))throw new RangeError("NV40 fragment BRK outside loop");
+                if(!blocks.some(b=>b.name==="REP" || b.name==="LOOP")) throw new RangeError("NV40 fragment BRK outside loop");
                 shader.condition(i.predicate.condition,src(0,readCC,i.predicate.swizzle),31);
                 shader.emit(OP.MAX,dst(0,31,1),src(0,31,[0,0,0,0]),src(0,31,[1,1,1,1]));
                 shader.emit(OP.MAX,dst(0,31,1),src(0,31,[0,0,0,0]),src(0,31,[2,2,2,2]));
@@ -658,8 +658,8 @@ export function translate_fragment_program(program,options={})
             throw new RangeError("NV40 unsupported fragment opcode "+(i.name || "0x"+i.opcode.toString(16))+" at "+i.pc+" words "+JSON.stringify(i.words));
         const sources=i.sources.slice(0,texture?i.name==="TXD"?3:1:i.name==="KIL"?0:count)
             .map(source=>{
-                if(!i.input_relative || source.type!=="input")return shader.source(source,i.constant);
-                if(!blocks.some(b=>b.name==="LOOP"))throw new RangeError("NV40 relative fragment input outside LOOP");
+                if(!i.input_relative || source.type!=="input") return shader.source(source,i.constant);
+                if(!blocks.some(b=>b.name==="LOOP")) throw new RangeError("NV40 relative fragment input outside LOOP");
                 const token=shader.source({...source,index:4},i.constant);
                 return [(token|0x2000|i.address)>>>0,src(15,0,[0,0,0,0])];
             });
@@ -679,7 +679,7 @@ export function translate_fragment_program(program,options={})
         const pack=["PK2H","PK2US","PK4B","PK4UB"].indexOf(i.name),unpack=["UP2H","UP2US","UP4B","UP4UB"].indexOf(i.name);
         if(pack>=0)
         {
-            if(half || i.scale || i.saturate || i.predicate.update)throw new RangeError("NV40 pack requires an unmodified full register destination");
+            if(half || i.scale || i.saturate || i.predicate.update) throw new RangeError("NV40 pack requires an unmodified full register destination");
             if(!i.destination.disabled)
             {
                 shader.emit(0x1005|pack<<16,dst(0,i.destination.index,i.destination.mask),sources[0],conditional?src(0,31):shader.literal(1));
@@ -696,11 +696,11 @@ export function translate_fragment_program(program,options={})
             const size=options.texture_sizes?.[i.texture];
             if(size)
             {
-                if(size.some(value=>!Number.isInteger(value) || value<=0 || value>4096))throw new RangeError("NV40 unnormalized texture dimensions");
+                if(size.some(value=>!Number.isInteger(value) || value<=0 || value>4096)) throw new RangeError("NV40 unnormalized texture dimensions");
                 if(!textureConstants.has(i.texture))
                 {
                     let index=223;while(index>=0 && shader.constants.has(index))index--;
-                    if(index<0)throw new RangeError("NV40 texture coordinate constant budget");
+                    if(index<0) throw new RangeError("NV40 texture coordinate constant budget");
                     shader.constants.add(index);textureConstants.set(i.texture,[index,Float32Array.of(1/size[0],1/size[1],1/size[2],1)]);
                 }
                 const index=textureConstants.get(i.texture)[0];
@@ -743,10 +743,10 @@ export function translate_fragment_program(program,options={})
             if(i.name==="TXD") shader.emit(OP.TXD,sampled,sources[0],sampler,sources[1],sources[2]);
             else shader.emit((i.name==="TXL"?OP.TXL:OP.TEX) | (i.name==="TXP"?1:i.name==="TXB"?2:0)<<16,
                 sampled,sources[0],sampler);
-            if(depth)for(let lane=0;lane<4;lane++)if(i.destination.mask&1<<lane)
+            if(depth) for(let lane=0;lane<4;lane++) if(i.destination.mask&1<<lane)
             {
                 const crossbarShift=[2,4,6,0][lane],select=depth.crossbar>>>(crossbarShift+8)&3,component=3-(depth.crossbar>>>crossbarShift&3);
-                if(select===3)throw new RangeError("NV40 invalid depth texture component selection");
+                if(select===3) throw new RangeError("NV40 invalid depth texture component selection");
                 shader.emit(OP.MOV,dst(0,30,1<<lane,false,shift),
                     select===2?src(0,sample,Array(4).fill(component)):shader.literal(select));
             }
@@ -754,7 +754,7 @@ export function translate_fragment_program(program,options={})
         else if(unpack>=0)
         {
             const source=i.sources[0],physical=source.type==="temp";
-            if(physical && source.half)throw new RangeError("NV40 unpack requires a full register source");
+            if(physical && source.half) throw new RangeError("NV40 unpack requires a full register source");
             const token=physical?src(0,source.index,source.swizzle,source.negate,source.absolute):sources[0];
             shader.emit(0x1006|(unpack|+physical<<2)<<16,destination,token);
         }
@@ -785,7 +785,7 @@ export function translate_fragment_program(program,options={})
         if(calls && i.end)terminate();
     }
     close(program.word_count);
-    if(blocks.length)throw new RangeError("NV40 unterminated fragment block");
+    if(blocks.length) throw new RangeError("NV40 unterminated fragment block");
     if(calls){shader.emit(OP.RET);for(const word of shader.body)functionBodies.push(word);shader.body=[];}
     }
     if(calls){shader.body=prefix;shader.emit(OP.CALL,src(18,0));}

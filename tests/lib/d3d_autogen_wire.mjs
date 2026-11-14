@@ -9,12 +9,12 @@ export function inspect_autogen_wire(bytes,mask){
         for(let x=32;x<h.end;){const op=h.view.getUint16(x,true),length=h.view.getUint32(x+P.F.CommandHeader.size,true),name=P.OP_NAME[op],v=P.decode(P.commandStruct(op),h.view,x+16,length-16);
             if(expectConfig){assert.equal(name,"GENERATE_MIPS","create/Reset must immediately restore generation filter");assert.equal(v.resource_handle,expectConfig.resource_handle);assert.equal(v.defer_generation,1);assert.equal(v.filter_type,[114,115,116].includes(expectConfig.format)&&!(mask&1)?1:2,"independent format default filter");expectConfig=null;}
             if(["CREATE_TEXTURE_2D","CREATE_TEXTURE_CUBE","CREATE_TEXTURE_VOLUME"].includes(name)){
-                counts.creates++;if(v.usage&0x400){assert(name!=="CREATE_TEXTURE_VOLUME");assert.equal(v.level_count,1);counts.autoCreates++;assert(!uniqueAuto.has(v.resource_handle),"Reset retains managed resources rather than recreating them");uniqueAuto.add(v.resource_handle);expectConfig=v;}else resources.set(v.resource_handle,{auto:false});
+                counts.creates++;if(v.usage&0x400){assert(name!=="CREATE_TEXTURE_VOLUME");assert.equal(v.level_count,1);counts.autoCreates++;assert(!uniqueAuto.has(v.resource_handle),"Reset retains managed resources rather than recreating them");uniqueAuto.add(v.resource_handle);expectConfig=v;} else resources.set(v.resource_handle,{auto:false});
             }
             if(name==="GENERATE_MIPS"){
                 assert.equal(length-16,16);assert(v.filter_type>=1&&v.filter_type<=3);assert(v.defer_generation<=1);
                 const prior=resources.get(v.resource_handle);assert(prior?.auto!==false,"normal textures must not emit generation commands");resources.set(v.resource_handle,{auto:true,filter:v.filter_type});
-                if(v.defer_generation)counts.configurations++;else{assert.equal(v.filter_type,1,"SDK probe explicitly generates after selecting POINT");counts.explicitGenerations++;}
+                if(v.defer_generation)counts.configurations++;else {assert.equal(v.filter_type,1,"SDK probe explicitly generates after selecting POINT");counts.explicitGenerations++;}
             }
             if(name==="RESET"){const live=[...resources.values()].filter(r=>r.auto);assert.equal(live.length,1);assert.equal(live[0].filter,3);counts.resetFiltersPreserved++;}
             if(name==="DESTROY_RESOURCE")resources.delete(v.resource_handle);

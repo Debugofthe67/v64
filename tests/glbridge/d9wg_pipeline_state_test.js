@@ -29,7 +29,7 @@ const { countingWebGPU, frameCommands, batch } = require("./d3d9_webgpu_perf_tes
     assert.deepEqual(second.descriptor.fragment.targets.map(t=>[t.blend.color.srcFactor,t.blend.color.dstFactor]),
         [["dst-alpha","one-minus-dst-alpha"],["one","zero"]]);
     assert.equal(executor.pipelineFor(program,executor.pipelineStateFor(state,mixed),"triangle-list"),first);
-    for(let mask=0;mask<4;mask++){
+    for (let mask=0;mask<4;mask++){
         state.renderStates.set(P.C.D9WG_NV_RS_COLOR_BLEND_MASK,mask);
         const selected=executor.pipelineFor(program,executor.pipelineStateFor(state,mixed),"triangle-list");
         assert.deepEqual(selected.descriptor.fragment.targets.map(t=>!!t.blend),[!!(mask&1),!!(mask&2)],"native per-target blend mask "+mask);

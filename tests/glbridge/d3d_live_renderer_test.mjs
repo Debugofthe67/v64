@@ -28,7 +28,7 @@ try {
         let observed=0;
         await remote.submit({ownerToken,flags,bytes:bytes.subarray(at+12,at+12+size)},(offset,data)=>{
             const request=reads[observed];
-            if(!request || offset!==(16<<20)-P.C.D9WG_RESPONSE_REGION_BYTES+request.response_offset)return;
+            if(!request || offset!==(16<<20)-P.C.D9WG_RESPONSE_REGION_BYTES+request.response_offset) return;
             assert.equal(request.request_id,metadata.frames[frames].request);observed++;
             const view=new DataView(data.buffer,data.byteOffset,data.byteLength),scene=scenes[frames];assert(scene);
             assert.equal(view.getUint32(0,true),metadata.frames[frames].request);assert.equal(view.getUint32(P.F.ReadbackResponse.status,true),P.C.D9WG_RESPONSE_OK);
@@ -39,7 +39,7 @@ try {
         assert.equal(observed,reads.length);at+=12+size;
     }
     assert.equal(frames,scenes.length);
-    for(const owner of metadata.ownerReleases)await remote.release(owner);
+    for(const owner of metadata.ownerReleases) await remote.release(owner);
     await remote.idle();
     assert.equal(remote.stats.snapshot.devices,0);assert.equal(remote.stats.snapshot.resources,0);
     assert.equal(remote.stats.snapshot.cleanup.length,metadata.ownerReleases.length);

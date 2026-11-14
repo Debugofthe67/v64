@@ -201,23 +201,23 @@
                 || source.length<(depth-1)*slicePitch+(rows-1)*rowPitch+columns*blockBytes)
             throw new Error("Invalid DXT block upload extent");
         const output=new Uint8Array(width*height*depth*4);
-        for(let z=0;z<depth;z++)for(let by=0;by<rows;by++)for(let bx=0;bx<columns;bx++) {
+        for (let z=0;z<depth;z++) for (let by=0;by<rows;by++) for (let bx=0;bx<columns;bx++) {
             const at=z*slicePitch+by*rowPitch+bx*blockBytes,color=at+(dxt===1?0:8);
             const a=source[color]|source[color+1]<<8,b=source[color+2]|source[color+3]<<8;
             // Bit replication, matching the packed-format expansion path.
             const unpack=v=>[(v>>11<<3)|(v>>13),(((v>>5)&63)<<2)|((v>>9)&3),((v&31)<<3)|((v>>2)&7),255];
             const palette=[unpack(a),unpack(b)];
-            if(a>b||dxt!==1) {
+            if (a>b||dxt!==1) {
                 palette.push(palette[0].map((v,c)=>c===3?255:Math.round((2*v+palette[1][c])/3)),
                     palette[0].map((v,c)=>c===3?255:Math.round((v+2*palette[1][c])/3)));
             } else palette.push(palette[0].map((v,c)=>c===3?255:Math.floor((v+palette[1][c])/2)),[0,0,0,0]);
             const selectors=(source[color+4]|source[color+5]<<8|source[color+6]<<16|source[color+7]<<24)>>>0;
             const alpha=dxt>=4?expandATIBlocks(D3DFMT_ATI1N,source.subarray(at,at+8),4,4,1,8,8):null;
-            for(let y=0;y<4&&by*4+y<height;y++)for(let x=0;x<4&&bx*4+x<width;x++) {
+            for (let y=0;y<4&&by*4+y<height;y++) for (let x=0;x<4&&bx*4+x<width;x++) {
                 const texel=y*4+x,to=((z*height+by*4+y)*width+bx*4+x)*4;
                 output.set(palette[(selectors>>>(texel*2))&3],to);
-                if(dxt===2||dxt===3)output[to+3]=((source[at+(texel>>1)]>>((texel&1)*4))&15)*17;
-                else if(alpha)output[to+3]=alpha[texel*4];
+                if (dxt===2||dxt===3)output[to+3]=((source[at+(texel>>1)]>>((texel&1)*4))&15)*17;
+                else if (alpha)output[to+3]=alpha[texel*4];
             }
         }
         return output;

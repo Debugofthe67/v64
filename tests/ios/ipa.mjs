@@ -115,7 +115,7 @@ test("IPA: resolves framework links and rejects indirect escapes, cycles and lin
             const length=v.getUint16(at+28,true),name=new TextDecoder().decode(b.subarray(at+46,at+46+length));
             if(Object.hasOwn(links,name.slice("Payload/Fixture.app/".length))){v.setUint16(at+4,3<<8|20,true);v.setUint32(at+38,0o120777<<16,true);}
             at+=46+length+v.getUint16(at+30,true)+v.getUint16(at+32,true);
-        }return b;
+        } return b;
     };
     await inspect(packageWithLinks({"Versions/Current":"A",alias:"Versions/Current/asset.bin"},
         [{name:"Payload/Fixture.app/Versions/A/asset.bin",data:enc("asset")}])) ;

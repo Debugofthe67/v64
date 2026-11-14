@@ -11,20 +11,20 @@ export function numerical_cases() {
     // Legal arithmetic families, with source and destination modifiers sampled
     // separately so a mismatch can be attributed to one operation.
     const arities={1:1,2:2,3:2,4:3,5:2,6:1,7:1,8:2,9:2,10:2,11:2,12:2,13:2,14:1,15:1,16:1,17:2,18:3,19:1,32:2,33:2,34:3,35:1,36:1,37:1,78:1,79:1,88:3,90:3};
-    for(const kind of ["vertex","pixel"])for(const major of [1,2,3]) {
+    for(const kind of ["vertex","pixel"]) for(const major of [1,2,3]) {
         for(const [number,arity] of Object.entries(arities)) {
             const code=+number;
             // These are common ALU tests, not a shader validator acceptance matrix.
-            if(major===1 && ![1,2,3,4,5,6,7,8,9,10,11,12,13,16,17,18,19,78,79].includes(code))continue;
-            if(kind==="pixel"&&major===1&&![1,2,3,4,5,8,18].includes(code))continue;
-            if(code===37&&major<3)continue;
+            if(major===1 && ![1,2,3,4,5,6,7,8,9,10,11,12,13,16,17,18,19,78,79].includes(code)) continue;
+            if(kind==="pixel"&&major===1&&![1,2,3,4,5,8,18].includes(code)) continue;
+            if(code===37&&major<3) continue;
             for(const mask of code===37?[1,3]:[15,5]) {
                 const args=Array.from({length:arity},(_,n)=>src(2,n,[6,7,14,15,32,37,78,79].includes(code)?0:0xe4));
                 cases.push({name:`${kind}${major}/op${code}/mask${mask}`,absoluteTolerance:code===37?2**-11:0,tokens:shader(kind,major,[[1,dst(0,0),src(2,3)],[code,dst(0,0,mask),...args]])});
             }
         }
         const mods=major===1?(kind==="pixel"?[0,1,2,3,4,5,6]:[0,1]):[0,1,11,12];
-        for(const modifier of mods)for(const swizzle of [0xe4,0x1b,0,0xff])for(const mask of [1,3,7,15]) {
+        for(const modifier of mods) for(const swizzle of [0xe4,0x1b,0,0xff]) for(const mask of [1,3,7,15]) {
             cases.push({name:`${kind}${major}/mov/mod${modifier}/sw${swizzle}/mask${mask}`,tokens:shader(kind,major,[[1,dst(0,0),src(2,3)],[1,dst(0,0,mask),src(2,0,swizzle,modifier)]])});
         }
     }
@@ -53,14 +53,14 @@ export function numerical_cases() {
             [2,dst(0,0),src(0,0),rel,al],[44],[29],[42],[1,dst(0,0),src(2,1)],[43]
         ])});
     }
-    for(const shift of [1,2,3,13,14,15])for(const mask of [5,15])cases.push({name:`ps14/shift${shift}/mask${mask}`,tokens:shader("pixel",1,[
+    for(const shift of [1,2,3,13,14,15]) for(const mask of [5,15])cases.push({name:`ps14/shift${shift}/mask${mask}`,tokens:shader("pixel",1,[
         [1,dst(0,0),src(2,3)],[2,dst(0,0,mask,1,shift),src(2,0),src(2,1)]
     ],4)});
-    for(const kind of ["vertex","pixel"])for(const major of [2,3])cases.push({name:`${kind}${major}/pow-zero-exponent`,tokens:shader(kind,major,[[32,dst(0,0),src(2,0,0),src(2,0,0)]])});
+    for(const kind of ["vertex","pixel"]) for(const major of [2,3])cases.push({name:`${kind}${major}/pow-zero-exponent`,tokens:shader(kind,major,[[32,dst(0,0),src(2,0,0),src(2,0,0)]])});
     // Non-replicated legacy operands distinguish x from w. Non-unit inputs
     // also distinguish LOGP's replicated logarithm from a mantissa/exponent
     // tuple, which Wine visual's input w=2 cannot distinguish.
-    for(const code of [6,7,14,15,78,79])for(const swizzle of [0xe4,0x1b])for(const mask of [15,5])
+    for(const code of [6,7,14,15,78,79]) for(const swizzle of [0xe4,0x1b]) for(const mask of [15,5])
         cases.push({name:`vs1/scalar${code}/sw${swizzle}/mask${mask}`,tokens:shader("vertex",1,[
             [1,dst(0,0),src(2,3)],[code,dst(0,0,mask),src(2,0,swizzle)]])});
     return cases;

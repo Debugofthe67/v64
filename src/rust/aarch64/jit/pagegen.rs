@@ -660,8 +660,14 @@ pub fn compile(bytes: &[u8], entries: &[u16], env: CompileEnv, name: String) -> 
         levels: Vec::new(),
         blocks: &blocks,
         env,
-        a32_gpr_locals: env.isa != Isa::A64 && (env.aligned_data || blocks.iter().all(|block|
-            block.insts32.iter().all(|(_, inst)| !matches!(inst.kind, a32::Kind::Helper)))),
+        a32_gpr_locals: env.isa != Isa::A64
+            && (env.aligned_data
+                || blocks.iter().all(|block| {
+                    block
+                        .insts32
+                        .iter()
+                        .all(|(_, inst)| !matches!(inst.kind, a32::Kind::Helper))
+                })),
         access: None,
         step: StepAbi {
             exit_code: state::a64_page_exit as u32,
@@ -751,7 +757,9 @@ impl Emitter<'_> {
     fn writeback(&mut self) {
         if self.env.isa != Isa::A64 {
             if self.a32_gpr_locals {
-                for i in 0..15 { self.store64_at(x_address(i), i); }
+                for i in 0..15 {
+                    self.store64_at(x_address(i), i);
+                }
             }
             self.store64_at(state::pc as u32, PC);
             return;
@@ -1174,7 +1182,9 @@ impl Emitter<'_> {
             self.retry_if(offset);
         }
         let (l, mut abi) = (self.lookup_locals(), Self::access_abi());
-        if extra != 0 { abi.slow = "a64_page_access_scalar"; }
+        if extra != 0 {
+            abi.slow = "a64_page_access_scalar";
+        }
         let retry = self.f().retry;
         self.inline_lookup(
             &l,

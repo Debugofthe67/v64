@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-function texture8_scenes(){return Array.from({length:20},(_,index)=>{const step=index%4;return{index,width:8,height:8,pixels:Array.from({length:64},(_,n)=>{const x=n%8,y=n>>3;return step===3?0xff0000ff:step===2&&x>=6?0xff00ff00:step>=1&&x>=2&&x<6&&y>=2&&y<6?0xff0000ff:0xffff0000;})};});}
+function texture8_scenes(){return Array.from({length:20},(_,index)=>{const step=index%4;return {index,width:8,height:8,pixels:Array.from({length:64},(_,n)=>{const x=n%8,y=n>>3;return step===3?0xff0000ff:step===2&&x>=6?0xff00ff00:step>=1&&x>=2&&x<6&&y>=2&&y<6?0xff0000ff:0xffff0000;})};});}
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";

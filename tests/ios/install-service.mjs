@@ -53,7 +53,7 @@ test("installation arena round-trips through the real snapshot serializer",()=>{
     globalThis.DEBUG=false;
     const s=setup(),arena={physical:0x41000000,virtual:0x81000000,size:IOS_TRUST_ARENA_BYTES,used:0,head:IOS_STATIC_TRUST_HEAD};
     s.host.set_arena(arena);
-    class Snapshot { get_state(){return[s.host.get_state()];} }
+    class Snapshot { get_state(){return [s.host.get_state()];} }
     const bytes=save_state(new Snapshot()),v=new DataView(bytes);
     const meta=JSON.parse(new TextDecoder().decode(new Uint8Array(bytes,16,v.getUint32(12,true))));
     s.host.set_state(meta.state[0]);assert.deepEqual(s.host.arena,arena);

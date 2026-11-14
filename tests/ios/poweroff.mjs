@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { V86 } from "../../src/main.js";
 const directory=process.argv[2];
-if(!directory)throw Error("usage: poweroff.mjs owner-provided-10B329-directory");
+if(!directory) throw Error("usage: poweroff.mjs owner-provided-10B329-directory");
 const emulator=new V86({machine_type:"s5l8930",graphics_adapter:"none",autostart:false,log_level:0,
     wasm_path:path.resolve("build/v86-arm64.wasm"),jit_switches:{a64_page:1},
     ios:{kernelcache:{url:path.resolve(directory,"kernelcache.n90.macho")},
@@ -25,4 +25,4 @@ try
     assert.equal(cpu.powered_off(),false);assert.equal(pmu.pmu[0x12]&1,0);
     console.log("PASS: native D1815 power removal stops the guest before its next instruction; a power cycle resets the controller");
 }
-finally{await emulator.destroy();}
+finally {await emulator.destroy();}

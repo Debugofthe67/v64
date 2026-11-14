@@ -16,7 +16,7 @@ fs.mkdirSync(out,{recursive:true});
 const result={status:"RUNNING",readbacks:"actual live GPU",runs:[]};
 function save(){fs.writeFileSync(out+"/matrix.json",JSON.stringify(result,null,2)+"\n");}
 try {
-    for(const backend of ["swift","metal"])for(const profile of profiles) {
+    for(const backend of ["swift","metal"]) for(const profile of profiles) {
         const directory=out+"/"+profile.api+"-"+backend;
         fs.mkdirSync(directory,{recursive:true});
         const env={...process.env,GL_SWIFTSHADER:backend==="swift"?"1":"0",D8WG_PUBLIC_DEVICE:"1",[profile.flag]:"1",[profile.output]:directory};
@@ -29,7 +29,7 @@ try {
             child.on("error",reject);child.on("exit",(status,signal)=>signal?reject(new Error("Probe killed by "+signal)):resolve(status));
         });} finally {fs.closeSync(fd);}
         result.runs.push({api:profile.api,backend,directory,exitCode:code,frames:profile.frames,pixels:profile.pixels});save();
-        if(code!==0)throw new Error("XP probe failed: "+directory+"/run.log");
+        if(code!==0) throw new Error("XP probe failed: "+directory+"/run.log");
     }
     result.status="PASS";save();console.log("PASS six XP runs: D3D8/9 and DirectDraw, SwiftShader and Metal");
 } catch(error) {result.status="FAIL";result.error=String(error);save();throw error;}

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-function volume8_scenes(){const colors=[0xffb02010,0xff20a040,0xff1040c0,0xffc0a020];return Array.from({length:30},(_,index)=>{const step=index%6,color=step<4?colors[step]:step===4?0xffd06020:colors[2];return{index,width:8,height:8,pixels:Array(64).fill(color)};});}
+function volume8_scenes(){const colors=[0xffb02010,0xff20a040,0xff1040c0,0xffc0a020];return Array.from({length:30},(_,index)=>{const step=index%6,color=step<4?colors[step]:step===4?0xffd06020:colors[2];return {index,width:8,height:8,pixels:Array(64).fill(color)};});}
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";

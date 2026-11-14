@@ -9,7 +9,7 @@ import {spawn} from "node:child_process";
 import {fileURLToPath} from "node:url";
 const root=fileURLToPath(new URL("../../",import.meta.url));
 const game=process.argv[2]||"3dmarklegacy";
-if(!["3dmarklegacy","3dmark03","3dmark05","3dmark06","maplestory","warcraft3","gtasa"].includes(game))throw new Error("Unknown game");
+if(!["3dmarklegacy","3dmark03","3dmark05","3dmark06","maplestory","warcraft3","gtasa"].includes(game)) throw new Error("Unknown game");
 const out=path.resolve(process.env.D3D_GAME_OUT||root+"build/d3d-review/game-"+game);
 fs.mkdirSync(out,{recursive:true});
 fs.copyFileSync(root+"build/d3d-review/inputs.json",out+"/inputs.json");
@@ -21,7 +21,7 @@ const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url,"http://localhost");
     if(url.pathname === "/favicon.ico") { res.writeHead(204).end(); return; }
     if(req.method==="POST" && ["/__test_file","/__test_result","/__test_progress"].includes(url.pathname)) {
-        const chunks=[];for await(const chunk of req)chunks.push(chunk);const data=Buffer.concat(chunks);
+        const chunks=[];for await (const chunk of req)chunks.push(chunk);const data=Buffer.concat(chunks);
         if(url.pathname==="/__test_file")fs.writeFileSync(path.join(out,path.basename(url.searchParams.get("name")||"artifact")),data);
         else if(url.pathname==="/__test_progress")console.log(data.toString());
         else {
@@ -35,7 +35,7 @@ const server=http.createServer(async(req,res)=>{
     }
     const file=path.resolve(root,"."+decodeURIComponent(url.pathname));
     if(!file.startsWith(root)){res.writeHead(403).end();return;}
-    let stat;try{stat=fs.statSync(file);}catch{res.writeHead(404).end();return;}
+    let stat;try {stat=fs.statSync(file);} catch{res.writeHead(404).end();return;}
     if(!stat.isFile()){res.writeHead(404).end();return;}
     res.setHeader("Cross-Origin-Opener-Policy","same-origin");
     res.setHeader("Cross-Origin-Embedder-Policy","require-corp");
@@ -57,7 +57,7 @@ const server=http.createServer(async(req,res)=>{
             const assetRoot=process.env.D3D_GAME_ASSET_ROOT.replace(/\/$/,"");
             if(!/^\/build\/[a-z0-9_/-]+$/i.test(assetRoot)) throw new Error("Invalid baseline asset root");
             html=html.replaceAll("../../build/",assetRoot+"/")
-                .replaceAll('"/build/v86','"'+assetRoot+'/v86')
+                .replaceAll('"/build/v86','"'+assetRoot+"/v86")
                 .replaceAll('"/build/cpu-worker.js"','"'+assetRoot+'/cpu-worker.js"');
         }
         res.end(html+reporter);return;
@@ -67,7 +67,7 @@ const server=http.createServer(async(req,res)=>{
     const stream=fs.createReadStream(file,{start,end});stream.on("error",()=>res.destroy());stream.pipe(res);
 });
 function finish(code){
-    if(finished)return;finished=true;clearTimeout(timer);clearInterval(sampling);control?.close();
+    if(finished) return;finished=true;clearTimeout(timer);clearInterval(sampling);control?.close();
     fs.writeFileSync(out+"/runner-exit.json",JSON.stringify({code,browserErrors,monitorErrors,time:new Date().toISOString()},null,2));
     if(browser){browser.once("exit",()=>fs.rmSync(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100}));browser.kill();}
     else fs.rmSync(profile,{recursive:true,force:true});
@@ -103,7 +103,7 @@ for(let i=0;i<100&&!finished;i++) {
             });
             control.onmessage=({data})=>{
                 const message=JSON.parse(data);
-                if(message.id){const request=pending.get(message.id);if(request){clearTimeout(request.timeout);pending.delete(message.id);if(message.error)request.reject(new Error(JSON.stringify(message.error)));else request.resolve(message.result);}return;}
+                if(message.id){const request=pending.get(message.id);if(request){clearTimeout(request.timeout);pending.delete(message.id);if(message.error)request.reject(new Error(JSON.stringify(message.error)));else request.resolve(message.result);} return;}
                 if(message.method==="Target.attachedToTarget") {
                     const sessionId=message.params.sessionId;
                     (async()=>{
@@ -139,16 +139,16 @@ for(let i=0;i<100&&!finished;i++) {
             if(process.env.D3D_GAME_MANUAL==="1"){
                 let busy=false,index=0;
                 sampling=setInterval(async()=>{
-                    if(busy||finished)return;busy=true;
-                    try{
+                    if(busy||finished) return;busy=true;
+                    try {
                         const shot=await call("Runtime.evaluate",{expression:"document.querySelector('#screen_container canvas')?.toDataURL('image/png')",returnByValue:true});
                         if(shot.exceptionDetails) throw new Error(JSON.stringify(shot.exceptionDetails));
                         if(!shot.result?.value) return;
                         fs.writeFileSync(out+"/frame-"+String(++index).padStart(5,"0")+".png",Buffer.from(shot.result.value.split(",")[1],"base64"));
                         const state=await call("Runtime.evaluate",{expression:"JSON.stringify({log:document.querySelector('#log')?.textContent,result:document.querySelector('#result')?.textContent,stats:window.vm?.graphics_proxy?.bridge?.d3d9Executor?.stats,hostErrors:window.vm?.graphics_proxy?.bridge?.d3d9Executor?.hostErrors,gpuErrors:window.vm?.graphics_proxy?.bridge?.d3d9Executor?.gpuErrors?.errors})",returnByValue:true});
                         fs.appendFileSync(out+"/samples.jsonl",JSON.stringify({time:new Date().toISOString(),frame:index,state:state.result?.value})+"\n");
-                    }catch(error){monitorErrors.push(String(error));fs.appendFileSync(out+"/monitor-errors.log",String(error)+"\n");}
-                    finally{busy=false;}
+                    } catch(error){monitorErrors.push(String(error));fs.appendFileSync(out+"/monitor-errors.log",String(error)+"\n");}
+                    finally {busy=false;}
                 },5000);
             }
             break;

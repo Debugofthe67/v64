@@ -5,7 +5,7 @@ import {inspect_reset_resources_wire} from "./d3d_reset_resources_wire.mjs";
 // the added HRESULT observations. Lost Presents must add no wire frames.
 export function inspect_reset_status_wire(bytes, result) {
     const logs = {...result.logs}, statuses = [];
-    for (const api of [8, 9]) {
+    for(const api of [8, 9]) {
         const file = "RST" + api + ".TXT";
         const lines = logs[file].replace(/\r/g, "").trim().split("\n");
         assert.equal(lines.length, 3);

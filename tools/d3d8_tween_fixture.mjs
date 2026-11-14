@@ -28,9 +28,9 @@ for(let at=0;at<bytes.length;){assert(at+12<=bytes.length);const size=bytes.read
   const blob=(first,count)=>{assert(first>=payload&&first+count<=offset+length);return packet.subarray(first,first+count);};
   if(name==="CREATE_BUFFER")buffers.set(v.resource_handle,v);
   if(name==="UPDATE_BUFFER"){const buffer=buffers.get(v.resource_handle);assert(buffer);const data=blob(v.data_offset,v.byte_count);assert.equal(v.destination_offset,0);
-   if(v.byte_count===120){const a=floats(data);if(a[0]===-.875){assert.deepEqual(a,first.flat());primary++;}else{assert.deepEqual(a,second.flat());secondary++;}}
+   if(v.byte_count===120){const a=floats(data);if(a[0]===-.875){assert.deepEqual(a,first.flat());primary++;} else {assert.deepEqual(a,second.flat());secondary++;}}
    else if(v.byte_count===6){assert.equal(buffer.resource_kind,2);assert.deepEqual([...data],[1,0,2,0,3,0]);index++;}
-   else{assert.equal(v.byte_count,72);assert.equal(frames%2,1);const e=scenes[frames>>1].expected;for(let i=0;i<3;++i){assert.deepEqual(floats(data.subarray(i*24,i*24+16)),e.storedVertices[i]);assert.equal(data.readUInt32LE(i*24+16),e.diffuse);assert.equal(data.readUInt32LE(i*24+20),e.specular);}processed++;}
+   else {assert.equal(v.byte_count,72);assert.equal(frames%2,1);const e=scenes[frames>>1].expected;for(let i=0;i<3;++i){assert.deepEqual(floats(data.subarray(i*24,i*24+16)),e.storedVertices[i]);assert.equal(data.readUInt32LE(i*24+16),e.diffuse);assert.equal(data.readUInt32LE(i*24+20),e.specular);}processed++;}
   }
   if(name==="CREATE_VERTEX_DECLARATION"){assert(v.element_count>=2&&v.element_count<=4);for(let i=0;i<v.element_count;++i){const e=P.decode("VertexElement",h.view,payload+P.STRUCTS.CreateVertexDeclaration.size+i*8,8);assert([1,15].includes(e.stream));assert.equal(e.type,2);assert([0,3].includes(e.usage));assert(e.usage_index<=1);}declarations++;}
   if(name==="CREATE_VERTEX_SHADER"||name==="CREATE_PIXEL_SHADER")assert.fail("fixed declarations must have no shader code");

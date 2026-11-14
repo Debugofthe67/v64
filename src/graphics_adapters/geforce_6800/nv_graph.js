@@ -32,7 +32,7 @@ export class NVGraph
     reset() { this.flip_offset=-2;this.flip_contexts.clear();this.context=0; this.flips = [[0,0,0,0],[0,0,0,0]]; this.objects.clear(); this.bindings.clear(); this.program.clear(); this.engine3d.captured.clear();this.engine3d.clear_translations(); if(this.engine3d.backend) this.engine3d.backend.reset(); }
     get busy()
     {
-        if(this.context && !(this.reg(0x40032C)&0x01000000))this.transfer_flips(this.context,false);
+        if(this.context && !(this.reg(0x40032C)&0x01000000)) this.transfer_flips(this.context,false);
         return this.engine3d.busy || this.flips.some(f=>!!f[3]);
     }
     reg(at) { return this.device.registers.get(at) || 0; }
@@ -49,7 +49,7 @@ export class NVGraph
         // raster work: drivers inspect it before saving a stalled context.
         if(at === 0x400700)
         {
-            if(this.context && !(this.reg(0x40032C)&0x01000000))this.transfer_flips(this.context,false);
+            if(this.context && !(this.reg(0x40032C)&0x01000000)) this.transfer_flips(this.context,false);
             return (this.engine3d.busy?1:0)|(this.flips.some(f=>!!f[3])?0x4000:0);
         }
         if(at === 0x400710)
@@ -82,14 +82,14 @@ export class NVGraph
         {
             // The display ISR acknowledges completed flips by advancing the
             // corresponding 2D/3D read counter, independently of GPU draws.
-            for(let i=0;i<2;i++)if(value & 1<<i)
+            for(let i=0;i<2;i++) if(value & 1<<i)
             {
                 const flip=this.flips[i];flip[0]=this.increment_flip(flip[0],flip[2]);
                 if(flip[0]!==flip[1])flip[3]=0;
             }
             this.set(at,0);
-            if(this.device.machine)this.device.machine.wake();
-            if(this.device.fifo)this.device.fifo.run();
+            if(this.device.machine) this.device.machine.wake();
+            if(this.device.fifo) this.device.fifo.run();
         }
         if(at === 0x400100 && value & 0x10001)
         {
@@ -108,8 +108,8 @@ export class NVGraph
         if(at === 0x400304 && value & 1)
         {
             const flags=this.reg(0x400310),instance=this.reg(0x400784)&0xFFFFF;
-            if(flags&0x20)this.transfer_flips(instance,true);
-            if(flags&0x40)this.transfer_flips(instance,false);
+            if(flags&0x20) this.transfer_flips(instance,true);
+            if(flags&0x40) this.transfer_flips(instance,false);
             this.set(0x400310,flags&~0x60);
             this.set(0x400300,this.reg(0x400300)&~1);
         }
@@ -139,7 +139,7 @@ export class NVGraph
     error(channel, subc, method, value, source = 0x40, status = 0x4000, reason = "unimplemented PGRAPH method")
     {
         this.faults.push({channel,subc,method,value:value>>>0,source,status,reason,sequence:this.device.trace.sequence});
-        if(this.faults.length>64)this.faults.shift();
+        if(this.faults.length>64) this.faults.shift();
         this.set(0x400704, channel << 20 | subc << 16 | method);
         this.set(0x400708, value);
         this.set(0x400108, this.reg(0x400108) | source);
@@ -172,9 +172,9 @@ export class NVGraph
         // Decode only the declarative register-transfer layout. No branches,
         // calls, resets or guest microcode are executed. NV40 REG consumes a
         // literal count (or RA), CMD SET_CTX_POINTER starts a memory block.
-        if(this.flip_offset!==-2)return this.flip_offset<0?null:this.flip_offset;
+        if(this.flip_offset!==-2) return this.flip_offset<0?null:this.flip_offset;
         let pointer=0,ra=0;
-        for(const [,word]of [...this.program].sort((a,b)=>a[0]-b[0]))
+        for(const [,word] of [...this.program].sort((a,b)=>a[0]-b[0]))
         {
             if(word>>>20===2)ra=word&0xFFFFF;
             else if(word===0x60000A)pointer=ra;
@@ -191,7 +191,7 @@ export class NVGraph
     transfer_flips(instance,save)
     {
         const offset=this.flip_context_offset(),at=instance*16+offset;
-        if(!instance || offset===null || at<0 || at+4>1<<20)return;
+        if(!instance || offset===null || at<0 || at+4>1<<20) return;
         const vram=this.device.vram(),base=this.device.vram_size-(1<<20)+at;
         const view=new DataView(vram.buffer,vram.byteOffset+base,4);
         if(save)
@@ -213,7 +213,7 @@ export class NVGraph
     activate_context()
     {
         const instance=this.reg(0x32E0)&0xFFFFF;
-        if(!instance)return;
+        if(!instance) return;
         if(instance!==this.context)
         {
             if(this.context)
@@ -224,7 +224,7 @@ export class NVGraph
             this.flips=this.flip_contexts.get(instance)||[[0,0,0,0],[0,0,0,0]];
             this.context=instance;this.transfer_flips(instance,false);
         }
-        else if(!(this.reg(0x40032C)&0x01000000))this.transfer_flips(instance,false);
+        else if(!(this.reg(0x40032C)&0x01000000)) this.transfer_flips(instance,false);
         this.set(0x40032C,0x01000000|instance);
     }
     increment_flip(value,modulo) { return value+1===modulo?0:(value+1)&7; }
@@ -233,7 +233,7 @@ export class NVGraph
         const flip=this.flips[object.class_id===0x4097?1:0];
         if(method<=0x128)
         {
-            if(value>7)throw new RangeError("NV40 invalid flip counter");
+            if(value>7) throw new RangeError("NV40 invalid flip counter");
             flip[(method-0x120)/4]=value;
         }
         else if(method===0x12C)flip[1]=this.increment_flip(flip[1],flip[2]);
@@ -278,7 +278,7 @@ export class NVGraph
             }
             else if(object.class_id === 0x4097) accepted = accepted || this.engine3d.method(object, method, value, subc);
             else if(this.engine2d) accepted = accepted || this.engine2d.method(object, method, value);
-            if(accepted===null)return false;
+            if(accepted===null) return false;
             if(accepted) object.methods.set(method, value >>> 0);
             else this.error(channel, subc, method, value);
             this.device.trace.record("graph", object.class_id * 0x2000 + method, 4, true, value, accepted);
@@ -314,15 +314,15 @@ export class NVGraph
             ({channel,instance,class_id,methods:new Map(methods),stream}));
         for(const object of objects.slice(0,state[0]>=4?state[7]:objects.length))
             this.objects.set(object.channel+":"+object.instance,object);
-        if(state[0]>=4)for(const [key,index]of state[6])this.bindings.set(key,objects[index]);
-        else if(this.device.fifo)for(const [channel,context]of this.device.fifo.channels)
+        if(state[0]>=4) for(const [key,index] of state[6]) this.bindings.set(key,objects[index]);
+        else if(this.device.fifo) for(const [channel,context] of this.device.fifo.channels)
             for(let subc=0;subc<8;subc++)
             {
                 const object=this.objects.get(channel+":"+context.bindings[subc]);
-                if(object)this.bindings.set(channel+":"+subc,object);
+                if(object) this.bindings.set(channel+":"+subc,object);
             }
         this.program = new Map(state[2]);
-        if(state[0]>=2)this.flips=state[3].map(f=>f.slice());
+        if(state[0]>=2) this.flips=state[3].map(f=>f.slice());
         if(state[0]>=3)
         {
             this.context=state[4];

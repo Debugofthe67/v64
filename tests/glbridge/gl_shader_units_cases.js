@@ -1,5 +1,5 @@
+"use strict";
 (function(global) {
-    "use strict";
     const cases = [
         { name: "shared_globals_separate_macros", uniform: "tint", value: [0, 0.25, 0, 1], vertex: [
             "#version 120\n#define FACTOR 0.125\nuniform vec4 tint; float mainLocal = FACTOR; float shared = 0.125; float helper(); varying vec4 v; void main() { gl_Position = gl_Vertex; float result = helper(); v = vec4(mainLocal + result + shared, tint.g, 0.25, 1.0); }",

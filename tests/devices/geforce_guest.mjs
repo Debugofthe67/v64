@@ -77,7 +77,7 @@ function replace_probe(bytes, replacement)
 function run_scancodes(text)
 {
     const keys=new Map();
-    for(const [row,start]of [["1234567890-=",2],["qwertyuiop[]",16],["asdfghjkl;'",30],
+    for(const [row,start] of [["1234567890-=",2],["qwertyuiop[]",16],["asdfghjkl;'",30],
         ["`",41],["\\",43],["zxcvbnm,./",44],[" ",57]])
         Array.from(row).forEach((character,index)=>keys.set(character,start+index));
     const shifted="!@#$%^&*()_+{}:\"~|<>?",plain="1234567890-=[];'`\\,./",result=[];
@@ -275,8 +275,8 @@ export async function run_geforce_guest(win98)
             if(process.env.NV_DISABLE_JIT) vm.v86.cpu.configure_jit_backend({disable_jit:true});
             await vm.run();
         }
-        else if(game)await vm.run();
-        if(process.env.NV_FDA)await vm.set_fda({url:path.resolve(process.env.NV_FDA),disk_option:"read_only"});
+        else if(game) await vm.run();
+        if(process.env.NV_FDA) await vm.set_fda({url:path.resolve(process.env.NV_FDA),disk_option:"read_only"});
         const cpu = vm.v86.cpu;
         nv = cpu.devices.graphics_adapter.device["nv"];
         nv.trace.enabled = process.env.NV_TRACE !== "0";
@@ -306,7 +306,7 @@ export async function run_geforce_guest(win98)
                     fs.writeFileSync(path.join(out,"fifo-page-updates.json"),JSON.stringify(pageUpdates,null,2));
                 }
                 if(space!=="mmio" || ![0x2100,0x2140,0x2500,0x2504,0x3204,0x3220,0x3228,0x322C,0x3230,0x3250,0x3254,0x3258,0x3270].includes(offset) ||
-                    !write && offset!==0x3258 || faulted && after>=512)return;
+                    !write && offset!==0x3258 || faulted && after>=512) return;
                 history.push({elapsed:elapsed(),offset,size,write,value,eip:cpu.instruction_pointer[0]>>>0,channel:nv.fifo.active,
                     cacheGet:nv.registers.get(0x3270)||0,hash:nv.registers.get(0x3258)||0});
                 if(faulted){after++;fs.writeFileSync(path.join(out,"fifo-error-registers.json"),JSON.stringify(history,null,2));}
@@ -317,9 +317,9 @@ export async function run_geforce_guest(win98)
                 // Software DAC traps are expected driver callbacks. Preserve
                 // the first real cache/pusher errors before their ISR changes
                 // RAMHT entries or DMA mappings and obscures the producer.
-                if(kind==="cache" && flags===0x100 || captures.length>=16)return;
+                if(kind==="cache" && flags===0x100 || captures.length>=16) return;
                 const fault=nv.fifo.faults.at(-1),key=JSON.stringify([kind,flags,fault.subc,fault.method,fault.value,reason]);
-                if(seen.has(key))return;seen.add(key);
+                if(seen.has(key)) return;seen.add(key);
                 faulted=true;
                 const config=nv.registers.get(0x2210)||0,bits=9+(config>>>16&3),base=(config&0x1F0)<<8,matches=[];
                 for(let index=0;index<2**bits;index++)
@@ -345,22 +345,22 @@ export async function run_geforce_guest(win98)
             assert(Number.isSafeInteger(first) && first>=0 && Number.isSafeInteger(size) && size>0 && size<=1048576 && first+size<=nv.vram_size);
             const engine=nv.graph.engine2d,method=engine.method.bind(engine),write=nv.dma.write.bind(nv.dma),captures=[],seen=new Set();
             let active=null;
-            engine.method=(object,at,value)=>{active={object,at,value};try{return method(object,at,value);}finally{active=null;}};
+            engine.method=(object,at,value)=>{active={object,at,value};try {return method(object,at,value);} finally {active=null;}};
             nv.dma.write=(dma,offset,bytes)=>{
                 const at=((dma.pte&0xFFFFF000)>>>0)+dma.adjust+offset;
                 if(!dma.target && dma.linear && at<first+size && first<at+bytes.length && captures.length<64)
                 {
                     let destination=null,sourceRows=null;
-                    if(active)try {destination=engine.surface(active.object,[0x61,0x65,0x8A,0x308A].includes(active.object.class_id)?0x19C:0x198);}catch{}
+                    if(active) try {destination=engine.surface(active.object,[0x61,0x65,0x8A,0x308A].includes(active.object.class_id)?0x19C:0x198);} catch{}
                     const key=JSON.stringify([active?.object.instance,active?.at,active?.object.methods.get(0x304),active?.object.methods.get(0x30C),
                         active?.object.methods.get(0x408),destination]);
                     if(!seen.has(key))
                     {
-                        if(active && [0x77,0x89,0x3089].includes(active.object.class_id))try
+                        if(active && [0x77,0x89,0x3089].includes(active.object.class_id)) try
                         {
                             const o=active.object,input=engine.dma(o,0x184),offset=o.methods.get(0x408)||0,pitch=o.methods.get(0x404)&65535;
                             sourceRows=Array.from({length:4},(_,row)=>Array.from(nv.dma.read(input,offset+row*pitch,64)));
-                        }catch{}
+                        } catch{}
                         seen.add(key);captures.push({elapsed:elapsed(),address:at,bytes:bytes.length,data:Array.from(bytes.slice(0,64)),
                             dma,destination,sourceRows,method:active?.at,value:active?.value,object:active?{channel:active.object.channel,instance:active.object.instance,
                                 class_id:active.object.class_id,methods:Array.from(active.object.methods)}:null});
@@ -405,10 +405,10 @@ export async function run_geforce_guest(win98)
             graph.error=(channel,subc,at,value,source=0x40,status=0x4000,reason="unimplemented PGRAPH method")=>{
                 error(channel,subc,at,value,source,status,reason);
                 const object=graph.bindings.get(channel+":"+subc),key=JSON.stringify([channel,subc,object?.class_id,at,reason]);
-                if(captures.length>=16 || seen.has(key))return;
+                if(captures.length>=16 || seen.has(key)) return;
                 seen.add(key);
                 const references=[];
-                if(object)for(let field=0x180;field<=0x1B8;field+=4)if(object.methods.has(field))
+                if(object) for(let field=0x180;field<=0x1B8;field+=4) if(object.methods.has(field))
                 {
                     const instance=object.methods.get(field)*16,entry={field,instance,loaded:describe(graph.objects.get(channel+":"+instance))};
                     try {entry.ramin=Array.from({length:4},(_,i)=>nv.dma.word(instance+i*4));}
@@ -417,7 +417,7 @@ export async function run_geforce_guest(win98)
                 }
                 const fifoRegisters=[0x3204,0x3210,0x3228,0x322C,0x3240,0x3244,0x3270,0x3280,0x32A8,0x32AC].map(at=>[at,nv.registers.get(at)||0]);
                 let objectRAMIN=null;
-                if(object)try {objectRAMIN=Array.from({length:4},(_,i)=>nv.dma.word(object.instance+i*4));}
+                if(object) try {objectRAMIN=Array.from({length:4},(_,i)=>nv.dma.word(object.instance+i*4));}
                 catch(readError){objectRAMIN=String(readError);}
                 let pushbuffer=null;
                 try {
@@ -442,7 +442,7 @@ export async function run_geforce_guest(win98)
                     if(!seen.has(key) && faults.length<16)
                     {
                         let program;
-                        try {program=nv.graph.engine3d.program(object);}catch(captureError){program={error:String(captureError)};}
+                        try {program=nv.graph.engine3d.program(object);} catch(captureError){program={error:String(captureError)};}
                         seen.add(key);faults.push({elapsed:elapsed(),reason,channel:object.channel,instance:object.instance,
                             mode,subc,words:words?.length||0,indices:indices?.length||0,methods:Array.from(object.methods),program});
                         fs.writeFileSync(path.join(out,"draw-faults.json"),JSON.stringify(faults,null,2));
@@ -461,7 +461,7 @@ export async function run_geforce_guest(win98)
             let count=0,bytes=0;fs.writeFileSync(file,"");
             backend.draw=(object,mode,words,indices,subc)=>{
                 const before=backend.stats.draws,result=draw(object,mode,words,indices,subc);
-                if(backend.stats.draws===before && !process.env.NV_DRAW_CAPTURE_SKIPS || backend.stats.draws<first || count>=limit || bytes>=budget)return result;
+                if(backend.stats.draws===before && !process.env.NV_DRAW_CAPTURE_SKIPS || backend.stats.draws<first || count>=limit || bytes>=budget) return result;
                 let capture={ordinal:count++,elapsed:elapsed(),draw:backend.stats.draws,mode,subc,channel:object.channel,instance:object.instance,
                     submitted:backend.stats.draws!==before,indexCount:indices?.length,inlineWordCount:words?.length};
                 try
@@ -498,9 +498,9 @@ export async function run_geforce_guest(win98)
             const engine=nv.graph.engine3d,backend=engine.backend,draw=backend.draw.bind(backend),flush=backend.flush.bind(backend),complete=backend.complete.bind(backend);
             const metadata=new Map(),events=[],file=path.join(out,"draw-pixel-history.json");let current=null,ordinal=0;
             const pixel=(bytes,at,target)=>{
-                if([75,80].includes(target.d3d))return [target.bpp===2?bytes[at]|bytes[at+1]<<8:
+                if([75,80].includes(target.d3d)) return [target.bpp===2?bytes[at]|bytes[at+1]<<8:
                     (bytes[at]|bytes[at+1]<<8|bytes[at+2]<<16|bytes[at+3]<<24)>>>0];
-                if(target.bpp===4)return Array.from(bytes.subarray(at,at+4));
+                if(target.bpp===4) return Array.from(bytes.subarray(at,at+4));
                 const word=bytes[at]|bytes[at+1]<<8,bits=target.d3d===23?6:5;
                 return [Math.round((word&31)*255/31),Math.round((word>>>5&(1<<bits)-1)*255/((1<<bits)-1)),
                     Math.round((word>>>(5+bits)&31)*255/31),255];
@@ -524,10 +524,10 @@ export async function run_geforce_guest(win98)
                 if(pending && pending.done && !pending.requests.size && (!pending.query || pending.query.value!==null))
                 {
                     const item=metadata.get(pending);
-                    if(events.length<256 && item)for(const {target,bytes}of pending.outputs)
+                    if(events.length<256 && item) for(const {target,bytes} of pending.outputs)
                     {
-                        if(events.length>=256)break;
-                        if(target.swizzle || ![2,4].includes(target.bpp) || target.bpp===2 && ![23,24,80].includes(target.d3d) || x>=target.width || y>=target.height)continue;
+                        if(events.length>=256) break;
+                        if(target.swizzle || ![2,4].includes(target.bpp) || target.bpp===2 && ![23,24,80].includes(target.d3d) || x>=target.width || y>=target.height) continue;
                         const offset=(y*target.width+x)*target.bpp,after=pixel(bytes,offset,target);
                         const before=pixel(nv.dma.read(target.dma,target.offset+y*target.pitch+x*target.bpp,target.bpp),0,target);
                         const depth=[75,80].includes(target.d3d);
@@ -592,7 +592,7 @@ export async function run_geforce_guest(win98)
                 const class_id=Math.floor(offset/0x2000),method=offset&0x1FFF;
                 const graphMethod=space==="graph" && ([0x4097,0x9F].includes(class_id) && method>=0x120 && method<=0x130 ||
                     class_id===0x4097 && method>=0x1D6C && method<=0x1D74);
-                if(!write || !graphMethod && !(space==="mmio" && [0x400304,0x400310,0x40032C,0x400710,0x40071C,0x400720,0x600800].includes(offset)))return;
+                if(!write || !graphMethod && !(space==="mmio" && [0x400304,0x400310,0x40032C,0x400710,0x40071C,0x400720,0x600800].includes(offset))) return;
                 const position=nv.graph.flip_context_offset();
                 captures.push({elapsed:elapsed(),sequence:nv.trace.sequence,space,offset,value,eip:cpu.instruction_pointer[0]>>>0,
                     current:nv.registers.get(0x40032C)||0,context:nv.graph.context,flips:nv.graph.flips.map(f=>f.slice()),
@@ -607,10 +607,10 @@ export async function run_geforce_guest(win98)
             const original=nv.ramin_write.bind(nv),captures=[];
             nv.ramin_write=(offset,value)=>{
                 original(offset,value);
-                if(offset!==address+3 || captures.length>=8)return;
-                const word=nv.dma.word(address);if(word&1)return;
+                if(offset!==address+3 || captures.length>=8) return;
+                const word=nv.dma.word(address);if(word&1) return;
                 const stack=cpu.reg32[4]>>>0,read=at=>{
-                    try{return cpu.mem8[cpu.translate_address_system_read(at)>>>0];}catch{return 0;}
+                    try {return cpu.mem8[cpu.translate_address_system_read(at)>>>0];} catch{return 0;}
                 };
                 captures.push({elapsed:elapsed(),sequence:nv.trace.sequence,address,word,
                     eip:cpu.instruction_pointer[0]>>>0,regs:Array.from(cpu.reg32,v=>v>>>0),

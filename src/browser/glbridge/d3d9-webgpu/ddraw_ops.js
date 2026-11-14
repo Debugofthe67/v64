@@ -282,7 +282,7 @@
                     return;
                 }
                 const src=clipped.source;
-                if(src.left<0||src.top<0||src.right>sourceWidth||src.bottom>sourceHeight) {
+                if (src.left<0||src.top<0||src.right>sourceWidth||src.bottom>sourceHeight) {
                     this.ddRefuse("depth-blit-source","DirectDraw depth blit source is out of bounds",{sourceHandle});return;
                 }
                 const frame=this.ensureFrame();

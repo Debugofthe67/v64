@@ -32,10 +32,10 @@ export class NV40State
         if(!this.morton_axes.has(key))
         {
             const axes=[new Uint32Array(surface.width),new Uint32Array(surface.height)],sizes=[surface.u,surface.v],bits=Math.max(...sizes);
-            for(let axis=0;axis<2;axis++)for(let value=0;value<axes[axis].length;value++)
+            for(let axis=0;axis<2;axis++) for(let value=0;value<axes[axis].length;value++)
             {
                 let index=0,bit=0;
-                for(let i=0;i<bits;i++)for(let a=0;a<2;a++)if(i<sizes[a])
+                for(let i=0;i<bits;i++) for(let a=0;a<2;a++) if(i<sizes[a])
                 {if(a===axis)index|=(value>>>i&1)<<bit;bit++;}
                 axes[axis][value]=index;
             }
@@ -46,7 +46,7 @@ export class NV40State
     reorder(surface,source,to_morton)
     {
         const result=new Uint8Array(source.length),[xs,ys]=this.axes(surface),bpp=surface.bpp;
-        for(let y=0;y<surface.height;y++)for(let x=0;x<surface.width;x++)
+        for(let y=0;y<surface.height;y++) for(let x=0;x<surface.width;x++)
         {
             const linear=(y*surface.width+x)*bpp,morton=(xs[x]|ys[y])*bpp;
             const from=to_morton?linear:morton,to=to_morton?morton:linear;
@@ -77,7 +77,7 @@ export class NV40State
         const layout=depth?code===1?[2,80]:code===2?[4,75]:null:COLOR.get(code);
         if(!layout) throw new RangeError("NV40 unsupported render target format "+code);
         const area=this.raster_area(o),[bpp,d3d]=layout,pitch=get(o,depth?0x22C:RT_PITCH[index]);
-        if(!area.swizzle && pitch<area.width*bpp)throw new RangeError("NV40 invalid render target dimensions/pitch");
+        if(!area.swizzle && pitch<area.width*bpp) throw new RangeError("NV40 invalid render target dimensions/pitch");
         const surface={dma:this.dma(o,depth?0x198:RT_DMA[index]),offset:get(o,depth?0x214:RT_OFFSET[index]),
             pitch,bpp,d3d,...area};
         return surface;
@@ -131,9 +131,9 @@ export class NV40State
         }
         // Validate every destination first: a late depth/MRT fault must not
         // leave an earlier color target partially cleared.
-        for(const {target}of jobs)this.validate(target,true);
+        for(const {target} of jobs) this.validate(target,true);
         const x=get(o,0x8C0,0x10000000),y=get(o,0x8C4,0x10000000);
-        for(const {target,mask,value}of jobs)
+        for(const {target,mask,value} of jobs)
         {
             const left=Math.max(target.x,x&65535),top=Math.max(target.y,y&65535);
             const right=Math.min(target.width,(x&65535)+(x>>>16)),bottom=Math.min(target.height,(y&65535)+(y>>>16));
@@ -170,7 +170,7 @@ export class NV40State
     }
     viewport(o,target)
     {
-        if(get(o,0x1E94)&0x100)return {x:0,y:0,width:target.width,height:target.height,bypass:true};
+        if(get(o,0x1E94)&0x100) return {x:0,y:0,width:target.width,height:target.height,bypass:true};
         const number=at=>new Float32Array(Uint32Array.of(get(o,at)).buffer)[0];
         const scale=[0,1,2].map(i=>number(0xA30+i*4)),translate=[0,1,2].map(i=>number(0xA20+i*4));
         const width=2*Math.abs(scale[0]),height=2*Math.abs(scale[1]);

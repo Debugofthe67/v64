@@ -13,12 +13,12 @@ const changed_bytes=(a,b)=>{
     // Decoded texture-cache hits reuse the same host byte image. Comparing
     // a view with itself cannot discover a change; guest memory reads still
     // produce fresh images and retain their exact-byte comparison below.
-    if(a===b)return null;
-    if(!a || a.length!==b.length)return [0,b.length];
+    if(a===b) return null;
+    if(!a || a.length!==b.length) return [0,b.length];
     const count=a.length>>>2,aw=new Uint32Array(a.buffer,a.byteOffset,count),bw=new Uint32Array(b.buffer,b.byteOffset,count);
     let first=0;while(first<count && aw[first]===bw[first])first++;
     first*=4;while(first<b.length && a[first]===b[first])first++;
-    if(first===b.length)return null;
+    if(first===b.length) return null;
     let last=b.length;while(last>first && a[last-1]===b[last-1])last--;
     return [first,last];
 };
@@ -31,13 +31,13 @@ const STENCIL=new Map([[0x1E00,1],[0,2],[0x1E01,3],[0x1E02,4],[0x1E03,5],[0x150A
 // Curie accepts the native DirectX comparison aliases as well as GL enums
 // (envytools hwtest MthdKelvin{DepthFunc,AlphaFuncFunc,StencilFunc}).
 const comparison=value=>{
-    if(value>=1 && value<=8)return value;
-    if(value>=0x200 && value<=0x207)return value-0x1FF;
+    if(value>=1 && value<=8) return value;
+    if(value>=0x200 && value<=0x207) return value-0x1FF;
     throw new RangeError("NV40 invalid depth/stencil/alpha comparison");
 };
 export function nv40_cull_state(o)
 {
-    if(!get(o,0x183C))return {state:1,all:false};
+    if(!get(o,0x183C)) return {state:1,all:false};
     const face=get(o,0x1830,0x405),front=get(o,0x1834,0x901);
     if(![0x404,0x405,0x408].includes(face) || ![0x900,0x901].includes(front))
         throw new RangeError("NV40 invalid face culling state");
@@ -48,9 +48,9 @@ export function nv40_cull_state(o)
 export function nv40_depth_state(o,stencilAvailable=true,mode=5)
 {
     const depth=!!get(o,0xA74),stencil=!!get(o,0x328)&&stencilAvailable;
-    if(get(o,0x380))throw new RangeError("NV40 depth bounds is not connected");
+    if(get(o,0x380)) throw new RangeError("NV40 depth bounds is not connected");
     const offset=mode>=5&&!!get(o,0xA68),factor=offset?float_value(get(o,0xA78)):0,units=offset?float_value(get(o,0xA7C)):0;
-    if(!Number.isFinite(factor) || !Number.isFinite(units))throw new RangeError("NV40 non-finite polygon offset");
+    if(!Number.isFinite(factor) || !Number.isFinite(units)) throw new RangeError("NV40 non-finite polygon offset");
     const twoSided=stencil&&!!get(o,0x348);
     // Curie stores twice the conventional polygon-offset units (Mesa nv30
     // rasterizer state). D9WG adds a normalised constant in the pixel shader,
@@ -63,16 +63,16 @@ export function nv40_depth_state(o,stencilAvailable=true,mode=5)
             (get(o,at,fallback)&255)!==(get(o,at+32,fallback)&255)))
             throw new RangeError("NV40 independent stencil references/masks are not connected");
         const front=get(o,0x1834,0x901);
-        if(twoSided && front!==0x900 && front!==0x901)throw new RangeError("NV40 invalid stencil front winding");
+        if(twoSided && front!==0x900 && front!==0x901) throw new RangeError("NV40 invalid stencil front winding");
         // D3D's ordinary bank is CW and its second bank is CCW, regardless
         // of culling. NV's banks follow the programmable front winding.
         const banks=twoSided?(front===0x900?[0,32]:[32,0]):[0];
-        for(const [bank,offset]of banks.entries())
+        for(const [bank,offset] of banks.entries())
         {
-            for(const [state,at]of [[bank?186:53,0x33C],[bank?187:54,0x340],[bank?188:55,0x344]])
+            for(const [state,at] of [[bank?186:53,0x33C],[bank?187:54,0x340],[bank?188:55,0x344]])
             {
                 const operation=get(o,at+offset,0x1E00);
-                if(!STENCIL.has(operation))throw new RangeError("NV40 invalid stencil operation");
+                if(!STENCIL.has(operation)) throw new RangeError("NV40 invalid stencil operation");
                 result.push([state,STENCIL.get(operation)]);
             }
             result.push([bank?189:56,comparison(get(o,0x330+offset,0x207))]);
@@ -86,9 +86,9 @@ export function nv40_blend_state(o,active=15)
     const mask=((get(o,0x310)?1:0)|(get(o,0x36C)&14))&active;
     const alpha=!!get(o,0x304),blend=!!mask,compare=get(o,0x308,0x207);
     const result=[[15,+alpha],[25,alpha?comparison(compare):8],[24,get(o,0x30C)&255],[27,+blend],[NV_RS.COLOR_BLEND_MASK,mask]];
-    if(!blend)return result;
+    if(!blend) return result;
     const source=get(o,0x314,0x00010001),destination=get(o,0x318),equation=get(o,0x320,0x80068006);
-    const convert=(table,value)=>{if(!table.has(value))throw new RangeError("NV40 unsupported blend enum");return table.get(value);};
+    const convert=(table,value)=>{if(!table.has(value)) throw new RangeError("NV40 unsupported blend enum");return table.get(value);};
     const rgb=[source&65535,destination&65535],constantAlpha=rgb.some(value=>value===0x8003 || value===0x8004);
     let constant=get(o,0x31C);
     if(constantAlpha)
@@ -174,7 +174,7 @@ export class NV40Render
             {
                 const protectedHandles=new Set(this.batch?[...this.batch.outputs.keys(),...this.batch.guards.keys()]:[]);
                 const first=[...this.resources].find(([,resource])=>!protectedHandles.has(resource.handle));
-                if(!first)throw new RangeError("NV40 pending target cache is full");
+                if(!first) throw new RangeError("NV40 pending target cache is full");
                 this.writer.command(OP.DESTROY_RESOURCE,{"resource_handle":first[1].handle,"resource_kind":first[1].kind});this.resources.delete(first[0]);
             }
             resource={handle:this.next++,kind:surface.cube?4:surface.volume?5:3,images:null};
@@ -189,7 +189,7 @@ export class NV40Render
         const handle=resource.handle;
         if(images)images.forEach((bytes,index)=>{
             const previous=resource.images && resource.images[index],changed=changed_bytes(previous,bytes);
-            if(!changed)return;
+            if(!changed) return;
             const level=index%levels,face=surface.cube?Math.floor(index/levels):0;
             const width=Math.max(1,surface.width>>>level),height=Math.max(1,surface.height>>>level),pitch=width*surface.bpp;
             // Keep whole rows so every native pixel format, including depth,
@@ -241,7 +241,7 @@ export class NV40Render
     render_state(state,value) {this.command(OP.SET_RENDER_STATE,{"state":state,"value":value});}
     range(surface,texture=false)
     {
-        const dma=surface.dma;if(!dma.linear)return {memory:dma.target?1:0,first:0,last:Infinity};
+        const dma=surface.dma;if(!dma.linear) return {memory:dma.target?1:0,first:0,last:Infinity};
         let length=0;
         if(texture)
         {
@@ -260,14 +260,14 @@ export class NV40Render
     }
     barrier(o,method,value)
     {
-        if(!this.batch)return false;
+        if(!this.batch) return false;
         // Surface/clip/ROP/pattern context setters change CPU metadata only.
         // Pending draw commands already contain their own decoded state.
-        if(this.device.graph.context_method(o,method))return false;
+        if(this.device.graph.context_method(o,method)) return false;
         if(o.class_id===0x39)
         {
-            if([0x180,0x184,0x188,0x30C,0x310,0x314,0x318,0x31C,0x320,0x324].includes(method))return false;
-            if(method===0x328)try
+            if([0x180,0x184,0x188,0x30C,0x310,0x314,0x318,0x31C,0x320,0x324].includes(method)) return false;
+            if(method===0x328) try
             {
                 const {input,output,notifier,width,height}=this.device.graph.engine2d.m2mf_plan(o);
                 if(input.linear && output.linear && notifier.linear)
@@ -284,10 +284,10 @@ export class NV40Render
                     const writes=[span(notifier,16,0,1,16),...(width&&height?[span(output,to,dstPitch,height,width)]:[])];
                     const overlaps=(range,target)=>{const other=this.range(target);return range.memory===other.memory && range.first<other.last && other.first<range.last;};
                     if(![...this.batch.outputs.values()].some(({target})=>[...reads,...writes].some(range=>overlaps(range,target))) &&
-                        ![...this.batch.guards.values()].some(({target})=>writes.some(range=>overlaps(range,target))))return false;
+                        ![...this.batch.guards.values()].some(({target})=>writes.some(range=>overlaps(range,target)))) return false;
                 }
             }
-            catch(error) {if(!(error instanceof RangeError))throw error;}
+            catch(error) {if(!(error instanceof RangeError)) throw error;}
         }
         if([0x61,0x65,0x8A,0x308A].includes(o.class_id))
         {
@@ -295,37 +295,37 @@ export class NV40Render
             // next-DWORD footprint with the CPU engine; only a checked linear
             // destination disjoint from every queued attachment can proceed.
             // Read-only depth still guards against intervening CPU writes.
-            if(method>=0x184 && method<=0x19C || method>=0x2F8 && method<=0x30C)return false;
-            if(method>=0x400 && method<0x2000 && !(method&3))try
+            if(method>=0x184 && method<=0x19C || method>=0x2F8 && method<=0x30C) return false;
+            if(method>=0x400 && method<0x2000 && !(method&3)) try
             {
                 const cpu=this.device.graph.engine2d,{dst,rect}=cpu.upload_plan(o),[x,y,width,height]=rect;
-                if(!width || !height)return false;
+                if(!width || !height) return false;
                 if(get(o,0x2FC,3)===3 && !dst.swizzle && dst.dma.linear)
                 {
-                    for(const at of [0x184,0x18C,0x190,0x194,0x198])if(o.methods.has(at))cpu.ref(o,at);
+                    for(const at of [0x184,0x18C,0x190,0x194,0x198]) if(o.methods.has(at))cpu.ref(o,at);
                     const offset=cpu.row(dst,x,y,width,false);cpu.row(dst,x,y,width,true);
                     const write=this.range({...dst,offset,width,height:1});
                     if(![...this.batch.outputs.values(),...this.batch.guards.values()].some(({target})=>{
                         const output=this.range(target);
                         return write.memory===output.memory && write.first<output.last && output.first<write.last;
-                    }))return false;
+                    })) return false;
                 }
             }
-            catch(error) {if(!(error instanceof RangeError))throw error;}
+            catch(error) {if(!(error instanceof RangeError)) throw error;}
         }
-        if(o.class_id!==0x4097 || method===0x100 && value || [0x104,0x108,0x110,0x17C8,0x17CC,0x1800,0x1D70,0x1D74,0x1D94].includes(method) || method>=0x120 && method<=0x130)return true;
+        if(o.class_id!==0x4097 || method===0x100 && value || [0x104,0x108,0x110,0x17C8,0x17CC,0x1800,0x1D70,0x1D74,0x1D94].includes(method) || method>=0x120 && method<=0x130) return true;
         // Fragment programs/textures and vertex arrays are fetched into this
         // draw's immutable command bytes. Rebinding their DMA descriptors does
         // not change queued attachment writes or require downloading them.
-        if([0x184,0x188,0x19C,0x1A0].includes(method))return false;
-        if(get(o,method)!==value && (method>=0x180 && method<=0x1B8 || method>=0x200 && method<=0x22C || method>=0x280 && method<=0x28C))return true;
+        if([0x184,0x188,0x19C,0x1A0].includes(method)) return false;
+        if(get(o,method)!==value && (method>=0x180 && method<=0x1B8 || method>=0x200 && method<=0x22C || method>=0x280 && method<=0x28C)) return true;
         return false;
     }
     draw(o,mode,words,indices=null,subc=0)
     {
         if(this.pending) throw new RangeError("NV40 renderer already busy");
         const enable=get(o,0x220,1),active=enable&15;
-        if(enable&~31 || active && (!(active&1) || active!==1 && !(enable&16)))throw new RangeError("NV40 unsupported render target enable mask");
+        if(enable&~31 || active && (!(active&1) || active!==1 && !(enable&16))) throw new RangeError("NV40 unsupported render target enable mask");
         const zsa=nv40_depth_state(o,(get(o,0x208)>>>5&7)===2,mode);
         if(get(o,0x142C) || get(o,0x374) || get(o,0x1478) ||
             get(o,0x1828,0x1B02)!==0x1B02 || get(o,0x182C,0x1B02)!==0x1B02)
@@ -335,7 +335,7 @@ export class NV40Render
         const area=active?null:this.engine.state.raster_area(o);
         const target=active?this.engine.state.target(o):{...area,pitch:area.width*4,bpp:4,d3d:21};
         if(![21,22,23,24,113,114,116].includes(target.d3d)) throw new RangeError("NV40 target format is not connected to renderer");
-        if([114,116].includes(target.d3d) && (((get(o,0x310)?1:0)|(get(o,0x36C)&14))&active))throw new RangeError("NV40 FP32 target blending is not connected");
+        if([114,116].includes(target.d3d) && (((get(o,0x310)?1:0)|(get(o,0x36C)&14))&active)) throw new RangeError("NV40 FP32 target blending is not connected");
         if(target.d3d===116 && [0,1,2,3].filter(index=>active&1<<index).length>2)
             throw new RangeError("NV40 FP32 MRT exceeds the guaranteed host attachment byte budget");
         const colors=Array.from({length:4},(_,index)=>active&1<<index?this.engine.state.target(o,index):null);
@@ -344,7 +344,7 @@ export class NV40Render
         const scissor={left:Math.max(x&65535,clip?clip.left:0),top:Math.max(y&65535,clip?clip.top:0),
             right:Math.min((x&65535)+(x>>>16),clip?clip.right:target.width),
             bottom:Math.min((y&65535)+(y>>>16),clip?clip.bottom:target.height)};
-        if(scissor.left>=scissor.right || scissor.top>=scissor.bottom)return;
+        if(scissor.left>=scissor.right || scissor.top>=scissor.bottom) return;
         const samplers=Array.from({length:16},(_,unit)=>{const format=get(o,0x1A04+unit*32);return format&4?3:(format>>>4&15)===3?4:2;});
         const sampler_1d=Array.from({length:16},(_,unit)=>(get(o,0x1A04+unit*32)>>>4&15)===1);
         const texture_sizes=Array.from({length:16},(_,unit)=>{
@@ -372,7 +372,7 @@ export class NV40Render
             const surface=this.textures.describe(o,unit),bytes=this.textures.images(surface);
             return {unit,surface,bytes};
         });
-        for(const [unit]of shaders.vertex.samplers)
+        for(const [unit] of shaders.vertex.samplers)
         {
             const surface=this.textures.vertex(o,unit);
             textures.push({unit:257+unit,surface,bytes:this.textures.images(surface)});
@@ -386,24 +386,24 @@ export class NV40Render
         })) {this.flush();return false;}
         const fetched=indices?this.engine.state.array_vertices(o,indices,shaders.vertex.inputs):
             this.engine.state.inline_vertices(o,words,shaders.vertex.inputs);
-        const vertices=expand_primitives(fetched,mode);if(!vertices.count || cull.all && vertices.primitive===4)return;
+        const vertices=expand_primitives(fetched,mode);if(!vertices.count || cull.all && vertices.primitive===4) return;
         // With no outputs or active query, rasterization has no observable
         // effect. Earlier queued work still follows its normal fence barrier.
-        if(!active && !zsa.enabled && !get(o,0x17CC))return;
+        if(!active && !zsa.enabled && !get(o,0x17CC)) return;
         const initial=colors.map(surface=>{
-            if(!surface)return null;
+            if(!surface) return null;
             this.engine.state.validate(surface,true);return this.engine.state.read(surface);
         });
         let depth=null,depthBytes=null;
         if(zsa.enabled)
         {
             depth=this.engine.state.target(o,0,true);this.engine.state.validate(depth,true);
-            if(zsa.stencil && depth.d3d!==75)throw new RangeError("NV40 stencil needs D24S8");
+            if(zsa.stencil && depth.d3d!==75) throw new RangeError("NV40 stencil needs D24S8");
             depthBytes=this.engine.state.read(depth);
         }
         // Everything that can fault on guest state is checked before emitting
         // commands or changing the host's resource cache.
-        if(!this.batch)this.batch={channel:o.channel,subc,outputs:new Map(),guards:new Map(),draws:0,query:null};
+        if(!this.batch) this.batch={channel:o.channel,subc,outputs:new Map(),guards:new Map(),draws:0,query:null};
         this.initialize();const handles=colors.map((surface,index)=>surface?this.target(surface,initial[index]):0),
             vs=this.shader(shaders.vertex.bytecode,true),ps=this.shader(shaders.fragment.bytecode,false);
         // The shared D3D executor expects a color attachment. Bind a scratch
@@ -415,11 +415,11 @@ export class NV40Render
         this.command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL,{"depth_texture_handle":depthHandle});
         this.command(OP.SET_VIEWPORT,{"x":viewport.x,"y":viewport.y,"width":viewport.width,"height":viewport.height,"max_z":1});
         this.command(OP.SET_VERTEX_DECLARATION,{"declaration_handle":this.declaration(shaders.vertex.inputs)});
-        for(const {unit,surface,bytes}of textures)
+        for(const {unit,surface,bytes} of textures)
         {
             const image=this.target({...surface,bpp:surface.upload_bpp},bytes,0);
             this.command(OP.SET_TEXTURE,{"stage":unit,"texture_handle":image});
-            for(const [state,value]of [[1,surface.wrap_s],[2,surface.wrap_t],[3,surface.wrap_r||3],[4,surface.border],[5,surface.mag],[6,surface.min],
+            for(const [state,value] of [[1,surface.wrap_s],[2,surface.wrap_t],[3,surface.wrap_r||3],[4,surface.border],[5,surface.mag],[6,surface.min],
                 [7,surface.mip],[8,surface.bias],[9,surface.min_lod],[10,surface.anisotropy||1],[11,+!!surface.srgb],
                 // Private NV sampler states, within the stage's 64-entry bank.
                 [62,float_word(surface.lod_min||0)],[63,float_word(surface.lod_max??surface.level_count-1)]])
@@ -427,12 +427,12 @@ export class NV40Render
         }
         this.command(OP.SET_VERTEX_SHADER,{"shader_handle":vs});this.command(OP.SET_PIXEL_SHADER,{"shader_handle":ps});
         this.constants(OP.SET_VERTEX_SHADER_CONSTANT_F,0,this.engine.vertex_constants(o,0,544));
-        for(const [index,values]of shaders.vertex.viewport_constants)this.constants(OP.SET_VERTEX_SHADER_CONSTANT_F,index,values);
-        for(const [index,values]of shaders.vertex.texture_constants)this.constants(OP.SET_VERTEX_SHADER_CONSTANT_F,index,values);
+        for(const [index,values] of shaders.vertex.viewport_constants) this.constants(OP.SET_VERTEX_SHADER_CONSTANT_F,index,values);
+        for(const [index,values] of shaders.vertex.texture_constants) this.constants(OP.SET_VERTEX_SHADER_CONSTANT_F,index,values);
         shaders.fragment.constant_values.forEach((values,index)=>this.constants(OP.SET_PIXEL_SHADER_CONSTANT_F,index,values));
-        for(const [index,values]of shaders.fragment.texture_constants)this.constants(OP.SET_PIXEL_SHADER_CONSTANT_F,index,values);
-        this.render_state(22,cull.state);for(const [state,value]of zsa.states)this.render_state(state,value);
-        for(const [state,value]of blend)this.render_state(state,value);
+        for(const [index,values] of shaders.fragment.texture_constants) this.constants(OP.SET_PIXEL_SHADER_CONSTANT_F,index,values);
+        this.render_state(22,cull.state);for(const [state,value] of zsa.states) this.render_state(state,value);
+        for(const [state,value] of blend) this.render_state(state,value);
         const mask=get(o,0x324,0x01010101);
         const colorMasks=[active?((mask&0x10000?1:0)|(mask&0x100?2:0)|(mask&1?4:0)|(mask&0x1000000?8:0)):0];
         this.render_state(168,colorMasks[0]);
@@ -462,7 +462,7 @@ export class NV40Render
         const w=this.command(OP.DRAW_PRIMITIVE_UP,{"primitive_type":vertices.primitive,"primitive_count":vertices.primitives,
             "stride":vertices.stride,"vertex_count":vertices.count,"vertex_bytes":vertices.bytes.length});
         w.patch_field("vertex_data_offset",w.data(vertices.bytes));
-        if(query)this.command(OP.END_QUERY,{"resource_handle":this.query,"response_offset":0,"request_id":query.id});
+        if(query) this.command(OP.END_QUERY,{"resource_handle":this.query,"response_offset":0,"request_id":query.id});
         this.command(OP.END_SCENE);
         // A bound color attachment with no enabled channel is still a GPU
         // reader. Retain its alias/write guards without downloading pixels
@@ -476,11 +476,11 @@ export class NV40Render
         if(depth)(zsa.stencil || get(o,0xA74)&&get(o,0xA70)?this.batch.outputs:this.batch.guards)
             .set(depthHandle,{target:depth,handle:depthHandle});
         this.batch.query=query;this.batch.draws++;this.stats.draws++;
-        if(query || this.batch.draws>=32 || this.writer.size()>=(8<<20) || !this.device.fifo?.running)this.flush();
+        if(query || this.batch.draws>=32 || this.writer.size()>=(8<<20) || !this.device.fifo?.running) this.flush();
     }
     flush()
     {
-        if(!this.batch || this.pending)return;
+        if(!this.batch || this.pending) return;
         const batch=this.batch;this.batch=null;
         let resolve;const promise=new Promise(done=>{resolve=done;});
         const outputs=[...batch.outputs.values()].map(output=>({...output,bytes:new Uint8Array(output.target.width*output.target.height*output.target.bpp)}));
@@ -500,7 +500,7 @@ export class NV40Render
     }
     fail(reason)
     {
-        const pending=this.pending;if(!pending)return;
+        const pending=this.pending;if(!pending) return;
         this.pending=null;this.stats.failures++;
         for(const resource of this.resources.values())resource.images=null;
         this.device.graph.error(pending.channel,pending.subc,0x1808,0,0x100,0x4000,"NV40 renderer: "+reason);
@@ -508,18 +508,18 @@ export class NV40Render
     }
     receive(message)
     {
-        const pending=this.pending;if(!pending)return;
+        const pending=this.pending;if(!pending) return;
         if(message["type"]==="lost") {this.fail(message["reason"]);return;}
         if(message["type"]==="write")
         {
-            const bytes=message["bytes"];if(bytes.length<16)return;
+            const bytes=message["bytes"];if(bytes.length<16) return;
             const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),id=view.getUint32(0,true),request=pending.requests.get(id);
             if(pending.query && id===pending.query.id)
             {
                 if(view.getUint32(12,true)!==RESPONSE_OK) {this.fail("invalid occlusion query readback");return;}
                 pending.query.value=view.getUint32(4,true);this.complete();return;
             }
-            if(!request)return;
+            if(!request) return;
             if(view.getUint32(12,true)!==RESPONSE_OK || view.getUint32(4,true)!==request.bytes || bytes.length<16+request.bytes)
             {this.fail("invalid target readback");return;}
             pending.outputs[request.output].bytes.set(bytes.subarray(16,16+request.bytes),request.offset);pending.requests.delete(id);this.stats.readbacks++;
@@ -540,12 +540,12 @@ export class NV40Render
         {
             try
             {
-                for(const {target}of pending.outputs)this.engine.state.validate(target,true);
-                for(const {target,bytes}of pending.outputs)this.engine.state.write(target,bytes);
+                for(const {target} of pending.outputs) this.engine.state.validate(target,true);
+                for(const {target,bytes} of pending.outputs) this.engine.state.write(target,bytes);
                 // The GPU still holds these exact readback pixels. Future guest
                 // reads/writes remain authoritative and are compared bytewise.
-                for(const {handle,bytes}of pending.outputs)
-                    for(const resource of this.resources.values())if(resource.handle===handle)resource.images=[bytes];
+                for(const {handle,bytes} of pending.outputs)
+                    for(const resource of this.resources.values()) if(resource.handle===handle)resource.images=[bytes];
             }
             catch(error) {this.fail(String(error));return;}
             if(pending.query)
@@ -554,7 +554,7 @@ export class NV40Render
                 object.methods.set(QUERY_COUNT,(get(object,QUERY_COUNT)+value)>>>0);
             }
             this.pending=null;pending.resolve();this.device.machine.wake();
-            if(!this.quiescing)this.device.fifo.run();
+            if(!this.quiescing) this.device.fifo.run();
         }
     }
 }

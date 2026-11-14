@@ -20,7 +20,7 @@ for(const interpreter of [false,true])
     {
         await new Promise((resolve,reject)=>{vm.add_listener("emulator-ready",resolve);vm.add_listener("emulator-error",reject);});
         await vm.run();const cpu=vm.v86.cpu,start=performance.now();
-        while(![0xBEEF,0xDEAD].includes(cpu.read32s(0x6000)) && performance.now()-start<20000)await delay(10);
+        while(![0xBEEF,0xDEAD].includes(cpu.read32s(0x6000)) && performance.now()-start<20000) await delay(10);
         await vm.stop();assert.equal(cpu.read32s(0x6000),0xBEEF,"PAM guest check "+cpu.read32s(0x6004)+", interpreter="+interpreter);
         const state=await vm.save_state();
         cpu.devices.pci.config_write(0,0x5B,1,0x33);cpu.write32(0xC8000,0x12345678);assert.equal(cpu.read32s(0xC8000),0x12345678);
