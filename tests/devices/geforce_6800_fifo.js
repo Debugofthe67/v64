@@ -113,9 +113,12 @@ const header = (method, count = 1, subc = 0, ni = false) => method | count << 18
     f.fifo.select(0);assert.equal(f.regs.get(0x3254),0x20001,"last engine follows its RAMFC channel context");
     f.handle(0x8807C000,0x40,0);
     assert.equal(f.fifo.method(7,0,0x8807C000),false);
-    assert.equal(f.regs.get(0x3254),0x20001,"a software object trap does not submit to a new hardware engine");
+    assert.equal(f.regs.get(0x3254),0x20000,"a software object trap reports its target engine to the native ISR");
     f.regs.set(0x3254,0x30000);f.fifo.method(2,0x304,29);
     assert.equal(f.regs.get(0x3254),0x30001,"forwarded methods also select their bound engine");
+    assert.equal(f.fifo.method(7,0x340,0x2580320),false);
+    assert.equal(f.regs.get(0x3254),0x30000,"subsequent software methods select engine zero while retaining semaphore state");
+    assert.equal(f.regs.get(0x3254)&15,f.regs.get(0x3280)>>>28&15,"ISR sees the trapped subchannel engine, so it can consume the callback");
 }
 {
     const f = fixture(); f.object(0x45000, 0x2303D, 4095, 0x8002); f.handle(0x77, 0x45000, 0);

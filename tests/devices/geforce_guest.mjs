@@ -289,6 +289,21 @@ export async function run_geforce_guest(win98)
             {const entries=Number(process.env.NV_TEXTURE_CACHE_ENTRIES);assert([256,512,1024].includes(entries));cache.cache_entries=entries;}
         }
         clock_start = cpu.clock.now();
+        if(process.env.NV_WATCH_MMIO)
+        {
+            const offsets=new Set(process.env.NV_WATCH_MMIO.split(",").map(value=>Number.parseInt(value,16)));
+            assert(offsets.size<=32 && [...offsets].every(value=>Number.isSafeInteger(value)&&value>=0&&value<0x1000000&&!(value&3)));
+            const record=nv.trace.record.bind(nv.trace),accesses=[];
+            nv.trace.record=(space,offset,size,write,value,implemented)=>{
+                record(space,offset,size,write,value,implemented);
+                if(space!=="mmio" || !offsets.has(offset) || accesses.length>=512)return;
+                const stack=cpu.reg32[4]>>>0;
+                const read=at=>{try{return cpu.mem8[cpu.translate_address_system_read(at)>>>0];}catch{return 0;}};
+                accesses.push({elapsed:elapsed(),offset,size,write,value:value>>>0,eip:cpu.instruction_pointer[0]>>>0,
+                    stack:Array.from({length:16},(_,i)=>{const at=(stack+i*4)>>>0;return(read(at)|read(at+1)<<8|read(at+2)<<16|read(at+3)<<24)>>>0;})});
+                fs.writeFileSync(path.join(out,"mmio-watch.json"),JSON.stringify(accesses,null,2));
+            };
+        }
         if(process.env.NV_FIFO_FAULTS)
         {
             const record=nv.fifo.record_fault.bind(nv.fifo),captures=[],seen=new Set(),history=[],pageUpdates=[];

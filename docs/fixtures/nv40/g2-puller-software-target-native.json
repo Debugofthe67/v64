@@ -1,0 +1,91 @@
+{
+  "date": "2026-11-14",
+  "status": "Native XP 93.71 software DAC callbacks progress after correcting the engine reported for a trapped software command; full 06 results remain open.",
+  "supersedes": "g2-puller-last-engine.json software-trap assumption only; PGRAPH and builtin handling is retained.",
+  "register": "PFIFO CACHE1 PULL1 0x3254 bits 0..3",
+  "cause": {
+    "before": "PGRAPH selected engine 1; binding software DAC subchannel 7 changed its ENGINE nibble to 0 but retained PULL1=1. The native ISR compared those fields, rejected the callback and retried the same CACHE1 entry.",
+    "nativeHandler": {
+      "module": "original NVIDIA 93.71 nv4_mini.sys",
+      "loadedBase": "0xF6E9F000",
+      "pull1ReadReturnRva": "0x1EDB2F",
+      "comparisonRva": "0x1EDB4D",
+      "behavior": "Reads PULL1 & 15, reads ENGINE, selects trapped subchannel nibble, compares; mismatch clears local cache-error handling flags and does not advance CACHE_GET."
+    },
+    "observedBefore": {
+      "sampleMilliseconds": 88980.89056616742,
+      "pull1Reads": 1209389,
+      "engineReads": 1209389,
+      "cacheGet": 760,
+      "nativeSoftwareHandle": "0x8807C000",
+      "gpuDraws": 0
+    }
+  },
+  "change": "Both SET_OBJECT and subsequent forwarded software methods select engine 0 before raising DEVICE_SOFTWARE, retaining semaphore/acquire bits. PGRAPH selects engine 1. Puller builtins retain engine state; RAMFC remains per-channel.",
+  "diagnostic": "Default-off NV_WATCH_MMIO accepts at most 32 aligned BAR0 register offsets and captures at most 512 accesses with native PC and sixteen raw stack DWORDs; no driver or API patch.",
+  "nativeReplay": {
+    "source": "same coherently saved stalled guest RAM and OS/game overlays",
+    "output": "build/nv40-xp-mark06-software-target-fixed",
+    "snapshotOfProgressMilliseconds": 60127.81491524167,
+    "gpu": {
+      "batches": 509,
+      "draws": 554,
+      "bytes": 31128872,
+      "readbacks": 1018,
+      "failures": 0,
+      "uploads": 21,
+      "uploadBytes": 24473060
+    },
+    "softwareCallbacks": 54,
+    "nonSoftwareFifoFaults": 0,
+    "pgraphFaults": 0,
+    "visible": "Native loading screen for Graphics Test 1 at 1280x1024; actual 3D draws follow.",
+    "performanceAcceptance": false
+  },
+  "validation": [
+    "Regression first fails with 131073 != 131072 for software bind",
+    "FIFO regression covers bind, later software method, native ISR field equality, semaphore-bit retention, PGRAPH, builtins and RAMFC",
+    "NV40 device tests pass",
+    "Complete real WebGPU pixel/sync/alias/snapshot suite passes",
+    "Closure zero errors/warnings"
+  ],
+  "evidence": {
+    "build/nv40-xp-mark06-pull1-software-stall/trace.json": {
+      "bytes": 3052702,
+      "sha256": "ec73932e7b263cb513bcff8970c2cb08cf17320364c5fc03eb358603924e9ccc"
+    },
+    "build/nv40-xp-mark06-pull1-software-stall/mmio-watch.json": {
+      "bytes": 210539,
+      "sha256": "e57a52e194b95a45d0173cd52e3bcdcedba23945feac2add2d9a4bbe21c1715c"
+    },
+    "build/nv40-xp-mark06-pull1-software-stall/modules.json": {
+      "bytes": 1278,
+      "sha256": "75e08792f8199690cc913c6802a3c3c30a13b6416211de45fa27d462b1224e03"
+    },
+    "build/nv40-puller-software-target-native-window.json": {
+      "bytes": 262838,
+      "sha256": "c62cd58e162e3bf86995bfdbaaa3f8db285a18cb37583394cc937103b2671a4c"
+    },
+    "build/nv40-puller-software-target-red.log": {
+      "bytes": 673,
+      "sha256": "3b17ac6341d49ca40089d475ee6d3d2ebba20f5eeab4079d2f9fb9a35a0ef6c7"
+    },
+    "build/nv40-puller-software-target-device.log": {
+      "bytes": 98,
+      "sha256": "ee3a945b6ec642f0da4dfccee5632271a713cb0d686f45f258374e066423b8f3"
+    },
+    "build/nv40-puller-software-target-registers.log": {
+      "bytes": 484,
+      "sha256": "f8464600525ea15b7d6c0e4236083325227082ca6a94121ab5cfd1a99f70b67e"
+    },
+    "build/nv40-puller-software-target-gpu.log": {
+      "bytes": 5286,
+      "sha256": "ba579ecb9d44142b85be586658a4437344da87a3678e8c58210adab030e34e5b"
+    },
+    "build/nv40-puller-software-target-build.log": {
+      "bytes": 3020,
+      "sha256": "62fb4504400449088ff35d35469a7e6ce6a0f0d9c75b4119c3d6cc86ecee1c54"
+    }
+  },
+  "limits": "Corrects an earlier implementation assumption using native ISR evidence. Does not establish full 3DMark06 completion, score, image correctness or timeout resolution."
+}

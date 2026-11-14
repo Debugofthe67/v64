@@ -2060,3 +2060,12 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   回归先红后绿，设备、完整真实 GPU 像素/REF/别名/快照和 Closure
   通过。06 原生影响继续验证，未据此声称超时解决；见
   `g2-puller-last-engine.json`。
+
+- G2 原生软件回调引擎续修：93.71 ISR 会比较 PULL1 与被截获子通道的
+  ENGINE；此前软件对象仍留引擎 1，导致同一 DAC bind 在 88.98 秒内
+  重试 1,209,389 次而 CACHE_GET 不动。现软件 bind/方法先选择引擎 0，
+  保留信号量位；PGRAPH、内建方法和 RAMFC 语义保留。回归先红后绿，
+  设备、完整真实 GPU 与 Closure 通过。同一保存的黑屏现场恢复后进入
+  原生 06 GT1 加载并提交真实绘制，非软件 FIFO/PGRAPH/GPU 故障为零；
+  纠正上一条对软件陷阱的假设，整套 06 继续验证。见
+  `g2-puller-software-target-native.json`。

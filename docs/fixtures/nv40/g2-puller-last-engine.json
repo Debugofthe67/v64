@@ -28,5 +28,9 @@
       "build/nv40-puller-last-engine-build.log"
     ]
   },
-  "limits": "Previous native 06 runs retained engine 0 despite PGRAPH work. This is a hardware-state correctness fix; no native timeout or performance improvement is claimed."
+  "limits": "Previous native 06 runs retained engine 0 despite PGRAPH work. This is a hardware-state correctness fix; no native timeout or performance improvement is claimed.",
+  "followup": {
+    "fixture": "g2-puller-software-target-native.json",
+    "correction": "The original software-trap assumption is superseded: the native ISR requires PULL1 to select the trapped software engine 0. PGRAPH engine and builtin behavior remain."
+  }
 }
