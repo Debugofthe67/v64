@@ -1019,6 +1019,7 @@ CI 运行 `make devices-test` 与 `make test-glbridge`，浏览器与客体测�
   | `XP_IMAGE` | XP 镜像，默认为所有者的 XP 镜像 |
   | `W98_IMAGE` | 98 镜像 |
   | `NV_DRIVER` | 驱动安装包 |
+  | `NV_MEMORY_MB` | 原生调查 RAM：Win98 256/384/512（默认 256），XP 1024/2048（默认 1024）；新配套快照校验内存容量 |
   | `NV_HDB` | 3DMark 镜像（第二块盘） |
   | `NV_OVERLAY_SAVE`、`NV_OVERLAY_LOAD` | 保存或加载 overlay |
   | `NV_STATE_SAVE`、`NV_STATE_LOAD` | 保存/恢复 RAM；有 `.bundle.json` 时自动核对 RAM 与 OS/game overlay 的尺寸、SHA、客体、显存及原盘路径 |
@@ -2206,3 +2207,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 观测容量校准：原生 Win98 的 DAT DMA 通过 1 KiB PRDT 分段，完整 470 MiB 一遍就需约 92 万条 source/copy 记录；将有界记录上限提高到 2097152，避免原 262144 条在 GT2 前丢弃后续定位证据。通过一致 RAM/磁盘快照继续原版运行，前段日志保留；不把调查续跑作为性能门禁。观测单测与 harness 语法复核通过。
 
 - G6 精确上传范围热点：原生 HDR 的 40.68 秒 Node 诊断采样中，字节比较占 12.01% self。保留原来的正向 DWORD/完全相同图像路径，只把已确认有修改后的尾部扫描改为分组 DWORD 加最终逐字节收尾；上传首尾字节及整行范围完全相同。独立字节索引 oracle、4096 随机用例、4 MiB 图像边界、完整真实 GPU 的 BC/mip/cube/附件别名与快照回归、图形单测及 Closure 通过。7 轮微测的首/中单字节修改中位数由 144.73/59.36 ms 降到 32.17/27.35 ms；不据并行微测宣称原生 FPS，见 `g6-exact-upload-tail-scan.json`。
+
+- G0 Win98 PCI 芯片组安装补齐：原 ISA 桥 Code 8/未启动，MACHINE2.INF 的 ISA_DRV 指向外部 isapnp.vxd，系统却未复制该文件。工具盘现从所有者安装 ISO 同取该原文件；只补缺失文件，并通过原 INF 修复已有失败节点、保留驱动键。原生复核 ISA 桥与 NV40 均为 problem0/started1，系统加载器 SHA 与 CAB 一致。IDE 两子通道仍为 Code10，ESDI_506.PDR 与原 CAB 一致、NoIDE 标记不存在；未把此项当作 03 缓存问题修复。增加有界 RAM 调查选项及配套状态容量验证，512 MiB 仅完成桌面准备。见 `g0-win98-isa-loader-completion.json`。

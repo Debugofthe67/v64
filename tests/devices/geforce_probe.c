@@ -184,6 +184,19 @@ static BOOL step(const char *name, BOOL ok)
     put("PCI_BUS ");put(name);put(" ok=");number(ok);put(" error=");number(error);line();
     return ok;
 }
+static BOOL ensure_isa_loader(void)
+{
+    char source[MAX_PATH],dest[MAX_PATH];
+    GetSystemDirectoryA(dest,sizeof(dest));lstrcatA(dest,"\\isapnp.vxd");
+    if(GetFileAttributesA(dest)!=INVALID_FILE_ATTRIBUTES)return TRUE;
+    GetModuleFileNameA(0,source,sizeof(source));
+    unsigned int end=lstrlenA(source);while(end && source[end-1]!='\\')end--;
+    lstrcpyA(source+end,"PCIBUS\\isapnp.vxd");
+    // MACHINE2.INF's ISA_DRV explicitly needs this external DevLoader.
+    // DI_NOFILECOPY must not leave an otherwise enumerated PCI bridge with
+    // CM_PROB_DEVLOADER_NOT_FOUND. Preserve an owner's existing loader.
+    return step("copy-isa-loader",CopyFileA(source,dest,TRUE));
+}
 static void install_pci_bus(void)
 {
     char source[MAX_PATH],dest[MAX_PATH];
@@ -240,7 +253,11 @@ static void install_system_pci(void)
             match(hardware,"PCI\\IRQHOLDER")?"PCI\\IRQHolder":0;
         if(!id) continue;
         char driver[80]={0};
-        if(SetupDiGetDeviceRegistryPropertyA(set,&dev,SPDRP_DRIVER,0,(BYTE*)driver,sizeof(driver),0) && driver[0]) continue;
+        SetupDiGetDeviceRegistryPropertyA(set,&dev,SPDRP_DRIVER,0,(BYTE*)driver,sizeof(driver),0);
+        ULONG status=0,problem=0;
+        if(node_status)node_status(&status,&problem,dev.DevInst,0);
+        const BOOL repair_isa=match(id,"PCI\\VEN_8086&DEV_7000") && problem==CM_PROB_DEVLOADER_NOT_FOUND;
+        if(driver[0] && !repair_isa)continue;
         char ids[64];lstrcpyA(ids,id);ids[lstrlenA(id)+1]=0;
         BOOL ok=SetupDiSetDeviceRegistryPropertyA(set,&dev,SPDRP_HARDWAREID,(const BYTE*)ids,lstrlenA(id)+2);
         SP_DEVINSTALL_PARAMS_A params;params.cbSize=sizeof(params);
@@ -254,7 +271,7 @@ static void install_system_pci(void)
         }
         if(ok) ok=SetupDiBuildDriverInfoList(set,&dev,SPDIT_COMPATDRIVER);
         if(ok) ok=SetupDiCallClassInstaller(DIF_SELECTBESTCOMPATDRV,set,&dev);
-        if(ok) ok=allocate_driver_key(set,&dev,match(id,"PCI\\VEN_8086&DEV_7010")?"hdc":"System");
+        if(ok && !driver[0]) ok=allocate_driver_key(set,&dev,match(id,"PCI\\VEN_8086&DEV_7010")?"hdc":"System");
         if(ok) ok=SetupDiCallClassInstaller(DIF_INSTALLDEVICE,set,&dev);
         put("SYSTEM_PCI ");put(id);put(" installed=");number(ok);put(" error=");number(ok?0:GetLastError());line();
     }
@@ -289,6 +306,29 @@ static void devices(void)
             {
                 ULONG status=0,problem=0;if(node_status) node_status(&status,&problem,dev.DevInst,0);
                 put("RESOURCE_OWNER ");put(hardware);put(" problem=");number(problem);put(" started=");number(!!(status&DN_STARTED));line();
+                if(match(hardware,"PCI\\VEN_8086&DEV_7000") || match(hardware,"PCI\\VEN_8086&DEV_7010") || match(hardware,"MF\\GOOD"))
+                {
+                    SetupDiGetDeviceRegistryPropertyA(set,&dev,SPDRP_DRIVER,&type,(BYTE*)driver,sizeof(driver),0);
+                    SetupDiGetDeviceRegistryPropertyA(set,&dev,SPDRP_DEVICEDESC,&type,(BYTE*)description,sizeof(description),0);
+                    put("STORAGE_DRIVER ");put(hardware);put(" driver=");put(driver);put(" description=");put(description);line();
+                    HKEY key=SetupDiOpenDevRegKey(set,&dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);
+                    if(key!=INVALID_HANDLE_VALUE)
+                    {
+                        const char *names[]={"DevLoader","PortDriver","MiniPort","InfPath","InfSection","DeviceVxDs"};
+                        for(unsigned int field=0;field<sizeof(names)/sizeof(names[0]);field++)
+                        {
+                            char value[256];DWORD bytes=sizeof(value)-1,value_type=0;
+                            if(RegQueryValueExA(key,names[field],0,&value_type,(BYTE*)value,&bytes)==ERROR_SUCCESS &&
+                                (value_type==REG_SZ || value_type==REG_EXPAND_SZ || value_type==REG_MULTI_SZ))
+                            {
+                                value[bytes]=0;
+                                for(DWORD j=0;j+1<bytes;j++)if(!value[j])value[j]=';';
+                                put("STORAGE_DRIVER_VALUE ");put(names[field]);put("=");put(value);line();
+                            }
+                        }
+                        RegCloseKey(key);
+                    }
+                }
                 resources(dev.DevInst);
             }
 #endif
@@ -377,7 +417,7 @@ void WINAPI entry(void)
         put("PCI_BUS_MISSING installing Microsoft PCI bus from MACHINE.INF");line();
         install_pci_bus();devices();
     }
-    if(!rebooted) install_system_pci();
+    if(!rebooted && ensure_isa_loader()) install_system_pci();
 #endif
 #ifndef NV_SKIP_INSTALL
     if(!rebooted)
@@ -554,6 +594,19 @@ void WINAPI entry(void)
     put("D3D9_TEST failures=");number(d3d_result);line();
 #endif
     devices(); put("SCREEN ");number(GetSystemMetrics(SM_CXSCREEN));put("x");number(GetSystemMetrics(SM_CYSCREEN));line();
+#ifdef NV_WIN98
+    {
+        HKEY key;LONG rc=RegOpenKeyExA(HKEY_LOCAL_MACHINE,"System\\CurrentControlSet\\Services\\VxD\\IOS",0,KEY_QUERY_VALUE,&key);
+        put("STORAGE_IOS_KEY status=");number(rc);line();
+        if(rc==ERROR_SUCCESS)
+        {
+            BYTE value[256];DWORD bytes=sizeof(value),type=0;
+            rc=RegQueryValueExA(key,"NoIDE",0,&type,value,&bytes);
+            put("STORAGE_NOIDE status=");number(rc);put(" type=");number(type);put(" bytes=");number(bytes);line();
+            RegCloseKey(key);
+        }
+    }
+#endif
 #if defined(NV_WIN98) && defined(NV_AUTOSTART)
     if(!automatic)
     {

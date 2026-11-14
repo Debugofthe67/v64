@@ -139,8 +139,8 @@ export async function run_geforce_guest(win98)
         const cabs = path.join(out, "windows98-cabs"), pci = path.join(out, "pci");
         fs.mkdirSync(cabs, { recursive: true }); fs.mkdirSync(pci, { recursive: true });
         run(sevenzip, ["e", "-y", "-o" + cabs, iso, "win98/*.CAB"]);
-        run(sevenzip, ["e", "-y", "-o" + pci, path.join(cabs, "BASE4.CAB"), "pci.vxd", "pcimp.pci"]);
-        for(const name of ["pci.vxd", "pcimp.pci"]) files["PCIBUS/" + name] = fs.readFileSync(path.join(pci, name));
+        run(sevenzip, ["e", "-y", "-o" + pci, path.join(cabs, "BASE4.CAB"), "pci.vxd", "pcimp.pci", "isapnp.vxd"]);
+        for(const name of ["pci.vxd", "pcimp.pci", "isapnp.vxd"]) files["PCIBUS/" + name] = fs.readFileSync(path.join(pci, name));
     }
     for(const entry of fs.readdirSync(source))
     {
@@ -217,9 +217,11 @@ export async function run_geforce_guest(win98)
     if(game && process.env.NV_GAME_OVERLAY_LOAD)game.set_state(deserialize(fs.readFileSync(process.env.NV_GAME_OVERLAY_LOAD)));
     const sink = new ProbeSink();
     const vram_mb=Number(process.env.NV_VRAM_MB || 128);assert([128,256].includes(vram_mb));
+    const memory_mb=Number(process.env.NV_MEMORY_MB || (win98?256:1024));
+    assert((win98?[256,384,512]:[1024,2048]).includes(memory_mb),"invalid native guest memory size");
     const restored_bundle=await verify_geforce_checkpoint_bundle({state:process.env.NV_STATE_LOAD,
         osOverlay:process.env.NV_OVERLAY_LOAD,gameOverlay:process.env.NV_GAME_OVERLAY_LOAD,
-        guest:win98?"win98":"xp",vramMiB:vram_mb,osImage:image,gameImage:game_path});
+        guest:win98?"win98":"xp",vramMiB:vram_mb,memoryMiB:memory_mb,osImage:image,gameImage:game_path});
     if(restored_bundle)console.log("NV40 verified matching checkpoint RAM/disk bundle");
     const host_bc_policy=process.env.NV_HOST_BC || "auto";
     assert(["auto","cpu"].includes(host_bc_policy),"NV_HOST_BC must be auto or cpu");
@@ -234,7 +236,7 @@ export async function run_geforce_guest(win98)
     const vm = new V86({ ...(remote?{graphics_adapter_renderer_channel:remote.renderer}:{}), disable_jit:!!process.env.NV_DISABLE_JIT, wasm_path, graphics_adapter: "geforce_6800", vram_size: vram_mb << 20,
         bios: { url: root + "bios/seabios.bin" },
         ...(process.env.NV_ROM ? { vga_bios: { url: path.resolve(process.env.NV_ROM) } } : {}),
-        hda: disk, hdb: tools, boot_order: 0x213, memory_size: (win98 ? 256 : 1024) << 20,
+        hda: disk, hdb: tools, boot_order: 0x213, memory_size: memory_mb << 20,
         ...(win98 || process.env.NV_CDROM ? { cdrom: { url: process.env.NV_CDROM || process.env.NV_WIN98_ISO || path.join(site_directory(root), "windows98/windows98se.iso"), async: true }, boot_order: 0x132 } : {}),
         screen_adapter: sink, acpi: false, net_device: { type: "none" }, disable_speaker: true,
         autostart: !process.env.NV_STATE_LOAD && !game, log_level: 0 });
@@ -264,7 +266,7 @@ export async function run_geforce_guest(win98)
             fs.writeFileSync(file,bytes);
             return {file:path.resolve(file),bytes:bytes.byteLength,sha256:createHash("sha256").update(bytes).digest("hex")};
         };
-        const bundle={status:"complete",guest:win98?"win98":"xp",vramMiB:vram_mb,osImage:path.resolve(image),gameImage:game_path,
+        const bundle={status:"complete",guest:win98?"win98":"xp",vramMiB:vram_mb,memoryMiB:memory_mb,osImage:path.resolve(image),gameImage:game_path,
             state:write(state_file,new Uint8Array(await vm.save_state())),
             osOverlay:write(os_file,serialize(disk.get_state())),
             gameOverlay:game?write(game_file,serialize(game.get_state())):null};
@@ -305,6 +307,7 @@ export async function run_geforce_guest(win98)
         if(process.env.NV_STATE_LOAD)
         {
             await vm.restore_state(fs.readFileSync(process.env.NV_STATE_LOAD));
+            assert.equal(vm.v86.cpu.memory_size[0],memory_mb<<20,"restored native guest memory size mismatch");
             if(process.env.NV_PROBE_REPLACE) replace_probe(tools.bytes, probe);
             if(process.env.NV_DISABLE_JIT) vm.v86.cpu.configure_jit_backend({disable_jit:true});
             await vm.run();

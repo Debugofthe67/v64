@@ -25,6 +25,12 @@ try
     await assert.rejects(verify_geforce_checkpoint_bundle({...options,guest:"win98"}),/guest mismatch/);
     await assert.rejects(verify_geforce_checkpoint_bundle({...options,vramMiB:256}),/vramMiB mismatch/);
     await assert.rejects(verify_geforce_checkpoint_bundle({...options,gameImage:"/other-game.img"}),/gameImage mismatch/);
+    bundle.memoryMiB=1024;save();
+    await verify_geforce_checkpoint_bundle({...options,memoryMiB:1024});
+    await assert.rejects(verify_geforce_checkpoint_bundle({...options,memoryMiB:2048}),/memoryMiB mismatch/);
+    await assert.rejects(verify_geforce_checkpoint_bundle(options),/memoryMiB mismatch/);
+    delete bundle.memoryMiB;save();
+    await verify_geforce_checkpoint_bundle(options); // Legacy bundles remain supported.
     fs.writeFileSync(options.state,"different RAM!!!");
     await assert.rejects(verify_geforce_checkpoint_bundle(options),/state size mismatch/);
     bundle.status="writing";save();await assert.rejects(verify_geforce_checkpoint_bundle(options),/incomplete/);

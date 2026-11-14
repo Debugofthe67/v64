@@ -12,6 +12,7 @@ export async function verify_geforce_checkpoint_bundle(options)
     const bundle=JSON.parse(fs.readFileSync(manifest,"utf8"));
     assert.equal(bundle.status,"complete","NV40 checkpoint bundle is incomplete");
     for(const field of ["guest","vramMiB"])assert.equal(bundle[field],options[field],"NV40 checkpoint "+field+" mismatch");
+    if(bundle.memoryMiB!==undefined)assert.equal(bundle.memoryMiB,options.memoryMiB,"NV40 checkpoint memoryMiB mismatch");
     for(const field of ["osImage","gameImage"])
         assert.equal(bundle[field]?path.resolve(bundle[field]):null,options[field]?path.resolve(options[field]):null,"NV40 checkpoint "+field+" mismatch");
     for(const field of ["state","osOverlay","gameOverlay"])
