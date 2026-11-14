@@ -171,6 +171,17 @@ for(const endpoints of [[255,0],[0,255]])
 o.methods.set(0x1A04,0x30629);o.methods.set(0x1A18,4<<16|4);o.methods.set(0x1A0C,0x80010000);
 for(let i=0;i<3;i++)vram.set([0,0xF8,0,0,0,0,0,0],0x2000+i*8);
 const bcChain=texture.images(texture.describe(o,0));assert.deepEqual(bcChain.map(x=>x.length),[64,16,4]);assert.equal(bcChain[2][0],255);
+const nativeBC=texture.describe(o,0,true);
+assert.equal(nativeBC.d3d,0x31545844,"enabled BC host keeps identity-crossbar DXT1 compressed");
+assert.equal(nativeBC.native_bc,true);
+assert.deepEqual(texture.images(nativeBC).map(x=>x.length),[8,8,8],"every packed mip tail retains a complete BC block");
+assert.deepEqual([...texture.images(nativeBC)[2]],[0,0xF8,0,0,0,0,0,0]);
+assert.equal(texture.describe(o,0,false).d3d,32,"a host without enabled BC retains RGBA decoding");
+o.methods.set(0x1A10,0xA9E4);
+assert.equal(texture.describe(o,0,true).native_bc,false,"constant alpha crossbar retains the checked CPU conversion");
+o.methods.set(0x1A10,0xAAE4);
+o.methods.set(0x1A08,0x730303);assert.equal(texture.describe(o,0,true).native_bc,false,"BC gamma retains the existing checked RGBA conversion");
+o.methods.set(0x1A08,0x30303);
 o.methods.set(0x1A04,0x10629);o.methods.set(0x1A18,3<<16|2);assert.equal(texture.read(texture.describe(o,0)).length,24);
 assert.throws(()=>texture.read({...texture.describe(o,0),dma:{...t.dma,limit:0x2006}}),/limit/);
 o.methods.set(0x1A04,0x13A29);o.methods.set(0x1A18,1<<16|1);o.methods.set(0x1840,8);o.methods.set(0x1A10,0xAA6C);

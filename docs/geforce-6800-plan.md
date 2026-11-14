@@ -2174,3 +2174,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 调查发现并独立修复 x86 分页权限：WP=0 的内核只读页写入曾把共享 TLB 填成用户可写，后续 CPL3 绕过 #PF。现该内核覆写仅缓存为 supervisor，用户读重走页表后仍可读、写仍受保护。旧核 16 种解释器/JIT、普通/PAE、小页/大页组合均静默覆盖；新核全部正确 #PF(error7)，214 原子/分页/MMIO 回归、14 QEMU 系统对照和 133 Rust 测试通过。见 `g5-legacy-supervisor-wp-cache-isolation.json`。Win98 03 的具体缓存页覆盖是否由此产生仍待干净复跑证实，未原地修补缓存或素材。
 
 - G5 Win98 2001 SE 原版全 21 项已完成，原生成功界面 193 分、七 GT 和全部理论/DX8 数值齐全；90612 draws，零 GPU/非软件 PGRAPH/FIFO 故障。原程序导出 NVW01A.3DP 与八张 IQ BMP，正常关机至 FE93D/HLT1/modeNULL。两张大图与 XP 原版逐像素一致，另两张差异 1246/68 像素；代理参考残差与性能仍开放。见 `g5-win98-8198-2001-native-all21.json`。本次为恢复客体中的完整新跑，早于单独 CPU 权限修复，不称为再次冷启动。
+
+- G6 可选 BC 上传：仅在实际 GPUDevice 已启用 BC 时，对线性、AAE4 恒等 crossbar 的 BC1/2/3 保留 checked 编码字节，缺失能力和特殊 remap/gamma 继续 CPU 转换。完整块行局部上传、cube/mip 尾部与 NPOT 实际存储计数均有真实 GPU 对照；共享 GPU、190 executor 用例、完整 glbridge 与 Closure 通过。70 张纹理 CPU 微测编码缓存 35 MiB，相比 RGBA 路径 252 MiB 且避免循环解码；不当作原生 FPS。sRGB 白黑插值实测 104 对既有 102，故保守回退而不放宽阈值。见 `g6-native-bc-texture-upload.json`，完整原生与图像/性能门禁仍开放。

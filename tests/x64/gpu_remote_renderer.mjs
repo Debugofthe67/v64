@@ -12,6 +12,7 @@
 //   3 write: offset (u32), the bytes    4 done: seq (u32)
 //   5 lost: the reason (UTF-8)          6 ready (the renderer is up)
 //   8 log: a line of the renderer's     9 submit of a VX batch (Venus)
+//   10 caps: presentation/BC flags      11 hello: ask for renderer capabilities
 
 import http from "node:http";
 import fs from "node:fs";
@@ -22,7 +23,7 @@ import { createHash as create_hash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const TYPES = { submit: 1, reset: 2, write: 3, done: 4, lost: 5, ready: 6, submit_gx: 7, log: 8, submit_vx: 9 };
+const TYPES = { submit: 1, reset: 2, write: 3, done: 4, lost: 5, ready: 6, submit_gx: 7, log: 8, submit_vx: 9, caps: 10, hello: 11 };
 
 /** One binary WebSocket frame, server to client (not masked) */
 function frame(payload)
@@ -123,6 +124,10 @@ export async function create_remote_renderer(options = {})
                 to_device({ "type": "write", "offset": message.readUInt32LE(1), "bytes": new Uint8Array(message.subarray(5)) });
             }
             else if(type === TYPES.done) to_device({ "type": "done", "seq": message.readUInt32LE(1) });
+            else if(type === TYPES.caps && message.length>=5) {
+                const flags=message.readUInt32LE(1);
+                to_device({ "type":"caps", "present":!!(flags&1), "textureCompressionBC":!!(flags&2) });
+            }
             else if(type === TYPES.lost) to_device({ "type": "lost", "reason": message.subarray(1).toString() });
         }));
         connection.on("error", () => {});
@@ -225,6 +230,7 @@ export async function create_remote_renderer(options = {})
             {
                 socket.write(frame(Buffer.from([TYPES.reset])));
             }
+            else if(message["type"] === "hello") socket.write(frame(Buffer.from([TYPES.hello])));
         },
         "listen": handler => { to_device = handler; },
     };

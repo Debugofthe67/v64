@@ -136,17 +136,21 @@ export class NV40Render
         this.resources=new Map();this.shaders=new Map();this.declarations=new Map();
         this.resource_limit=512;this.resource_byte_limit=Math.min(512<<20,Math.max(64<<20,this.device.vram_size*2));
         this.draw_resources=null;
+        this.bc_supported=false;
         this.batch=null;this.pending=null;this.quiescing=false;this.stats={batches:0,draws:0,bytes:0,readbacks:0,failures:0,uploads:0,uploadBytes:0,
-            resourceHits:0,resourceMisses:0,resourceEvictions:0,coldUploadBytes:0,resourceBytes:0,peakResourceBytes:0};
+            resourceHits:0,resourceMisses:0,resourceEvictions:0,coldUploadBytes:0,resourceBytes:0,peakResourceBytes:0,nativeBCUploads:0,nativeBCUploadBytes:0};
         renderer["listen"](message=>this.receive(message));
+        renderer["post"]({"type":"hello"});
     }
     reset()
     {
         if(this.pending) this.pending.resolve();
         this.batch=null;this.pending=null;this.writer=new D9WGWriter(0x3034564E);this.created=false;this.resources.clear();this.shaders.clear();this.declarations.clear();
         this.textures.clear();
+        this.bc_supported=false;
         this.draw_resources=null;this.stats.resourceBytes=0;
         this.query=0;this.next=2;this.renderer["post"]({"type":"reset"});
+        this.renderer["post"]({"type":"hello"});
     }
     wait() {this.flush();return this.pending?this.pending.promise.then(()=>this.wait()):Promise.resolve();}
     async quiesce()
@@ -194,8 +198,13 @@ export class NV40Render
             // Logical host image storage, including every mip, cube face and
             // volume slice. Packed/depth formats may widen to four bytes.
             let storage=0;
-            for(let level=0;level<levels;level++)storage+=Math.max(1,surface.width>>>level)*Math.max(1,surface.height>>>level)*
-                (surface.volume?Math.max(1,surface.depth>>>level):1)*Math.max(4,surface.bpp)*(surface.cube?6:1);
+            const expandedBC=surface.native_bc && !!((surface.width|surface.height)&3);
+            for(let level=0;level<levels;level++)
+            {
+                const width=Math.max(1,surface.width>>>level),height=Math.max(1,surface.height>>>level);
+                storage+=(surface.native_bc && !expandedBC?Math.ceil(width/4)*Math.ceil(height/4)*surface.block:
+                    width*height*(surface.volume?Math.max(1,surface.depth>>>level):1)*Math.max(4,surface.bpp))*(surface.cube?6:1);
+            }
             this.trim_resources(storage,1);
             resource={handle:this.next++,kind:surface.cube?4:surface.volume?5:3,images:null,bytes:storage};
             this.resources.set(key,resource);
@@ -214,15 +223,18 @@ export class NV40Render
             const previous=resource.images && resource.images[index],changed=changed_bytes(previous,bytes);
             if(!changed) return;
             const level=index%levels,face=surface.cube?Math.floor(index/levels):0;
-            const width=Math.max(1,surface.width>>>level),height=Math.max(1,surface.height>>>level),pitch=width*surface.bpp;
+            const width=Math.max(1,surface.width>>>level),height=Math.max(1,surface.height>>>level),
+                rowHeight=surface.native_bc?4:1,pitch=surface.native_bc?Math.ceil(width/4)*surface.block:width*surface.bpp;
             // Keep whole rows so every native pixel format, including depth,
             // retains its exact byte layout. Cubes update only this face/mip;
             // volume textures retain full-volume uploads and slice semantics.
             const partial=previous && !surface.volume && previous.length===bytes.length;
-            const first=partial?Math.floor(changed[0]/pitch):0,last=partial?Math.ceil(changed[1]/pitch):height;
+            const first=partial?Math.floor(changed[0]/pitch):0,last=partial?Math.ceil(changed[1]/pitch):Math.ceil(height/rowHeight);
             const payload=partial?bytes.subarray(first*pitch,last*pitch):bytes;
             if(!previous)this.stats.coldUploadBytes+=payload.length;
-            const w=this.writer.command(OP.UPDATE_TEXTURE,{"resource_handle":handle,"level":level,"y":first,"z":face,"width":width,"height":last-first,
+            if(surface.native_bc){this.stats.nativeBCUploads++;this.stats.nativeBCUploadBytes+=payload.length;}
+            const w=this.writer.command(OP.UPDATE_TEXTURE,{"resource_handle":handle,"level":level,"y":first*rowHeight,"z":face,"width":width,
+                "height":Math.min(height,last*rowHeight)-first*rowHeight,
                 "depth":surface.volume?Math.max(1,surface.depth>>>level):1,"row_pitch":pitch,"data_bytes":payload.length});
             w.patch_field("data_offset",w.data(payload));this.stats.uploads++;this.stats.uploadBytes+=payload.length;
         });
@@ -417,7 +429,7 @@ export class NV40Render
         if(sprite && shaders.fragment.samplers.some(([unit])=>unit!==0))
             throw new RangeError("NV40 point sprite only replaces TEX0 coordinates");
         const textures=shaders.fragment.samplers.map(([unit])=>{
-            const surface=this.textures.describe(o,unit),bytes=this.textures.images(surface);
+            const surface=this.textures.describe(o,unit,this.bc_supported),bytes=this.textures.images(surface);
             return {unit,surface,bytes};
         });
         for(const [unit] of shaders.vertex.samplers)
@@ -558,6 +570,8 @@ export class NV40Render
     }
     receive(message)
     {
+        if(message["type"]==="caps") {this.bc_supported=message["textureCompressionBC"]===true;return;}
+        if(message["type"]==="lost")this.bc_supported=false;
         const pending=this.pending;if(!pending) return;
         if(message["type"]==="lost") {this.fail(message["reason"]);return;}
         if(message["type"]==="write")

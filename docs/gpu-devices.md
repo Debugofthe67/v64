@@ -348,6 +348,15 @@ preserves the real four-byte RAMIN writeback and retains ordering for aliases
 and invalid handles. These changes do not establish native 06 completion or
 an isolated performance improvement.
 
+When the acquired host device has BC compression enabled, [eligible linear
+BC1/2/3 textures](fixtures/nv40/g6-native-bc-texture-upload.json) retain their
+checked encoded bytes through upload. Exact source/PTE checks and complete
+block-row updates remain in place; gamma and nonidentity crossbars retain
+CPU conversion. A synthetic 70-texture loop reduced cache residency from
+252 MiB to 35 MiB and avoided repeated block decoding. Actual GPU controls
+cover alpha, cube faces, mip tails, partial updates and NPOT expansion;
+these results do not establish native FPS or full benchmark acceptance.
+
 ## Architecture
 
 ```text

@@ -1,0 +1,144 @@
+{
+  "date": "2026-11-15",
+  "scope": "G6 optional native BC uploads; full native benchmark, reference-image and performance gates remain open.",
+  "behavior": [
+    "Grant BC only from an acquired GPUDevice whose enabled features contain texture-compression-bc; adapter support alone is insufficient. Hello remains lazy for 2D-only guests; reset/loss revoke cached optional capabilities.",
+    "Identity AAE4 crossbar, linear BC1/2/3 textures retain original checked encoded bytes through DXT1/3/5 uploads. Missing host support, other crossbars, forced-opaque alpha and gamma use the established CPU RGBA conversion.",
+    "Every use retains DMA bounds, exact source-byte comparisons and PTE revalidation. Source and result sharing are counted once. GPU byte accounting includes block-rounded mip tails and all cube faces; NPOT base dimensions count the executor RGBA expansion.",
+    "Partial uploads preserve complete BC block rows with texel-space y/height. Native BC upload counters report actual payload bytes; no driver clocks or watchdog behavior changes."
+  ],
+  "precisionControl": {
+    "case": "White/black interpolated BC1 block sampled with sRGB enabled on the actual WebGPU host",
+    "directBC": [
+      104,
+      104,
+      104
+    ],
+    "establishedCPUControl": [
+      102,
+      102,
+      102
+    ],
+    "decision": "Keep gamma on the established CPU conversion. No invented tolerance or silicon equivalence claim."
+  },
+  "gpuControls": [
+    "BC1 four corners;32-byte encoded versus256-byte RGBA upload",
+    "Single block-row edit uploads16 bytes",
+    "BC2 and BC3 independent color/alpha",
+    "1x1 mip tail",
+    "BC1 transparent identity versus forced-opaque alpha CPU fallback",
+    "Six cube faces and every mip tail, plus8-byte face/mip update",
+    "NPOT expanded storage",
+    "Gamma uses the exact established CPU control"
+  ],
+  "validation": {
+    "actualNV40WebGPU": "Complete tests/devices/geforce_6800_render.mjs passed, including existing FIFO, pixel, REF, alias and snapshot controls.",
+    "sharedWebGPU": "Original SVGA triangle and texture DMA/readback passed byte-exact.",
+    "executor": "190 original D3D9 WebGPU executor tests passed.",
+    "glbridge": "Complete make test-glbridge passed, including optional capability lifecycle checks.",
+    "units": "Texture, compressed-upload wire/accounting, FIFO, graph and capability tests passed.",
+    "closure": "Release NV plugin compiled with zero errors and zero Closure warnings."
+  },
+  "syntheticCheckedTextureBenchmark": {
+    "scope": "Synthetic checked texture reads, concurrent host workloads; no GPU/guest FPS claim",
+    "count": 70,
+    "width": 1024,
+    "height": 1024,
+    "sourceBytes": 36700160,
+    "sourceSHA256": "23703f4baee01190c026120e88ea41fcc2d50acb6a69aa0627715b86160cbbae",
+    "results": [
+      {
+        "mode": "CPU RGBA fallback",
+        "cacheLimit": 268435456,
+        "rounds": [
+          {
+            "round": 0,
+            "wallMs": 3033.695542,
+            "returnedBytes": 293601280,
+            "sampleChecksum": 1334873657,
+            "hits": 0,
+            "misses": 70,
+            "evictions": 14,
+            "blockDecodes": 70,
+            "residentBytes": 264241152
+          },
+          {
+            "round": 1,
+            "wallMs": 2911.998209,
+            "returnedBytes": 293601280,
+            "sampleChecksum": 1334873657,
+            "hits": 0,
+            "misses": 70,
+            "evictions": 70,
+            "blockDecodes": 70,
+            "residentBytes": 264241152
+          },
+          {
+            "round": 2,
+            "wallMs": 2815.930459,
+            "returnedBytes": 293601280,
+            "sampleChecksum": 1334873657,
+            "hits": 0,
+            "misses": 70,
+            "evictions": 70,
+            "blockDecodes": 70,
+            "residentBytes": 264241152
+          }
+        ]
+      },
+      {
+        "mode": "enabled native BC",
+        "cacheLimit": 268435456,
+        "rounds": [
+          {
+            "round": 0,
+            "wallMs": 5.7824170000003505,
+            "returnedBytes": 36700160,
+            "sampleChecksum": 3654986041,
+            "hits": 0,
+            "misses": 70,
+            "evictions": 0,
+            "blockDecodes": 0,
+            "residentBytes": 36700160
+          },
+          {
+            "round": 1,
+            "wallMs": 16.43187500000022,
+            "returnedBytes": 36700160,
+            "sampleChecksum": 3654986041,
+            "hits": 70,
+            "misses": 0,
+            "evictions": 0,
+            "blockDecodes": 0,
+            "residentBytes": 36700160
+          },
+          {
+            "round": 2,
+            "wallMs": 14.512541000000056,
+            "returnedBytes": 36700160,
+            "sampleChecksum": 3654986041,
+            "hits": 70,
+            "misses": 0,
+            "evictions": 0,
+            "blockDecodes": 0,
+            "residentBytes": 36700160
+          }
+        ]
+      }
+    ]
+  },
+  "limits": [
+    "Benchmark timings were taken with concurrent host workloads; these are CPU texture preparation measurements, not guest FPS or isolated native performance.",
+    "The sampleChecksum fields describe different encoded/RGBA representations and are not compared as pixel equivalence; actual GPU controls establish the tested pixel behavior.",
+    "Native XP05/06 runs already in progress loaded earlier modules; their results are not evidence for this optimization."
+  ],
+  "primaryContract": "https://www.w3.org/TR/webgpu/#texture-format-caps",
+  "artifacts": [
+    "build/nv40-native-bc-gpu.log",
+    "build/nv40-native-bc-svga-gpu.log",
+    "build/nv40-native-bc-executor.log",
+    "build/nv40-native-bc-glbridge-regression.log",
+    "build/nv40-native-bc-closure-final.log",
+    "build/nv40-native-bc-benchmark.json"
+  ]
+}

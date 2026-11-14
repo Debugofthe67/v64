@@ -1118,6 +1118,74 @@ try
         assert.equal(engine.backend.stats.uploadBytes-beforePartialColor,32,"only the changed RGBA row crosses the renderer boundary");
         console.log("PASS: real WebGPU exact-byte upload reuse, changed-mip uploads and CPU-authoritative attachment edits");
         console.log("PASS: real WebGPU nearest/bilinear texture sampling and TBUF5 to TEX0 routing");
+        {
+            const bcBackend=engine.backend;
+            assert.equal(bcBackend.bc_supported,true,"the renderer advertises BC only after enabling it on its actual device");
+            const object=graph.object(0,0x2000),savedBC=[0x8C0,0x304,0x310,0x324,0x36C,0x1A00,0x1A04,0x1A08,0x1A0C,0x1A10,0x1A14,0x1A18,0x1840]
+                .map(at=>[at,object.methods.get(at)||0]),savedFP=vram.slice(0x9000,0x9010);
+            for(const [at,value] of [[0x8C0,8<<16],[0x304,0],[0x310,0],[0x36C,0],[0x324,0x01010101],
+                [0x1A00,0x68000],[0x1A04,0x10629],[0x1A08,0x30303],[0x1A0C,0x80000000],
+                [0x1A10,0xAAE4],[0x1A14,0x01010000],[0x1A18,8<<16|8],[0x1840,16]])method(at,value);
+            const texProgram=[23<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800];
+            texProgram.forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+            const block=(at,color)=>vram.set([color&255,color>>>8,0,0,0,0,0,0],at);
+            [0xF800,0x07E0,0x001F,0xFFFF].forEach((color,i)=>block(0x68000+i*8,color));
+            // The native A8R8G8B8 render target is read back as BGRA bytes.
+            const corners=[[.25,.25,0],[.75,.25,0],[.25,.75,0],[.75,.75,0]],colors=[[0,0,255,255],[0,255,0,255],[255,0,0,255],[255,255,255,255]];
+            const rawStart=bcBackend.stats.uploadBytes;
+            for(let i=0;i<4;i++)assert.deepEqual(await cubeDraw(corners[i]),colors[i],"native BC1 block corner "+i);
+            assert.equal(bcBackend.stats.uploadBytes-rawStart,32,"four compressed blocks cross the renderer without RGBA expansion");
+            bcBackend.receive({type:"caps",textureCompressionBC:false});
+            const rgbaStart=bcBackend.stats.uploadBytes;
+            for(let i=0;i<4;i++)assert.deepEqual(await cubeDraw(corners[i]),colors[i],"same blocks retain the no-BC CPU path "+i);
+            assert.equal(bcBackend.stats.uploadBytes-rgbaStart,256,"the fallback expands the same64 texels");
+            bcBackend.receive({type:"caps",textureCompressionBC:true});
+            block(0x68010,0xF800);const partialBC=bcBackend.stats.uploadBytes;
+            assert.deepEqual(await cubeDraw(corners[2]),colors[0]);
+            assert.equal(bcBackend.stats.uploadBytes-partialBC,16,"one edited BC block uploads its complete block row");
+            assert.deepEqual(await cubeDraw(corners[3]),colors[3],"the adjacent unchanged block survives a partial upload");
+            method(0x1A00,0x68300);method(0x1A18,4<<16|4);method(0x1A08,0x730303);
+            vram.set([255,255,0,0,0xAA,0xAA,0xAA,0xAA],0x68300);
+            assert.equal(bcBackend.textures.describe(object,0,true).native_bc,false,"BC gamma retains its established RGBA conversion");
+            const gammaUploads=bcBackend.stats.nativeBCUploads;
+            const gammaBC=await cubeDraw([.5,.5,0]);bcBackend.receive({type:"caps",textureCompressionBC:false});
+            const gammaRGBA=await cubeDraw([.5,.5,0]);
+            assert.deepEqual(gammaBC,gammaRGBA,"BC sRGB retains the same CPU-converted control");
+            assert.equal(bcBackend.stats.nativeBCUploads,gammaUploads,"BC gamma never takes the optional compressed path");
+            assert.equal(gammaBC[3],255,"BC sRGB leaves alpha linear");
+            bcBackend.receive({type:"caps",textureCompressionBC:true});method(0x1A08,0x30303);
+            for(const [code,alpha] of [[7,255],[8,128]])
+            {
+                method(0x1A00,0x68100);method(0x1A04,0x10029|code<<8);method(0x1A18,4<<16|4);
+                vram.set(code===7?Array(8).fill(255):[128,0,0,0,0,0,0,0],0x68100);block(0x68108,0xF800);
+                assert.deepEqual(await cubeDraw([.5,.5,0]),[0,0,255,alpha],"native BC"+(code-5)+" color and alpha");
+            }
+            method(0x1A00,0x68200);method(0x1A04,0x30629);method(0x1A0C,0x90010000);method(0x1A18,4<<16|4);method(0x1A14,0x01030000);
+            [0xF800,0x07E0,0x001F].forEach((color,i)=>block(0x68200+i*8,color));
+            [47<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+            assert.deepEqual(await cubeDraw([.5,.5,0]),colors[2],"native BC1x1 mip tail remains a full compressed block");
+            method(0x1A04,0x10629);method(0x1A0C,0x80000000);method(0x1A14,0x01010000);
+            vram.set([0,0,255,255,255,255,255,255],0x68200);
+            texProgram.forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+            assert.deepEqual(await cubeDraw([.5,.5,0]),[0,0,0,0],"native BC1 transparent selector is retained");
+            method(0x1A10,0xA9E4);
+            assert.deepEqual(await cubeDraw([.5,.5,0]),[0,0,0,255],"forced-opaque crossbar retains CPU decoding on a BC-capable host");
+            method(0x1A10,0xAAE4);method(0x1A00,0x68400);method(0x1A04,0x1062D);
+            const cube565=[0xF800,0x07E0,0x001F,0xFFE0,0xF81F,0x07FF];
+            cube565.forEach((color,face)=>{block(0x68400+face*128,color);block(0x68408+face*128,cube565[5-face]);});
+            for(let face=0;face<6;face++)assert.deepEqual(await cubeDraw(directions[face]),cubeColors[face],"compressed cube face "+face);
+            method(0x1A04,0x2062D);method(0x1A0C,0x80008000);method(0x1A14,0x01030000);
+            [47<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+            for(let face=0;face<6;face++)assert.deepEqual(await cubeDraw(directions[face]),cubeColors[5-face],"compressed cube mip tail "+face);
+            block(0x68408,0xF81F);const cubeBCPartial=bcBackend.stats.uploadBytes;
+            assert.deepEqual(await cubeDraw(directions[0]),cubeColors[4]);
+            assert.equal(bcBackend.stats.uploadBytes-cubeBCPartial,8,"only the edited cube face/mip block is uploaded");
+            method(0x1A00,0x68500);method(0x1A04,0x10629);method(0x1A18,3<<16|2);method(0x1A0C,0x80000000);method(0x1A14,0x01010000);
+            block(0x68500,0xF800);texProgram.forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+            assert.deepEqual(await cubeDraw([.5,.5,0]),colors[0],"NPOT BC base retains the executor's checked RGBA expansion");
+            for(const [at,value] of savedBC)method(at,value);vram.set(savedFP,0x9000);
+            console.log("PASS: real WebGPU enabled BC1/2/3, sRGB, no-BC/crossbar fallbacks, block rows, cube faces/mips and NPOT bases");
+        }
         const compareTests=[()=>false,(r,d)=>r>d,(r,d)=>r===d,(r,d)=>r>=d,(r,d)=>r<d,(r,d)=>r!==d,(r,d)=>r<=d,()=>true];
         const shadowDraw=async(reference,{project=false,crossbar=0xAAE4,coordinate=.5}={})=>{
             method(0x1A10,crossbar);

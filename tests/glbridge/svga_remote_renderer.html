@@ -7,7 +7,7 @@
 // The browser half of tests/x64/gpu_remote_renderer.mjs: the SVGA renderer,
 // on this page's WebGPU, for a device in a node process at the other end of
 // the WebSocket. The frame format is described there.
-const TYPES = { submit: 1, reset: 2, write: 3, done: 4, lost: 5, ready: 6, submit_gx: 7, log: 8, submit_vx: 9 };
+const TYPES = { submit: 1, reset: 2, write: 3, done: 4, lost: 5, ready: 6, submit_gx: 7, log: 8, submit_vx: 9, caps: 10, hello: 11 };
 // the renderer's warnings go to the harness, for its log
 for(const method of ["warn", "error"])
 {
@@ -56,6 +56,7 @@ const renderer = V86SVGARenderer({
             send(TYPES.done, message.seq);
         }
         else if(message.type === "lost") socket.send(new Uint8Array([TYPES.lost, ...new TextEncoder().encode(message.reason)]));
+        else if(message.type === "caps") send(TYPES.caps, +!!message.present | +!!message.textureCompressionBC << 1);
     },
     listen: handler => { to_renderer = handler; },
 }, {});
@@ -85,6 +86,7 @@ socket.onmessage = event => {
     {
         to_renderer({ type: "reset" });
     }
+    else if(bytes[0] === TYPES.hello) to_renderer({ type: "hello" });
 };
 socket.onclose = () => { status.textContent = "closed after " + batches + " batches"; };
 </script>

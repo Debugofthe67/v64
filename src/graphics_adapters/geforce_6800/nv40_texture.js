@@ -67,7 +67,7 @@ export class NV40Texture
             wrap_s:s,wrap_t:t,wrap_r:3,min:1,mag:1,mip:1,levels,min_lod:0,level_count:levels,bias:0,border:get(o,at+28),
             d3d:code===27?116:114,upload_bpp:bpp};
     }
-    describe(o,unit)
+    describe(o,unit,compressed=false)
     {
         if(unit<0 || unit>=16) throw new RangeError("NV40 invalid texture unit");
         const at=0x1A00+unit*32,format=get(o,at+4),size=get(o,at+24),code=format>>>8&31,selector=format&3;
@@ -107,10 +107,17 @@ export class NV40Texture
         if(fullFloat && (mag!==1 || min!==1 && min!==3)) throw new RangeError("NV40 FP32 texture filtering is not connected");
         const enable=get(o,at+12),minLod=(enable>>>19&4095)/256,maxLod=(enable>>>7&4095)/256;
         const lod_min=Math.min(levels-1,minLod),lod_max=Math.min(levels-1,Math.max(minLod,maxLod));
-        return {dma:this.state.dma(o,selector===1?0x184:0x188),offset:get(o,at),width,height,depth,bpp,pitch,swizzle,u,v,w,code,block,cube,volume,normalized,
-            crossbar:get(o,at+16),signed,srgb:gamma===7,anisotropy,wrap_s:s,wrap_t:t,wrap_r:r,min:min&1?1:2,mag,mip:min<=2?0:min<=4?1:2,
+        // Only the identity crossbar commutes with the host's BC fetch without
+        // shader changes. Constant/replicated/reordered lanes keep the existing
+        // CPU conversion, including native DXT1's forced-opaque alpha route.
+        // BC sRGB fetch precision differs from the current RGBA control on a
+        // real host (104 versus102 for a white/black interpolated block).
+        // Retain that established conversion until its precision is resolved.
+        const crossbar=get(o,at+16),native_bc=!!(compressed && block && crossbar===0xAAE4 && !gamma);
+        return {dma:this.state.dma(o,selector===1?0x184:0x188),offset:get(o,at),width,height,depth,bpp,pitch,swizzle,u,v,w,code,block,cube,volume,normalized,native_bc,
+            crossbar,signed,srgb:gamma===7,anisotropy,wrap_s:s,wrap_t:t,wrap_r:r,min:min&1?1:2,mag,mip:min<=2?0:min<=4?1:2,
             levels,min_lod:0,lod_min,lod_max,level_count:Math.min(levels,Math.ceil(lod_max)+1),
-            d3d:depthCompare?code===16?75:80:fullFloat?116:code===26 || signed?113:code===20 || code===21?36:32,
+            d3d:native_bc?[0x31545844,0x33545844,0x35545844][code-6]:depthCompare?code===16?75:80:fullFloat?116:code===26 || signed?113:code===20 || code===21?36:32,
             upload_bpp:depthCompare?bpp:fullFloat?16:code===26 || signed || code===20 || code===21?8:4,depth_compare:depthCompare,
             bias:new Uint32Array(Float32Array.of((filter<<19>>19)/256).buffer)[0],border:get(o,at+28)};
     }
@@ -184,14 +191,14 @@ export class NV40Texture
         // Morton/BC/component conversion is cached, with exact comparisons.
         const source=this.encoded(texture),key=JSON.stringify([texture.dma,texture.offset,texture.width,texture.height,texture.depth,
             texture.bpp,texture.pitch,texture.swizzle,texture.u,texture.v,texture.w,texture.code,texture.block,
-            texture.crossbar,texture.signed,texture.vertex,texture.depth_compare,texture.volume]),entry=this.cache.get(key);
+            texture.crossbar,texture.signed,texture.vertex,texture.depth_compare,texture.volume,!!texture.native_bc]),entry=this.cache.get(key);
         if(entry && same_bytes(entry.source,source))
         {
             this.stats.hits++;this.cache.delete(key);this.cache.set(key,entry);return entry.result;
         }
         this.stats.misses++;
         if(entry){this.cache.delete(key);this.cache_bytes-=entry.bytes;}
-        const result=this.decode(texture,source),bytes=source.length+result.length;
+        const result=this.decode(texture,source),bytes=source.length+(source===result?0:result.length);
         if(bytes<=this.cache_limit)
         {
             while(this.cache.size && (this.cache.size>=this.cache_entries || this.cache_bytes+bytes>this.cache_limit))
@@ -205,6 +212,11 @@ export class NV40Texture
     }
     decode(texture,encoded)
     {
+        if(texture.native_bc)
+        {
+            if(!texture.block || texture.crossbar!==0xAAE4)throw new RangeError("NV40 native BC requires an identity crossbar");
+            return encoded;
+        }
         if(texture.vertex || texture.depth_compare) return this.storage(texture,encoded);
         if(texture.signed)
         {
