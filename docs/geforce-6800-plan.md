@@ -2160,3 +2160,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G1 诊断补齐：原生设备枚举通过 SetupDiOpenDevRegKey 读取实际 DriverVersion。次要对照驱动官方 61.77 安装后冷启动确认 `6.1.7.7`、设备 started/problem=0；1024×768 原生模式设置仍返回 DISP_CHANGE_FAILED，未验收其显示能力，也未替代计划要求的 93.71/81.98，见 `g1-native-driver-version-diagnostic.json`。
 
 - G6 原生等待诊断：MMIO 观察可按绘制数延迟开始，另加有界 PC/安全栈/普通 RAM 只读采样及首个 FIFO 停滞成套快照。06 的后段定向观察没有 USER GET 读取；原版显示驱动实际沿 fence 等待路径运行，完成值在 GPU 工作期间持续增长，随后驱动清理映射并报超时。清理后 DMA 页错误不当作首因；完整六项、根因修复与性能验收仍开放，见 `g6-native-fence-wait-diagnostics.json`。
+
+- G4 05 原始结果导出：健康冷跑检查点续跑 145790 draws，零 GPU/非软件 PGRAPH 错误，原程序 exit0，`NV05F.3DR` ZIP CRC 与 XML 校验通过，正常关机至 `806F3048/HLT1/modeNULL`。结果仅三 GT 和 CPU1 为 status0；CPU2 为 N/A、CPU 总分提示测试不足，因此默认五项未验收，继续以原版 UI 核对/补跑，见 `g4-xp-9371-05-cold-three-gt-cpu1.json`。原生79仅保留输出，不作性能结论。
