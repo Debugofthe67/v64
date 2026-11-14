@@ -3512,7 +3512,6 @@ impl Emitter<'_> {
         length: u8,
         offset: u16,
     ) {
-        use super::{T0, T1, T2, T3, T4};
         self.fp_access(offset);
         let done = self.b.block_void();
         let slow = self.b.block_void();
@@ -3521,73 +3520,79 @@ impl Emitter<'_> {
         self.b.and_i32();
         self.b.eqz_i32();
         self.b.br_if(slow);
-        self.c64(0);
-        self.s(T2);
-        self.c64(0);
-        self.s(T4);
-        for lane in 0..if q { 4 } else { 2 } {
-            self.a32_fp_load(2 * n + lane, false, T0);
-            self.a32_fp_load(2 * m + lane, false, T1);
-            for l in [T0, T1] {
-                self.fp_ordinary(l, false, false);
-                self.b.eqz_i32();
-                self.b.br_if(slow);
-            }
-            self.fp_value(T0, false);
-            self.fp_value(T1, false);
-            self.b.arithmetic_f32(if op >= 2 { 2 } else { op });
-            self.fp_bits(T3, false);
-            self.fp_ordinary(T3, false, true);
+        self.neon_load(n, q);
+        let a = self.b.set_new_local_v128();
+        self.neon_load(m, q);
+        let b = self.b.set_new_local_v128();
+        for l in [&a, &b] {
+            self.v_ordinary(l, false, false);
             self.b.eqz_i32();
             self.b.br_if(slow);
-            if op >= 2 {
-                // Rounded zero from nonzero factors may be underflow.
-                self.g(T3);
-                self.c64(0x7fff_ffff);
-                self.b.and_i64();
-                self.o(crate::wasmgen::wasm_opcodes::OP_I64EQZ);
-                for l in [T0, T1] {
-                    self.g(l);
-                    self.c64(0x7fff_ffff);
-                    self.b.and_i64();
-                    self.o(crate::wasmgen::wasm_opcodes::OP_I64EQZ);
-                    self.b.eqz_i32();
-                    self.b.and_i32();
-                }
-                self.b.br_if(slow);
-            }
-            if op >= 3 {
-                self.a32_fp_load(2 * d + lane, false, T0);
-                self.fp_ordinary(T0, false, false);
-                self.b.eqz_i32();
-                self.b.br_if(slow);
-                self.fp_value(T0, false);
-                self.fp_value(T3, false);
-                // VMLA/VMLS are two rounded operations, never fused.
-                self.b.arithmetic_f32(if op == 3 { 0 } else { 1 });
-                self.fp_bits(T3, false);
-                self.fp_ordinary(T3, false, true);
-                self.b.eqz_i32();
-                self.b.br_if(slow);
-            }
-            let into = if lane < 2 { T2 } else { T4 };
-            self.g(into);
-            self.g(T3);
-            if lane & 1 != 0 {
-                self.c64(32);
-                self.b.shl_i64();
-            }
-            self.b.or_i64();
-            self.s(into);
         }
-        self.a32_fp_store(d, true, T2);
+        self.b.get_local_v128(&a);
+        self.b.get_local_v128(&b);
+        self.b.simd(0xE4 + if op >= 2 { 2 } else { op as u32 });
+        let product = self.b.set_new_local_v128();
+        self.v_ordinary(&product, false, true);
+        self.b.eqz_i32();
+        self.b.br_if(slow);
+        if op >= 2 {
+            // A zero product of nonzero normal factors can underflow. Check
+            // the same lane in all three masks, including signed zero.
+            for (l, equal) in [(&product, true), (&a, false), (&b, false)] {
+                self.b.get_local_v128(l);
+                self.b
+                    .const_v128(0x7FFF_FFFF_7FFF_FFFF_7FFF_FFFF_7FFF_FFFFu128.to_le_bytes());
+                self.b.simd(0x4E); // v128.and
+                self.b.simd_zero();
+                self.b.simd(if equal { 0x37 } else { 0x38 }); // i32x4.eq/ne
+            }
+            self.b.simd(0x4E);
+            self.b.simd(0x4E);
+            self.b.simd(0x53); // v128.any_true
+            self.b.br_if(slow);
+        }
+        let accumulator = if op >= 3 {
+            self.neon_load(d, q);
+            let accumulator = self.b.set_new_local_v128();
+            self.v_ordinary(&accumulator, false, false);
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+            self.b.get_local_v128(&accumulator);
+            self.b.get_local_v128(&product);
+            // VMLA/VMLS are two rounded operations, never relaxed/fused.
+            self.b.simd(if op == 3 { 0xE4 } else { 0xE5 });
+            Some(accumulator)
+        }
+        else {
+            self.b.get_local_v128(&product);
+            None
+        };
+        let result = self.b.set_new_local_v128();
+        self.v_ordinary(&result, false, true);
+        self.b.eqz_i32();
+        self.b.br_if(slow);
+        // No architectural writes before every lane passes. D forms load
+        // duplicate halves and store only 64 bits, preserving the adjacent D.
+        self.c32(state::v as i32 + 8 * d as i32);
+        self.b.get_local_v128(&result);
         if q {
-            self.a32_fp_store(d + 1, true, T4);
+            self.b.simd_memory(0x0B, 4);
+        }
+        else {
+            self.b.simd_lane(0x1D, 0);
+            self.b.store_aligned_i64(0);
         }
         self.b.br(done);
         self.b.block_end();
         self.a32_helper(word, length, offset);
         self.b.block_end();
+        for l in [Some(a), Some(b), Some(product), accumulator, Some(result)]
+            .into_iter()
+            .flatten()
+        {
+            self.b.free_local_v128(l);
+        }
     }
 
     /// Advanced SIMD data processing (Neon): the result into D[d] (the

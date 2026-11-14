@@ -503,7 +503,7 @@ impl Emitter<'_> {
     }
     /// Push whether every lane of `l` is zero or a normal number (with
     /// `result`: of exponent 2 or more)
-    fn v_ordinary(&mut self, l: &WasmLocalV128, double: bool, result: bool) {
+    pub(super) fn v_ordinary(&mut self, l: &WasmLocalV128, double: bool, result: bool) {
         let (low, inf, magnitude) = if double {
             (
                 if result { 0x0020_0000_0000_0000u64 } else { 0x0010_0000_0000_0000 },

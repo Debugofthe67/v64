@@ -18,6 +18,13 @@ AVAudioPlayer mutex，UIKit 事件时间停在电影结束处。此前显示战�
 频率能量、MP3/AAC 不同的输出容量及真实 CDMA 交付均通过；AMC、I2S、CDMA pause/reset
 测试通过。正式游戏冷启动正在复验，**尚未验收战斗操作或 60 fps**。
 
+下一步把 A32 NEON 的 VADD/VSUB/VMUL/VMLA/VMLS 从逐 lane 的标量 Wasm 改为
+`f32x4` 运算及整向量 guard，D 形式只写低 64 bits。继续检查 sticky IXC、普通数、
+每个乘法 lane 的下溢和中间结果；VMLA/VMLS 保持两次舍入，异常仍走精确解释器。
+180 个 ARM/Thumb、D/Q、重叠寄存器及异常边界用例与 QEMU 一致，MMU/page JIT
+与解释器一致；额外 200 个随机 NEON 用例无差异。SIMD 和 fallback 正式核心构建通过。
+尚未把指令实现变化换算为游戏 FPS，待同一可操作场景测量。
+
 ## 当前续作结果
 
 更新后的正式构建已从 generation 5 NAND 完整冷启，通过 UI 打开原包。
