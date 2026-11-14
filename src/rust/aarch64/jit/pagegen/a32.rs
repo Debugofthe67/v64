@@ -36,6 +36,9 @@ pub enum Kind {
     Nop,
     /// the interpreter's execute (pages::a32_page_helper)
     Helper,
+    /// FP/SIMD data processing: no GPR reads/writes or PC/context changes. Errors
+    /// still retry through the usual interpreter with all GPRs committed.
+    FpHelper,
     /// B, BL, B<c>: to `target` (the page's offset, wrapping), when `cond`
     /// holds (14: always); BL's LR the next instruction's address (T32's
     /// with bit 0 set)
@@ -286,6 +289,7 @@ pub fn kind_name(kind: &Kind) -> String {
     match kind {
         Kind::Nop => "nop".into(),
         Kind::Helper => "helper".into(),
+        Kind::FpHelper => "fphelper".into(),
         Kind::Branch { cond, .. } => format!("branch/{}", cond),
         Kind::Interwork { .. } => "blx".into(),
         Kind::CompareBranch { .. } => "cbz".into(),
@@ -2472,10 +2476,25 @@ pub(super) fn discover(
                 }
             }
         }
+        if matches!(kind, Some(Kind::Helper)) && !covered.contains(&o) && length == 4 {
+            // Exclude every core-register transfer (bit 4), every memory
+            // form and every system coprocessor. The remaining data forms
+            // use only FP/vector state, including exact conversions and
+            // saturating integer SIMD that do not have native templates.
+            let vector = if thumb {
+                matches!(word >> 24, 0xEF | 0xFF)
+            }
+            else {
+                matches!(word >> 24, 0xF2 | 0xF3)
+            };
+            let vfp = word & 0x0F00_0010 == 0x0E00_0000 && matches!(word >> 8 & 15, 10 | 11);
+            if vector || vfp {
+                kind = Some(Kind::FpHelper);
+            }
+        }
         let debug = unsafe { crate::aarch64::jit::pages::AARCH32_DEBUG };
-        if debug == 2 && !matches!(kind, Some(Kind::Helper))
-            || debug == 3 && matches!(kind, Some(Kind::Helper))
-        {
+        let helper = matches!(kind, Some(Kind::Helper | Kind::FpHelper));
+        if debug == 2 && !helper || debug == 3 && helper {
             kind = None;
         }
         if covered.contains(&o) && !matches!(kind, Some(Kind::Helper) | None) {
@@ -3315,7 +3334,19 @@ impl Emitter<'_> {
     /// A helper call: the interpreter's execute of the instruction
     /// (pages::a32_page_helper), a refusal retried in the interpreter
     fn a32_helper(&mut self, word: u32, length: u8, offset: u16) {
-        if self.a32_gpr_locals {
+        self.a32_helper_sync(word, length, offset, true);
+    }
+
+    /// The decoded scalar/NEON arithmetic and comparisons use only FP
+    /// state. NZCV is already in memory on A32; the explicit PC argument
+    /// supplies the instruction address. On refusal, retry's normal
+    /// epilogue commits the live GPR locals before the interpreter runs.
+    fn a32_fp_helper(&mut self, word: u32, length: u8, offset: u16) {
+        self.a32_helper_sync(word, length, offset, false);
+    }
+
+    fn a32_helper_sync(&mut self, word: u32, length: u8, offset: u16, sync_gprs: bool) {
+        if self.a32_gpr_locals && sync_gprs {
             self.writeback();
         }
         self.c32(word as i32);
@@ -3328,7 +3359,7 @@ impl Emitter<'_> {
                 &[WasmType::I32],
             ),
         );
-        if self.a32_gpr_locals {
+        if self.a32_gpr_locals && sync_gprs {
             self.si(super::ST);
             self.load_registers();
             self.gi(super::ST);
@@ -3420,7 +3451,7 @@ impl Emitter<'_> {
         self.b.store_aligned_i32(0);
         self.b.br(done);
         self.b.block_end();
-        self.a32_helper(word, length, offset);
+        self.a32_fp_helper(word, length, offset);
         self.b.block_end();
     }
 
@@ -3514,7 +3545,7 @@ impl Emitter<'_> {
         self.b.block_end();
         self.b.block_end();
         // the exact path: the interpreter's
-        self.a32_helper(word, length, offset);
+        self.a32_fp_helper(word, length, offset);
         self.b.block_end();
     }
 
@@ -3764,7 +3795,7 @@ impl Emitter<'_> {
         }
         self.b.br(done);
         self.b.block_end();
-        self.a32_helper(word, length, offset);
+        self.a32_fp_helper(word, length, offset);
         self.b.block_end();
         self.b.free_local(sticky);
         for l in [Some(a), Some(b), Some(product), accumulator, Some(result)]
@@ -4436,6 +4467,7 @@ impl Emitter<'_> {
                 e.transfer(op, rt, address, size, signed, q, offset)
             }),
             Kind::Helper => self.a32_helper(i.word, i.length, offset),
+            Kind::FpHelper => self.a32_fp_helper(i.word, i.length, offset),
             Kind::Branch { target, cond, link } => {
                 if cond != 14 {
                     self.load32(state::nzcv as u32);
