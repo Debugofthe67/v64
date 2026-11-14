@@ -2130,3 +2130,12 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   到(255,255,255)，顶部 730 行纯蓝像素从 28,616 到 0；BX2 单独修复
   仍蓝的对照保留。整套/固定 IQ/性能继续验证，见
   `g4-native-l8-lightmap-aliases.json`。
+
+- G4 03 冷启动全十一项：原生 93.71 完成 4 GT、2 CPU、5 feature，
+  导出的原始 NV03F.3DR/XML 全部 status=0，3 sound 明确 Not supported。
+  三段合计 280,310 次绘制，GPU/PGRAPH/非软件 FIFO 故障均零，原启动器
+  EXIT_CODE=0。XP 正常关机到既有 806F3048 HLT/display=null 状态后，
+  保存配套 RAM/overlay 并导出 ZIP，CRC 与 XML 解析通过。原生 355/18
+  分仅作输出记录；两次续跑及并行负载不作性能，XML 的 Checksums Valid=No
+  和 Invalid Score=No 原样保留。该运行早于 L8/BX2，固定 IQ 与最终图像
+  门禁继续；见 `g4-xp-9371-03-cold-full-eleven.json`。
