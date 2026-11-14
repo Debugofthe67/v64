@@ -1,0 +1,589 @@
+{
+  "date": "2026-11-14",
+  "status": "Post-fix Win98 native 2000 IQ completed, saved and exported after normal shutdown; large lighting defects removed in both drivers. Small reference residuals remain.",
+  "driver": "NVIDIA 81.98",
+  "settings": "Cold boot, 1024x768x16, T16, Z16, triple buffer, hardware T&L, only two IQ groups selected",
+  "nativeResult": {
+    "overallScore": "N/A expected for IQ-only",
+    "project": "NVWDIQ.3dp",
+    "completedIQGroups": 2
+  },
+  "run": {
+    "directory": "build/nv40-win98-2000-dual-iq",
+    "gpu": {
+      "batches": 508,
+      "draws": 1032,
+      "bytes": 191374664,
+      "readbacks": 917,
+      "failures": 0,
+      "uploads": 1165,
+      "uploadBytes": 169437176
+    },
+    "graphFaults": [],
+    "nonSoftwareFifoFaults": [],
+    "imageUnchanged": true,
+    "game": {
+      "path": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+      "slot": "secondary-slave",
+      "imageUnchanged": true
+    }
+  },
+  "shutdown": {
+    "directory": "build/nv40-win98-2000-dual-iq-shutdown",
+    "normalShutdownConfirmed": true,
+    "savePrompt": "The first shutdown request waited at the native Save changes prompt. Changes were saved, the benchmark closed normally, and Shutdown was then confirmed again.",
+    "EIP": "0xFE93D",
+    "halted": 1,
+    "displayMode": null,
+    "noSafeOffTextClaimed": true
+  },
+  "artifacts": [
+    {
+      "file": "NVWDIQ.3dp",
+      "name": "NVWDIQ.3dp",
+      "bytes": 4798,
+      "sha256": "a72f2ad479203f4c3ade2826b37330a2f25f2445db6d85ea6956bdc7f377e4b0"
+    },
+    {
+      "file": "Quality/IQ01I_NVWDIQ.bmp",
+      "name": "Quality_IQ01I_NVWDIQ.bmp",
+      "bytes": 249856,
+      "sha256": "a307e8a1d21b21d6253217fc8a2084f2eadb0dc51687932dfdd27576c824cc74"
+    },
+    {
+      "file": "Quality/IQ01T_NVWDIQ.bmp",
+      "name": "Quality_IQ01T_NVWDIQ.bmp",
+      "bytes": 16384,
+      "sha256": "73f01bc478ad38f5072245abb106b84a8211bc024aaafed0121a53d9b14cf8e3"
+    },
+    {
+      "file": "Quality/IQ02I_NVWDIQ.bmp",
+      "name": "Quality_IQ02I_NVWDIQ.bmp",
+      "bytes": 249856,
+      "sha256": "9366a34e05da0f410099edf067259c51415be653b660e17045c88f690098e17f"
+    },
+    {
+      "file": "Quality/IQ02T_NVWDIQ.bmp",
+      "name": "Quality_IQ02T_NVWDIQ.bmp",
+      "bytes": 16384,
+      "sha256": "61b644dcb080a9fdaae1ba27248edab7b1a6752671989d8671a6d83397d6358a"
+    },
+    {
+      "file": "Quality/IQ03I_NVWDIQ.bmp",
+      "name": "Quality_IQ03I_NVWDIQ.bmp",
+      "bytes": 249856,
+      "sha256": "27f2a37011ddaa8333dc3f18ecbcaedf482eb220399bf3d3ebc2b57d4a0f161f"
+    },
+    {
+      "file": "Quality/IQ03T_NVWDIQ.bmp",
+      "name": "Quality_IQ03T_NVWDIQ.bmp",
+      "bytes": 16384,
+      "sha256": "5686a82c8f579dffd9c7d4191cd15bb7b4c4243c0bd7877c2a8a7cdf6952fe53"
+    },
+    {
+      "file": "Quality/IQ04I_NVWDIQ.bmp",
+      "name": "Quality_IQ04I_NVWDIQ.bmp",
+      "bytes": 249856,
+      "sha256": "5be9fad65e78df7672fccb11e436863b256f5723d575069b2d7ccb70c5fa5125"
+    },
+    {
+      "file": "Quality/IQ04T_NVWDIQ.bmp",
+      "name": "Quality_IQ04T_NVWDIQ.bmp",
+      "bytes": 16384,
+      "sha256": "6facf25a2be5c852e3bd864ff87a9461b7430333770e1386312ba92115a9d441"
+    },
+    {
+      "file": "Quality/IQ05I_NVWDIQ.bmp",
+      "name": "Quality_IQ05I_NVWDIQ.bmp",
+      "bytes": 249856,
+      "sha256": "90503f1c336847fee8d22e3da97e60ba7c519c1d564dad504873a5e7fb3187d9"
+    },
+    {
+      "file": "Quality/IQ05T_NVWDIQ.bmp",
+      "name": "Quality_IQ05T_NVWDIQ.bmp",
+      "bytes": 16384,
+      "sha256": "51a938f9ee46bab7f24c23d351ffcf2f1257a0ef257b08d4d184f7ff7af0dc2e"
+    },
+    {
+      "file": "Quality/IQ06I_NVWDIQ.bmp",
+      "name": "Quality_IQ06I_NVWDIQ.bmp",
+      "bytes": 249856,
+      "sha256": "41687da2439f59ffd4fd04787d00f046dd7b4dccb3a99ce1a16a530296c9cfc0"
+    },
+    {
+      "file": "Quality/IQ06T_NVWDIQ.bmp",
+      "name": "Quality_IQ06T_NVWDIQ.bmp",
+      "bytes": 16384,
+      "sha256": "62d1f757cabd1074d1d660db47544549c7379ce1bbe2eae86e8b1e05950b1645"
+    },
+    {
+      "file": "Quality/IQ07I_NVWDIQ.bmp",
+      "name": "Quality_IQ07I_NVWDIQ.bmp",
+      "bytes": 249856,
+      "sha256": "e67052bb695d9eaa9170f3ac1ba4ed08304a1267bf47cd09f662c543fb22eafe"
+    },
+    {
+      "file": "Quality/IQ07T_NVWDIQ.bmp",
+      "name": "Quality_IQ07T_NVWDIQ.bmp",
+      "bytes": 16384,
+      "sha256": "011d80de90bd626f027bc58d253efbc3b0fbe35fca0d336c3b0bee361997f634"
+    },
+    {
+      "file": "Quality/IQ08I_NVWDIQ.bmp",
+      "name": "Quality_IQ08I_NVWDIQ.bmp",
+      "bytes": 2560000,
+      "sha256": "3f8bb7aff05fdb5d03e30ebe7dc5a029aa4e52f228ca9eed19c1275a2c30be2d"
+    },
+    {
+      "file": "Quality/IQ08T_NVWDIQ.bmp",
+      "name": "Quality_IQ08T_NVWDIQ.bmp",
+      "bytes": 18496,
+      "sha256": "4409944ab9c3885cc7fd220e48de0fbb8dd436f92ddd06e2af0f5d568c39be48"
+    },
+    {
+      "file": "Quality/IQ09I_NVWDIQ.bmp",
+      "name": "Quality_IQ09I_NVWDIQ.bmp",
+      "bytes": 2560000,
+      "sha256": "29912ecde630ebc856cef32dcd01c7b707889544a7160565f948b1aee857f555"
+    },
+    {
+      "file": "Quality/IQ09T_NVWDIQ.bmp",
+      "name": "Quality_IQ09T_NVWDIQ.bmp",
+      "bytes": 18496,
+      "sha256": "53d33dbbc23395d411665e14587e6319eb8e1713c15387f56a557cb1db9cb4ff"
+    }
+  ],
+  "referenceComparison": [
+    {
+      "case": 1,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0,
+      "exact_pixel_percent": 100.0,
+      "native_sha256": "a307e8a1d21b21d6253217fc8a2084f2eadb0dc51687932dfdd27576c824cc74",
+      "reference_sha256": "0da313c8b34fc7c4e08beb9cefa5a7c332d98086dc719abef4fe80f1a4c8d520"
+    },
+    {
+      "case": 2,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0,
+      "exact_pixel_percent": 100.0,
+      "native_sha256": "9366a34e05da0f410099edf067259c51415be653b660e17045c88f690098e17f",
+      "reference_sha256": "c0f3de49a85e1e2b03e30140292cdc5a831cd5090d52da0ba186c017f3bd1bb9"
+    },
+    {
+      "case": 3,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 553,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.02008056640625,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.15618896484375,
+      "native_sha256": "27f2a37011ddaa8333dc3f18ecbcaedf482eb220399bf3d3ebc2b57d4a0f161f",
+      "reference_sha256": "2c6b591c0d5ea4d299b7c5a63348502a82306cbcf5fa8af4ed34e6ed956d6d7d"
+    },
+    {
+      "case": 4,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 540,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.019999186197916668,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.176025390625,
+      "native_sha256": "5be9fad65e78df7672fccb11e436863b256f5723d575069b2d7ccb70c5fa5125",
+      "reference_sha256": "a5951c3c965c18c8dec33342d5414ca65deea79fbe1aef8deaadfb02307c451c"
+    },
+    {
+      "case": 5,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 617,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.020772298177083332,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.05853271484375,
+      "native_sha256": "90503f1c336847fee8d22e3da97e60ba7c519c1d564dad504873a5e7fb3187d9",
+      "reference_sha256": "621317632376c082714ca4117bcd6181ca161f3a2a5c9f591e463b705a41dd83"
+    },
+    {
+      "case": 6,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 554,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.019999186197916668,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.1546630859375,
+      "native_sha256": "41687da2439f59ffd4fd04787d00f046dd7b4dccb3a99ce1a16a530296c9cfc0",
+      "reference_sha256": "d324ed6b6e7281769a857904bb2457ed92cc5fc01338cde89a9f2e0d97df9e77"
+    },
+    {
+      "case": 7,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 375,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.00762939453125,
+      "max_channel_error": 4,
+      "exact_pixel_percent": 99.42779541015625,
+      "native_sha256": "e67052bb695d9eaa9170f3ac1ba4ed08304a1267bf47cd09f662c543fb22eafe",
+      "reference_sha256": "77d76eb60967406651b15c61a2e459ded9f5ac0d0aa5f186c72c73b2577c0d6b"
+    },
+    {
+      "case": 8,
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "different_pixels": 79221,
+      "pixels": 786432,
+      "mean_absolute_rgb_error": 0.2311130099826389,
+      "max_channel_error": 88,
+      "exact_pixel_percent": 89.92652893066406,
+      "native_sha256": "3f8bb7aff05fdb5d03e30ebe7dc5a029aa4e52f228ca9eed19c1275a2c30be2d",
+      "reference_sha256": "fb969ac1941880a20d186f2ef8e392365f995460f2c2cccb943caf7014fa85af"
+    },
+    {
+      "case": 9,
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "different_pixels": 44282,
+      "pixels": 786432,
+      "mean_absolute_rgb_error": 0.1121334499782986,
+      "max_channel_error": 64,
+      "exact_pixel_percent": 94.36925252278647,
+      "native_sha256": "29912ecde630ebc856cef32dcd01c7b707889544a7160565f948b1aee857f555",
+      "reference_sha256": "16d5837ce7630b87f7bb9c9f9208bd7de01dc7886cf62c4287fb866710a56866"
+    }
+  ],
+  "thumbnailComparison": [
+    {
+      "case": 1,
+      "width": 64,
+      "height": 64,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 2,
+      "width": 64,
+      "height": 64,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 3,
+      "width": 64,
+      "height": 64,
+      "different_pixels": 25,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.010416666666666666,
+      "max_channel_error": 8
+    },
+    {
+      "case": 4,
+      "width": 64,
+      "height": 64,
+      "different_pixels": 22,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0087890625,
+      "max_channel_error": 8
+    },
+    {
+      "case": 5,
+      "width": 64,
+      "height": 64,
+      "different_pixels": 44,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.025065104166666668,
+      "max_channel_error": 8
+    },
+    {
+      "case": 6,
+      "width": 64,
+      "height": 64,
+      "different_pixels": 35,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.018880208333333332,
+      "max_channel_error": 8
+    },
+    {
+      "case": 7,
+      "width": 64,
+      "height": 64,
+      "different_pixels": 27,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0087890625,
+      "max_channel_error": 4
+    },
+    {
+      "case": 8,
+      "width": 80,
+      "height": 60,
+      "different_pixels": 473,
+      "pixels": 4800,
+      "mean_absolute_rgb_error": 0.22138888888888889,
+      "max_channel_error": 16
+    },
+    {
+      "case": 9,
+      "width": 80,
+      "height": 60,
+      "different_pixels": 266,
+      "pixels": 4800,
+      "mean_absolute_rgb_error": 0.11194444444444444,
+      "max_channel_error": 16
+    }
+  ],
+  "crossDriverComparison": [
+    {
+      "case": 1,
+      "kind": "I",
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 2,
+      "kind": "I",
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 3,
+      "kind": "I",
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 4,
+      "kind": "I",
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 5,
+      "kind": "I",
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 6,
+      "kind": "I",
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 7,
+      "kind": "I",
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 8,
+      "kind": "I",
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "different_pixels": 851,
+      "pixels": 786432,
+      "mean_absolute_rgb_error": 0.011479695638020834,
+      "max_channel_error": 48
+    },
+    {
+      "case": 9,
+      "kind": "I",
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 786432,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 1,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 2,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 3,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 4,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 5,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 6,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 7,
+      "kind": "T",
+      "width": 64,
+      "height": 64,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4096,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "case": 8,
+      "kind": "T",
+      "width": 80,
+      "height": 60,
+      "roi_y": 0,
+      "different_pixels": 5,
+      "pixels": 4800,
+      "mean_absolute_rgb_error": 0.008333333333333333,
+      "max_channel_error": 16
+    },
+    {
+      "case": 9,
+      "kind": "T",
+      "width": 80,
+      "height": 60,
+      "roi_y": 0,
+      "different_pixels": 0,
+      "pixels": 4800,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    }
+  ],
+  "method": "Original BMP RGB, no shifts/resampling/channel transforms. I excludes only top 64 metadata rows; T is compared in full. Existing proxy output is the reference, not a real-board capture.",
+  "conclusion": [
+    "I1-7/9 and T1-7/9 match post-fix XP 93.71 byte-for-byte in their comparison regions.",
+    "IQ8 differs between drivers at 851/786432 image pixels (MAD 0.011480, max 48), and 5/4800 thumbnail pixels (MAD 0.008333, max 16).",
+    "Against the proxy, game IQ8 MAD 0.231113 and IQ9 MAD 0.112133 retain small precision/coverage residuals; no aggregate metric replaces full-image inspection.",
+    "Earlier Win98 full 22-test native result remains the functional full-run evidence; this separate IQ-only rerun is not another scored full run."
+  ],
+  "bundle": {
+    "status": "complete",
+    "guest": "win98",
+    "vramMiB": 128,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windows98/windows98hdd.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+    "state": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-2000-dual-iq-shutdown.state",
+      "bytes": 591130720,
+      "sha256": "5ee49634d3dc152889295cd3107ba67a1b01ab04f35dadc8385ea34233d5d704"
+    },
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-2000-dual-iq-shutdown-overlay.bin",
+      "bytes": 198798840,
+      "sha256": "b30f5e40c21b7f5fdc2ad5428d4defa097e7042c8ddf83306e9d60b6ec68ce73"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-2000-dual-iq-shutdown-game-overlay.bin",
+      "bytes": 5192,
+      "sha256": "4dd8580f60a2e23236adfed69638000567b10eb8868a87a3b6fbcf62532102bd"
+    }
+  },
+  "imageGate": false,
+  "performanceGate": false
+}
