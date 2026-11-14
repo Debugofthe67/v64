@@ -60,6 +60,19 @@ D/Q、两个 lane、Dd=Dn/Dm 与 Dd 重叠、NaN/denorm/tiny/zero、非法 Q 编
 优化后独立诊断中，原先高频的 scalar-lane 编码已退出前 40 个 helper 热点；
 截图、原始计数与采样文件保存在 `build/ios/infinity-next/perf/`，不提交专有游戏数据。
 
+PMGR 实验（已撤下）：独立 MMIO 计数中 `+0x2004/+0x2000` 合计 2857 万次，
+尝试在当前 EL 权限/对齐校验后，用实际 AppleTimer handler 提供单次 scalar LDR，
+不缓存值或指针。低/高位 rollover、暂停/恢复、真实 EL0 循环及宽度/写入/权限/owner
+排除均通过，ARM7 原路径也通过。实测首版 22 帧/60 秒（0.367 FPS），去除 BigInt
+转换的第二版 32 帧/60 秒（0.533 FPS），虽大幅减少翻译拒绝，均没有优于 scalar-lane
+基线；因此没有保留该运行时代码，也没有把计数下降称为 FPS 提升。
+
+回归暴露调试版启动修复访问 `ram.byteLength` 与动态内存 view 的属性约束冲突，
+改用等价的 Uint8Array `length`，增加真实 proxy view 覆盖，IOP clock/status 和 I2C
+255/256/512-byte 用例通过。清理已被 generation-7 战斗 NAND 替代、无打开句柄或
+符号链接引用的 `build/ios/infinity-play/direct-fixed.packed`，释放约 3.73 GiB；
+保留 `mp3-battle.packed` 与匹配检查点，清理记录在忽略目录 `perf/cleanup.json`。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，
