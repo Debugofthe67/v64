@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { n90_i2c_counters } from "../../src/apple/n90_compat.js";
+import { view } from "../../src/lib.js";
 import { build32, actual32, root } from "../a32/runner.mjs";
 
 const ram = new Uint8Array(8 << 20), kernel = { uuid: "3bfc23e42eb53dad9d909e79ac235537" };
 ram.set([0x05,0x22,0xe8,0xb2,0x88,0x42,0xf1,0xd3], 0x74ef8a);
 ram.set([0x48,0x55,0xf5,0xb2,0xd4,0xf8,0x98,0], 0x74f038);
 const original = ram.slice();
+const proxyRAM = original.slice();
+const proxy = view(Uint8Array, { buffer: proxyRAM.buffer }, 0, proxyRAM.length);
+assert.equal(n90_i2c_counters(proxy, kernel), 2, "debug memory view supports the native boot repair");
 assert.equal(n90_i2c_counters(ram, { uuid: "unknown" }), 0);
 assert.deepEqual(ram, original);
 const broken = ram.slice(); broken[0x74f03c] ^= 1;

@@ -13,7 +13,7 @@ const LOOPS = [
 export function n90_i2c_counters(ram, kernel)
 {
     if(kernel.uuid !== UUID) return 0;
-    const view = new DataView(ram.buffer, ram.byteOffset, ram.byteLength);
+    const view = new DataView(ram.buffer, ram.byteOffset, ram.length);
     // Validate every site before changing any byte.
     for(const [va, bytes, replacement] of LOOPS)
     {

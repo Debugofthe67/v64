@@ -6,6 +6,7 @@ import { V86 } from "../../src/main.js";
 const directory = process.argv[2];
 if(!directory) throw Error("usage: iop-counter.mjs owner-provided-10B329-directory");
 const emulator = new V86({ machine_type: "s5l8930", graphics_adapter: "none", autostart: false, log_level: 0,
+    memory_size: 512 << 20,
     wasm_path: path.resolve("build/v86-arm64.wasm"), jit_switches: { a64_page: 1 },
     ios: { kernelcache: { url: path.resolve(directory, "kernelcache.n90.macho") },
         devicetree: { url: path.resolve(directory, "DeviceTree.n90ap.bin") } } });
