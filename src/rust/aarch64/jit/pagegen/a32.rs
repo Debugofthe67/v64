@@ -2601,7 +2601,7 @@ pub(super) fn discover(
 }
 
 impl Emitter<'_> {
-    fn it_memory_state(&mut self, it: u8) {
+    pub(super) fn it_memory_state(&mut self, it: u8) {
         self.c32(state::pstate as i32);
         self.load32(state::pstate as u32);
         self.c32(!crate::aarch64::cpu::PSTATE_IT as i32);
@@ -4240,6 +4240,7 @@ impl Emitter<'_> {
     }
 
     pub(super) fn instruction32(&mut self, offset: u16, i: &Inst32, index: &BTreeMap<u16, usize>) {
+        self.a32_itstate = i.itstate;
         match i.kind {
             Kind::Data {
                 op,
@@ -4315,15 +4316,7 @@ impl Emitter<'_> {
                 writeback,
                 cond,
             } => self.when(cond, |e| {
-                if i.itstate != 0 {
-                    e.it_memory_state(i.itstate);
-                }
                 e.memory(load, size, signed, rt, rn, o, add, ix, writeback, offset);
-                // A retry exits before this clear: the interpreter sees
-                // the exact current IT mask, including at a data abort.
-                if i.itstate != 0 {
-                    e.it_memory_state(0);
-                }
             }),
             Kind::Multiple {
                 load,
@@ -4486,6 +4479,7 @@ impl Emitter<'_> {
                 self.when(cond, |e| e.exchange(rm, link, offset, i.length))
             },
         }
+        self.a32_itstate = 0;
     }
 
     /// Set the target T bit (an i32 on the stack) and its chaining table.

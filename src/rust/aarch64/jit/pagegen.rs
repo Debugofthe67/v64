@@ -584,6 +584,9 @@ struct Emitter<'a> {
     env: CompileEnv,
     /// Keep A32 GPRs local when a page has no ordinary helper calls.
     a32_gpr_locals: bool,
+    /// Compile-time IT mask of the current native instruction. Successful
+    /// accesses keep architectural ITSTATE clear; only a retry materializes it.
+    a32_itstate: u8,
     access: Option<u32>,
     step: StepAbi,
     /// the page's instruction words (helpers take theirs)
@@ -668,6 +671,7 @@ pub fn compile(bytes: &[u8], entries: &[u16], env: CompileEnv, name: String) -> 
                         .iter()
                         .all(|(_, inst)| !matches!(inst.kind, a32::Kind::Helper))
                 })),
+        a32_itstate: 0,
         access: None,
         step: StepAbi {
             exit_code: state::a64_page_exit as u32,
@@ -2991,6 +2995,12 @@ impl PageEmitter for Emitter<'_> {
     }
     fn block_start(&self, k: u32) -> u16 { self.blocks[k as usize].start }
     fn leave_to(&mut self, label: Label, target: u64) {
+        // Both inline and outlined access lookups leave through this method.
+        // Synchronize here, before the interpreter retries a faulting IT load
+        // or store, rather than writing/clearing PSTATE on every cache hit.
+        if self.a32_itstate != 0 && label == self.f().retry {
+            self.it_memory_state(self.a32_itstate);
+        }
         self.linear(target);
         // (AArch32's addresses wrap at 4 GiB)
         if self.env.isa != Isa::A64 {
