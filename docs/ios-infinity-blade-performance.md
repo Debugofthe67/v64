@@ -103,6 +103,13 @@ CoreFoundation，`0x3ab0b000` 是 libsystem_c，不能按未修正 slide 的地�
 I2S0 为 44100 Hz，控制/模式寄存器 `0x181/0x03000081`；AMC mask/pending 为零，
 没有活动 decoder 或解码失败。后续应继续定位音频处理及调度开销，而不是仅靠 FPS 计数器。
 
+通过 Wasm helper 的条件断点进一步采样 `ef026d24/ef035d23`：它们是
+`vadd.f32 d6,d2,d20` / `vadd.f32 d5,d3,d19`，返回地址属于 AudioToolbox。
+首次命中含 `0xffffff26/0x7fc00000` NaN，随后八次命中中 D2/D3 的第二个 lane
+为 `0x9b9/0xa16` 等非规格化数。FPSR 低位均为 `0x9d`，即 IOC、OFC、UFC、
+IXC、IDC 已置位。普通数 guard 因此持续回退，不能仅凭 helper 数量将其归因于 IT。
+断点显著改变执行速度，这些数据只解释回退条件，不参加 FPS 对照。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，
