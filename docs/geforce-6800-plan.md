@@ -2152,3 +2152,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 
 - G2 notifier 上下文续修：按硬件 GROBJ word1 的低 24 位处理 DMA_NOTIFY，写回 RAMIN、CTX_SWITCH_B/CTX_CACHE_B，保留上部标志；预装 notifier、NULL 绑定、CPU 写与 v5 快照/旧 v4 迁移一致，M2MF 的检查/屏障使用同一来源。原版 93.71 ISR 的 `40014C` 从旧捕获的 0 变为真实 `E98E`，见 `g2-notifier-object-context.json`；RED/GREEN、2D/图形/FIFO/设备及完整真实 GPU 回归、Closure 通过。未宣称由此解决 FP input15 或完整 2001。
 - G6 06 缓存结果续记：新预算运行到 9705 draws、零 GPU/PGRAPH/非软件 FIFO 错误，仍出现原版 Display Driver Stopped Responding 对话框；已保存原始失败状态。缓存的等工作量复用收益成立，但真实驱动超时仍未解决，默认六项未完成。
+
+- G2 旧快照迁移补全：v4 原先只恢复缓存 notifier，之后 SET_OBJECT 会重读旧 RAMIN 的零值。现仅在记录一致、RAMIN 类仍匹配且低 24 位为空时恢复缺失写回；冲突、类复用与非零字段不改。原生 06 M2MF 快照中的 notifier 从 0 恢复为 37676、真实 DMA 描述符可解析；旧快照重绑定、冲突/复用保护与完整 GPU 回归通过，见 `g2-legacy-notifier-writeback-migration.json`。此前零绘制的迁移失败试验不当作硬件故障；05 与 06 已重新继续。

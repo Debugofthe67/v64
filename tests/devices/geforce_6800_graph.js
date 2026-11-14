@@ -30,6 +30,9 @@ assert.equal(dirty, 2,"notifier data and its GROBJ writeback both mark VRAM dirt
 const legacyNotify=graph.get_state();legacyNotify[0]=4;legacyNotify[1]=legacyNotify[1].map(row=>row.slice(0,5));
 word(0x4004,0xA1000000);graph.set_state(legacyNotify);
 assert.equal(graph.object(0,0x4000).notify_context,0xA1000410,"v4 snapshots recover the notifier instance from the accepted DMA_NOTIFY method");
+assert.equal(ramin.getUint32(0x4004,true),0xA1000410,"v4 migration restores the missing RAMIN side effect before a later SET_OBJECT");
+graph.bind(0,3,0x4000);
+assert.equal(device.registers.get(0x40014C),0xA1000410,"rebinding a migrated object retains its accepted notifier");
 graph.written(0x400100, 1); device.registers.set(0x400100, 0);
 assert.equal(device.registers.get(0x400108), 0, "interrupt acknowledgement clears source");
 graph.notification(graph.object(0,0x4000),16,true);graph.notification(graph.object(0,0x4000),0,true);
@@ -145,6 +148,15 @@ word(0x5D00,0x19);word(0x5D04,0x5A0);graph.bind(4,6,0x5D00);
 graph.method(4,6,0x5D00,0x104,0);
 assert.equal(new DataView(vram.buffer).getBigUint64(0,true),device.time(),"a notifier preloaded in RAMIN works without a prior DMA_NOTIFY method");
 console.log("PASS: notifier GROBJ writeback, subchannel mirrors, loaded-state snapshots and null bindings");
+const migrationGraph=new NVGraph(device);
+word(0x5E00,0x19);word(0x5F00,0x4097);word(0x5F04,0);
+device.registers.set(0x400720,1);migrationGraph.method(6,0,0x5E00,0x180,0x5A0);
+migrationGraph.method(7,0,0x5E00,0x180,0x5B0);migrationGraph.method(6,1,0x5F00,0x180,0x5A0);
+const ambiguousLegacy=migrationGraph.get_state();ambiguousLegacy[0]=4;ambiguousLegacy[1]=ambiguousLegacy[1].map(row=>row.slice(0,5));
+word(0x5E04,0xEE000000);word(0x5F00,0x43);word(0x5F04,0xDD000000);
+migrationGraph.set_state(ambiguousLegacy);
+assert.equal(ramin.getUint32(0x5E04,true),0xEE000000,"conflicting old channel records cannot invent a shared RAMIN notifier");
+assert.equal(ramin.getUint32(0x5F04,true),0xDD000000,"a slot reused for another class is not repaired from a stale saved object");
 device.registers.set(0x400720,1);
 // Capture programs when a draw begins, while the driver's BO is still alive.
 // Later releases can overwrite its VRAM without destroying diagnostic input.

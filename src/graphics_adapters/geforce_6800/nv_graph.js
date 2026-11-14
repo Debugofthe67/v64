@@ -369,6 +369,28 @@ export class NVGraph
             }
             return {channel,instance,class_id,methods:values,stream,notify_context};
         });
+        if(state[0]<5)
+        {
+            // Older emulators accepted DMA_NOTIFY without its RAMIN writeback.
+            // Repair a missing zero instance only when the saved objects agree
+            // and the slot still holds their class. Otherwise RAMIN may have
+            // been reused, and its current contents must remain authoritative.
+            const candidates=new Map();
+            for(const object of objects)if(object.methods.has(0x180))
+            {
+                const prior=candidates.get(object.instance),value=object.notify_context&0xFFFFFF;
+                candidates.set(object.instance,prior===undefined?{value,class_id:object.class_id}:
+                    prior && prior.value===value && prior.class_id===object.class_id?prior:null);
+            }
+            for(const [instance,candidate] of candidates)if(candidate && candidate.value &&
+                (this.device.dma.word(instance)&0xFFFF)===candidate.class_id && !(this.device.dma.word(instance+4)&0xFFFFFF))
+            {
+                const bytes=this.device.vram(),at=this.device.vram_size-(1<<20)+instance+4;
+                new DataView(bytes.buffer,bytes.byteOffset+at,4).setUint32(0,
+                    (this.device.dma.word(instance+4)&0xFF000000|candidate.value)>>>0,true);
+                this.device.machine.mmio_ram_mark_dirty(this.device.vga.lfb_region);
+            }
+        }
         for(const object of objects.slice(0,state[0]>=4?state[7]:objects.length))
             this.objects.set(object.channel+":"+object.instance,object);
         if(state[0]>=4) for(const [key,index] of state[6]) this.bindings.set(key,objects[index]);

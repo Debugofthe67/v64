@@ -1,0 +1,65 @@
+{
+  "date": "2026-11-14",
+  "scope": "G2 legacy v4 snapshot notifier migration. Modern v5 context behavior is unchanged.",
+  "regression": "Restoring cached notifier fields without repairing the old missing RAMIN writeback let a later SET_OBJECT reload zero. The 06 diagnostic then stopped at its first M2MF with NV 2D DMA unbound; this trial is not GPU hardware evidence.",
+  "change": "On v4 restoration only, reconstruct a missing zero low24 notifier field when accepted DMA_NOTIFY records agree and the RAMIN slot still contains the saved class. Preserve upper flags and dirty tracking. Conflicting records, reused classes and nonzero current RAMIN fields are left untouched.",
+  "nativeSnapshotReplay": {
+    "source": "build/nv40-xp-mark06-pull1-software-stall.state",
+    "graphVersion": 4,
+    "channel": 0,
+    "instance": 779328,
+    "classId": 57,
+    "acceptedNotify": 37676,
+    "raminBefore": 0,
+    "raminAfter": 37676,
+    "loadedNotify": 37676,
+    "descriptor": {
+      "instance": 602816,
+      "flags": 285356093,
+      "limit": 31,
+      "pte": 256671747,
+      "class_id": 61,
+      "target": 2,
+      "adjust": 272,
+      "linear": true
+    }
+  },
+  "validation": [
+    "Legacy v4 restoration followed by actual SET_OBJECT retains the accepted notifier",
+    "Conflicting channel records cannot invent shared RAMIN contents",
+    "RAMIN reused for a different class is preserved",
+    "Native 06 saved M2MF object: original zero RAMIN field becomes accepted instance37676, and its actual writable DMA descriptor resolves",
+    "Graph/2D/device and complete real Chrome WebGPU regressions pass; release Closure has zero errors/warnings"
+  ],
+  "reruns": [
+    "build/nv40-xp-mark06-user-get-stall2",
+    "build/nv40-xp-mark05-clip-cold-continue2"
+  ],
+  "limits": "Reruns remain in progress. No benchmark completion, FP input15 meaning or driver-timeout resolution is claimed.",
+  "evidence": [
+    {
+      "file": "build/nv40-legacy-native-notifier-proof.json",
+      "sha256": "f63b5b25ed5bcec842e82f3d4a72ca98781a65014b9509e09aade6d10b230069"
+    },
+    {
+      "file": "build/nv40-notify-migration-unit.log",
+      "sha256": "c6aec485b53c53ece999006a90a06b1b0039996116d15108aad4a54bd205edcd"
+    },
+    {
+      "file": "build/nv40-notify-migration-2d.log",
+      "sha256": "8b2e02a9384ebc736572a499539835c50bd18cb208f78d62104692438286f346"
+    },
+    {
+      "file": "build/nv40-notify-migration-device.log",
+      "sha256": "f8464600525ea15b7d6c0e4236083325227082ca6a94121ab5cfd1a99f70b67e"
+    },
+    {
+      "file": "build/nv40-notify-migration-gpu.log",
+      "sha256": "033717edce7c81e99268f8c114787bc6de302cf57a86e8a3e28a5b3281b1a93a"
+    },
+    {
+      "file": "build/nv40-notify-migration-build.log",
+      "sha256": "13d33ca1b2a894cf00644811d48a8a9278703ebb2a9c8236a9f36e99fb9f809f"
+    }
+  ]
+}
