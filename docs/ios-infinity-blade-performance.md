@@ -134,6 +134,17 @@ CLCD render 包含 3.31 秒，各包含时间有嵌套，不能相加。八次 I
 当前约 1 FPS 远低于此范围，先处理 CPU 瓶颈。没有修改 IPA 或存档配置，保持 A/B 场景
 一致；只保留上述属性的本地证据在 `perf/frame-config.json`，不提交原包内容。
 
+条件返回试验：让 IT 最后一槽的 POP/LDR PC 使用原有内存模板，重试前保留该槽
+ITSTATE，成功后在 dispatch 前清零；32 个热循环、真假条件、fault、writeback、
+ARM interworking 用例在 `A64_MMU=1` 下与 QEMU 一致（无 MMU 时 QEMU 的物理
+0 地址是未分配总线读，本实现会 abort，不能用它比较页故障）。MMU/JIT 和 fallback
+一致，helper 从 6131 降至 31；40×80×32 随机程序、arm32 system/mmu 同样通过。
+但战斗只有 0.633 FPS；保留原页面寄存器策略的隔离版本仍为 0.633 FPS。
+后续原版控制组为 1.050 FPS（之前 1.433），主机同期另有两个高 CPU 的 NV40
+测试，16 GiB RAM、约 12.8 GiB swap 在用。因此不推断精确回退百分比，也不将
+原先的页面寄存器策略变化确认为原因。该运行时试验已撤下，仅保留 `qitreturn`。
+下一步检查高频的 ARM/Thumb BLX/BX 互跳，尽量避免完整取指和解释器解码。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，
