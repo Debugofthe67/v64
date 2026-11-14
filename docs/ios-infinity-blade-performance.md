@@ -42,6 +42,17 @@ exclusive reservation 沿用拒绝路径。真实 A32 EL0 循环、无 Device ca
 对齐/权限异常与 MMIO/hole/watched-code 回归通过，MMU/JIT 用例通过。
 诊断 `uncached_accesses` 单独计数；实际游戏性能需重新测量。
 
+补充回归覆盖 1/2/4/8/16-byte 访问和双核 reservation：Normal 别名的 LDREX
+仍阻止 Device 别名获得写指针。SIMD 与 fallback 核心均通过；单核原有 monitor
+策略允许当前核自己的普通写入，测试使用双核验证跨观察者保护。
+
+无 profiler、未同时运行本任务构建/回归的格挡基线为 66 帧 / 60.814 s，
+即 1.085 fps；中位 892 ms、p95 1261 ms。第二次格挡结算后盾牌为 21、生命 1352。
+关机导出的完整持久盘为 `build/ios/infinity-play/mp3-battle.packed`，
+4,002,422,272 bytes，SHA-256
+`f4f854b2a6797f89f795915e0331ecca29aa84dbe4b3f2727c230fee6faa8396`。
+该盘正在新的隔离浏览器配置中冷启复测，不使用 RAM 快照。
+
 为腾出后续验收空间，已清理本轮生成的旧 adapter/query 中间 NAND 文件；原始输入、
 安装后原始备份、generation 7 的完整备份和各阶段哈希记录保留。
 
