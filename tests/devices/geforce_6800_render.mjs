@@ -360,6 +360,13 @@ try
         for(const [at,value]of [[0x220,1],[0x194,0x100],[0x198,0x100],[0x20C,32],[0x210,0x10000],
             [0x214,0x24000],[0x22C,32],[0x17CC,0]])method(at,value);
         console.log("PASS: real WebGPU colorless D16/D24/stencil, inactive color DMA, query-only draws and atomic depth faults");
+        const maskedColor=vram.slice(0x10000,0x10100),maskedDownloads=engine.backend.stats.readbacks;
+        method(0x324,0);method(0x17C8,1);method(0x17CC,1);
+        await depthDraw(.5,[1,0,1,1]);method(0x1800,0x01000810);
+        assert.equal(view.getUint32(0x818,true),64,"masked bound color still executes the real occlusion query");
+        assert.deepEqual(vram.slice(0x10000,0x10100),maskedColor,"zero color mask preserves all guest color bits");
+        assert.equal(engine.backend.stats.readbacks,maskedDownloads,"masked bound color needs no attachment download");
+        method(0x324,0x01010101);method(0x17CC,0);
         method(0x183C,1);method(0x1830,0x405);method(0x1834,0x900);
         await depthDraw(.5,[1,0,0,1]);assert.deepEqual([...vram.subarray(0x10000,0x10004)],[0,255,0,255],"CW front faces cull the CCW window-space triangle");
         method(0x1834,0x901);await depthDraw(.5,[1,0,0,1]);
@@ -626,7 +633,9 @@ try
         method(0x310,0);method(0x36C,0);mrtColors[3][3]=.5;await mrtDraw(true);
         console.log("PASS: real WebGPU all sixteen independent MRT blend masks, including RT0 disabled");
         method(0x370,0x1020);method(0x324,0);mrtColors[1]=[1,0,0,.25];mrtColors[3]=[0,0,0,.25];
+        const maskedMrtDownloads=engine.backend.stats.readbacks;
         await mrtDraw();
+        assert.equal(engine.backend.stats.readbacks-maskedMrtDownloads,2,"only MRT1 and MRT3 with nonzero write masks download");
         assert.deepEqual([...vram.subarray(0x30000,0x30004)],[0,255,255,255],"MRT1 independent red write mask");
         assert.deepEqual([...vram.subarray(0x31000,0x31004)],[255,0,0,255],"MRT2 zero mask preserves VRAM");
         assert.deepEqual([...vram.subarray(0x60000,0x60004)],[0,255,255,64],"MRT3 alpha-only write mask");

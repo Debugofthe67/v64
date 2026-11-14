@@ -434,12 +434,14 @@ export class NV40Render
         this.render_state(22,cull.state);for(const [state,value]of zsa.states)this.render_state(state,value);
         for(const [state,value]of blend)this.render_state(state,value);
         const mask=get(o,0x324,0x01010101);
-        this.render_state(168,active?((mask&0x10000?1:0)|(mask&0x100?2:0)|(mask&1?4:0)|(mask&0x1000000?8:0)):0);
+        const colorMasks=[active?((mask&0x10000?1:0)|(mask&0x100?2:0)|(mask&1?4:0)|(mask&0x1000000?8:0)):0];
+        this.render_state(168,colorMasks[0]);
         const mrtMask=get(o,0x370);
         for(let index=1;index<4;index++)
         {
             const bits=mrtMask>>>(index*4)&15;
-            this.render_state(189+index,(bits&2?1:0)|(bits&4?2:0)|(bits&8?4:0)|(bits&1?8:0));
+            colorMasks[index]=(bits&2?1:0)|(bits&4?2:0)|(bits&8?4:0)|(bits&1?8:0);
+            this.render_state(189+index,colorMasks[index]);
         }
         this.render_state(154,mode===1?get(o,0x1EE0,0x3F800000):0x3F800000);this.render_state(155,0x3F800000);this.render_state(166,0x42800000);
         this.render_state(156,+!!sprite);this.render_state(157,0); // Curie's VP already produces window point size.
@@ -462,7 +464,12 @@ export class NV40Render
         w.patch_field("vertex_data_offset",w.data(vertices.bytes));
         if(query)this.command(OP.END_QUERY,{"resource_handle":this.query,"response_offset":0,"request_id":query.id});
         this.command(OP.END_SCENE);
-        colors.forEach((target,index)=>{if(target)this.batch.outputs.set(handles[index],{target,handle:handles[index]});});
+        // A bound color attachment with no enabled channel is still a GPU
+        // reader. Retain its alias/write guards without downloading pixels
+        // that this draw cannot change. Earlier writes in the batch remain
+        // in outputs even when a later draw disables the same attachment.
+        colors.forEach((target,index)=>{if(target)(colorMasks[index]?this.batch.outputs:this.batch.guards)
+            .set(handles[index],{target,handle:handles[index]});});
         // Z testing alone leaves the guest's depth bits untouched. Keep the
         // attachment alive and ordered, but avoid a full GPU download. Stencil
         // stays conservative even for KEEP operations or a zero write mask.

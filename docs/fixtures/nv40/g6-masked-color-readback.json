@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-14",
+  "status": "Zero color-write masks no longer trigger attachment downloads; rendering and ordering are unchanged.",
+  "change": "Keep bound masked color attachments as read guards. Download only color targets with at least one enabled output channel; preserve earlier writes when later draws disable the same target.",
+  "validation": {
+    "regressionBeforeFix": {
+      "assertion": "masked bound color needs no attachment download",
+      "actualAttachmentReadbacks": 1,
+      "expectedAttachmentReadbacks": 0,
+      "log": "build/nv40-color-mask-download-red.log"
+    },
+    "realGPU": [
+      "Bound color with zero mask and enabled occlusion query: 64 real visible samples, exact original VRAM, no attachment readback.",
+      "Four active MRTs with only RT1 red and RT3 alpha enabled: two attachment downloads, preserved RT0/RT2 and correct masked pixel channels.",
+      "Complete NV40 real WebGPU pixel/alias/fence/snapshot suite passed."
+    ],
+    "build": "Closure zero errors/warnings",
+    "logs": [
+      "build/nv40-color-mask-download-gpu.log",
+      "build/nv40-color-mask-download-build.log"
+    ]
+  },
+  "limits": [
+    "No native benchmark FPS claim or completed performance gate.",
+    "Nonzero masks remain conservative: the whole attachment is read back.",
+    "GPU attachment reads remain ordered against aliased CPU/2D writes through existing guards."
+  ]
+}
