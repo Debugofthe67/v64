@@ -512,9 +512,29 @@ export function translate_vertex_program(program,options={})
 export function translate_fragment_program(program,options={})
 {
     const shader=new Shader("fragment",program.constants.map((_,i)=>i));
+    const eyeReads=program.instructions.flatMap(i=>i.sources.filter(s=>s.type==="input"&&s.index===15).map(source=>({i,source})));
+    if(eyeReads.length)
+    {
+        // Original 93.71 emits input15.xyz for ps1.x TEXM3X3VSPEC,
+        // while TEXM3X3SPEC embeds the eye constant. The variable eye vector
+        // is (TEX1.q,TEX2.q,TEX3.q), after perspective interpolation (D3D
+        // TEXM3X3VSPEC contract). Only the observed XYZ MOV form is known;
+        // do not assign a value to the undocumented W lane or relative reads.
+        for(const {i,source} of eyeReads)
+            if(i.input_relative || i.name!=="MOV" || i.sources[0]!==source || i.destination.mask&8 ||
+                source.swizzle.some((lane,component)=>i.destination.mask&1<<component && lane>2))
+                throw new RangeError("NV40 unsupported shader input 15 access");
+        const eye=shader.temp("variable-eye");
+        for(let component=0;component<3;component++)
+        {
+            const [type,index]=shader.input(5+component);
+            shader.emit(OP.MOV,dst(0,eye,1<<component),src(type,index,[3,3,3,3]));
+        }
+        shader.input_overrides.set(15,eye);
+    }
     // The shared D3D9 path implements user clipping with perspective-correct
     // interpolated distances and fragment discard. Keep the six native TBUF
-    // distances separate from every guest FP input, including unknown input 15.
+    // distances separate from every guest FP input, including the eye vector.
     // Each private varying carries three planes; unused lanes stay positive.
     for(const group of new Set((options.clips||[]).map(([plane])=>Math.floor(plane/3))))
     {

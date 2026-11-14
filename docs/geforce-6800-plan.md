@@ -2164,3 +2164,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 05 原始结果导出：健康冷跑检查点续跑 145790 draws，零 GPU/非软件 PGRAPH 错误，原程序 exit0，`NV05F.3DR` ZIP CRC 与 XML 校验通过，正常关机至 `806F3048/HLT1/modeNULL`。结果仅三 GT 和 CPU1 为 status0；CPU2 为 N/A、CPU 总分提示测试不足，因此默认五项未验收，继续以原版 UI 核对/补跑，见 `g4-xp-9371-05-cold-three-gt-cpu1.json`。原生79仅保留输出，不作性能结论。
 
 - G4 原生三角列表：独立 D3D8 HAL 小样例的 DrawPrimitiveUP 三角列表触发真实首错 `BEGIN=1012`，早于顶点流连锁错误。按原生生产者与上游 NV40 编码证据，仅映射 1012 至 canonical TRIANGLES5；保留嵌套/未知编码拒绝。RED/GREEN、分段索引快照、六顶点双独立三角的完整 8×8 GPU 像素、完整真实 GPU 回归及 Closure 通过，见 `g4-native-d3d-triangle-list.json`。SPEC/VSPEC 与未知 FP15 继续原生调查，未据此验收。
+
+- G4 原生 FP15 XYZ：独立未修改 D3D8 小样例对比 SPEC/VSPEC，常量眼向量为 inline，变量眼向量生成与原版 2001 相同的 MOV input15.xyz 反射序列。依据该编译器证据与微软 VSPEC 定义，按透视插值后的 TEX1/2/3.Q 重建 XYZ；未定义 W、相对及未观察到的访问仍拒绝。175 WGSL、独立 Q 分量精确像素、不等 W 与直接插值控制逐像素一致、完整 GPU 回归与 Closure 通过。同一原生程序归一化 SHA 一致，修复前 input15 故障、修复后零 PGRAPH/GPU 故障，见 `g4-native-variable-eye-vector.json`。真实硅片穷尽一致性及 XP/Win98 完整 2001、IQ/性能仍待验收。

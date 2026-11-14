@@ -1164,6 +1164,43 @@ try
             {...options,result_map:vertexRoutes})};};
         try
         {
+            {
+                const savedEyeCode=vram.slice(0x9000,0x9030),eyeMoves=[];
+                for(let attribute=1;attribute<=4;attribute++)
+                {
+                    method(0x1740+attribute*4,0x42);
+                    const move=structuredClone(base);move.end=attribute===4;move.vector.index=4+attribute;
+                    move.sources[0]={...move.sources[0],type:"input",index:attribute};eyeMoves.push(move);
+                }
+                const eyePosition=structuredClone(base);eyePosition.end=false;
+                vertexProgram={instructions:[eyePosition,...eyeMoves]};
+                vertexRoutes=[[0,0,-1,true],[7,8,-1,true],[8,5,-1,true],[9,6,-1,true],[10,7,-1,true]];
+                const eyeDraw=async(eyes,reference=false,unequalW=false)=>{
+                    [reference?0x01008E80:0x0101EE80,reference?0x1C9DC811:0x1C9DC83D,0x1C800,0x1C800,
+                        0x01001081,0x1C9DC802,0x1C800,0x1C800,...Array(4).fill(0x3F800000)]
+                        .forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+                    vram.fill(0,0x10000,0x10100);method(0x1808,0x1012);
+                    const positions=[[0,0,0,1],[0,16,0,1],[16,0,0,unequalW?2:1]],values=[];
+                    positions.forEach((position,i)=>{
+                        const eye=eyes[i]||eyes[0];values.push(...position,0,0,0,eye[0],0,0,0,eye[1],0,0,0,eye[2],...eye,1);
+                    });
+                    for(const word of new Uint32Array(Float32Array.from(values).buffer))method(0x1818,word);
+                    method(0x1808,0);await engine.backend.wait();return vram.slice(0x10000,0x10100);
+                };
+                try
+                {
+                    for(const [eye,pixel] of [[[.25,.5,.75],[191,128,64,255]],[[.75,.25,.5],[128,64,191,255]]])
+                        assert.deepEqual([...(await eyeDraw([eye])).subarray(0,4)],pixel,"input15 packs three independent texture Q components");
+                    const eyes=[[.1,.3,.7],[.5,.9,.2],[.8,.2,.5]],actual=await eyeDraw(eyes,false,true),expected=await eyeDraw(eyes,true,true);
+                    assert.deepEqual(actual,expected,"native variable eye matches a directly interpolated vector with unequal homogeneous W");
+                }
+                finally
+                {
+                    vram.set(savedEyeCode,0x9000);for(let attribute=1;attribute<=4;attribute++)method(0x1740+attribute*4,0);
+                    vertexRoutes=[[0,0,-1,true],[1,1,-1,true]];
+                }
+                console.log("PASS: real WebGPU native VSPEC eye XYZ, independent texture Q lanes and perspective interpolation");
+            }
             const routedPosition=structuredClone(base),routedColor=structuredClone(base);
             routedColor.vector={name:"MAD",type:"output",index:1,mask:15};
             routedColor.sources=[{...base.sources[0],swizzle:[0,0,0,0]},

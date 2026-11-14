@@ -54,7 +54,18 @@ try
         "private clip interpolators link alongside native guest texture coordinates");
     const unknownClipInput=structuredClone(fragment);Object.assign(unknownClipInput.instructions[0].sources[0],{type:"input",index:15});
     assert.throws(()=>translate_fragment_program(unknownClipInput,{clips}),/unsupported shader input 15/,
-        "adding clip distances does not invent a meaning for guest fragment input 15");
+        "clip distances do not supply the undocumented W lane of guest input15");
+    const eye=decode_fragment_program(Uint32Array.of(0x0101EE81,0x1C9DC83D,0x1C800,0x1C800));
+    const eyeTranslation=translate_fragment_program(eye),eyeReflection=validate("NV-variable-eye",eyeTranslation).reflection;
+    assert.deepEqual(eyeReflection.inputDeclarations.map(i=>[i.usage,i.usageIndex]),[[5,1],[5,2],[5,3]],
+        "native VSPEC eye XYZ consumes the Q lanes of TEX1 through TEX3");
+    validate("NV-variable-eye-and-clip",translate_fragment_program(eye,{clips}));
+    for(const change of [i=>{i.destination.mask=8;},i=>{i.sources[0].swizzle=[3,1,2,3];},
+        i=>{i.input_relative=true;},i=>{i.name="ADD";}])
+    {
+        const unsupported=structuredClone(eye);change(unsupported.instructions[0]);
+        assert.throws(()=>translate_fragment_program(unsupported),/unsupported shader input 15 access/);
+    }
     for (let channel=8;channel<10;channel++)
     {
         const extra=translate_vertex_program(routed,{result_map:[[0,0,-1,true],[7+channel,5,-1,true]]});

@@ -1,0 +1,81 @@
+{
+  "date": "2026-11-14",
+  "scope": "G4 variable eye-vector input15.xyz used by native ps1.x VSPEC. Full XP/Win98 2001, fixed IQ and performance remain open.",
+  "evidenceOfMeaning": {
+    "producer": "tests/devices/geforce_specular.c runs unmodified native D3D8 HAL on original93.71 with ps1.1 SPEC (two different eye constants) and VSPEC.",
+    "constantSPEC": "Native compiler embeds constant eye vectors in FP inline data; it does not use input15.",
+    "variableVSPEC": "Native compiler emits MOVR1.xyz,INPUT15 followed by DP3/DP3/DIV/MAD and the dependent cube sample. This is the same sequence that stopped original2001. Native vertex outputs carry all four components of TEX1,TEX2,TEX3.",
+    "contract": "Microsoft TEXM3X3VSPEC specifies E=(TextureCoordinates1.Q,TextureCoordinates2.Q,TextureCoordinates3.Q).",
+    "inference": "The native compiler identifies input15.xyz as the variable eye-vector input. Reconstructing it from these three already-routed texture interpolators follows that compiler evidence and the API contract; real-silicon exhaustive conformance is not claimed."
+  },
+  "implementation": [
+    "Pack TEX1.Q,TEX2.Q,TEX3.Q after perspective interpolation, independent of user clip-distance varyings.",
+    "Accept only observed MOV reads of documented XYZ lanes. Reject W-consuming swizzles/masks, relative reads and other unobserved input15 operations; no arbitrary zero or unit-vector fallback."
+  ],
+  "nativePairedProof": {
+    "healthySource": "build/nv40-xp-native-spec-triangles-fixed.state with its matching overlays (desktop checkpoint before sample launch)",
+    "sameNativeFP15NormalizedSHA256": "9a23fe0407668d37e0d0c6eb0dcf17c935c0dc55f6f9a8d4f7dc40a41b46e5ac",
+    "before": "Original VSPEC produces unsupported shader input15; originalAPI Draw/Present calls still return0 because submission is asynchronous.",
+    "after": {
+      "draws": 4,
+      "gpuFailures": 0,
+      "pgraphFaults": 0,
+      "nativeAPI": "All three original CreatePixelShader/Draw/Present cases return0 and probe ends normally."
+    },
+    "hostImages": "Read-only original OS/game size and mtime checks pass; harness initialization status is not used to accept this independent probe."
+  },
+  "validation": [
+    "175WGSLmodules including variable-eye/clip semantic linkage and explicit refusals",
+    "RealGPU: independently varied Q components yield exact expected RGB pixels",
+    "RealGPU: variable eye exactly matches a directly interpolated control vector with unequal homogeneousW",
+    "Complete realChromeWebGPU regression",
+    "Strict standalone no-CRT MinGW build (excluding existing GetProcAddress cast diagnostic)",
+    "Closure release/plugin build: zero errors/warnings"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/texm3x3vspec---ps",
+    "https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/texm3x3spec---ps"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-native-spec-triangles-fixed/programs.json",
+      "bytes": 184151,
+      "sha256": "9baba66fe2540dbe65ef0829d4dbc86db01c5b74040d60243d8063e94f462a1a"
+    },
+    {
+      "file": "build/nv40-xp-native-spec-triangles-fixed/trace.json",
+      "bytes": 5615795,
+      "sha256": "512f9311beff8615eb812af1c96d09ad967990e24ae5918287f759a0d6e0c8b0"
+    },
+    {
+      "file": "build/nv40-xp-variable-eye-native-validation/programs.json",
+      "bytes": 180719,
+      "sha256": "45d633ccccd5a677cbc9734cb0f37ed6f8022a403034f4481ca96422c75180f9"
+    },
+    {
+      "file": "build/nv40-xp-variable-eye-native-validation/trace.json",
+      "bytes": 4647867,
+      "sha256": "4b8a50557a18e00511cf6e7df82af66ec86be4f639c182ec1b3ec68d0ea0ebf6"
+    },
+    {
+      "file": "build/nv40-xp-variable-eye-native-validation/NVSPEC.TXT",
+      "bytes": 330,
+      "sha256": "61d4a9f7db09288f77ed5483c54c1d7a090fe94012949a22a8c748c59b67b0e3"
+    },
+    {
+      "file": "build/nv40-variable-eye-shader.log",
+      "bytes": 106,
+      "sha256": "f9b3ccab4145d7af5730f5f87dda4591f4cc90513bfbea96dbb42bb4cfc79a54"
+    },
+    {
+      "file": "build/nv40-variable-eye-gpu.log",
+      "bytes": 5756,
+      "sha256": "0b30f5d23139bcedd7fdbc388b42c869ff15af231cbce165a44c17cdd718e17c"
+    },
+    {
+      "file": "build/nv40-variable-eye-closure.log",
+      "bytes": 13204,
+      "sha256": "a3847db5bfc8a8459c2241ac6850e9eb12f7570061f565ed5387e17e2c55269a"
+    }
+  ]
+}
