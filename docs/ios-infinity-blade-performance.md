@@ -73,6 +73,19 @@ binary32 乘法增加宿主 f32 路径，并用精确 binary64 乘积计算 IXC�
 非精确乘积、初始清零及 sticky IXC、负零和最小 normal 舍入测试；34 个真实
 EL0 用例与 QEMU 一致，MMU/page JIT 与解释器一致。尚未据此宣称游戏 FPS 提升。
 
+generation 7 + uncached RAM 修复的正式冷启已通过 UI 打开游戏，完整 AAC
+仍为 133 个输入 / 23,404,544 bytes PCM / 0 错误；AMC 控制程序握手计数 1。
+原生直接回读持续成功。连续城堡动画的无 profiler 窗口：29.88 s 完成 27 个
+960×640 原生 drawable，即 0.904 fps；面板同窗 29.77 s 变更 27 次，即 0.907 fps。
+三个 drawable 为轮换表面，原生完成数与可见图像数一致。此为开场动画，仍不是
+战斗验收；不同进度不能直接计算相对旧版的加速比。
+
+新的 30 s profile 中，`__ashlti3` / `__lshrti3` 合计约 1.83 s。
+将 ARM32 S/D 寄存器改为对应宽度的直接读写，并将对齐的 8/16/32/64-bit lane
+提取/插入分解为两个 u64 半部，保留其他宽度的通用路径。
+4,200 个 ARM32 VFP/NEON、4,800 个 A64 SIMD（266 个 mnemonic/form）与 QEMU 一致，
+q4/qfz 的真实 MMU/page JIT 回归通过。该项仍待新冷启测量，不能据此声称游戏加速。
+
 ## 测试输入（2026-11-14）
 
 机主本地提供 `Infinity_Blade_1.4.3_ios_6.0.ipa`。原包只读，
