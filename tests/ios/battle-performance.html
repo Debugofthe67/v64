@@ -6,6 +6,8 @@
 // matching OPFS NAND generation. Clone that closed profile before EACH run;
 // never restore RAM against a disk advanced by the preceding measurement.
 const query = new URLSearchParams(location.search), sleep = ms => new Promise(r => setTimeout(r, ms));
+const sample_ms = Number(query.get("sample") || 200);
+if(!Number.isInteger(sample_ms) || sample_ms < 10 || sample_ms > 1000) throw Error("sample must be 10..1000 ms");
 const log = text => document.getElementById("log").textContent += text + "\n";
 const artifact = async (name, body) => {
     const response = await fetch("/__artifact?name=" + name, { method: "POST", body });
@@ -82,17 +84,17 @@ try {
     const initial = await sample(), warmup = Number(query.get("warmup") || 12);
     normal_clock(initial);
     if(!initial.graphics?.native) throw Error("Build lacks native presentation counters");
-    await until(async () => { await sleep(200);return frames(await running_sample()) - frames(initial) >= warmup; }, "warmup game frames", 180000);
+    await until(async () => { await sleep(sample_ms);return frames(await running_sample()) - frames(initial) >= warmup; }, "warmup game frames", 180000);
     await emulator.stop();await screenshot("battle-start.png", frame, emulator);
     const photographed = frames(await sample());await emulator.run();
-    await until(async () => { await sleep(200);return frames(await running_sample()) - photographed >= 2; }, "post-screenshot game frames", 120000);
+    await until(async () => { await sleep(sample_ms);return frames(await running_sample()) - photographed >= 2; }, "post-screenshot game frames", 120000);
     const host_before = await (await fetch("/__host_metrics")).json();
     const before = await sample();log("Warmup completed: " + (frames(before) - frames(initial)) + " frames");
     normal_clock(before);
     const duration = Number(query.get("duration") || 60000);
     const frame_limit = Number(query.get("frames") || 0);
     if(frame_limit > 0)
-        await until(async () => { await sleep(200);return frames(await running_sample()) - frames(before) >= frame_limit; }, "fixed-work battle frames", duration);
+        await until(async () => { await sleep(sample_ms);return frames(await running_sample()) - frames(before) >= frame_limit; }, "fixed-work battle frames", duration);
     else await sleep(duration);
     const after = await sample();
     normal_clock(after);
@@ -103,7 +105,7 @@ try {
         input: input_mode === "checkpoint" ? "preserve checkpoint input; no host gesture during warmup or measurement" :
             input_mode === "hold" ? "release checkpoint finger while running for 2000 ms; hold shield at (45,480) through warmup and measurement" :
             "release checkpoint finger while running for 2000 ms; shield at (45/46,480), move every 2000 ms, release 100 ms every 16 s", warmup_frames: frames(before) - frames(initial),
-        frame_limit, measurement: frame_limit ? "fixed completed-frame workload" : "fixed duration",
+        frame_limit, sample_ms, measurement: frame_limit ? "fixed completed-frame workload" : "fixed duration",
         screen_states,
         duration_ms: ms, game_frames: count, game_fps: count * 1000 / ms,
         panel_frames: after.graphics.panel.frames - before.graphics.panel.frames,
