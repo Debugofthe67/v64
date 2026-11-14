@@ -2139,3 +2139,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   分仅作输出记录；两次续跑及并行负载不作性能，XML 的 Checksums Valid=No
   和 Invalid Score=No 原样保留。该运行早于 L8/BX2，固定 IQ 与最终图像
   门禁继续；见 `g4-xp-9371-03-cold-full-eleven.json`。
+
+- G6 原生 UI 工具续修：沿 WS_CHILD 父链聚焦真正顶层窗口，再执行已观察到的原版按钮；复选框仍向直接父窗口发 WM_COMMAND。Run 等待由 NV_RUN_DELAY_MS 在 1–30 秒内配置，默认 5 秒；Win98 用 12 秒。严格 C 编译与语法检查通过，原版 2001 SE 从 21/21 配置进入 Car Chase、0/21 loading 页，见 `g6-native-ui-root-focus.json`；完整 21 项与图像门禁继续运行，尚未据此验收。

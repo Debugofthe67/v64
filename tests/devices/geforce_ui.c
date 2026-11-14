@@ -122,7 +122,14 @@ void __attribute__((stdcall)) entry(void)
     if(!lstrcmpiA(arguments[0],"/click") && !lstrcmpiA(type,"Button"))
     {
         LONG style=GetWindowLongA(window,GWL_STYLE)&15;
-        HWND parent=GetParent(window);SetForegroundWindow(parent);
+        HWND parent=GetParent(window),root=window;
+        while(GetWindowLongA(root,GWL_STYLE)&WS_CHILD)
+        {
+            HWND ancestor=GetParent(root);
+            if(!ancestor)break;
+            root=ancestor;
+        }
+        SetForegroundWindow(root);
         if(style==BS_CHECKBOX || style==BS_3STATE)
             result=!SendMessageTimeoutA(parent,WM_COMMAND,MAKEWPARAM(GetDlgCtrlID(window),BN_CLICKED),
                 (LPARAM)window,SMTO_ABORTIFHUNG,2000,&response);

@@ -1,0 +1,42 @@
+{
+  "stage": "G6 native benchmark UI controls",
+  "scope": "Harness reliability; this does not accept the full 2001 benchmark or its image quality.",
+  "change": [
+    "Focus the top-level owner reached through WS_CHILD ancestors before invoking an observed native button. Keep the immediate parent as the recipient of a checkbox WM_COMMAND.",
+    "NV_RUN_DELAY_MS configures the Run readiness wait from 1000 to 30000 ms; default remains 5000 ms. The actual Win98 test uses 12000 ms."
+  ],
+  "nativeProof": {
+    "guest": "Win98 SE",
+    "driver": "81.98",
+    "benchmark": "Original 3DMark2001 SE Pro",
+    "processId": "0xfffe877d",
+    "before": "7 game, 6 theoretical, 4 DX8 feature and 4 Pro tests selected; results not run yet.",
+    "settings": "1024x768x32, No AA, Z24, DXTC, double buffer, D3D Pure HW",
+    "action": "A:\\NVUI.EXE /click 0x21c",
+    "observed": "Original full-screen loading page: Game 1 Car Chase Low Detail, Tests Completed 0 of 21. The long original button handler times out its synchronous message; it already started the benchmark, so it is not retried.",
+    "drawsAfterStart": 849,
+    "gpuFailures": 0
+  },
+  "validation": [
+    "Strict no-CRT MinGW build with -Wall -Wextra -Werror",
+    "node --check tests/devices/geforce_guest.mjs",
+    "Native Win98 enumeration and observed original benchmark button invocation"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-win98-mark2001-pro-cold-run/ui-root-native-0.txt",
+      "bytes": 8404,
+      "sha256": "10451981add269c27851e1a91056a39eea1b0621c43755e570688a16d2baaaee"
+    },
+    {
+      "file": "build/nv40-win98-mark2001-pro-cold-run/ui-root-native-1.txt",
+      "bytes": 340,
+      "sha256": "8c9288ccae772d0037de45cdfa27743ce092811178725de907e6c75fd3787e43"
+    },
+    {
+      "file": "build/nv40-win98-mark2001-pro-cold-run/capture-0004.png",
+      "bytes": 975612,
+      "sha256": "6163e64a536327ec29ce5cc1fb4684e80eeaef7f1c995e700501f2be0e035fcf"
+    }
+  ]
+}

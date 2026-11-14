@@ -223,7 +223,9 @@ export async function run_geforce_guest(win98)
         autostart: !process.env.NV_STATE_LOAD && !game, log_level: 0 });
     const seconds = Number(process.env.NV_SECONDS || 360);
     const launch = Number(process.env.NV_LAUNCH_SECONDS || (process.env.NV_STATE_LOAD ? 10 : 90));
+    const run_delay = Number(process.env.NV_RUN_DELAY_MS || 5000);
     assert(Number.isFinite(seconds) && seconds > 0 && seconds <= 21600);
+    assert(Number.isFinite(run_delay) && run_delay>=1000 && run_delay<=30000);
     let nv, error = null, launches = 0, next_launch = launch, cancelled = false, checkpoint = false, clock_start = 0;
     let profiler=null,barrier_report=null,stall=null;
     const cancel = () => { cancelled = true; };
@@ -766,7 +768,7 @@ export async function run_geforce_guest(win98)
                         const codes=run_scancodes(command.run);
                         await vm.keyboard_send_scancodes([184,157,170,182,0xE0,0xDB,0xE0,0xDC],30);
                         await vm.keyboard_send_scancodes([0xE0, 0x5B, 0x13, 0x93, 0xE0, 0xDB], 30);
-                        await delay(5000);
+                        await delay(run_delay);
                         await vm.keyboard_send_scancodes([29,30,158,157],30);
                         await vm.keyboard_send_scancodes(codes,30);
                         await vm.keyboard_send_scancodes([28, 156], 30);
