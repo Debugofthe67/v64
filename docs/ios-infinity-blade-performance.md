@@ -15,6 +15,10 @@ VM ID、RAM 文件和 OPFS NAND 的身份及代次。macOS 用 `cp -cR` 创建 A
 不得关闭磁盘代次检查。JIT 缓存不序列化，每轮都从同一冷 JIT 开始并预热相同帧数。
 
 ```sh
+node tests/ios/clone-battle-profile.mjs \
+  build/ios/infinity-next/battle-master-profile \
+  build/ios/infinity-next/battle-work-profile
+
 BROWSER_PROFILE=build/ios/infinity-next/battle-work-profile \
 BROWSER_PORT=64978 BROWSER_DEBUG_PORT=9493 BROWSER_FOCUS=1 \
 BROWSER_WASM=build/ios/infinity-next/perf/baseline.wasm \
@@ -177,6 +181,12 @@ EL、ASID 和数据访问 epoch，沿原有 epoch/tag 校验连接，miss 时返
 新构建两轮均高于邻近原版控制（另一次 `exact-4` 为 1.050 FPS），保留此优化；
 主机负载有变化、样本仍少，不能给出稳定提升百分比。第 1 轮实际页面激活降至
 约 8972 万次，截图确认仍在 God King 战斗、全程亮屏。**60 FPS 尚未达到。**
+
+一次切换实验中 Chrome 尚在退出、清理目录失败；该轮 `nohist-2` 被丢弃，未作为
+对照证据。新增 `clone-battle-profile.mjs`：先检查进程锁和打开句柄，仅允许 build/ios
+内相互独立的浏览器目录，确认关闭后才删除工作副本并用 APFS 克隆；任何清理或复制
+失败即抛错，避免把主 profile 嵌套复制进仍存在的旧工作目录。活跃源目录拒绝测试
+保留了目标 sentinel；真实关闭 profile 的克隆也通过。源 NAND 的代次检查继续启用。
 
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
