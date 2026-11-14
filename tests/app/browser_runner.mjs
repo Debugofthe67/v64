@@ -127,6 +127,15 @@ async function timing_quiet()
 const server = http.createServer((req, res) =>
 {
     const address = new URL(req.url, "http://localhost");
+    if(address.pathname === "/__host_metrics")
+    {
+        const disk = fs.statfsSync(root);
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ time: Date.now(), platform: os.platform(),
+            cpus: os.availableParallelism(), load_average: os.loadavg(),
+            memory_total: os.totalmem(), memory_free: os.freemem(), disk_available: disk.bavail * disk.bsize }));
+        return;
+    }
     if(req.method === "POST" && address.pathname === "/__artifact" && process.env.TEST_ARTIFACT_DIR)
     {
         const name=address.searchParams.get("name");
