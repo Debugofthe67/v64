@@ -1,12 +1,11 @@
 //! AArch32's page functions (docs/aarch32-plan.md Q6): EL0's A32 and T32
-//! code in the A64 page tier's frame. R0-R14 (X0-X14's low halves) and NZCV
-//! stay in the state's memory, so a helper call, the interpreter's execute
-//! of the instruction (crate::aarch64::jit::pages::a32_page_helper), needs
-//! no copies; branches are native (B, BL, B<c>, CBZ, CBNZ, BX and BLX of a
-//! register to the same instruction set; another one retries in the
-//! interpreter). What writes the PC otherwise (loads of the PC, LDM and POP
-//! with it, data processing into it), changes the instruction set (BLX of
-//! an immediate), raises an exception (SVC, BKPT, UDF) or waits (WFE, WFI,
+//! code in the A64 page tier's frame. R0-R14 (X0-X14's low halves) use the
+//! state's memory or locals written back around helpers; NZCV stays in
+//! memory. Branches are native (B, BL, B<c>, CBZ, CBNZ, BX and BLX).
+//! An ISA switch exits directly, bypassing the old mode's chaining table.
+//! Other writes of the PC (loads, LDM/POP and data processing) use native
+//! templates or a precise retry. What raises an exception (SVC, BKPT, UDF)
+//! or waits (WFE, WFI,
 //! YIELD), and the UNPREDICTABLE forms around the PC, are single steps.
 //! Inside an IT block every instruction is a helper call or a step (ITSTATE
 //! decides their conditions), but in IT blocks of native instructions only
@@ -45,14 +44,18 @@ pub enum Kind {
         cond: u8,
         link: bool,
     },
+    /// BLX immediate: always links, then leaves this ISA's page function.
+    Interwork {
+        target: u64,
+        thumb: bool,
+    },
     /// CBZ, CBNZ (T32)
     CompareBranch {
         rn: u8,
         nonzero: bool,
         target: u64,
     },
-    /// BX, BLX of a register: the same instruction set's target (else a
-    /// retry), when `cond` holds (A32's may have one)
+    /// BX, BLX of a register, when `cond` holds (A32's may have one).
     Exchange {
         rm: u8,
         link: bool,
@@ -284,6 +287,7 @@ pub fn kind_name(kind: &Kind) -> String {
         Kind::Nop => "nop".into(),
         Kind::Helper => "helper".into(),
         Kind::Branch { cond, .. } => format!("branch/{}", cond),
+        Kind::Interwork { .. } => "blx".into(),
         Kind::CompareBranch { .. } => "cbz".into(),
         Kind::Exchange { cond, .. } => format!("bx/{}", cond),
         Kind::Data { cond, s, .. } => format!("data{}/{}", if *s { "s" } else { "" }, cond),
@@ -960,6 +964,8 @@ fn control(i: &Inst32, offset: u16) -> Option<(Vec<u64>, bool)> {
             if link { vec![target, offset as u64 + i.length as u64] } else { vec![target] },
             cond != 14,
         )),
+        // The target belongs to another ISA; discover only the return PC.
+        Kind::Interwork { .. } => Some((vec![offset as u64 + i.length as u64], false)),
         Kind::CompareBranch { target, .. } => Some((vec![target], true)),
         // (a return: LDM, POP, LDR of the PC)
         Kind::Multiple { list, cond, .. } if list & 0x8000 != 0 => Some((vec![], cond != 14)),
@@ -1008,10 +1014,16 @@ fn a32(word: u32, offset: u16) -> Option<Kind> {
     let rd = word >> 12 & 15;
     let rn = word >> 16 & 15;
     if cond == 0xF {
+        if word >> 25 & 7 == 0b101 {
+            let displacement = sign_extend(word & 0xFF_FFFF, 24) * 4 + (word >> 23 & 2) as i64;
+            return Some(Kind::Interwork {
+                target: (offset as i64 + 8 + displacement) as u64,
+                thumb: true,
+            });
+        }
         // the unconditional space: Advanced SIMD (data processing, element
         // and structure loads and stores), PLD and PLI, the barriers and
-        // CLREX, VFP's unconditional forms; BLX of an immediate changes the
-        // instruction set, CPS, SETEND, RFE and SRS are not EL0's
+        // CLREX, VFP's unconditional forms; CPS, SETEND, RFE and SRS are not EL0's
         let helper = word >> 25 & 7 == 0b001
             || word >> 24 & 15 == 0b0100 && word & 1 << 20 == 0
             || word >> 26 & 3 == 0b01 && word >> 20 & 3 == 0b01
@@ -1241,7 +1253,17 @@ fn t32(word: u32, length: u8, offset: u16) -> Option<Kind> {
                         link: hw2 & 0x4000 != 0,
                     })
                 },
-                // BLX of an immediate: A32's
+                // BLX immediate: aligned PC + S:I1:I2:imm10:imm10L:00.
+                _ if hw2 & 1 == 0 => {
+                    let i1 = 1 - (j1 ^ s);
+                    let i2 = 1 - (j2 ^ s);
+                    let imm = (hw1 & 0x3FF) as i64 * 2048 + (hw2 & 0x7FF) as i64;
+                    let signed = (i1 << 23 | i2 << 22) + imm * 2 - (s << 24);
+                    Some(Kind::Interwork {
+                        target: (((offset as i64 + 4) & !3) + signed) as u64,
+                        thumb: false,
+                    })
+                },
                 _ => None,
             }
         },
@@ -4436,6 +4458,17 @@ impl Emitter<'_> {
                     self.b.block_end();
                 }
             },
+            Kind::Interwork { target, thumb } => {
+                self.link(offset, i.length);
+                self.linear(target);
+                self.c64(0xFFFF_FFFF);
+                self.b.and_i64();
+                self.s(super::PC);
+                self.c32(if thumb { crate::aarch64::cpu::PSTATE_T as i32 } else { 0 });
+                self.exchange_state();
+                // No dispatch or chaining through the old ISA's table.
+                self.b.br(self.f().exit);
+            },
             Kind::CompareBranch {
                 rn,
                 nonzero,
@@ -4455,12 +4488,48 @@ impl Emitter<'_> {
         }
     }
 
-    /// BX, BLX of a register: the target's instruction set this one's (T32
-    /// bit 0 set, A32 bits 1:0 clear; else the interpreter switches)
+    /// Store the target's T bit (an i32 on the stack), preserving the
+    /// current mode, interrupt masks and all other PSTATE bits. Changing
+    /// only T does not select a different banked register set.
+    fn exchange_state(&mut self) {
+        self.si(C0);
+        self.c32(state::pstate as i32);
+        self.load32(state::pstate as u32);
+        self.c32(!crate::aarch64::cpu::PSTATE_T as i32);
+        self.b.and_i32();
+        self.gi(C0);
+        self.b.or_i32();
+        self.b.store_aligned_i32(0);
+    }
+
+    /// Same-ISA targets dispatch in the page. An ISA switch exits directly
+    /// so the runtime selects the target mode's code and access tables.
     fn exchange(&mut self, rm: u8, link: bool, offset: u16, length: u8) {
         self.r32(rm);
         self.b.extend_unsigned_i32_to_i64();
         self.s(super::T0);
+        self.g(super::T0);
+        self.c64(1);
+        self.b.and_i64();
+        self.c64(if self.env.isa == Isa::T32 { 1 } else { 0 });
+        self.b.ne_i64();
+        self.b.if_void();
+        if link {
+            self.link(offset, length);
+        }
+        self.g(super::T0);
+        self.b.wrap_i64_to_i32();
+        self.c32(1);
+        self.b.and_i32();
+        self.c32(5);
+        self.b.shl_i32();
+        self.exchange_state();
+        self.g(super::T0);
+        self.c64(!1);
+        self.b.and_i64();
+        self.s(super::PC);
+        self.b.br(self.f().exit);
+        self.b.block_end();
         self.g(super::T0);
         self.c64(if self.env.isa == Isa::T32 { 1 } else { 3 });
         self.b.and_i64();

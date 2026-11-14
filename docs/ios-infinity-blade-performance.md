@@ -145,6 +145,16 @@ ARM interworking 用例在 `A64_MMU=1` 下与 QEMU 一致（无 MMU 时 QEMU 的
 原先的页面寄存器策略变化确认为原因。该运行时试验已撤下，仅保留 `qitreturn`。
 下一步检查高频的 ARM/Thumb BLX/BX 互跳，尽量避免完整取指和解释器解码。
 
+已为 ARM/Thumb BLX immediate 与跨 ISA 的 BX/BLX register 生成直接路径，
+保留原模式、NZCV 与中断掩码，先读取目标再写 LR；切换后直接退出旧 ISA 的函数，
+不使用旧模式的 chaining 表。19 个热循环覆盖双向、正负位移、H=1、Thumb 调用点
+2 mod 4、BLX LR 别名、后续 fetch fault 与非法 BLX 低位，均与 QEMU 一致；
+MMU/JIT、fallback、既有分支/IT 用例和另 40×80×32 随机程序通过。
+同场景首轮 61 帧/60.002 秒，约 **1.017 FPS**，与邻近原版 1.050 FPS 接近，
+仍不能声称 FPS 提升。解释器 steps 从 5845 万降至 2560 万、retries 从 9882 万
+降至 6645 万，但 page activations 从 1.419 亿增至 1.495 亿；后续需要优化互跳
+后的模式正确的 chaining，不能只以减少解释器调用作为完成条件。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，
