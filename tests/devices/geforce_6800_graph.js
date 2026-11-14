@@ -109,6 +109,20 @@ assert.equal(device.registers.get(0x400704),2<<20|3<<16|0x104,"PGRAPH trap uses 
 assert.equal(device.registers.get(0x400108),2);assert.equal(device.registers.get(0x400104),0x2000);
 assert.equal(device.registers.get(0x400720),0,"invalid notify mode still reports DATA_ERROR");
 console.log("PASS: hardware PGRAPH trap fields and Curie NOP driver data");
+device.registers.set(0x400720,1);device.registers.set(0x400148,0x80000000);
+graph.written(0x400148,0x80000000);
+graph.bind(2,3,0x4200);
+assert.equal(device.registers.get(0x400148),0x80004097,"native ISR sees the bound Curie class in CTX_SWITCH_A");
+assert.equal(device.registers.get(0x400158),0x420,"CTX_SWITCH_I identifies the bound RAMIN instance");
+assert.equal(device.registers.get(0x400160+3*4)&0xFFFF,0x4097,"subchannel cache exposes its class");
+assert.equal(device.registers.get(0x4001E0+3*4),0x420,"subchannel cache exposes its instance");
+word(0x4300,0x19);graph.bind(2,4,0x4300);
+method(2,0x4200,0x17D0,0x40000B8F);
+assert.equal(device.registers.get(0x400148)&0xFFFF,0x4097,"trapped method restores its own class after another subchannel ran");
+assert.equal(device.registers.get(0x400158),0x420);
+assert.equal(device.registers.get(0x400144)>>>13&7,3,"CTX_USER names the trapped subchannel");
+assert.equal(device.registers.get(0x400708),0x40000B8F,"unknown Curie software method still raises its real trap");
+device.registers.set(0x400720,1);
 // Capture programs when a draw begins, while the driver's BO is still alive.
 // Later releases can overwrite its VRAM without destroying diagnostic input.
 word(0x4400,0x4097);word(0x4300,0x3002);word(0x4304,0x9FFF);word(0x4308,3);

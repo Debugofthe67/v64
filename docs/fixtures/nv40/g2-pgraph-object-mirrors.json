@@ -1,0 +1,127 @@
+{
+  "date": "2026-11-14",
+  "scope": "G2 NV40 PGRAPH current object and subchannel class/instance mirrors.",
+  "primarySource": "https://github.com/envytools/envytools/blob/master/hwtest/pgraph_state.cc (NV40 CTX_USER, CTX_SWITCH_A/I and CACHE_A/I); https://github.com/envytools/envytools/blob/master/nvhw/pgraph_class.c (NV40 class is low 16 CTX_SWITCH_A bits).",
+  "nativeEvidence": "Original 93.71 miniport interrupt helper reads 0x400148 class and 0x400158 RAMIN instance when dispatching trapped methods. Before the fix both were zero. The corrected native 2001 SE replay now reads 0x4097 and 0xE9B6 while TRAPPED_ADDR=0x1617D0.",
+  "change": "Publish the loaded object class, instance and subchannel on SET_OBJECT and actual method dispatch. Preserve unrelated class high bits; cache by loaded object identity, invalidated by guest writes and snapshot/reset. RAMIN reuse cannot alter a previously loaded object. A pending GPU barrier returns before publishing future method state. Unknown methods still raise actual PGRAPH traps.",
+  "validation": [
+    "Regression initially fails with 0x80000000 versus 0x80004097. Final graph suite passes, including guest-write invalidation, class/instance caches, subchannel switch, real unknown-method trap, RAMIN reuse and snapshot tests.",
+    "Device regression passes.",
+    "Complete actual WebGPU primitive/pixel/REF/alias/barrier/snapshot suite passes.",
+    "Closure build: 0 errors and 0 warnings; 77.1% typed."
+  ],
+  "nativeReads": [
+    {
+      "elapsed": 424.67325358299996,
+      "offset": 4196100,
+      "write": false,
+      "value": 1447888
+    },
+    {
+      "elapsed": 424.67359591699994,
+      "offset": 4194632,
+      "write": false,
+      "value": 16535
+    },
+    {
+      "elapsed": 424.673719417,
+      "offset": 4196104,
+      "write": false,
+      "value": 1073744745
+    },
+    {
+      "elapsed": 424.67380216699996,
+      "offset": 4194648,
+      "write": false,
+      "value": 59830
+    },
+    {
+      "elapsed": 424.673886042,
+      "offset": 4194568,
+      "write": false,
+      "value": 64
+    },
+    {
+      "elapsed": 424.67396475,
+      "offset": 4194564,
+      "write": false,
+      "value": 16384
+    },
+    {
+      "elapsed": 424.675094583,
+      "offset": 4196128,
+      "write": true,
+      "value": 1
+    },
+    {
+      "elapsed": 424.67673720799996,
+      "offset": 4196100,
+      "write": false,
+      "value": 1447892
+    },
+    {
+      "elapsed": 424.6768955,
+      "offset": 4194632,
+      "write": false,
+      "value": 16535
+    },
+    {
+      "elapsed": 424.677006833,
+      "offset": 4196104,
+      "write": false,
+      "value": 2
+    },
+    {
+      "elapsed": 424.677132292,
+      "offset": 4194648,
+      "write": false,
+      "value": 59830
+    },
+    {
+      "elapsed": 424.67722666699996,
+      "offset": 4194568,
+      "write": false,
+      "value": 64
+    },
+    {
+      "elapsed": 424.677510417,
+      "offset": 4194564,
+      "write": false,
+      "value": 16384
+    },
+    {
+      "elapsed": 424.678373625,
+      "offset": 4196128,
+      "write": true,
+      "value": 1
+    }
+  ],
+  "nativeLimits": "The replay still reaches unsupported fragment input 15 after 26962 draws, so mirrors alone do not solve the full native run. No 2001 SE/05/06 completion or image gate is accepted.",
+  "harness": "NV_WATCH_MMIO_AFTER_GRAPH_FAULT optionally delays bounded MMIO capture until the first real graph fault. Maximum explicit NV_SECONDS increases to 21600 for long native runs; the default and guest clock/watchdog behavior are unchanged.",
+  "evidence": {
+    "build/nv40-context-mirrors-red.log": {
+      "bytes": 953,
+      "sha256": "53f62735d7823c3acf9b3d1198d27522b5b91583da16725654bb73a0d00870fc"
+    },
+    "build/nv40-context-mirrors-graph-final.log": {
+      "bytes": 1011,
+      "sha256": "f86864fb0281291322caedee9faf456017af651caee5d3457b62b239f17e36c0"
+    },
+    "build/nv40-context-mirrors-device.log": {
+      "bytes": 484,
+      "sha256": "f8464600525ea15b7d6c0e4236083325227082ca6a94121ab5cfd1a99f70b67e"
+    },
+    "build/nv40-context-mirrors-gpu.log": {
+      "bytes": 5286,
+      "sha256": "ba579ecb9d44142b85be586658a4437344da87a3678e8c58210adab030e34e5b"
+    },
+    "build/nv40-context-mirrors-build.log": {
+      "bytes": 3020,
+      "sha256": "6b9d8970c7c18b6d267ab94868ba727e8fe5de7e427bb4d0e60c686fad358f98"
+    },
+    "build/nv40-xp-mark2001-context-mirrors/mmio-watch.json": {
+      "bytes": 218328,
+      "sha256": "36d511fee2863c0ec247a2456c2440aa15ec42b9c2e894ec87f645fac374e82f"
+    }
+  }
+}

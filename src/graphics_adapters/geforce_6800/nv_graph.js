@@ -21,6 +21,7 @@ export class NVGraph
         this.device = device;
         this.objects = new Map();
         this.bindings = new Map();
+        this.current_object=null;this.current_subc=-1;
         this.program = new Map();
         this.faults = [];
         this.flips = [[0,0,0,0],[0,0,0,0]];
@@ -29,7 +30,7 @@ export class NVGraph
         this.engine3d = new NV40_3D(this);
     }
 
-    reset() { this.flip_offset=-2;this.flip_contexts.clear();this.context=0; this.flips = [[0,0,0,0],[0,0,0,0]]; this.objects.clear(); this.bindings.clear(); this.program.clear(); this.engine3d.captured.clear();this.engine3d.clear_translations(); if(this.engine3d.backend) this.engine3d.backend.reset(); }
+    reset() { this.flip_offset=-2;this.flip_contexts.clear();this.context=0; this.flips = [[0,0,0,0],[0,0,0,0]]; this.objects.clear(); this.bindings.clear();this.current_object=null;this.current_subc=-1; this.program.clear(); this.engine3d.captured.clear();this.engine3d.clear_translations(); if(this.engine3d.backend) this.engine3d.backend.reset(); }
     get busy()
     {
         if(this.context && !(this.reg(0x40032C)&0x01000000)) this.transfer_flips(this.context,false);
@@ -39,7 +40,8 @@ export class NVGraph
     set(at, value) { this.device.registers.set(at, value >>> 0); }
     implemented(at)
     {
-        return [0x400100, 0x400104, 0x400108, 0x40013C, 0x400300, 0x400304,
+        return at>=0x400160 && at<0x400180 && !(at&3) || at>=0x4001E0 && at<0x400200 && !(at&3) ||
+            [0x400100, 0x400104, 0x400108, 0x40013C, 0x400144, 0x400148, 0x400158, 0x400300, 0x400304,
             0x400310, 0x400784, 0x400324, 0x400328, 0x40032C, 0x400330, 0x400700, 0x400704, 0x400708, 0x400710, 0x40071C, 0x400720].includes(at);
     }
 
@@ -69,6 +71,8 @@ export class NVGraph
 
     written(at, value)
     {
+        if([0x400144,0x400148,0x400158].includes(at) ||
+            at>=0x400160 && at<0x400180 || at>=0x4001E0 && at<0x400200) this.current_object=null;
         if(at === 0x400710)
         {
             for(let i=0;i<2;i++)
@@ -133,7 +137,23 @@ export class NVGraph
         // Reusing its backing RAMIN cannot change an already loaded object.
         const object=this.object(channel,instance);
         this.bindings.set(channel+":"+subc,object);
+        this.object_context(object,subc);
         return object;
+    }
+
+    object_context(object,subc)
+    {
+        // NV40's interrupt handler identifies software methods through the
+        // active class and RAMIN instance, not only TRAPPED_ADDR/DATA. These
+        // are mirrors of the loaded object; later RAMIN reuse cannot replace
+        // its cached class until the next SET_OBJECT.
+        if(this.current_object===object && this.current_subc===subc) return;
+        this.current_object=object;this.current_subc=subc;
+        this.set(0x400144,this.reg(0x400144)&~0xE000|subc<<13);
+        this.set(0x400148,this.reg(0x400148)&~0xFFFF|object.class_id);
+        this.set(0x400158,object.instance/16);
+        this.set(0x400160+subc*4,this.reg(0x400160+subc*4)&~0xFFFF|object.class_id);
+        this.set(0x4001E0+subc*4,object.instance/16);
     }
 
     error(channel, subc, method, value, source = 0x40, status = 0x4000, reason = "unimplemented PGRAPH method")
@@ -259,6 +279,7 @@ export class NVGraph
             object=cached?.instance===instance?cached:this.object(channel,instance);
             if(this.engine3d.backend?.barrier(object,method,value))
             {this.engine3d.backend.flush();return false;}
+            this.object_context(object,subc);
 
             accepted = method === 0x100 || method === 0x108 || method === 0x10C;
             // Curie NOP carries opaque driver data. NV10/NV30's non-sync

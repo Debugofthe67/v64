@@ -2099,3 +2099,10 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
   主界面、默认五项及 Tip modal，正常关闭后 CLI 进入 GT1。严格 C 构建
   与 harness 语法通过。随后遇到与 2001 SE 相同的 Curie 17D0 中断和
   对象错误，默认整套及图像门禁未通过；见 `g4-05-native-directory-setup.json`。
+
+- G2 PGRAPH 当前对象：补齐 NV40 CTX_USER、CTX_SWITCH_A/I 与八个
+  子通道 CACHE_A/I，发布已加载对象的类/实例，保留高位、RAMIN 复用
+  与屏障顺序。原生 93.71 ISR 在 17D0 中断读到 4097/E9B6，修正此前
+  两项恒零；未知方法仍真实陷阱。回归先红后绿、设备、完整真实 GPU
+  与 Closure 通过。2001 SE 仍在 26,962 次绘制后遇到 input15，未通过
+  整套；保留故障前成套快照继续定位。见 `g2-pgraph-object-mirrors.json`。

@@ -222,7 +222,7 @@ export async function run_geforce_guest(win98)
         autostart: !process.env.NV_STATE_LOAD && !game, log_level: 0 });
     const seconds = Number(process.env.NV_SECONDS || 360);
     const launch = Number(process.env.NV_LAUNCH_SECONDS || (process.env.NV_STATE_LOAD ? 10 : 90));
-    assert(Number.isFinite(seconds) && seconds > 0 && seconds <= 3600);
+    assert(Number.isFinite(seconds) && seconds > 0 && seconds <= 21600);
     let nv, error = null, launches = 0, next_launch = launch, cancelled = false, checkpoint = false, clock_start = 0;
     let profiler=null,barrier_report=null,stall=null;
     const cancel = () => { cancelled = true; };
@@ -308,6 +308,7 @@ export async function run_geforce_guest(win98)
             nv.trace.record=(space,offset,size,write,value,implemented)=>{
                 record(space,offset,size,write,value,implemented);
                 if(space!=="mmio" || !offsets.has(offset) || accesses.length>=512) return;
+                if(process.env.NV_WATCH_MMIO_AFTER_GRAPH_FAULT && !nv.graph.faults.length) return;
                 const stack=cpu.reg32[4]>>>0;
                 const read=at=>{try {return cpu.mem8[cpu.translate_address_system_read(at)>>>0];} catch{return 0;}};
                 accesses.push({elapsed:elapsed(),offset,size,write,value:value>>>0,eip:cpu.instruction_pointer[0]>>>0,
