@@ -115,6 +115,17 @@ GLES 2 translator 和实际 native GLSL ES 1.00/glslang 两条真实 GPU 路径�
 GLES2/GLES3 executor 浏览器回归通过，无 WebGPU validation error。
 隔离诊断画面方向已恢复；尚待正式构建冷启确认及触摸战斗验收。
 
+含上述修复的正式构建已再次从 generation 7 NAND 冷启，约 172 s 经 UI
+请求打开游戏；AAC 完整输入/PCM 数量与之前一致、0 错误，窗口采样方向修复已加载。
+连续开场 66.32 s 为 130 个原生 drawable / 1.960 fps，面板 66.27 s 为 129 次
+图像变更 / 1.947 fps；其中包含 30 s CPU profiler，因此不能直接与无 profiler
+的旧窗口计算加速比。尚未验证完整战斗触摸流程，更未达成 60 fps。
+
+新 profile 中 LCD 扫描/转换约 3.11 s / 30 s。满亮度像素转换现使用一次 u32
+RGBA 写入，保留调暗时 Uint8Clamped 的原舍入，非 little-endian 宿主走原路径。
+设备回归通过。本机 640×960、连续改写 60 帧的独立微基准中，中位耗时约
+266 ms → 113 ms；这是像素转换微基准，不能当作游戏帧率或整机加速比。
+
 ## 测试输入（2026-11-14）
 
 机主本地提供 `Infinity_Blade_1.4.3_ios_6.0.ipa`。原包只读，

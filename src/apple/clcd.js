@@ -11,6 +11,10 @@ export class AppleCLCD
         this.hub = hub;
         this.backlight = 2047;
         this.rgba = new Uint8ClampedArray(N90_VIDEO.stride * N90_VIDEO.height);
+        // Native panel pixels are 0x00RRGGBB; a full-brightness frame can
+        // pack RGBA with one 32-bit store on little-endian hosts.
+        this.rgba32 = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1 ?
+            new Uint32Array(this.rgba.buffer) : null;
         this.scanout_bytes = null;
         this.translate = address => address;
         this.shown = new Uint32Array(N90_VIDEO.width * N90_VIDEO.height);
@@ -277,6 +281,7 @@ export class AppleCLCD
         const words = this.surface_words(base);
         if(!words) return;
         let changed = this.dirty, any = 0;
+        const packed = this.backlight === 2047 && this.rgba32;
         for(let i = 0; i < words.length; i++)
         {
             const p = words[i];
@@ -284,10 +289,14 @@ export class AppleCLCD
             if(!this.dirty && p === this.shown[i]) continue;
             changed = true;
             this.shown[i] = p;
-            this.rgba[i * 4] = (p >>> 16 & 255) * this.backlight / 2047;
-            this.rgba[i * 4 + 1] = (p >>> 8 & 255) * this.backlight / 2047;
-            this.rgba[i * 4 + 2] = (p & 255) * this.backlight / 2047;
-            this.rgba[i * 4 + 3] = 255;
+            if(packed) packed[i] = 0xFF000000 | (p & 255) << 16 | p & 0xFF00 | p >>> 16 & 255;
+            else
+            {
+                this.rgba[i * 4] = (p >>> 16 & 255) * this.backlight / 2047;
+                this.rgba[i * 4 + 1] = (p >>> 8 & 255) * this.backlight / 2047;
+                this.rgba[i * 4 + 2] = (p & 255) * this.backlight / 2047;
+                this.rgba[i * 4 + 3] = 255;
+            }
         }
         this.blank = !(any & 0xFFFFFF);
         this.next_blank_scan = now + 100;
