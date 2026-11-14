@@ -26,7 +26,10 @@ method(0, 0x4000, 0x180, 0x410); method(0, 0x4000, 0x104, 1);
 assert.equal(new DataView(vram.buffer).getBigUint64(0x8000, true), device.time());
 assert.deepEqual([...vram.subarray(0x8008, 0x8010)], new Array(8).fill(0));
 assert.equal(device.registers.get(0x400100), 1); assert.equal(device.registers.get(0x400108), 1);
-assert.equal(dirty, 1); assert(irq);
+assert.equal(dirty, 2,"notifier data and its GROBJ writeback both mark VRAM dirty"); assert(irq);
+const legacyNotify=graph.get_state();legacyNotify[0]=4;legacyNotify[1]=legacyNotify[1].map(row=>row.slice(0,5));
+word(0x4004,0xA1000000);graph.set_state(legacyNotify);
+assert.equal(graph.object(0,0x4000).notify_context,0xA1000410,"v4 snapshots recover the notifier instance from the accepted DMA_NOTIFY method");
 graph.written(0x400100, 1); device.registers.set(0x400100, 0);
 assert.equal(device.registers.get(0x400108), 0, "interrupt acknowledgement clears source");
 graph.notification(graph.object(0,0x4000),16,true);graph.notification(graph.object(0,0x4000),0,true);
@@ -122,6 +125,26 @@ assert.equal(device.registers.get(0x400148)&0xFFFF,0x4097,"trapped method restor
 assert.equal(device.registers.get(0x400158),0x420);
 assert.equal(device.registers.get(0x400144)>>>13&7,3,"CTX_USER names the trapped subchannel");
 assert.equal(device.registers.get(0x400708),0x40000B8F,"unknown Curie software method still raises its real trap");
+word(0x5A00,0x303D);word(0x5A04,31);word(0x5A08,3);
+word(0x5B00,0x30);word(0x5C00,0x4097);word(0x5C04,0xAB000123);
+device.registers.set(0x400720,1);graph.bind(3,5,0x5C00);
+assert.equal(device.registers.get(0x40014C),0xAB000123,"SET_OBJECT loads the complete notifier context word");
+graph.method(3,5,0x5C00,0x180,0x5A0);
+assert.equal(device.registers.get(0x40014C),0xAB0005A0,"native ISR sees the resolved 24-bit notifier instance");
+assert.equal(device.registers.get(0x400180+5*4),0xAB0005A0,"the bound subchannel caches its notifier");
+assert.equal(ramin.getUint32(0x5C04,true),0xAB0005A0,"DMA_NOTIFY writes back its GROBJ word without losing upper flags");
+const notifierSaved=graph.get_state();graph.set_state(notifierSaved);
+word(0x5C04,0xDEAD0000);graph.method(3,5,0x5C00,0x17D0,0x40000027);
+assert.equal(device.registers.get(0x40014C),0xAB0005A0,"loaded notifier survives RAMIN reuse and snapshot restore");
+device.registers.set(0x400720,1);graph.method(3,5,0x5C00,0x180,0x5B0);
+assert.equal(device.registers.get(0x40014C),0xAB000000,"the native null object clears the notifier instance");
+device.registers.set(0x40014C,0xCD0005A0);graph.written(0x40014C,0xCD0005A0);
+graph.method(3,5,0x5C00,0x100,0);
+assert.equal(device.registers.get(0x40014C),0xCD0005A0,"CPU writes to the current notifier context remain visible");
+word(0x5D00,0x19);word(0x5D04,0x5A0);graph.bind(4,6,0x5D00);
+graph.method(4,6,0x5D00,0x104,0);
+assert.equal(new DataView(vram.buffer).getBigUint64(0,true),device.time(),"a notifier preloaded in RAMIN works without a prior DMA_NOTIFY method");
+console.log("PASS: notifier GROBJ writeback, subchannel mirrors, loaded-state snapshots and null bindings");
 device.registers.set(0x400720,1);
 // Capture programs when a draw begins, while the driver's BO is still alive.
 // Later releases can overwrite its VRAM without destroying diagnostic input.

@@ -1579,9 +1579,10 @@ try
         ram.setUint32(0x6000,0x39,true);
         ram.setUint32(0x1500,0x303D,true);ram.setUint32(0x1504,0xFFFFF,true);ram.setUint32(0x1508,0x80003,true);
         const copy=graph.object(0,0x6000);
-        copy.methods=new Map([[0x180,0x150],[0x184,0x100],[0x188,0x100],[0x30C,0x9300],[0x310,0x9010],
+        copy.methods=new Map([[0x184,0x100],[0x188,0x100],[0x30C,0x9300],[0x310,0x9010],
             [0x314,16],[0x318,16],[0x31C,16],[0x320,1],[0x324,0x101]]);
         const copyMethod=(at,value)=>graph.method(0,2,0x6000,at,value);
+        copyMethod(0x180,0x150);
         for(let i=0;i<4;i++)view.setUint32(0x9300+i*4,floatWord(.5),true);
         [0x01001E81,0x001DC802,0,0,...Array(4).fill(floatWord(.25))].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
         method(0x8E4,0x9001);vram.fill(0,0x10000,0x10100);vram.fill(255,0x80010,0x80020);device.fifo.running=true;
@@ -1604,9 +1605,9 @@ try
         assert.equal(engine.backend.barrier(copy,0x328,0),true,"M2MF destination aliases retain the barrier");
         copy.methods.set(0x310,0x9400);
         ram.setUint32(0x1600,0x303D,true);ram.setUint32(0x1604,0xFFFFF,true);ram.setUint32(0x1608,0x10003,true);
-        copy.methods.set(0x180,0x160);
+        copyMethod(0x180,0x160);
         assert.equal(engine.backend.barrier(copy,0x328,0),true,"M2MF notifier aliases retain the barrier");
-        copy.methods.set(0x180,0x150);ram.setUint32(0x1500,0x103D,true);
+        copyMethod(0x180,0x150);ram.setUint32(0x1500,0x103D,true);
         assert.equal(engine.backend.barrier(copy,0x328,0),true,"paged M2MF remains conservative");
         ram.setUint32(0x1500,0x303D,true);
         ram.setUint32(0x1500,0x703D,true);

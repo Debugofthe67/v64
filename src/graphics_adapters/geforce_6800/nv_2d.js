@@ -19,6 +19,12 @@ export class NV2D
     }
     dma(o, at)
     {
+        if(at===0x180 && o.notify_context!==undefined)
+        {
+            const instance=o.notify_context&0xFFFFFF;
+            if(!instance)throw new RangeError("NV 2D DMA unbound");
+            return this.device.dma.descriptor(instance*16);
+        }
         if(!o.methods.has(at)) throw new RangeError("NV 2D DMA unbound");
         return this.device.dma.descriptor(m(o, at) * 16);
     }

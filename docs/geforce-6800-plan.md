@@ -2149,3 +2149,6 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 用户裁剪平面：原生 05 Troll 的 `1478=2` 曾触发真实 raster 拒绝；现解码六平面控制、`1FD0/1FD4` TBUF 分量映射及输出使能，用独立透视插值距离接入现有片元 discard 路径。六平面双方向、双组交集、不同 W、输出掩码的真实 GPU 像素验证和完整回归通过；三个实际故障程序按原控制位编译/链接通过，173 个 WGSL 模块与 Closure 通过，见 `g4-programmable-user-clip-planes.json`。原生默认五项已从同一冷启动前测状态重跑；完整结果、MSAA/几何裁剪一致性与最终图像门禁未据此验收，未赋予未知 FP input15 任意含义。
 
 - G6 GPU 缓存保留改为最多 512 项、两倍客体显存且限 64–512 MiB 的逻辑图像字节预算，计入 mip/cube/volume/格式扩展；当前绘制绑定及待回读附件受保护，必要超预算图像在使用/回读后淘汰。相同 70 纹理两轮 GPU 序列：64 项产生 70 个第二轮缺失，96 项为零缺失/零首次重传；16 项、520-byte 与活动附件超过 128-byte 的压力用例及完整 GPU 回归、图形单测、Closure 均通过。见 `g6-gpu-resource-byte-budget.json`；原生 06 冷默认六项继续运行，超时根因与完整性能门禁未据此宣布解决。
+
+- G2 notifier 上下文续修：按硬件 GROBJ word1 的低 24 位处理 DMA_NOTIFY，写回 RAMIN、CTX_SWITCH_B/CTX_CACHE_B，保留上部标志；预装 notifier、NULL 绑定、CPU 写与 v5 快照/旧 v4 迁移一致，M2MF 的检查/屏障使用同一来源。原版 93.71 ISR 的 `40014C` 从旧捕获的 0 变为真实 `E98E`，见 `g2-notifier-object-context.json`；RED/GREEN、2D/图形/FIFO/设备及完整真实 GPU 回归、Closure 通过。未宣称由此解决 FP input15 或完整 2001。
+- G6 06 缓存结果续记：新预算运行到 9705 draws、零 GPU/PGRAPH/非软件 FIFO 错误，仍出现原版 Display Driver Stopped Responding 对话框；已保存原始失败状态。缓存的等工作量复用收益成立，但真实驱动超时仍未解决，默认六项未完成。

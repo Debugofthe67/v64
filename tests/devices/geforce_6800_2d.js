@@ -12,7 +12,12 @@ const device = { vram: () => vram, vram_size: vram.length, registers: new Map([[
 device.dma = new NVDMA(device);
 const graph = new NVGraph(device), engine = graph.engine2d;
 function word(at, value) { ramin.setUint32(at, value >>> 0, true); }
-function object(at, type, methods) { word(at, type); const o = graph.object(0, at); o.methods = new Map(methods); return o; }
+function object(at, type, methods)
+{
+    word(at,type);const o=graph.object(0,at);o.methods=new Map(methods);
+    if(o.methods.has(0x180))graph.method(0,0,at,0x180,o.methods.get(0x180));
+    return o;
+}
 function dma(at, flags, limit, pte) { word(at, flags); word(at + 4, limit); word(at + 8, pte); }
 function call(o, at, value) { assert(engine.method(o, at, value)); }
 const surface = object(0x5000, 0x3062, [[0x184, 0x100], [0x188, 0x100], [0x300, 10], [0x304, 0x200020], [0x308, 0], [0x30C, 0]]);

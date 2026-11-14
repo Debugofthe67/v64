@@ -40,8 +40,8 @@ export class NVGraph
     set(at, value) { this.device.registers.set(at, value >>> 0); }
     implemented(at)
     {
-        return at>=0x400160 && at<0x400180 && !(at&3) || at>=0x4001E0 && at<0x400200 && !(at&3) ||
-            [0x400100, 0x400104, 0x400108, 0x40013C, 0x400144, 0x400148, 0x400158, 0x400300, 0x400304,
+        return at>=0x400160 && at<0x4001A0 && !(at&3) || at>=0x4001E0 && at<0x400200 && !(at&3) ||
+            [0x400100, 0x400104, 0x400108, 0x40013C, 0x400144, 0x400148, 0x40014C, 0x400158, 0x400300, 0x400304,
             0x400310, 0x400784, 0x400324, 0x400328, 0x40032C, 0x400330, 0x400700, 0x400704, 0x400708, 0x400710, 0x40071C, 0x400720].includes(at);
     }
 
@@ -71,6 +71,12 @@ export class NVGraph
 
     written(at, value)
     {
+        if(at===0x40014C && this.current_object)this.current_object.notify_context=value>>>0;
+        if(at>=0x400180 && at<0x4001A0 && this.current_object)
+        {
+            const subc=(at-0x400180)/4,object=this.bindings.get(this.current_object.channel+":"+subc);
+            if(object)object.notify_context=value>>>0;
+        }
         if([0x400144,0x400148,0x400158].includes(at) ||
             at>=0x400160 && at<0x400180 || at>=0x4001E0 && at<0x400200) this.current_object=null;
         if(at === 0x400710)
@@ -125,7 +131,7 @@ export class NVGraph
         let object = this.objects.get(key);
         if(!object || object.class_id !== class_id)
         {
-            object = { channel, instance, class_id, methods: new Map(), stream: [] };
+            object = { channel, instance, class_id, methods: new Map(), stream: [],notify_context:this.device.dma.word(instance+4) };
             this.objects.set(key, object);
         }
         return object;
@@ -136,7 +142,9 @@ export class NVGraph
         // SET_OBJECT loads the RAMIN class/context into a subchannel cache.
         // Reusing its backing RAMIN cannot change an already loaded object.
         const object=this.object(channel,instance);
+        object.notify_context=this.device.dma.word(instance+4);
         this.bindings.set(channel+":"+subc,object);
+        this.current_object=null;
         this.object_context(object,subc);
         return object;
     }
@@ -151,8 +159,10 @@ export class NVGraph
         this.current_object=object;this.current_subc=subc;
         this.set(0x400144,this.reg(0x400144)&~0xE000|subc<<13);
         this.set(0x400148,this.reg(0x400148)&~0xFFFF|object.class_id);
+        this.set(0x40014C,object.notify_context);
         this.set(0x400158,object.instance/16);
         this.set(0x400160+subc*4,this.reg(0x400160+subc*4)&~0xFFFF|object.class_id);
+        this.set(0x400180+subc*4,object.notify_context);
         this.set(0x4001E0+subc*4,object.instance/16);
     }
 
@@ -171,8 +181,9 @@ export class NVGraph
 
     notification(object, offset, awaken)
     {
-        if(!object.methods.has(0x180)) throw new RangeError("NV notifier DMA unbound");
-        const dma = this.device.dma.descriptor(object.methods.get(0x180) * 16);
+        const instance=object.notify_context&0xFFFFFF;
+        if(!instance) throw new RangeError("NV notifier DMA unbound");
+        const dma = this.device.dma.descriptor(instance * 16);
         const bytes = new Uint8Array(16), view = new DataView(bytes.buffer);
         /** @type {bigint} */
         const time = this.device.time();
@@ -292,7 +303,20 @@ export class NVGraph
             }
             else if([0x4097,0x9F].includes(object.class_id) && method>=0x120 && method<=0x130 && !(method&3))
             {this.flip_method(object,method,value);accepted=true;}
-            else if(method === 0x180) accepted = true;
+            else if(method === 0x180)
+            {
+                // NV40 GROBJ word 1 / CTX_SWITCH_B low 24 bits hold the
+                // resolved DMA_NOTIFY instance. Native software callbacks
+                // read this mirror to access their notifier (envytools
+                // pgraph_grobj_set_dma_pre/post). The null object clears it.
+                const instance=(this.device.dma.word(value*16)&0xFFF)===0x30?0:value&0xFFFFFF;
+                object.notify_context=(object.notify_context&0xFF000000|instance)>>>0;
+                const bytes=this.device.vram(),at=this.device.vram_size-(1<<20)+object.instance+4;
+                new DataView(bytes.buffer,bytes.byteOffset+at,4).setUint32(0,object.notify_context,true);
+                this.device.machine.mmio_ram_mark_dirty(this.device.vga.lfb_region);
+                this.set(0x40014C,object.notify_context);this.set(0x400180+subc*4,object.notify_context);
+                accepted=true;
+            }
             else if(CONTEXT_METHODS.has(object.class_id))
             {
                 accepted = accepted || this.context_method(object,method);
@@ -323,7 +347,7 @@ export class NVGraph
     get_state()
     {
         const current=Array.from(this.objects.values()),objects=[...new Set([...current,...this.bindings.values()])];
-        return [4, objects.map(o=>[o.channel,o.instance,o.class_id,Array.from(o.methods),o.stream]),
+        return [5, objects.map(o=>[o.channel,o.instance,o.class_id,Array.from(o.methods),o.stream,o.notify_context]),
             Array.from(this.program),this.flips.map(f=>f.slice()),this.context,
             Array.from(this.flip_contexts,([instance,flips])=>[instance,flips.map(f=>f.slice())]),
             Array.from(this.bindings,([key,object])=>[key,objects.indexOf(object)]),current.length];
@@ -331,8 +355,20 @@ export class NVGraph
     set_state(state)
     {
         this.reset();
-        const objects=state[1].map(([channel,instance,class_id,methods,stream])=>
-            ({channel,instance,class_id,methods:new Map(methods),stream}));
+        const objects=state[1].map(([channel,instance,class_id,methods,stream,notify_context])=>
+        {
+            const values=new Map(methods);
+            if(state[0]<5)
+            {
+                notify_context=this.device.dma.word(instance+4);
+                if(values.has(0x180))
+                {
+                    const dma=values.get(0x180),resolved=(this.device.dma.word(dma*16)&0xFFF)===0x30?0:dma&0xFFFFFF;
+                    notify_context=(notify_context&0xFF000000|resolved)>>>0;
+                }
+            }
+            return {channel,instance,class_id,methods:values,stream,notify_context};
+        });
         for(const object of objects.slice(0,state[0]>=4?state[7]:objects.length))
             this.objects.set(object.channel+":"+object.instance,object);
         if(state[0]>=4) for(const [key,index] of state[6]) this.bindings.set(key,objects[index]);
