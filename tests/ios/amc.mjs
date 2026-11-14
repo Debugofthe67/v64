@@ -77,4 +77,18 @@ regs.write(0x99c, 4, 3);
 assert.equal(codec.initialized, false);
 assert.equal(codec.program, "");
 assert.equal(codec.stats.failures, 0);
+// The native type-0 program is different code with the same MP3 contract.
+[0x01c2006a, 0x080001d7, 0x428007c8, 0x083ed008].forEach((word, i) => code.setUint32(0x4600 + i * 4, word, true));
+regs.write(0x940, 4, 0x84004600);
+regs.write(0x984, 4, 0);
+assert.equal(codec.program, "mp3");
+assert.equal(regs.read(0xa98), 4);
+assert.equal(code.getUint16(0x18004, true), 2304);
+assert.equal(codec.decoder, null);
+assert.equal(codec.stats.pcm_bytes, 0, "initialization alone cannot manufacture PCM");
+regs.write(0x99c, 4, 3);
+code.setUint32(0x460c, 0, true);
+regs.write(0x984, 4, 0);
+assert.equal(codec.initialized, false, "partial type-0 fingerprint is insufficient");
+assert.equal(regs.read(0xa98), 0);
 console.log("PASS: fingerprinted AMC MP3 buffer negotiation, unknown-program rejection, reset and no fabricated PCM");

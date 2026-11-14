@@ -4,6 +4,9 @@ const RESULT = 0x18000, DMA_DONE = 1 << 20, PORT = 0x8480002c;
 // The MP3 program also starts with a ready interrupt. Its memory windows,
 // rather than the entry alone, identify the decoder and its buffer contract.
 const MP3_PREFIX = [0x21000004, 0xb623a100, 0x58100000, 0x00080a30];
+// AppleAMC-176 also loads its type-0 Layer III program at this entry.
+// Its parameter mask and two 0x1200-byte output buffers use the same ABI.
+const MP3_TYPE0_PREFIX = [0x01c2006a, 0x080001d7, 0x428007c8, 0x083ed008];
 const view = bytes => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
 // HLE of the observed 10B329 AAC/MP3 programs, not a DSP instruction emulator.
@@ -87,7 +90,8 @@ export class AMCCodec
             {
                 if(regs[0x960 >>> 2] !== 0xc6005c00 || regs[0x964 >>> 2] !== 0x8544602f ||
                     regs[0x968 >>> 2] !== 0xc013f7fb ||
-                    !MP3_PREFIX.every((word, i) => m.getUint32(0x4600 + i * 4, true) === word)) return;
+                    ![MP3_PREFIX, MP3_TYPE0_PREFIX].some(prefix =>
+                        prefix.every((word, i) => m.getUint32(0x4600 + i * 4, true) === word))) return;
                 this.program = "mp3";
                 this.stats.mp3_initialized++;
             }
