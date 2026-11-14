@@ -134,7 +134,8 @@ export class NV40Render
         this.writer=new D9WGWriter(0x3034564E); // "NV40", separate resource namespace
         this.query=0;this.next=2;this.sequence=0;this.request=0;this.created=false;
         this.resources=new Map();this.shaders=new Map();this.declarations=new Map();
-        this.batch=null;this.pending=null;this.quiescing=false;this.stats={batches:0,draws:0,bytes:0,readbacks:0,failures:0,uploads:0,uploadBytes:0};
+        this.batch=null;this.pending=null;this.quiescing=false;this.stats={batches:0,draws:0,bytes:0,readbacks:0,failures:0,uploads:0,uploadBytes:0,
+            resourceHits:0,resourceMisses:0,resourceEvictions:0,coldUploadBytes:0};
         renderer["listen"](message=>this.receive(message));
     }
     reset()
@@ -170,12 +171,13 @@ export class NV40Render
         let resource=this.resources.get(key);
         if(!resource)
         {
+            this.stats.resourceMisses++;
             if(this.resources.size>=64)
             {
                 const protectedHandles=new Set(this.batch?[...this.batch.outputs.keys(),...this.batch.guards.keys()]:[]);
                 const first=[...this.resources].find(([,resource])=>!protectedHandles.has(resource.handle));
                 if(!first) throw new RangeError("NV40 pending target cache is full");
-                this.writer.command(OP.DESTROY_RESOURCE,{"resource_handle":first[1].handle,"resource_kind":first[1].kind});this.resources.delete(first[0]);
+                this.writer.command(OP.DESTROY_RESOURCE,{"resource_handle":first[1].handle,"resource_kind":first[1].kind});this.resources.delete(first[0]);this.stats.resourceEvictions++;
             }
             resource={handle:this.next++,kind:surface.cube?4:surface.volume?5:3,images:null};
             this.resources.set(key,resource);
@@ -183,6 +185,7 @@ export class NV40Render
                 {"resource_handle":resource.handle,...(surface.cube?{"edge_length":surface.width}:{"width":surface.width,"height":surface.height,...(surface.volume?{"depth":surface.depth}:{})}),
                     "level_count":levels,"format":surface.d3d,"usage":usage});
         }
+        else this.stats.resourceHits++;
         // Refresh recency on every use. A frequently bound color/depth target
         // must survive eviction while new sampled textures fill the cache.
         this.resources.delete(key);this.resources.set(key,resource);
@@ -198,6 +201,7 @@ export class NV40Render
             const partial=previous && !surface.volume && previous.length===bytes.length;
             const first=partial?Math.floor(changed[0]/pitch):0,last=partial?Math.ceil(changed[1]/pitch):height;
             const payload=partial?bytes.subarray(first*pitch,last*pitch):bytes;
+            if(!previous)this.stats.coldUploadBytes+=payload.length;
             const w=this.writer.command(OP.UPDATE_TEXTURE,{"resource_handle":handle,"level":level,"y":first,"z":face,"width":width,"height":last-first,
                 "depth":surface.volume?Math.max(1,surface.depth>>>level):1,"row_pitch":pitch,"data_bytes":payload.length});
             w.patch_field("data_offset",w.data(payload));this.stats.uploads++;this.stats.uploadBytes+=payload.length;
