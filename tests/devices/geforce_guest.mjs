@@ -492,12 +492,24 @@ export async function run_geforce_guest(win98)
         if(process.env.NV_DIAGNOSTIC_DRAW_PIXEL && nv.graph.engine3d.backend)
         {
             const [x,y]=process.env.NV_DIAGNOSTIC_DRAW_PIXEL.split(",").map(Number);
+            const first=Number(process.env.NV_DIAGNOSTIC_DRAW_FIRST||0),limit=Number(process.env.NV_DIAGNOSTIC_DRAW_LIMIT||256);
             assert([x,y].every(value=>Number.isInteger(value)&&value>=0&&value<4096),"invalid diagnostic pixel");
+            assert(Number.isSafeInteger(first)&&first>=0 && Number.isSafeInteger(limit)&&limit>0&&limit<=4096,"invalid diagnostic draw range");
             const engine=nv.graph.engine3d,backend=engine.backend,draw=backend.draw.bind(backend),flush=backend.flush.bind(backend),complete=backend.complete.bind(backend);
             const metadata=new Map(),events=[],file=path.join(out,"draw-pixel-history.json");let current=null,ordinal=0;
+            const pixel=(bytes,at,target)=>{
+                if([75,80].includes(target.d3d))return [target.bpp===2?bytes[at]|bytes[at+1]<<8:
+                    (bytes[at]|bytes[at+1]<<8|bytes[at+2]<<16|bytes[at+3]<<24)>>>0];
+                if(target.bpp===4)return Array.from(bytes.subarray(at,at+4));
+                const word=bytes[at]|bytes[at+1]<<8,bits=target.d3d===23?6:5;
+                return [Math.round((word&31)*255/31),Math.round((word>>>5&(1<<bits)-1)*255/((1<<bits)-1)),
+                    Math.round((word>>>(5+bits)&31)*255/31),255];
+            };
             backend.draw=(object,mode,words,indices,subc)=>{
-                if(ordinal>=256){current=null;return draw(object,mode,words,indices,subc);}
-                current={ordinal:ordinal++,mode,subc,instance:object.instance,methods:Array.from(object.methods),program:engine.program(object)};
+                const index=ordinal++;
+                if(index<first || index>=first+limit){current=null;return draw(object,mode,words,indices,subc);}
+                current={ordinal:index,mode,subc,instance:object.instance,methods:Array.from(object.methods),program:engine.program(object),
+                    inlineWordCount:words?.length,firstWords:words?.slice(0,256),firstIndices:indices?.slice(0,64)};
                 const before=backend.stats.draws,result=draw(object,mode,words,indices,subc);
                 if(process.env.NV_DIAGNOSTIC_DRAW_FLUSH && backend.stats.draws!==before)backend.flush();
                 return result;
@@ -515,12 +527,13 @@ export async function run_geforce_guest(win98)
                     if(events.length<256 && item)for(const {target,bytes}of pending.outputs)
                     {
                         if(events.length>=256)break;
-                        if(target.bpp!==4 || x>=target.width || y>=target.height)continue;
-                        const offset=(y*target.width+x)*4,after=Array.from(bytes.subarray(offset,offset+4));
-                        const before=Array.from(nv.dma.read(target.dma,target.offset+y*target.pitch+x*4,4));
-                        if(before.some((value,index)=>value!==after[index]))events.push({elapsed:elapsed(),x,y,target:target.offset,before,after,
+                        if(target.swizzle || ![2,4].includes(target.bpp) || target.bpp===2 && ![23,24,80].includes(target.d3d) || x>=target.width || y>=target.height)continue;
+                        const offset=(y*target.width+x)*target.bpp,after=pixel(bytes,offset,target);
+                        const before=pixel(nv.dma.read(target.dma,target.offset+y*target.pitch+x*target.bpp,target.bpp),0,target);
+                        const depth=[75,80].includes(target.d3d);
+                        if(before.some((value,index)=>value!==after[index]))events.push({elapsed:elapsed(),x,y,target:target.offset,format:target.d3d,depth,before,after,
                             draw:item?.ordinal,mode:item?.mode,fragment:item?.methods.find(([at])=>at===0x8E4)?.[1],
-                            ...(after.slice(0,3).every(value=>value===0)&&before.slice(0,3).some(Boolean)?{cause:item}:{})});
+                            ...(depth || after.slice(0,3).every(value=>value===0)&&before.slice(0,3).some(Boolean)?{cause:item}:{})});
                     }
                     metadata.delete(pending);fs.writeFileSync(file,JSON.stringify(events,null,2));
                 }
