@@ -1,0 +1,320 @@
+{
+  "date": "2026-11-15",
+  "scope": "Legacy x86 paging correctness found while diagnosing Win98 03 cached-file-page corruption. Its causal role in that native failure remains unproven pending a clean rerun.",
+  "primaryReference": "https://cdrdv2-public.intel.com/868137/325462-089-sdm-vol-1-2abcd-3abcd-4.pdf",
+  "contract": "CR0.WP=0 overrides read-only page protection for supervisor writes. User writes to read-only pages must still fault.",
+  "bug": "A successful supervisor write to a read-only user page populated the shared legacy TLB as writable and user-accessible. A later CPL3 store reused that entry and silently bypassed write protection without any intervening page-table change.",
+  "fix": "Cache that supervisor write override with TLB_NO_USER. A later user read rewalks the real page tables, preserves read permission, and installs a read-only user entry. Paging-disabled and writable mappings retain their existing behavior; the separate IA32e translation path is unchanged.",
+  "minimalGuest": {
+    "source": "tests/x64/legacy_wp_privilege.asm",
+    "runner": "TEST_RELEASE_BUILD=1 node tests/x64/legacy_wp_privilege.mjs",
+    "setup": "Guest-warmed CPL3 store, guest downgrades the PTE/PDE and INVLPG, legitimate CPL0 write with WP0, IRETD to the same compiled user store. Includes direct user write and user-read-before-write.",
+    "modes": "Interpreter and actual compiled page tier; legacy4KiB/4MiB and PAE4KiB/2MiB mappings. All page-table and privilege operations are performed by the guest.",
+    "red": [
+      {
+        "label": "interpreter legacy 4KiB direct write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 0,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter legacy 4KiB read then write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 287454020,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter legacy large direct write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 0,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter legacy large read then write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 287454020,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter PAE 4KiB direct write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 0,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter PAE 4KiB read then write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 287454020,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter PAE large direct write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 0,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter PAE large read then write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 287454020,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "pages legacy 4KiB direct write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 0,
+        "compiledInstructions": 41661
+      },
+      {
+        "label": "pages legacy 4KiB read then write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 287454020,
+        "compiledInstructions": 41663
+      },
+      {
+        "label": "pages legacy large direct write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 0,
+        "compiledInstructions": 41660
+      },
+      {
+        "label": "pages legacy large read then write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 287454020,
+        "compiledInstructions": 41662
+      },
+      {
+        "label": "pages PAE 4KiB direct write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 0,
+        "compiledInstructions": 41703
+      },
+      {
+        "label": "pages PAE 4KiB read then write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 287454020,
+        "compiledInstructions": 41705
+      },
+      {
+        "label": "pages PAE large direct write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 0,
+        "compiledInstructions": 41702
+      },
+      {
+        "label": "pages PAE large read then write",
+        "faults": 0,
+        "error": 0,
+        "cr2": 0,
+        "value": 3735928559,
+        "read": 287454020,
+        "compiledInstructions": 41704
+      }
+    ],
+    "green": [
+      {
+        "label": "interpreter legacy 4KiB direct write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 0,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter legacy 4KiB read then write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 287454020,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter legacy large direct write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 0,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter legacy large read then write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 287454020,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter PAE 4KiB direct write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 0,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter PAE 4KiB read then write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 287454020,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter PAE large direct write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 0,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "interpreter PAE large read then write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 287454020,
+        "compiledInstructions": 0
+      },
+      {
+        "label": "pages legacy 4KiB direct write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 0,
+        "compiledInstructions": 41669
+      },
+      {
+        "label": "pages legacy 4KiB read then write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 287454020,
+        "compiledInstructions": 41671
+      },
+      {
+        "label": "pages legacy large direct write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 0,
+        "compiledInstructions": 41668
+      },
+      {
+        "label": "pages legacy large read then write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 287454020,
+        "compiledInstructions": 41670
+      },
+      {
+        "label": "pages PAE 4KiB direct write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 0,
+        "compiledInstructions": 41711
+      },
+      {
+        "label": "pages PAE 4KiB read then write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 287454020,
+        "compiledInstructions": 41713
+      },
+      {
+        "label": "pages PAE large direct write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 0,
+        "compiledInstructions": 41710
+      },
+      {
+        "label": "pages PAE large read then write",
+        "faults": 1,
+        "error": 7,
+        "cr2": 67108864,
+        "value": 287454020,
+        "read": 287454020,
+        "compiledInstructions": 41712
+      }
+    ]
+  },
+  "validation": [
+    "All16 old-core cases silently overwrite the kernel value withDEADBEEF and report zero faults.",
+    "All16 corrected-core cases report exactly one #PF with error7, CR2=04000000; kernel11223344 remains. User reads still succeed. Every page-tier case retires >41000 compiled instructions.",
+    "214 existing atomic/#UD/page-fault/write-protection/MMIO cases pass across interpreter and compiled modes.",
+    "14 page-tier system scenarios agree with QEMU and the wide interpreter.",
+    "make rust-test:133 passed,0failed; wasmgen dummy-output verification passes.",
+    "Release Wasm build succeeds. New test is included in x64-page-tier-tests."
+  ],
+  "nativeContext": {
+    "originalWin98CR0": "8000001b",
+    "originalWin98CR4": "00000200",
+    "originalFailure": "g5-win98-03-original-cached-file-page.json",
+    "limit": "This independently reproduced CPU bug is fixed on its architectural merits. No original benchmark data, registry score, driver timer or watchdog is modified, and a preexisting corrupt cache page is not repaired in place."
+  }
+}

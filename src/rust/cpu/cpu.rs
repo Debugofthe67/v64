@@ -2397,6 +2397,16 @@ pub unsafe fn do_page_walk(
             high = page_table_entry as u32 & 0xFFFFF000;
             global = page_table_entry & PAGE_TABLE_GLOBAL_MASK == PAGE_TABLE_GLOBAL_MASK
         }
+
+        // CR0.WP=0 overrides read-only protection for supervisor writes only.
+        // This TLB shares its writable bit across privilege levels. A kernel
+        // write to a read-only user page must therefore cache a supervisor-only
+        // entry; a later user read rewalks and installs a read-only user entry.
+        // Otherwise CPL3 can reuse the kernel's writable fill and bypass #PF
+        // (including copy-on-write) without any page-table change.
+        if for_writing && kernel_write_override && !allow_write {
+            allow_user = false;
+        }
     }
 
     if side_effects && tlb_data[page as usize] == 0 {

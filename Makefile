@@ -1801,6 +1801,7 @@ x64-page-tier-tests: build/v86-debug.wasm
 	X64_JIT=1 node tests/x64/system_oracle.mjs
 	X64_JIT=1 X64_IR_TIER0=0 node tests/x64/system_oracle.mjs
 	node tests/x64/page_system.mjs
+	node tests/x64/legacy_wp_privilege.mjs
 	node tests/x64/frame_buffer.mjs
 	node tests/x64/compat_jit.mjs
 	node tests/x64/initial_ram.mjs
