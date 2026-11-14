@@ -1563,6 +1563,23 @@ try
         };
         device.fifo.running=true;
         const beforeUpload={...engine.backend.stats};drawInline();
+        const notifyAt=device.vram_size-(1<<20)+upload.instance+4;
+        assert.equal(engine.backend.barrier(upload,0x180,0x100),false,"disjoint IFC notifier context binding keeps queued draws");
+        const notifyAlias={dma:{...device.dma.descriptor(0x1000),limit:device.vram_size-1},
+            offset:notifyAt,width:1,height:1,pitch:4,bpp:4};
+        for(const targets of [engine.backend.batch.outputs,engine.backend.batch.guards])
+        {
+            targets.set("notify-alias",{target:notifyAlias});
+            assert.equal(engine.backend.barrier(upload,0x180,0x100),true,"GROBJ notifier writeback waits for RAMIN attachment aliases");
+            targets.delete("notify-alias");
+        }
+        assert.equal(engine.backend.barrier({...upload,instance:1<<20},0x180,0x100),true,"invalid RAMIN instance keeps conservative ordering");
+        assert.equal(engine.backend.barrier(upload,0x180,1<<16),true,"invalid notifier handle retires earlier draws before trapping");
+        assert.equal(uploadMethod(0x180,0x100),true);
+        assert.equal(ram.getUint32(0x5004,true)&0xFFFFFF,0x100,"batched binding still performs real GROBJ writeback");
+        assert.equal(upload.notify_context&0xFFFFFF,0x100);
+        assert.equal(device.registers.get(0x40014C)&0xFFFFFF,0x100);
+        assert.equal(engine.backend.stats.batches,beforeUpload.batches);
         ram.setUint32(0x1800,0x303D,true);ram.setUint32(0x1804,0xFFFF,true);ram.setUint32(0x1808,0x10003,true);
         uploadSurface.methods.set(0x188,0x180);uploadSurface.methods.set(0x30C,0);
         assert.equal(engine.backend.barrier(upload,0x400,0),true,"different DMA descriptors can alias the queued target");

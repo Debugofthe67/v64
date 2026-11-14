@@ -315,6 +315,22 @@ export class NV40Render
         }
         if([0x61,0x65,0x8A,0x308A].includes(o.class_id))
         {
+            // DMA_NOTIFY rebinding writes GROBJ word 1 in RAMIN, but does not
+            // issue a notification. Keep disjoint queued draws; a RAMIN
+            // attachment alias must retire before that real CPU writeback.
+            if(method===0x180 && Number.isSafeInteger(o.instance) && o.instance>=0 &&
+                o.instance+8<=1<<20 && !(o.instance&3)) try
+            {
+                // The binding handler reads this word before writing RAMIN.
+                // Invalid handles must retire earlier draws before trapping.
+                this.device.dma.word(value*16);
+                const first=this.device.vram_size-(1<<20)+o.instance+4;
+                if(![...this.batch.outputs.values(),...this.batch.guards.values()].some(({target})=>{
+                    const range=this.range(target);
+                    return range.memory===0 && first<range.last && range.first<first+4;
+                })) return false;
+            }
+            catch(error) {if(!(error instanceof RangeError)) throw error;}
             // IFC state changes do not touch memory. For data, share the exact
             // next-DWORD footprint with the CPU engine; only a checked linear
             // destination disjoint from every queued attachment can proceed.
