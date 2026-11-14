@@ -72,7 +72,7 @@ rejected before replacing live leases.
 Sources and binaries are in
 [retro-gaming-site/glbridge](https://github.com/speedyHKjournalist/retro-gaming-site/tree/main/glbridge):
 
-- `v86gl_driver/v86gl.sys` (`v86gl-virtio.sys` is the identical compatibility name)
+- `v86gl_driver/v86gl.sys` (the sole driver binary; it uses the virtio transport)
 - `openglproxy/opengl32.dll`
 - `ddrawproxy/ddraw.dll`
 - `d3d8proxy/d3d8.dll`
