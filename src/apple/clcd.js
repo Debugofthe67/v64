@@ -25,6 +25,7 @@ export class AppleCLCD
         this.dsi = new Uint32Array(0x1000 / 4);
         this.ulps = 0;
         this.panel_on = true;
+        this.performance = { scans: 0, scan_ms: 0, frames: 0 };
         this.command = null;
         this.commands = [];
         this.dirty = true;
@@ -277,6 +278,7 @@ export class AppleCLCD
         // until pixels appear; real VBL/interrupts stay at 60 Hz. Explicit
         // GPU posts and color changes request a scan immediately.
         if(this.blank && !this.dirty && now < this.next_blank_scan) return;
+        const started = performance.now();
         const base = this.regs[0x4044 >>> 2];
         const words = this.surface_words(base);
         if(!words) return;
@@ -301,11 +303,14 @@ export class AppleCLCD
         this.blank = !(any & 0xFFFFFF);
         this.next_blank_scan = now + 100;
         this.dirty = false;
+        this.performance.scans++;
+        this.performance.scan_ms += performance.now() - started;
         if(changed) this.update_display();
     }
 
     update_display()
     {
+        this.performance.frames++;
         const { width, height } = N90_VIDEO;
         this.hub.update_buffer([{ pixels: { data: this.rgba, width, height }, screen_x: 0, screen_y: 0,
             buffer_x: 0, buffer_y: 0, buffer_width: width, buffer_height: height }]);

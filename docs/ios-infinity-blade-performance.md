@@ -1,5 +1,41 @@
 # Infinity Blade 安装与帧率验证
 
+## 同一战斗检查点对照（2026-11-14 晚）
+
+新增 `tests/ios/battle-performance.html`：从真实 God King 战斗 RAM 检查点恢复，
+举盾位置固定为 `(45/46,480)`，每 2 秒移动 1 像素；预热 12 个完整游戏画面，
+再采样 60 秒。计数来自成功、连续覆盖整个 960×640 IOSurface 的 GPU 读回，
+同时记录 CLCD 实际画面变更、扫描耗时、读回等待、CPU 指令和 JIT 计数。
+单独读取最后一条 strip、不连续行、不同翻转方向均不会被计为一帧；真实 GPU
+回归覆盖这些条件。诊断计数不属于虚拟机状态，恢复后重新开始。
+
+每轮必须从**关闭 Chrome 后的只读主 profile**复制工作 profile，保持同一端口、
+VM ID、RAM 文件和 OPFS NAND 的身份及代次。macOS 用 `cp -cR` 创建 APFS 克隆，
+避免额外复制约 4 GB NAND 和 1.1 GB RAM。不得在已写入的磁盘上反复恢复旧 RAM，
+不得关闭磁盘代次检查。JIT 缓存不序列化，每轮都从同一冷 JIT 开始并预热相同帧数。
+
+```sh
+BROWSER_PROFILE=build/ios/infinity-next/battle-work-profile \
+BROWSER_PORT=64978 BROWSER_DEBUG_PORT=9493 BROWSER_FOCUS=1 \
+BROWSER_WASM=build/ios/infinity-next/perf/baseline.wasm \
+TEST_ARTIFACT_DIR=build/ios/infinity-next/perf/baseline-1 TIMEOUT_MS=600000 \
+node tests/app/browser_runner.mjs tests/ios/battle-performance.html \
+vm=9e3aab9c-cbd7-4ec0-9f6d-9887fa2e4410 warmup=12 duration=60000 \
+label=baseline-1 webgpu=1 autoplay=1
+```
+
+首轮同检查点基线完成 **20 帧 / 60.002 秒 = 0.333 FPS**，面板 21 次更新。
+窗口中 CPU 65.2 MIPS，CLCD 扫描 2.393 秒，所有原生 drawable 读回等待累计
+0.550 秒，JIT 编译 0.858 秒、驱逐 0 次。该窗口尚无优化对照；60 FPS 未达标。
+初版采样末尾暂停后截图为空，另一次同检查点诊断轮的运行中截图确认是真实战斗
+及 `HOLD TO BLOCK`，已将正式截图移到暂停之前。诊断轮的 profiler 成绩不作为 FPS。
+
+CPU Worker 独立 30 秒采样中，ARM 执行占 22.45 秒；`pages::run` 自身 1.95 秒，
+解释器包含 5.67 秒，A32 helper 包含 3.38 秒（与解释器有嵌套，不相加）。
+CLCD render 包含 3.44 秒；native readback 不是当前主要耗时。
+helper 高频指令包括尚未编译的 VSRA：`f3a661cc/f3a441cc/f2a261ec/f2a151ec`
+及另外四个同类变体，各出现约 320 万次，下一步针对该确定热点生成 SIMD。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，

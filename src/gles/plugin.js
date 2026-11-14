@@ -39,6 +39,7 @@ register_device_plugin("V86GlesHosts", {
             // (a service as src/virt/goldfish.js takes one; with a snapshot's state of it)
             "service": (name, wake, saved) => host.service(name, wake, saved),
             "summary": () => host.summary(),
+            "performance": () => host.performance(),
             "reset": () => host.reset(),
             // (E5: the calls waiting for the page answered, the page's state fetched;
             // then the snapshot's slot, restored after the pipe's channels)

@@ -15,6 +15,9 @@
 //   node tests/app/browser_runner.mjs <page> [query arguments...]
 //   node tests/app/browser_runner.mjs tests/app/store_test.html
 // Needs Chrome (CHROME); TIMEOUT_MS (default 300000); BROWSER_DEBUG_PORT (DevTools).
+// BROWSER_PROFILE keeps a caller-owned disposable profile; BROWSER_PORT
+// preserves its origin for checkpoint benchmarks. BROWSER_WASM overrides
+// only build/v86-arm64.wasm, without replacing another test's build.
 
 import http from "node:http";
 import fs from "node:fs";
@@ -62,7 +65,9 @@ const REPORTER = `<script>
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm",
     ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png" };
 
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), "v86-app-browser-"));
+const profile = process.env.BROWSER_PROFILE ? path.resolve(process.env.BROWSER_PROFILE) :
+    fs.mkdtempSync(path.join(os.tmpdir(), "v86-app-browser-"));
+if(process.env.BROWSER_PROFILE) fs.mkdirSync(profile, { recursive: true });
 let browser, timeout, focus_socket, finished=false;
 const focused = process.env.BROWSER_FOCUS === "1";
 // A headless window can become hidden after navigation on macOS. Keep a
@@ -212,7 +217,8 @@ const server = http.createServer((req, res) =>
         });
         return;
     }
-    const file = path.resolve(root, "." + decodeURIComponent(address.pathname));
+    const file = address.pathname === "/build/v86-arm64.wasm" && process.env.BROWSER_WASM ?
+        path.resolve(process.env.BROWSER_WASM) : path.resolve(root, "." + decodeURIComponent(address.pathname));
     if(!file.startsWith(root)) { res.writeHead(403).end(); return; }
     let size;
     try { size = fs.statSync(file).isFile() ? fs.statSync(file).size : -1; }
@@ -259,7 +265,7 @@ function finish(code)
     server.close();
     if(service) service.close();
     process.exitCode = code;
-    const remove = () => { try { fs.rmSync(profile, { recursive: true, force: true }); } catch(e) {} };
+    const remove = () => { if(!process.env.BROWSER_PROFILE) try { fs.rmSync(profile, { recursive: true, force: true }); } catch(e) {} };
     if(browser && browser.exitCode === null && browser.signalCode === null)
     {
         browser.on("exit", remove);
@@ -271,7 +277,7 @@ function finish(code)
 // (the runner stopped from outside: its Chrome stopped too, not left running the page's machine)
 for(const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => { finish(1); process.exit(1); });
 
-server.listen(0, "127.0.0.1", async () =>
+server.listen(Number(process.env.BROWSER_PORT || 0), "127.0.0.1", async () =>
 {
     const origin = "http://127.0.0.1:" + server.address().port;
     if(with_service)

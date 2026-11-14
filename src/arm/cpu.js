@@ -1440,6 +1440,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
         };
     });
     return {
+        "host_time": performance.now(),
         "cpu_type": this.cpu_type,
         "machine_type": this.machine_type,
         "active_core": exports["a64_current_core"](),
@@ -1452,6 +1453,10 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
         "retired": exports["core_statistics_get"] ? exports["core_statistics_get"](0, 0) : 0,
         "undefined": this.undefined_instructions(),
         "page_tier": this.page_tier_stats(),
+        ...(this.machine_type === "s5l8930" ? { "graphics": {
+            "native": this.devices.gles?.device["performance"]?.() || null,
+            "panel": this.devices.apple_clcd ? Object.assign({}, this.devices.apple_clcd.performance) : null,
+        } } : {}),
         ...(include_steps ? { "steps": this.step_stats(25) } : {}),
         ...(nand ? { "nand": { "bytes_read": nand.bytes_read, "bytes_written": nand.bytes_written } } : {}),
     };

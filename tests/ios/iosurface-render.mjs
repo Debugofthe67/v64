@@ -65,6 +65,17 @@ try
                 assert.deepEqual([...native.outs[0].subarray(at, at + 4)], [x, 1 + (flip ? 1 - y : y), 200, 255]);
             }
     }
+    assert.equal(host.performance().drawables[0].frames, 0, "partial reads are not frames");
+    const readRows = (y, rows, flip = 0) => reader.call("v86ReadIOSurface", reader.buffer, y, rows, flip, 64 * rows * 4);
+    await readRows(47, 1);
+    assert.equal(host.performance().drawables[0].frames, 0, "last strip alone is not a frame");
+    await readRows(0, 24);await readRows(24, 24);
+    assert.equal(host.performance().drawables[0].frames, 1, "contiguous full drawable completed");
+    await readRows(0, 24);await readRows(25, 23);
+    await readRows(0, 24);await readRows(24, 24, 1);
+    assert.equal(host.performance().drawables[0].frames, 1, "gaps and mixed orientation do not count");
+    await readRows(0, 48);
+    assert.equal(host.performance().drawables[0].frames, 2, "single full read counts once");
     writer.send("gles2:glClearColor", 0, 1, 0, 1);
     writer.send("gles2:glClear", 0x4000);
     writer.send("gles2:glEnable", 0xc11);

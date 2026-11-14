@@ -107,6 +107,10 @@ GLESHost.prototype.reset = function()
     // arguments so a compositor's later glGetError is diagnosable. Never
     // retain guest uploads or unbounded history.
     this.errors = [];
+    // Host diagnostics, deliberately outside the snapshot. A native frame
+    // is a successful contiguous read of the entire drawable, not a VBL
+    // interrupt, a read of its last row, or an rAF callback.
+    this.iosurface_reads = new WeakMap();
     if(this.renderer) this.renderer.post({ "type": "reset" });
 };
 
@@ -280,9 +284,22 @@ GLESHost.prototype.rc_call = function(conn, command, args)
         if(!cb || !cb.iosurface || !cb.refs.has(owner) || flip > 1 || !rows ||
             y > cb.height || rows > cb.height - y || pixels.size !== cb.width * rows * 4) return 0;
         const request = this.request(pixels, true);
+        const started = performance.now();
         this.record(GLES.IOSURFACE_READ, [handle, y, rows, flip, request.id]);
         this.flush();
-        return request.done.then(ok => ok ? 1 : 0);
+        return request.done.then(ok => {
+            let meter = this.iosurface_reads.get(cb);
+            if(!meter) this.iosurface_reads.set(cb, meter = { frames: 0, strips: 0, bytes: 0, readback_ms: 0, next_y: 0 });
+            meter.readback_ms += performance.now() - started;
+            if(!ok) { meter.next_y = 0; return 0; }
+            meter.strips++;
+            meter.bytes += pixels.size;
+            if(y === 0) { meter.next_y = 0; meter.connection = conn.id; meter.flip = flip; }
+            if(y !== meter.next_y || conn.id !== meter.connection || flip !== meter.flip)
+                meter.next_y = 0;
+            else if((meter.next_y += rows) === cb.height) { meter.frames++; meter.next_y = 0; }
+            return 1;
+        });
     }
     if(command.name === "rcReadColorBuffer")
     {
@@ -308,6 +325,19 @@ GLESHost.prototype.rc_call = function(conn, command, args)
     }
     if(this.writer.size() > FLUSH_BYTES) this.flush();
     return ret;
+};
+
+/** Bounded counters for live native drawables; no GL calls or readbacks. */
+GLESHost.prototype.performance = function()
+{
+    const drawables = [];
+    for(const [handle, cb] of this.rc.color_buffers)
+    {
+        const meter = this.iosurface_reads.get(cb);
+        if(meter) drawables.push({ handle, width: cb.width, height: cb.height,
+            frames: meter.frames, strips: meter.strips, bytes: meter.bytes, readback_ms: meter.readback_ms });
+    }
+    return { drawables };
 };
 
 /** renderControl's objects and frames: the shadow state follows, the page gets records */

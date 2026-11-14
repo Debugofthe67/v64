@@ -1,0 +1,60 @@
+<!doctype html><meta charset="utf-8"><title>iPhone battle checkpoint benchmark</title>
+<style>iframe{width:1400px;height:1100px}#log{white-space:pre-wrap}</style>
+<pre id="log"></pre><pre id="result">Running…</pre>
+<script type="module">
+// A caller-owned browser profile contains BOTH the RAM checkpoint and its
+// matching OPFS NAND generation. Clone that closed profile before EACH run;
+// never restore RAM against a disk advanced by the preceding measurement.
+const query = new URLSearchParams(location.search), sleep = ms => new Promise(r => setTimeout(r, ms));
+const log = text => document.getElementById("log").textContent += text + "\n";
+const artifact = async (name, body) => {
+    const response = await fetch("/__artifact?name=" + name, { method: "POST", body });
+    if(!response.ok) throw Error("Could not save " + name);
+};
+async function until(fn, description, timeout = 120000) {
+    const end = performance.now() + timeout;
+    while(performance.now() < end) { const value = await fn();if(value) return value;await sleep(10); }
+    throw Error("Timed out: " + description);
+}
+let emulator, input;
+try {
+    const vm = query.get("vm");if(!vm) throw Error("vm must identify the checkpoint's disposable VM");
+    const frame = document.createElement("iframe");frame.src = "/index.html?vm=" + encodeURIComponent(vm);document.body.append(frame);
+    emulator = await until(() => frame.contentWindow.v86_console?.emulator, "console");
+    await emulator.stop();
+    const root = await navigator.storage.getDirectory(), directory = await root.getDirectoryHandle("v86-performance");
+    const file = await (await directory.getFileHandle(query.get("checkpoint") || "battle-state.v86")).getFile();
+    await emulator.restore_state_stream({ size: file.size, read: async (at, length) =>
+        new frame.contentWindow.Uint8Array(await file.slice(at, at + length).arrayBuffer()) });
+    log("Restored battle RAM and matching NAND; " + file.size + " snapshot bytes");
+    const sample = () => emulator.get_diagnostics();
+    const frames = d => (d.graphics?.native?.drawables || []).filter(x => x.width === 960 && x.height === 640).reduce((n, x) => n + x.frames, 0);
+    const touch = points => emulator.bus.send("touch", { width: 640, height: 960, touches: points });
+    let tick = 0;const block = () => touch([[1, 45 + (tick++ % 2), 480]]);
+    block();input = setInterval(block, 2000);
+    await emulator.run();
+    const initial = await sample(), warmup = Number(query.get("warmup") || 12);
+    if(!initial.graphics?.native) throw Error("Build lacks native presentation counters");
+    await until(async () => { await sleep(200);return frames(await sample()) - frames(initial) >= warmup; }, "warmup game frames", 180000);
+    const before = await sample();log("Warmup completed: " + (frames(before) - frames(initial)) + " frames");
+    const duration = Number(query.get("duration") || 60000);
+    await sleep(duration);
+    const after = await sample(), image = emulator.screen_make_screenshot();
+    await emulator.stop();clearInterval(input);touch([]);
+    const ms = after.host_time - before.host_time, count = frames(after) - frames(before);
+    const result = { label: query.get("label") || "unlabelled", checkpoint: { name: file.name, bytes: file.size, modified: file.lastModified },
+        input: "hold shield at (45/46,480), move every 2000 ms", warmup_frames: frames(before) - frames(initial),
+        duration_ms: ms, game_frames: count, game_fps: count * 1000 / ms,
+        panel_frames: after.graphics.panel.frames - before.graphics.panel.frames,
+        panel_fps: (after.graphics.panel.frames - before.graphics.panel.frames) * 1000 / ms,
+        before, after };
+    await artifact("battle-fps.json", JSON.stringify(result, null, 2));
+    if(image?.src) await artifact("battle.png", await (await fetch(image.src)).blob());
+    if(count < 1) throw Error("No complete game frame in measurement window");
+    log(JSON.stringify({ duration_ms: ms, game_frames: count, game_fps: result.game_fps, panel_fps: result.panel_fps }));
+    document.getElementById("result").textContent = "PASS: same-checkpoint measurement completed; 60 FPS acceptance requires inspecting battle-fps.json";
+} catch(error) {
+    clearInterval(input);await emulator?.stop().catch(() => {});log(error.stack);
+    document.getElementById("result").textContent = "FAIL: " + error.stack;
+}
+</script>
