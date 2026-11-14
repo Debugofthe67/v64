@@ -1,5 +1,15 @@
 # Infinity Blade 安装与帧率验证
 
+## 清理剩余旧格式探针（2026-11-15）
+
+按磁盘空间要求，再清理 `build/ios` 下 12 个过期物理 NAND 格式/引导探针：
+`eff-2/8`、`yaftl-v2`、`face-v1/v11/test`、`grdn0/1`、`ctrl-public`、
+`nand-probe`、`fbbt-format`、`plog-format`。删除前遍历全部已分配 extent，
+未发现正向或反相的有效 HFS/HFSX 卷头，文件均为单链接、无打开句柄。
+原分配块合计 67.64 MiB，不把每个稀疏文件约 17 GiB 的逻辑长度当作腾出空间。
+真实安装盘、系统/数据卷和不可变基准副本保留。
+审计和删除记录为本地 `perf/old-probe-audit.json` / `old-probe-cleanup.json`。
+
 ## 有界重放保留正在播放的音频检查点（2026-11-15）
 
 为建立没有 AMC 忙等的真实战斗检查点，新增 codec 状态版本 2：在解码批次之间
