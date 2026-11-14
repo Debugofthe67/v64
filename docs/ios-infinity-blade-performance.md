@@ -1,5 +1,23 @@
 # Infinity Blade 安装与帧率验证
 
+## MP3 切换与输入阻塞续作（2026-11-14）
+
+已纠正此前对 `0x84004600` 程序的识别：它是 MP3 解码器，而非单独的电源控制
+程序。原生寄存器窗口 `0x960=c6005c00 / 0x964=8544602f / 0x968=c013f7fb`
+与其指令前缀共同匹配；未知窗口不确认。原先只发 ready、没有初始化结果头，
+导致 AppleAMC-176 第 582 行缓冲区数量校验失败。随后背景 MP3 的 AudioQueuePrime
+返回 `nope`，主线程在 AudioQueueDispose 等待回调退出，而回调等待主线程持有的
+AVAudioPlayer mutex，UIKit 事件时间停在电影结束处。此前显示战斗 HUD 并不代表可操作。
+
+现按 MP3 协议声明两个 2304 样本输出缓冲区，沿真实 engine-0、CDMA、S24-in-S32
+路径交付解码数据。WebCodecs 每个 chunk 接收一个完整 MPEG Layer III 包；以逐帧
+输出通知等待批次完成，避免 `flush()` 清掉跨批次的 bit reservoir。未知格式、
+变更格式、截断包与超过 64 包的批次显式失败，不跳过 AudioQueueDispose 或伪造 PCM。
+
+回归使用自行生成的 44.1 kHz 双声道 MP3：三帧批次、下一批帧的左右 1000/1500 Hz
+频率能量、MP3/AAC 不同的输出容量及真实 CDMA 交付均通过；AMC、I2S、CDMA pause/reset
+测试通过。正式游戏冷启动正在复验，**尚未验收战斗操作或 60 fps**。
+
 ## 当前续作结果
 
 更新后的正式构建已从 generation 5 NAND 完整冷启，通过 UI 打开原包。

@@ -11,10 +11,13 @@ export class AMCAudioDecoder
         this.busy = false;
         this.output = [];
         this.failure = null;
+        this.pending = null;
     }
 
     close()
     {
+        this.pending?.reject(new Error("AMC audio decoder closed"));
+        this.pending = null;
         if(this.decoder && this.decoder["state"] !== "closed") this.decoder["close"]();
         this.decoder = null;
         this.key = "";
@@ -59,19 +62,41 @@ export class AMCAudioDecoder
                                 for(let i = 0; i < n; i++) pcm[i * count + ch] = Math.max(-32768, Math.min(32767, Math.round(plane[i] * 32768)));
                             }
                             this.output.push(pcm);
+                            if(this.output.length === this.pending?.frames) this.pending.resolve();
                         }
-                        catch(error) { this.failure = error; }
+                        catch(error) { this.failure = error;this.pending?.reject(error); }
                         finally { frame["close"](); }
                     },
-                    "error": error => { this.failure = error; },
+                    "error": error => { this.failure = error;this.pending?.reject(error); },
                 });
                 this.decoder["configure"](config);
                 this.key = key;
             }
             this.output = [];
             this.failure = null;
-            this.decoder["decode"](new Chunk({ "type": "key", "timestamp": this.timestamp++, "data": data }));
-            await this.decoder["flush"]();
+            const packets = codec === "mp3" ? mp3_packets(data, rate, channels) : [data];
+            if(codec === "mp3")
+            {
+                // flush() drains and resets Chromium's MP3 bit reservoir.
+                // Each complete MPEG packet emits one AudioData, so wait for
+                // those outputs while keeping the live decoder's history.
+                let timer;
+                try
+                {
+                    await new Promise((resolve, reject) => {
+                        this.pending = { frames: packets.length, resolve, reject };
+                        timer = setTimeout(() => reject(new Error("AMC MP3 output timed out")), 10000);
+                        for(const packet of packets)
+                            this.decoder["decode"](new Chunk({ "type": "key", "timestamp": this.timestamp++, "data": packet }));
+                    });
+                }
+                finally { clearTimeout(timer);this.pending = null; }
+            }
+            else
+            {
+                this.decoder["decode"](new Chunk({ "type": "key", "timestamp": this.timestamp++, "data": data }));
+                await this.decoder["flush"]();
+            }
             if(this.failure) throw this.failure;
             const size = this.output.reduce((sum, pcm) => sum + pcm.length, 0);
             if(!size || size > 1 << 19) throw new Error("AMC decoder produced no bounded PCM output");
@@ -82,4 +107,29 @@ export class AMCAudioDecoder
         }
         finally { this.busy = false; }
     }
+}
+
+// WebCodecs takes one MPEG audio frame per chunk. A native AMC input DMA
+// contains a batch of complete packets, including Layer III's bit reservoir.
+function mp3_packets(data, rate, channels)
+{
+    const packets = [];
+    for(let at = 0; at < data.length;)
+    {
+        if(at + 4 > data.length) throw new Error("Truncated AMC MP3 header");
+        const a = data[at + 1], b = data[at + 2], version = a >>> 3 & 3, index = b >>> 2 & 3;
+        const bitrates = version === 3 ? [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320] :
+            [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
+        const bitrate = bitrates[b >>> 4];
+        if(data[at] !== 255 || (a & 0xe6) !== 0xe2 || version === 1 || index === 3 || !bitrate ||
+            [44100, 48000, 32000][index] / (version === 3 ? 1 : version === 2 ? 2 : 4) !== rate ||
+            (data[at + 3] >>> 6 === 3 ? 1 : 2) !== channels)
+            throw new Error("Invalid or changing AMC MP3 frame format");
+        const size = Math.floor((version === 3 ? 144000 : 72000) * bitrate / rate) + (b >>> 1 & 1);
+        if(size > data.length - at) throw new Error("Truncated AMC MP3 frame");
+        packets.push(data.subarray(at, at + size));
+        if(packets.length > 64) throw new Error("Excessive AMC MP3 packet batch");
+        at += size;
+    }
+    return packets;
 }

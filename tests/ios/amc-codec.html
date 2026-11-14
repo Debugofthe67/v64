@@ -1,8 +1,9 @@
-<!doctype html><meta charset="utf-8"><title>AMC AAC DMA completion</title>
+<!doctype html><meta charset="utf-8"><title>AMC AAC and MP3 DMA completion</title>
 <pre id="result">Running…</pre>
 <script type="module">
 import { AppleAMC } from "/src/apple/amc.js";
 import { AppleCDMA } from "/src/apple/cdma.js";
+import { AMCAudioDecoder } from "/src/apple/audio_decode.js";
 const assert = (value, message) => { if(!value) throw Error(message); };
 const ram = new Uint8Array(0x10000), ports = new Map(), interrupts = [];
 const cpu = {
@@ -47,11 +48,45 @@ try {
     assert(dma.channel[23*8]&0x80000,'CDMA completes after copying its descriptor');
     assert(amc.pending[0]&(1<<20),'compressed input retires after its PCM was delivered');
     assert(interrupts.some(([n,level])=>n===23&&level),'native PCM consumer gets its completion');
+    // A generated MP3 stream exercises complete DMA batches and a following
+    // batch on the same decoder (Layer III bit reservoir survives the batch boundary).
+    const mp3=await(await fetch('/tests/ios/fixtures/amc-mp3.json')).json();
+    const packets=mp3.packets.map(p=>Uint8Array.from(atob(p),c=>c.charCodeAt(0)));
+    const batch=new Uint8Array(packets.slice(0,3).reduce((n,p)=>n+p.length,0));
+    let at=0;for(const p of packets.slice(0,3)){batch.set(p,at);at+=p.length;}
+    const decoder=new AMCAudioDecoder();
+    const pcm=await decoder.decode(batch,44100,2,'mp3');
+    assert(pcm.length===3*2304&&decoder.output.length===3,'one native MP3 DMA contains three real frames');
+    const next=await decoder.decode(packets[3],44100,2,'mp3');
+    assert(next.length===2304,'MP3 decoder continues into the next DMA');
+    for(const [channel,freq] of [[0,1000],[1,1500]]){
+        let signal=0,quadrature=0,energy=0;
+        for(let i=0;i<1152;i++){const s=next[2*i+channel];signal+=s*Math.sin(2*Math.PI*freq*i/44100);quadrature+=s*Math.cos(2*Math.PI*freq*i/44100);energy+=s*s;}
+        assert(2*(signal*signal+quadrature*quadrature)/(1152*energy)>0.95,'MP3 retains the generated channel frequency '+JSON.stringify({channel,energy,ratio:2*(signal*signal+quadrature*quadrature)/(1152*energy)}));
+    }
+    for(const bad of [batch.subarray(0,batch.length-1),new Uint8Array([255,251,0,0])]){
+        let rejected=false;try{await decoder.decode(bad,44100,2,'mp3');}catch{rejected=true;}
+        assert(rejected,'truncated/free-format MP3 is rejected');
+    }
+    decoder.close();
+    amc.write(0x99c,3);
+    [0x21000004,0xb623a100,0x58100000,0x00080a30].forEach((w,i)=>v.setUint32(0x4600+i*4,w,true));
+    for(const [reg,value]of [[0x940,0x84004600],[0x960,0xc6005c00],[0x964,0x8544602f],[0x968,0xc013f7fb]])amc.write(reg,value);
+    amc.write(0x984,0);
+    assert(v.getUint16(0x18002,true)===2&&v.getUint16(0x18004,true)===2304,'native MP3 output contract differs from AAC');
+    amc.write(0xc48,4);v.setUint16(0x1ff00,1,true);
+    m.set(packets[0],0x20400);v.setUint32(0x20004,packets[0].length<<16,true);
+    v.setUint32(0x30104,9216,true);d.setUint32(0x10c,9216,true);
+    dma.write(base,2);dma.write(base+8,0x8480002c);dma.write(base+12,9216);dma.write(base+20,0x40000100);dma.write(base,0x19);
+    amc.write(0,0x30002);amc.write(0x100,0x20002);
+    const mp3end=performance.now()+10000;
+    while(amc.codec.stats.pcm_bytes!==8192+9216&&performance.now()<mp3end){amc.poll();await new Promise(r=>setTimeout(r,5));}
+    assert(amc.codec.stats.failures===0&&amc.codec.stats.decoded_samples===2048+2304&&amc.codec.stats.pcm_bytes===8192+9216,'MP3 crosses the real engine-0 and CDMA path '+JSON.stringify(amc.codec.stats));
     // Malformed linked input is a codec error, never a successful silent frame.
     amc.codec.reset();v.setUint32(0x20000,0x20002,true);amc.codec.initialized=true;amc.codec.input=0x20002;
     amc.poll();await new Promise(r=>setTimeout(r,0));amc.poll();
     assert(amc.codec.stats.failures===1&&v.getUint16(0x1ff28,true)===1,'cyclic input reports the native error contract');
-    document.getElementById('result').textContent='PASS: actual AAC to native S24 PCM, ordered engine-0/CDMA completion, cyclic-input rejection';
+    document.getElementById('result').textContent='PASS: real AAC/MP3 PCM, MP3 packet batches and channel frequencies, native buffer contracts, ordered CDMA, malformed-input rejection';
 }catch(error){document.getElementById('result').textContent='FAIL: '+error.stack;}
 finally{amc.codec.reset();}
 </script>

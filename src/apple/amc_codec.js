@@ -1,13 +1,12 @@
 import { AMCAudioDecoder } from "./audio_decode.js";
 
 const RESULT = 0x18000, DMA_DONE = 1 << 20, PORT = 0x8480002c;
-// The 10B329 control bootstrap loaded for AMC power transitions. It signals
-// program-ready independently of the AAC buffer contract. Match both entry
-// and instruction prefix; arbitrary/unknown DSP programs do not complete.
-const BOOT_ENTRY = 0x84004600, BOOT_PREFIX = [0x21000004, 0xb623a100, 0x58100000, 0x00080a30];
+// The MP3 program also starts with a ready interrupt. Its memory windows,
+// rather than the entry alone, identify the decoder and its buffer contract.
+const MP3_PREFIX = [0x21000004, 0xb623a100, 0x58100000, 0x00080a30];
 const view = bytes => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-// HLE of the observed 10B329 AAC program, not a DSP instruction emulator.
+// HLE of the observed 10B329 AAC/MP3 programs, not a DSP instruction emulator.
 // The descriptor protocol and local addresses are hardware interfaces;
 // unknown programs stay unsupported rather than receiving fake PCM.
 export class AMCCodec
@@ -21,6 +20,7 @@ export class AMCCodec
         this.decoder = null;
         this.busy = false;
         this.initialized = false;
+        this.program = "";
         this.input = 0;
         this.resume = 0;
         this.moves = [];
@@ -29,7 +29,7 @@ export class AMCCodec
         this.slot = 0;
         this.input_pending = false;
         this.polling = false;
-        this.stats = { initialized: 0, bootstraps: 0, inputs: 0, decoded_samples: 0, pcm_bytes: 0, failures: 0, errors: [] };
+        this.stats = { initialized: 0, mp3_initialized: 0, inputs: 0, decoded_samples: 0, pcm_bytes: 0, failures: 0, errors: [] };
         this.reset();
         device.on_job = (offset, value) => this.write(offset, value);
         dma.ports.set(PORT, () => this.poll());
@@ -42,6 +42,7 @@ export class AMCCodec
         this.decoder = null;
         this.busy = false;
         this.initialized = false;
+        this.program = "";
         this.input = 0;
         this.resume = 0;
         this.moves = [];
@@ -81,20 +82,19 @@ export class AMCCodec
         }
         else if(offset === 0x984)
         {
-            if(this.device.regs[0x940 >>> 2] === BOOT_ENTRY)
+            const regs = this.device.regs, m = view(this.device.memory());
+            if(regs[0x940 >>> 2] === 0x84004600)
             {
-                const code = view(this.device.memory());
-                if(BOOT_PREFIX.every((word, i) => code.getUint32(0x4600 + i * 4, true) === word))
-                {
-                    this.stats.bootstraps++;
-                    this.device.complete(4); // control program ready, not an AAC/DMA job
-                }
-                return;
+                if(regs[0x960 >>> 2] !== 0xc6005c00 || regs[0x964 >>> 2] !== 0x8544602f ||
+                    regs[0x968 >>> 2] !== 0xc013f7fb ||
+                    !MP3_PREFIX.every((word, i) => m.getUint32(0x4600 + i * 4, true) === word)) return;
+                this.program = "mp3";
+                this.stats.mp3_initialized++;
             }
-            if(this.device.regs[0x940 >>> 2] !== 0x83007020) return;
-            const m = view(this.device.memory());
+            else if(regs[0x940 >>> 2] === 0x83007020) this.program = "aac";
+            else return;
             m.setUint16(RESULT + 2, 2, true);
-            m.setUint16(RESULT + 4, 2048, true);
+            m.setUint16(RESULT + 4, this.program === "mp3" ? 2304 : 2048, true);
             this.initialized = true;
             this.stats.initialized++;
             this.device.complete(4); // program initialized its buffer contract
@@ -141,12 +141,29 @@ export class AMCCodec
             let at = 0;
             for(const part of parts) { input.set(part, at);at += part.length; }
             const config = view(this.device.memory());
-            if(config.getUint16(RESULT + 0x7f00, true) !== 0x1f)
-                throw new Error("Unsupported AMC AAC stream parameters");
-            const rate = config.getUint16(RESULT + 0x7f04, true) * 65536 + config.getUint16(RESULT + 0x7f06, true);
-            const channels = input[0] >>> 5 === 1 ? 2 : 1;
+            let rate, channels, codec;
+            if(this.program === "mp3")
+            {
+                // MPEG-1/2/2.5 Layer III header; the native MP3 parameter
+                // block contains only the field mask, not an AAC rate.
+                const version = input[1] >>> 3 & 3, index = input[2] >>> 2 & 3;
+                if(config.getUint16(RESULT + 0x7f00, true) !== 1 || input[0] !== 255 ||
+                    (input[1] & 0xe6) !== 0xe2 || version === 1 || index === 3)
+                    throw new Error("Unsupported AMC MP3 stream parameters");
+                rate = [44100, 48000, 32000][index] / (version === 3 ? 1 : version === 2 ? 2 : 4);
+                channels = input[3] >>> 6 === 3 ? 1 : 2;
+                codec = "mp3";
+            }
+            else
+            {
+                if(config.getUint16(RESULT + 0x7f00, true) !== 0x1f)
+                    throw new Error("Unsupported AMC AAC stream parameters");
+                rate = config.getUint16(RESULT + 0x7f04, true) * 65536 + config.getUint16(RESULT + 0x7f06, true);
+                channels = input[0] >>> 5 === 1 ? 2 : 1;
+                codec = "mp4a.40.2";
+            }
             if(!this.decoder) this.decoder = new AMCAudioDecoder();
-            const samples = await this.decoder.decode(input, rate, channels);
+            const samples = await this.decoder.decode(input, rate, channels, codec);
             if(generation !== this.generation) return;
             this.stats.inputs++;
             this.stats.decoded_samples += samples.length;
