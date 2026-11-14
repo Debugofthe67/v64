@@ -37,7 +37,8 @@ for(const test of cases)
     for(const item of implementations)for(let i=0;i<8;i++)test.run(item);
     for(let round=0;round<rounds;round++)for(const index of round&1?implementations.map((_,i)=>i).reverse():implementations.map((_,i)=>i))
     {
-        const item=implementations[index],cpu=process.cpuUsage(),start=performance.now();let result;
+        const item=implementations[index];global.gc?.();
+        const cpu=process.cpuUsage(),start=performance.now();let result;
         for(let i=0;i<iterations;i++)result=test.run(item);
         const wallMs=performance.now()-start,nodeCpuUs=process.cpuUsage(cpu);
         assert.deepEqual(result,expected);entry.implementations[index].rounds.push({wallMs,nodeCpuUs});

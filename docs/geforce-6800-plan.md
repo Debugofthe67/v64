@@ -2221,3 +2221,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 UI 模态保护：控件自身 enabled 不代表父对话框可操作；现在沿 WS_CHILD 父链拒绝禁用窗口下的动作。原版 XP 05 成功提示仍打开时，对主窗口 Run 的请求已在发送消息前明确拒绝；严格 C 编译通过。串行 IQ 改为核对原版保存提示后点击其 OK，再选择下一项；见 `g6-native-combo-tree-controls.json`。
 
 - G6 顶点循环热点：原版 06 顶点特性测试的并行宿主采样中，array_vertices/vertex_value/indices 合计约 33% self，另有逐元素回调开销。索引改为有界 DataView 循环，canonical float4 改为四次直接 DWORD 写入；保留原 DMA 检查、转换和默认分量。7 轮交错微测的 16/32 位索引 Node CPU 中位 36.86/37.79→3.73/3.28 ms，indexed/inline 顶点 115.44/51.79→63.84/25.42 ms，输出逐字节一致。state/graph/texture/DMA、完整真实 WebGPU 像素/别名/快照回归及 Closure 通过。见 `g6-native-vertex-loop-overhead.json`；不据微测宣称原生 FPS，最终独立时间分布仍待采集。
+
+- G6 有界浮点顶点读取：仅对密集、线性 VRAM 的 FLOAT1–4 合并一次 checked DMA，跨度至多 4 MiB 且不超过索引属性载荷四倍；保留原始 DWORD 位、缺省分量和每次 draw 的新读取。分页/系统内存、零 stride 与稀疏索引保留逐顶点路径。旧实现新回归先红；48 组布局/基顶点、NaN/负零、限长/权限、可跳过中间未映射页的回归全绿，完整真实 GPU 和 Closure 通过。显式测前 GC 的 7 轮交错微测 indexed CPU 中位 54.29→32.19 ms；未改动的控制用例波动不解释为收益。见 `g6-bounded-float-vertex-spans.json`；最终原生性能验收继续。

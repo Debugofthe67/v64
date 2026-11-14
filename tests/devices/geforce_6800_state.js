@@ -52,7 +52,7 @@ try
 {
     const repeated=state.array_vertices(o,[2,0,2,0],inputs);
     assert.deepEqual(repeated.bytes,new Uint8Array([...fetched.bytes,...fetched.bytes]));
-    assert.equal(vertexReads,2,"duplicate vertex addresses are fetched once within a synchronous draw");
+    assert.equal(vertexReads,1,"dense linear float vertices share one checked VRAM span within a draw");
     assert.equal(currentReads,1,"only the disabled attribute reads its current value, once per draw");
     new Float32Array(vram.buffer,0x3010,1)[0]=77;o.methods.set(0x1C30,f(.75));
     const changed=state.array_vertices(o,[2],inputs);

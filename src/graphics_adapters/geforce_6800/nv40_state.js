@@ -306,11 +306,45 @@ export class NV40State
     {
         const bytes=new Uint8Array(indices.length*inputs.length*16),view=new DataView(bytes.buffer);
         const baseVertex=get(o,0x173C)|0;
+        let bounds=null;
         for(let slot=0;slot<inputs.length;slot++)
         {
             const attribute=inputs[slot][0],format=get(o,0x1740+attribute*4),layout=this.vertex_layout(format),stride=format>>>8&255;
             const offset=get(o,0x1680+attribute*4),dma=layout.size?this.dma(o,offset&0x80000000?0x1A0:0x19C):null;
-            const current=layout.size?null:this.attribute(o,attribute),fetched=new Map();
+            const current=layout.size?null:this.attribute(o,attribute);
+            if(layout.size && layout.type===2 && dma.linear && !dma.target && stride && indices.length)
+            {
+                if(bounds===null)
+                {
+                    let first=Infinity,last=0;
+                    for(let vertex=0;vertex<indices.length;vertex++)
+                    {
+                        const index=indices[vertex]+baseVertex;
+                        if(!Number.isSafeInteger(index) || index<0) throw new RangeError("NV40 invalid vertex index");
+                        first=Math.min(first,index);last=Math.max(last,index);
+                    }
+                    bounds=[first,last];
+                }
+                const length=(bounds[1]-bounds[0])*stride+layout.bytes;
+                // Only plain linear VRAM permits reading unused gaps. Paged
+                // and system-memory objects keep per-vertex checks; sparse
+                // indices also keep their small original transfers.
+                if(length<=4<<20 && length<=indices.length*layout.bytes*4)
+                {
+                    const block=this.device.dma.read(dma,(offset&0x0FFFFFFF)+bounds[0]*stride,length);
+                    const source=new DataView(block.buffer,block.byteOffset,block.byteLength),size=layout.size;
+                    for(let vertex=0;vertex<indices.length;vertex++)
+                    {
+                        const from=(indices[vertex]+baseVertex-bounds[0])*stride,at=(vertex*inputs.length+slot)*16;
+                        view.setUint32(at,source.getUint32(from,true),true);
+                        view.setUint32(at+4,size>1?source.getUint32(from+4,true):0,true);
+                        view.setUint32(at+8,size>2?source.getUint32(from+8,true):0,true);
+                        view.setUint32(at+12,size>3?source.getUint32(from+12,true):0x3F800000,true);
+                    }
+                    continue;
+                }
+            }
+            const fetched=new Map();
             for(let vertex=0;vertex<indices.length;vertex++)
             {
                 let values=current;const index=indices[vertex]+baseVertex;
