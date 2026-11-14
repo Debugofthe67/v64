@@ -245,7 +245,7 @@ export class AppleCLCD
         return pages;
     }
 
-    surface_words(base)
+    surface_words(base, staging = null)
     {
         const size = this.rgba.length, offset = this.cpu.ram_offset(base, size);
         if(offset >= 0 && !(offset & 3))
@@ -253,7 +253,7 @@ export class AppleCLCD
         if(base & 3) return null;
         const pages = this.surface_pages(base, size);
         if(!pages) return null;
-        const bytes = this.scanout_bytes || (this.scanout_bytes = new Uint8Array(size));
+        const bytes = staging || this.scanout_bytes || (this.scanout_bytes = new Uint8Array(size));
         let at = 0;
         for(const [physical, length] of pages)
         {
@@ -280,8 +280,29 @@ export class AppleCLCD
         if(this.blank && !this.dirty && now < this.next_blank_scan) return;
         const started = performance.now();
         const base = this.regs[0x4044 >>> 2];
-        const words = this.surface_words(base);
+        // Prepare before taking any Wasm views: allocation can grow memory.
+        // Parallel guests keep the original scan because another core may
+        // write pixels between the comparison and the JS conversion.
+        const exports = this.cpu.wm?.exports;
+        const pointer = (!this.cpu.parallel && exports?.["a64_video_changed"] &&
+            exports["a64_video_prepare"]?.(this.shown.length)) >>> 0;
+        const staging = pointer ? new Uint8Array(this.cpu.wasm_memory.buffer, pointer, this.rgba.length) : null;
+        const words = this.surface_words(base, staging);
         if(!words) return;
+        if(staging)
+        {
+            // DART scatter pages were already gathered into staging. A
+            // contiguous physical surface needs one native typed-array copy.
+            if(words.buffer !== staging.buffer || words.byteOffset !== staging.byteOffset)
+                staging.set(new Uint8Array(words.buffer, words.byteOffset, words.byteLength));
+            const changed = exports["a64_video_changed"]();
+            if(!this.dirty && !changed)
+            {
+                this.performance.scans++;
+                this.performance.scan_ms += performance.now() - started;
+                return;
+            }
+        }
         let changed = this.dirty, any = 0;
         const packed = this.backlight === 2047 && this.rgba32;
         for(let i = 0; i < words.length; i++)

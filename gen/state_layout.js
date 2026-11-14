@@ -342,6 +342,7 @@ export const STATICS = {
         REFUSED: "debug", RESERVED_FILL_REFUSED: "machine", STEP_STATS: "machine", STEP_SAMPLED: "debug",
         UNCACHED_ACCESSES: "debug" },
     "aarch64/decode.rs": { BUFFER: "debug" },
+    "aarch64/video.rs": { SOURCE: "scratch", SHADOW: "cache" },
     // PSCI: the cores' power states and pending CPU_ON starts, a SYSTEM_OFF
     // or SYSTEM_RESET request
     "aarch64/psci.rs": { POWER: "machine", START: "machine", REQUEST: "machine", SNAPSHOT: "scratch" },
