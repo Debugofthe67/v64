@@ -18,6 +18,9 @@
 // BROWSER_PROFILE keeps a caller-owned disposable profile; BROWSER_PORT
 // preserves its origin for checkpoint benchmarks. BROWSER_WASM overrides
 // only build/v86-arm64.wasm, without replacing another test's build.
+// BROWSER_PROCESS_METRICS=1 adds this Chrome's cumulative per-process CPU
+// seconds to /__host_metrics (requires BROWSER_DEBUG_PORT). Sample outside
+// timed work; these are diagnostic brackets, never an FPS denominator.
 
 import http from "node:http";
 import fs from "node:fs";
@@ -124,16 +127,50 @@ async function timing_quiet()
     await new Promise(resolve => setTimeout(resolve, 500));
 }
 
-const server = http.createServer((req, res) =>
+async function chrome_process_metrics()
+{
+    // SystemInfo.getProcessInfo: cpuTime is cumulative seconds across all
+    // threads of each process. Connect only to the caller-owned Chrome.
+    // https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/SystemInfo.pdl
+    const port = Number(process.env.BROWSER_DEBUG_PORT);
+    if(!Number.isInteger(port) || port < 1 || port > 65535) throw Error("BROWSER_DEBUG_PORT required for process metrics");
+    const version = await (await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(2000) })).json();
+    const socket = new WebSocket(version.webSocketDebuggerUrl);
+    try
+    {
+        return await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(Error("Chrome process metrics timed out")), 2000);
+            const finish = (error, result) => { clearTimeout(timer);error ? reject(error) : resolve(result); };
+            socket.onerror = () => finish(Error("Chrome process metrics socket failed"));
+            socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: "SystemInfo.getProcessInfo" }));
+            socket.onmessage = ({ data }) => {
+                const message = JSON.parse(data);
+                if(message.id !== 1) return;
+                finish(message.error ? Error(message.error.message) : null,
+                    { time: Date.now(), processes: message.result?.processInfo });
+            };
+        });
+    }
+    finally { socket.close(); }
+}
+
+const server = http.createServer(async (req, res) =>
 {
     const address = new URL(req.url, "http://localhost");
     if(address.pathname === "/__host_metrics")
     {
         const disk = fs.statfsSync(root);
+        let chrome;
+        if(process.env.BROWSER_PROCESS_METRICS === "1")
+        {
+            try { chrome = await chrome_process_metrics(); }
+            catch(error) { chrome = { error: error.message }; }
+        }
         res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ time: Date.now(), platform: os.platform(),
             cpus: os.availableParallelism(), load_average: os.loadavg(),
-            memory_total: os.totalmem(), memory_free: os.freemem(), disk_available: disk.bavail * disk.bsize }));
+            memory_total: os.totalmem(), memory_free: os.freemem(), disk_available: disk.bavail * disk.bsize,
+            ...(chrome ? { chrome } : {}) }));
         return;
     }
     if(req.method === "POST" && address.pathname === "/__artifact" && process.env.TEST_ARTIFACT_DIR)

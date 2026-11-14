@@ -1,5 +1,19 @@
 # Infinity Blade 安装与帧率验证
 
+## 宿主 CPU 时间诊断（2026-11-15）
+
+浏览器 runner 可用 `BROWSER_PROCESS_METRICS=1`，配合固定
+`BROWSER_DEBUG_PORT` 在 `/__host_metrics` 记录本轮自有 Chrome 各进程累计
+CPU 秒数。来源为 [CDP SystemInfo.getProcessInfo](https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/SystemInfo.pdl)，
+包含同一进程的所有线程，不能当作 CPU Worker 单线程占用率。只在计时窗口外
+取两端读数，调用失败记录 error、不改变原宿主指标和 FPS 公式。
+
+正常时钟、同一有效格挡检查点的反向时钟候选对照中，该指标已实际回读：候选
+30 帧 13.199 秒，主要 renderer 累计增加 19.987 CPU 秒；控制 30 帧 13.446 秒，
+增加 20.616 CPU 秒。CPU 秒数用于辅助诊断构建、线程和宿主调度噪声，绝不
+将 FPS 按 CPU 时间或 load average 换算为“校正 FPS”。
+
+
 ## NEON 非规格化输入候选：未保留（2026-11-15）
 
 尝试在本地向量中将有限 subnormal 输入转为带符号零，成功路径设置 IDC，
