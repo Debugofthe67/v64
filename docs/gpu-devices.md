@@ -272,19 +272,31 @@ restore. Driver installation fixtures use overlays and cold reboots;
 long-lived investigation snapshots are not substitutes for a clean guest
 acceptance run.
 
-Full benchmark acceptance remains open. The corrected XP 3DMark99 run completed
-all 26 tests without GPU/PGRAPH faults and exported its project and eighteen
-original IQ BMPs. The [full-run fixture](fixtures/nv40/g3-xp-9371-99-full-corrected.json)
-records the remaining pixel differences from the proxy reference. Win98's
-[corrected native IQ rerun](fixtures/nv40/g3-win98-8198-99-iq-corner-fixed.json)
-removed the substantial IQ06 upload error; eight of its nine images match
-XP exactly outside the metadata band, and the ninth differs at one pixel.
-The game frames share small residuals against the proxy reference. A cold XP
-[3DMark2000 run](fixtures/nv40/g3-xp-9371-2000-full-clean.json) also completed
-all 22 selected tests without GPU/PGRAPH faults and exported its project and
-eighteen IQ BMPs after normal shutdown. Its game-frame image differences
-remain unresolved. A fresh corrected Win98 full run, Win98 3DMark2000,
-later versions and the 3DMark06 performance report remain under investigation. The unmodified
+Full benchmark and reference-image acceptance remain open. Both XP and a
+[fresh cold Win98 run](fixtures/nv40/g3-win98-8198-99-cold-full.json) completed
+all 26 3DMark99 tests and exported their native projects and IQ images.
+The [corrected XP run](fixtures/nv40/g3-xp-9371-99-full-corrected.json) and
+[Win98 IQ rerun](fixtures/nv40/g3-win98-8198-99-iq-corner-fixed.json) record
+remaining pixel differences from the proxy reference; eight Win98 images
+match XP exactly outside the metadata band, and the ninth differs at one pixel.
+
+Cold [XP](fixtures/nv40/g3-xp-9371-2000-full-clean.json) and
+[Win98](fixtures/nv40/g3-win98-8198-2000-full-clean.json) 3DMark2000 runs each
+completed all 22 selected tests. A later
+[Win98 IQ rerun](fixtures/nv40/g3-win98-8198-2000-vertex-dual-iq.json) removes
+the substantial vertex-lighting defects; small reference residuals remain.
+
+[XP 3DMark2001 SE](fixtures/nv40/g4-xp-9371-2001-native-all21.json) completed
+all 21 selected tests in a fresh benchmark execution in a restored guest,
+exported its original project and eight IQ BMPs, and shut down normally.
+[XP 3DMark03](fixtures/nv40/g4-xp-9371-03-cold-full-eleven.json) completed its
+cold-boot eleven-test suite, exported the original result and shut down normally.
+These functional completions do not establish reference-image or isolated
+performance acceptance. The
+[05 export](fixtures/nv40/g4-xp-9371-05-cold-three-gt-cpu1.json) contains three
+graphics tests and CPU1; CPU2 and the full feature/batch selection remain open.
+Win98 2001/03, full XP 06 and the remaining IQ comparisons are still under
+investigation. The unmodified
 NVIDIA driver advertises SM3.0 capabilities beyond the validated subset;
 known unsupported draw states and instructions produce bounded faults;
 some other register paths still store values. See
@@ -322,6 +334,17 @@ includes worker threads. The 379 display semaphore releases include loading
 pages and are not a benchmark FPS count. The [window and raw-artifact hashes](fixtures/nv40/g6-xp-9371-06-isolated-window.json)
 preserve the actual counter boundaries; [profiling.md](profiling.md) explains
 how to reproduce the report. Later driver teardown remains under investigation.
+
+Subsequent concurrent saved-state windows found substantial repeated BC
+texture decoding. A [bounded decoded-cache comparison](fixtures/nv40/g6-native-06-decoded-cache-budget.json)
+reduces decode evictions from 2,248 to zero and BC decoder self samples from
+9.72 to 3.01 seconds for the measured windows; both still end at the original
+native driver timeout. The decoded cache now permits twice guest VRAM, capped
+at 512 MiB, with exact source-byte checks on every use. The same profile found
+184 IFC notifier-binding barriers. [Disjoint binding batching](fixtures/nv40/g6-disjoint-ifc-notifier-bindings.json)
+preserves the real four-byte RAMIN writeback and retains ordering for aliases
+and invalid handles. These changes do not establish native 06 completion or
+an isolated performance improvement.
 
 ## Architecture
 
