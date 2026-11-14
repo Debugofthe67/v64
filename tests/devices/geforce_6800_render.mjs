@@ -1023,16 +1023,31 @@ try
         method(0x1FF4,1<<14);method(0xA74,1);method(0xA70,0);method(0xA6C,8);
         for(const [at,value] of [[0x1A04,0x12529],[0x1A18,1<<16|1],[0x1A10,0xAAE4],[0x1A14,0x01010000],[0x1840,4]])method(at,value);
         [23<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
-        for(let frame=0;frame<70;frame++)
+        const cache=engine.backend,cacheLimits=[cache.resource_limit,cache.resource_byte_limit];
+        cache.resource_limit=96;
+        const textureFrame=async(frame)=>
         {
             const at=0x20000+frame*256,color=[frame,frame+16,255-frame,255];vram.set(color,at);method(0x1A00,at);
             method(0x1808,6);for(const word of new Uint32Array(floats.buffer))method(0x1818,word);
             method(0x1808,0);await engine.backend.wait();
             assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
             assert.deepEqual([...vram.subarray(0x10000,0x10004)],color,"live color/depth targets survive texture cache turnover "+frame);
-        }
-        assert.equal(engine.backend.resources.size,64,"texture resources remain bounded while hot attachments survive");
-        console.log("PASS: real WebGPU color/depth attachments survive 70 rotating textures in the bounded resource cache");
+        };
+        for(let frame=0;frame<70;frame++)await textureFrame(frame);
+        const warmedMisses=cache.stats.resourceMisses,warmedCold=cache.stats.coldUploadBytes;
+        for(let frame=0;frame<70;frame++)await textureFrame(frame);
+        assert.equal(cache.stats.resourceMisses,warmedMisses,"a working set above 64 resources remains resident on its second pass");
+        assert.equal(cache.stats.coldUploadBytes,warmedCold,"resident texture reuse does not upload its initial image again");
+        cache.resource_limit=16;
+        for(let frame=70;frame<90;frame++)await textureFrame(frame);
+        assert.equal(cache.resources.size,16,"entry budget evicts old textures while attachments remain correct");
+        cache.resource_limit=512;cache.resource_byte_limit=520;
+        for(let frame=90;frame<100;frame++)await textureFrame(frame);
+        assert(cache.stats.resourceBytes<=520,"logical image bytes, not only entry count, bound retained resources");
+        cache.resource_byte_limit=128;await textureFrame(100);
+        assert(cache.stats.resourceBytes<=128,"mandatory attachments exceeding retention budget are trimmed after actual readback");
+        [cache.resource_limit,cache.resource_byte_limit]=cacheLimits;
+        console.log("PASS: real WebGPU 70-texture reuse, entry/byte budgets and oversized active attachments preserve exact pixels");
         const cubeColors=[[0,0,255,255],[0,255,0,255],[255,0,0,255],[0,255,255,255],[255,0,255,255],[255,255,0,255]],
             directions=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
         for(const [at,value] of [[0x1A00,0x50000],[0x1A04,0x1052D],[0x1A18,1<<16|1],[0x1760,0x1032]])method(at,value);

@@ -134,8 +134,10 @@ export class NV40Render
         this.writer=new D9WGWriter(0x3034564E); // "NV40", separate resource namespace
         this.query=0;this.next=2;this.sequence=0;this.request=0;this.created=false;
         this.resources=new Map();this.shaders=new Map();this.declarations=new Map();
+        this.resource_limit=512;this.resource_byte_limit=Math.min(512<<20,Math.max(64<<20,this.device.vram_size*2));
+        this.draw_resources=null;
         this.batch=null;this.pending=null;this.quiescing=false;this.stats={batches:0,draws:0,bytes:0,readbacks:0,failures:0,uploads:0,uploadBytes:0,
-            resourceHits:0,resourceMisses:0,resourceEvictions:0,coldUploadBytes:0};
+            resourceHits:0,resourceMisses:0,resourceEvictions:0,coldUploadBytes:0,resourceBytes:0,peakResourceBytes:0};
         renderer["listen"](message=>this.receive(message));
     }
     reset()
@@ -143,6 +145,7 @@ export class NV40Render
         if(this.pending) this.pending.resolve();
         this.batch=null;this.pending=null;this.writer=new D9WGWriter(0x3034564E);this.created=false;this.resources.clear();this.shaders.clear();this.declarations.clear();
         this.textures.clear();
+        this.draw_resources=null;this.stats.resourceBytes=0;
         this.query=0;this.next=2;this.renderer["post"]({"type":"reset"});
     }
     wait() {this.flush();return this.pending?this.pending.promise.then(()=>this.wait()):Promise.resolve();}
@@ -162,6 +165,22 @@ export class NV40Render
         this.command(OP.CREATE_DEVICE,{"width":1,"height":1,"backbuffer_format":21,"windowed":1,"behavior_flags":0x20});
         this.created=true;
     }
+    trim_resources(incomingBytes=0,incomingEntries=0)
+    {
+        const protectedHandles=new Set([...(this.batch?[...this.batch.outputs.keys(),...this.batch.guards.keys()]:[]),
+            ...(this.pending?this.pending.outputs.map(output=>output.handle):[]),...(this.draw_resources||[])]);
+        while(this.resources.size+incomingEntries>this.resource_limit || this.stats.resourceBytes+incomingBytes>this.resource_byte_limit)
+        {
+            const first=[...this.resources].find(([,resource])=>!protectedHandles.has(resource.handle));
+            // Required attachments and one draw's bindings may exceed the
+            // retention budget. Keep them until use/readback has completed,
+            // then trim again; never evict a resource still being assembled.
+            if(!first)break;
+            const [key,resource]=first;
+            this.writer.command(OP.DESTROY_RESOURCE,{"resource_handle":resource.handle,"resource_kind":resource.kind});
+            this.resources.delete(key);this.stats.resourceBytes-=resource.bytes;this.stats.resourceEvictions++;
+        }
+    }
     target(surface,bytes,usage=1)
     {
         // A null image creates a host-only scratch attachment. Colorless NV
@@ -172,15 +191,15 @@ export class NV40Render
         if(!resource)
         {
             this.stats.resourceMisses++;
-            if(this.resources.size>=64)
-            {
-                const protectedHandles=new Set(this.batch?[...this.batch.outputs.keys(),...this.batch.guards.keys()]:[]);
-                const first=[...this.resources].find(([,resource])=>!protectedHandles.has(resource.handle));
-                if(!first) throw new RangeError("NV40 pending target cache is full");
-                this.writer.command(OP.DESTROY_RESOURCE,{"resource_handle":first[1].handle,"resource_kind":first[1].kind});this.resources.delete(first[0]);this.stats.resourceEvictions++;
-            }
-            resource={handle:this.next++,kind:surface.cube?4:surface.volume?5:3,images:null};
+            // Logical host image storage, including every mip, cube face and
+            // volume slice. Packed/depth formats may widen to four bytes.
+            let storage=0;
+            for(let level=0;level<levels;level++)storage+=Math.max(1,surface.width>>>level)*Math.max(1,surface.height>>>level)*
+                (surface.volume?Math.max(1,surface.depth>>>level):1)*Math.max(4,surface.bpp)*(surface.cube?6:1);
+            this.trim_resources(storage,1);
+            resource={handle:this.next++,kind:surface.cube?4:surface.volume?5:3,images:null,bytes:storage};
             this.resources.set(key,resource);
+            this.stats.resourceBytes+=storage;this.stats.peakResourceBytes=Math.max(this.stats.peakResourceBytes,this.stats.resourceBytes);
             this.command(surface.cube?OP.CREATE_TEXTURE_CUBE:surface.volume?OP.CREATE_TEXTURE_VOLUME:OP.CREATE_TEXTURE_2D,
                 {"resource_handle":resource.handle,...(surface.cube?{"edge_length":surface.width}:{"width":surface.width,"height":surface.height,...(surface.volume?{"depth":surface.depth}:{})}),
                     "level_count":levels,"format":surface.d3d,"usage":usage});
@@ -190,6 +209,7 @@ export class NV40Render
         // must survive eviction while new sampled textures fill the cache.
         this.resources.delete(key);this.resources.set(key,resource);
         const handle=resource.handle;
+        if(this.draw_resources)this.draw_resources.add(handle);
         if(images)images.forEach((bytes,index)=>{
             const previous=resource.images && resource.images[index],changed=changed_bytes(previous,bytes);
             if(!changed) return;
@@ -416,6 +436,7 @@ export class NV40Render
         // Everything that can fault on guest state is checked before emitting
         // commands or changing the host's resource cache.
         if(!this.batch) this.batch={channel:o.channel,subc,outputs:new Map(),guards:new Map(),draws:0,query:null};
+        this.draw_resources=new Set();
         this.initialize();const handles=colors.map((surface,index)=>surface?this.target(surface,initial[index]):0),
             vs=this.shader(shaders.vertex.bytecode,true),ps=this.shader(shaders.fragment.bytecode,false);
         // The shared D3D executor expects a color attachment. Bind a scratch
@@ -488,6 +509,7 @@ export class NV40Render
         if(depth)(zsa.stencil || get(o,0xA74)&&get(o,0xA70)?this.batch.outputs:this.batch.guards)
             .set(depthHandle,{target:depth,handle:depthHandle});
         this.batch.query=query;this.batch.draws++;this.stats.draws++;
+        this.draw_resources=null;this.trim_resources();
         if(query || this.batch.draws>=32 || this.writer.size()>=(8<<20) || !this.device.fifo?.running) this.flush();
     }
     flush()
@@ -565,7 +587,7 @@ export class NV40Render
                 const {object,value}=pending.query;
                 object.methods.set(QUERY_COUNT,(get(object,QUERY_COUNT)+value)>>>0);
             }
-            this.pending=null;pending.resolve();this.device.machine.wake();
+            this.pending=null;this.trim_resources();pending.resolve();this.device.machine.wake();
             if(!this.quiescing) this.device.fifo.run();
         }
     }

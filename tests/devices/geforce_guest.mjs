@@ -294,6 +294,14 @@ export async function run_geforce_guest(win98)
         const cpu = vm.v86.cpu;
         nv = cpu.devices.graphics_adapter.device["nv"];
         nv.trace.enabled = process.env.NV_TRACE !== "0";
+        if(process.env.NV_RESOURCE_CACHE_MIB || process.env.NV_RESOURCE_CACHE_ENTRIES)
+        {
+            const cache=nv.graph.engine3d.backend;assert(cache,"resource cache comparison needs a renderer");
+            if(process.env.NV_RESOURCE_CACHE_MIB)
+            {const mib=Number(process.env.NV_RESOURCE_CACHE_MIB);assert([64,128,256,512].includes(mib));cache.resource_byte_limit=mib*1048576;}
+            if(process.env.NV_RESOURCE_CACHE_ENTRIES)
+            {const entries=Number(process.env.NV_RESOURCE_CACHE_ENTRIES);assert([16,64,128,256,512].includes(entries));cache.resource_limit=entries;}
+        }
         if(process.env.NV_TEXTURE_CACHE_MIB || process.env.NV_TEXTURE_CACHE_ENTRIES)
         {
             const cache=nv.graph.engine3d.backend?.textures;assert(cache,"texture cache comparison needs a renderer");

@@ -1,0 +1,65 @@
+{
+  "date": "2026-11-14",
+  "stage": "G6 bounded GPU resource retention",
+  "implementation": [
+    "Retain up to 512 entries with a logical image-byte budget of twice guest VRAM, bounded to 64..512 MiB. Count full mip chains, cube faces, volume slices and packed/depth widening to at least four bytes.",
+    "Protect every resource while assembling the current draw as well as queued color/depth attachments. Mandatory active images can exceed the retention budget until use/readback completes; trim again after completion.",
+    "Reset clears resident-byte accounting. Optional harness NV_RESOURCE_CACHE_MIB/ENTRIES enables bounded policy comparisons."
+  ],
+  "equalWorkGpuProof": {
+    "workload": "Identical 70 one-pixel native texture bindings, two passes, same GPU pixels for every draw.",
+    "capacity64": {
+      "firstPassResourceMisses": 102,
+      "secondPassResourceMisses": 172,
+      "extraMisses": 70,
+      "evidence": "build/nv40-cache-budget-red.log"
+    },
+    "capacity96": {
+      "secondPassExtraMisses": 0,
+      "secondPassExtraColdUploadBytes": 0,
+      "evidence": "build/nv40-cache-budget-gpu.log"
+    },
+    "additionalValidation": [
+      "16-entry turnover preserves hot color/depth attachments",
+      "520-byte retention budget preserves exact pixels",
+      "Mandatory active attachments exceeding a 128-byte retention budget complete readback correctly, then retention falls within budget",
+      "Complete real Chrome WebGPU suite and graph suite pass; release Closure has zero errors/warnings"
+    ]
+  },
+  "nativeContinuation": {
+    "source": "build/nv40-xp-mark06-pull1-software-stall.state",
+    "run": "build/nv40-xp-mark06-cache-budget-cold-full",
+    "status": "Original cold default-six continuation is running, not complete.",
+    "observedGpu": {
+      "batches": 1984,
+      "draws": 4318,
+      "bytes": 2386987000,
+      "readbacks": 5304,
+      "failures": 0,
+      "uploads": 999,
+      "uploadBytes": 1415079788,
+      "resourceHits": 13844,
+      "resourceMisses": 107,
+      "resourceEvictions": 0,
+      "coldUploadBytes": 474596204,
+      "resourceBytes": 521782124,
+      "peakResourceBytes": 521782124
+    },
+    "graphFaults": []
+  },
+  "limits": "Native wall-time runs execute different amounts of work under concurrent host load. The equal-work GPU test proves reduced resource recreation and first-image upload; it does not establish a benchmark FPS result, timeout resolution or whole-plan performance acceptance. The old active-GT1 baseline RAM file is no longer present, so it was not substituted with a different checkpoint for a claimed paired result.",
+  "evidence": [
+    {
+      "file": "build/nv40-cache-budget-gpu.log",
+      "sha256": "033717edce7c81e99268f8c114787bc6de302cf57a86e8a3e28a5b3281b1a93a"
+    },
+    {
+      "file": "build/nv40-cache-budget-red.log",
+      "sha256": "1dc11dc9ff25e19e226ef9f05154188d2c1f506ab561a9766a2dd20136a2fe3c"
+    },
+    {
+      "file": "build/nv40-cache-budget-build.log",
+      "sha256": "3e2db9c38a92d52f4bd26887489b92b62c184ab35916c0be0d0fad34d558a0f2"
+    }
+  ]
+}
