@@ -15,6 +15,12 @@ pub const CALL: u32 = 0x8664;
 /// The device's answer when there is no backdoor: the UDF stays undefined
 pub const NOT_HANDLED: i32 = i32::MIN;
 
+// Empty asynchronous reads need the host event loop to deliver a reply.
+// This is a scheduling hint, never a guest WFI or a fabricated response.
+static mut HOST_YIELD: bool = false;
+pub fn host_yield_requested() -> bool { unsafe { HOST_YIELD } }
+pub fn take_host_yield() -> bool { unsafe { core::ptr::replace(&raw mut HOST_YIELD, false) } }
+
 #[cfg(target_arch = "wasm32")]
 mod js {
     #[link(wasm_import_module = "env")]
@@ -45,6 +51,7 @@ pub fn call(word: u32, length: u32, thumb: bool) -> bool {
     if answer == NOT_HANDLED {
         return false;
     }
+    if r0 & 0xffff == 3 && answer == -2 { unsafe { HOST_YIELD = true; } }
     crate::aarch64::a32::set_reg(0, answer as u32);
     true
 }

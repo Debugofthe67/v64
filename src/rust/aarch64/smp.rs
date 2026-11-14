@@ -501,7 +501,7 @@ fn run_core(budget: u32) -> u32 {
                 return i;
             },
             // (YIELD: the other cores' turn; a spin loop waits for one of them)
-            Flow::Yield if several => return i,
+            Flow::Yield if several || crate::aarch64::backdoor::host_yield_requested() => return i,
             // (a DSB waits for other cores' acknowledgements, P8.3: a worker
             // waits here, taking the others' maintenance meanwhile, until a
             // kick asks it to stop; the machine's core returns, its loop
@@ -585,6 +585,10 @@ pub fn a64_run_slice(_now: f64) -> f64 {
             prepare(core);
             executed += run_core(budget);
             ran = true;
+            if crate::aarch64::backdoor::take_host_yield() {
+                unsafe { crate::core_stats::flush_core_statistics() };
+                return 0.0;
+            }
             if crate::parallel::active()
                 && unsafe { core::ptr::replace(&raw mut KICKED_NOW, false) }
             {
@@ -630,6 +634,7 @@ pub fn a64_worker_slice(budget: u32) -> f64 {
     }
     prepare(core);
     run_core(budget);
+    crate::aarch64::backdoor::take_host_yield();
     unsafe { crate::core_stats::flush_core_statistics() };
     crate::aarch64::timer::tick();
     if runnable(core) {
@@ -650,6 +655,7 @@ pub fn a64_boot(entry_low: u32, entry_high: u32, x0_low: u32, x0_high: u32) {
     let entry = entry_low as u64 | (entry_high as u64) << 32;
     let x0 = x0_low as u64 | (x0_high as u64) << 32;
     switch_to(0);
+    crate::aarch64::backdoor::take_host_yield();
     unsafe {
         for core in 1..MAX_CORES {
             SAVED[core].0.fill(0);
