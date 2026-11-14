@@ -126,6 +126,14 @@ CLCD render 包含 3.31 秒，各包含时间有嵌套，不能相加。八次 I
 （逻辑大小 5.28 GB）。由于 APFS 克隆共享块，不将该逻辑大小报告成实际释放量；
 匹配的主检查点和当前工作克隆保留，记录在忽略目录 `perf/profile-cleanup.json`。
 
+只读解析用户原 IPA 的 `Coalesced_INT.bin` 和 `Coalesced_CHN.bin`，两份均完整解析
+到文件末尾。`IPhone-SwordEngine.ini` 的 `Engine.Engine` 段为
+`bSmoothFrameRate=TRUE`、`MinSmoothedFrameRate=20`、`MaxSmoothedFrameRate=35`，
+`SystemSettings.UseVsync=False`。这是原包的配置事实，尚不能证明运行中的对象没有
+覆盖它；后续接近该范围时还须核实引擎限帧，否则仅优化模拟器也不能保证 60 FPS。
+当前约 1 FPS 远低于此范围，先处理 CPU 瓶颈。没有修改 IPA 或存档配置，保持 A/B 场景
+一致；只保留上述属性的本地证据在 `perf/frame-config.json`，不提交原包内容。
+
 ## MP3 切换与输入阻塞续作（2026-11-14）
 
 本轮已修复电影结束后的 AMC/MP3 阻塞，完整 NAND 冷启动后可进入 God King 战斗，
