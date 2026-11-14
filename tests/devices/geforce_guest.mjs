@@ -306,7 +306,7 @@ export async function run_geforce_guest(win98)
         {
             const cache=nv.graph.engine3d.backend?.textures;assert(cache,"texture cache comparison needs a renderer");
             if(process.env.NV_TEXTURE_CACHE_MIB)
-            {const mib=Number(process.env.NV_TEXTURE_CACHE_MIB);assert([64,128,256].includes(mib));cache.cache_limit=mib*1048576;}
+            {const mib=Number(process.env.NV_TEXTURE_CACHE_MIB);assert([64,128,256,512].includes(mib));cache.cache_limit=mib*1048576;}
             if(process.env.NV_TEXTURE_CACHE_ENTRIES)
             {const entries=Number(process.env.NV_TEXTURE_CACHE_ENTRIES);assert([256,512,1024].includes(entries));cache.cache_entries=entries;}
         }
