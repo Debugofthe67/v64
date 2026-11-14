@@ -141,6 +141,36 @@ try
         method(0x1808,0);await engine.backend.wait();
         for(let at=0x10000;at<0x10100;at+=4)assert.deepEqual([...vram.subarray(at,at+4)],[0x99,0x66,0x33,255],"native Direct3D triangle fan covers both triangles");
         console.log("PASS: native 0x1015 triangle fan, snapshot/index stream and real WebGPU coverage");
+        const savedClipMask=graph.object(0,0x2000).methods.get(0x1FF4);
+        const positionCode=[0x401F9C6C,0x0040000D,0x81000000,0x0001EF81],clipCode=positionCode.slice();
+        clipCode[1]|=1<<8;clipCode[3]=(clipCode[3]&~(31<<2|15<<13))|14<<2|2<<13;
+        method(0x1E9C,0);
+        [...positionCode.slice(0,3),positionCode[3]&~1,...clipCode].forEach((word,i)=>method(0xB80+i*4,word));
+        method(0x1744,0x32);method(0x1FD0,0x3A3A3A);method(0x1FD4,0x3A3A3A);
+        const clipDraw=async(values)=>{
+            vram.fill(0,0x10000,0x10100);method(0x1808,6);
+            for(const word of new Uint32Array(Float32Array.from(values).buffer))method(0x1818,word);
+            method(0x1808,0);await engine.backend.wait();
+            assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
+        },clipTriangle=[0,0,0,0,-4,0,16,0,0,-4,16,0,0,0,12],clipPixel=x=>[...vram.subarray(0x10000+32+x*4,0x10000+32+x*4+4)];
+        for(let plane=0;plane<6;plane++)for(const sign of [1,2])
+        {
+            method(0x1478,sign<<(plane*4));method(0x1FF4,1<<(6+plane));await clipDraw(clipTriangle);
+            assert.deepEqual(clipPixel(1),sign===1?[0x99,0x66,0x33,255]:[0,0,0,0],"clip plane "+plane+" left side, mode "+sign);
+            assert.deepEqual(clipPixel(6),sign===2?[0x99,0x66,0x33,255]:[0,0,0,0],"clip plane "+plane+" right side, mode "+sign);
+        }
+        method(0x1478,2|1<<20);method(0x1FF4,1<<6|1<<11);await clipDraw(clipTriangle);
+        assert(vram.subarray(0x10000,0x10100).every(value=>value===0),"opposed planes in both clip groups reject the whole triangle");
+        method(0x1478,2);method(0x1FF4,1<<6);method(0x1740,0x42);
+        await clipDraw([0,0,0,1,0,0,-4,0,16,0,1,0,0,-4,16,0,0,2,0,0,12]);
+        assert.deepEqual(clipPixel(5),[0,0,0,0],"clip distance uses perspective interpolation with unequal homogeneous W");
+        assert.deepEqual(clipPixel(7),[0x99,0x66,0x33,255]);
+        method(0x1740,0x22);method(0x1FF4,0);await clipDraw(clipTriangle);
+        assert.deepEqual(clipPixel(1),[0x99,0x66,0x33,255],"a disabled TBUF clip output does not leak its previous distance");
+        method(0x1478,0);method(0x1740,0x822);method(0x1744,2);method(0x1E9C,0);
+        positionCode.forEach((word,i)=>method(0xB80+i*4,word));
+        if(savedClipMask===undefined)graph.object(0,0x2000).methods.delete(0x1FF4);else method(0x1FF4,savedClipMask);
+        console.log("PASS: six real WebGPU user clip planes, both signs, two groups, output masks and perspective interpolation");
         const scanout=[];device.display={release_semaphore:value=>scanout.push({value,pixel:view.getUint32(0x10000,true)})};
         method(0x1D6C,0x01000000);method(0x1808,6);
         for(const word of new Uint32Array(Float32Array.of(0,0,0,16,16,0).buffer))method(0x1818,word);

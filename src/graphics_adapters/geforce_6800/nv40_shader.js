@@ -12,7 +12,7 @@ const src = (type,index,swizzle=[0,1,2,3],negate=false,absolute=false) =>
         (absolute ? negate ? 12 : 11 : +negate) << 24) >>> 0;
 const semantic = (usage,index=0,texture=0) => (0x80000000 | usage | index << 16 | texture << 27) >>> 0;
 const VERTEX_OUTPUTS = [[0,0],[10,0],[10,1],[10,2],[10,3],[11,0],[4,0],
-    ...Array.from({length:10},(_,i)=>[5,i])];
+    ...Array.from({length:10},(_,i)=>[5,i]),[5,14],[5,15]];
 const FRAGMENT_INPUTS = [[0,0],[10,0],[10,1],[11,0],...Array.from({length:10},(_,i)=>[5,i])];
 
 class Shader
@@ -50,6 +50,16 @@ class Shader
             this.inputs.set(index,[1,slot]);this.declare(1,slot,meaning);
         }
         return this.inputs.get(index);
+    }
+    clip_input(group)
+    {
+        const key="clip"+group;
+        if(!this.inputs.has(key))
+        {
+            const slot=[...this.inputs.values()].filter(([type])=>type===1).length;
+            this.inputs.set(key,[1,slot]);this.declare(1,slot,[5,14+group]);
+        }
+        return this.inputs.get(key);
     }
     output(index)
     {
@@ -198,6 +208,7 @@ export function translate_vertex_program(program,options={})
     // routing, plus explicit writes; unrouted indexed destinations are dead.
     const indexedTargets=new Set(options.result_map?options.result_map.filter(r=>r[3]!==false).map(r=>r[1]):
         [0,...Array.from({length:8},(_,i)=>7+i)]);
+    for(const [,register] of options.clips||[])if(register>=0)indexedTargets.add(register);
     for(const i of program.instructions) for(const op of [i.vector,i.scalar])
         if(op.type==="output" && !i.address.output)indexedTargets.add(op.index);
     const indexedRegisters=[...indexedTargets].filter(index=>index>=0 && index<16);
@@ -454,6 +465,17 @@ export function translate_vertex_program(program,options={})
             src(0,raw.get(register),component<0?[0,1,2,3]:Array(4).fill(component)));
     }
     const viewport_constants=[];
+    for(const group of new Set((options.clips||[]).map(([plane])=>Math.floor(plane/3))))
+    {
+        const target=shader.output(17+group);
+        shader.emit(OP.MOV,dst(6,target),shader.literal(1));
+        for(const [plane,register,component,sign] of options.clips)
+        {
+            if(Math.floor(plane/3)!==group)continue;
+            shader.emit(OP.MOV,dst(6,target,1<<(plane%3)),raw.has(register)?
+                src(0,raw.get(register),Array(4).fill(component),sign<0):shader.literal(0));
+        }
+    }
     if(options.viewport)
     {
         if(!raw.has(0)) throw new RangeError("NV40 vertex position is not written");
@@ -490,6 +512,15 @@ export function translate_vertex_program(program,options={})
 export function translate_fragment_program(program,options={})
 {
     const shader=new Shader("fragment",program.constants.map((_,i)=>i));
+    // The shared D3D9 path implements user clipping with perspective-correct
+    // interpolated distances and fragment discard. Keep the six native TBUF
+    // distances separate from every guest FP input, including unknown input 15.
+    // Each private varying carries three planes; unused lanes stay positive.
+    for(const group of new Set((options.clips||[]).map(([plane])=>Math.floor(plane/3))))
+    {
+        const [type,index]=shader.clip_input(group),temp=shader.temp("clip"+group);
+        shader.emit(OP.MOV,dst(0,temp),src(type,index));shader.emit(OP.KIL,dst(0,temp));
+    }
     const textureConstants=new Map();
     // The indexed input bank is TEX0..TEX9, independent of other declarations.
     if(program.instructions.some(i=>i.input_relative)) for(let index=4;index<14;index++)shader.input(index);

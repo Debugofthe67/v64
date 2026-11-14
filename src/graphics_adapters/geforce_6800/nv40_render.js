@@ -331,7 +331,7 @@ export class NV40Render
         const enable=get(o,0x220,1),active=enable&15;
         if(enable&~31 || active && (!(active&1) || active!==1 && !(enable&16))) throw new RangeError("NV40 unsupported render target enable mask");
         const zsa=nv40_depth_state(o,(get(o,0x208)>>>5&7)===2,mode);
-        if(get(o,0x142C) || get(o,0x374) || get(o,0x1478) ||
+        if(get(o,0x142C) || get(o,0x374) ||
             get(o,0x1828,0x1B02)!==0x1B02 || get(o,0x182C,0x1B02)!==0x1B02)
             throw new RangeError("NV40 raster state is not connected");
         const blend=nv40_blend_state(o,active);

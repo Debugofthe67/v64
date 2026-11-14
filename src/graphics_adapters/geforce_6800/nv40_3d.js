@@ -225,7 +225,8 @@ export class NV40_3D
     {
         const program = this.program(o);
         if(program.errors.length) throw new RangeError(program.errors.join("; "));
-        const vertexOptions={...options,result_map:this.state.results(o)},fragmentOptions={...options,
+        const clips=this.state.clips(o);
+        const vertexOptions={...options,result_map:this.state.results(o),clips},fragmentOptions={...options,clips,
             fog:{mode:o.methods.has(0x8CC)?get(o,0x8CC):0x2601,
                 constant:o.methods.has(0x8D0)?new Float32Array(Uint32Array.of(get(o,0x8D0)).buffer)[0]:1,
                 linear:o.methods.has(0x8D4)?new Float32Array(Uint32Array.of(get(o,0x8D4)).buffer)[0]:1}};

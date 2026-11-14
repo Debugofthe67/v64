@@ -43,6 +43,18 @@ try
     const reflected=validate("NV-output-routing",routing).reflection.outputDeclarations;
     assert(reflected.some(item=>item.usage===5&&item.usageIndex===0),"raw TBUF5 becomes TEX0 via the output map");
     assert(!reflected.some(item=>item.usage===11),"raw register numbers are not fixed semantics");
+    const clips=[[0,5,2,1],[5,5,3,-1]],clipVS=translate_vertex_program(routed,{clips}),clipPS=translate_fragment_program(fragment,{clips});
+    const clipVertex=validate("NV-user-clip-vertex",clipVS),clipPixel=validate("NV-user-clip-pixel",clipPS);
+    for(const usageIndex of [14,15])
+    {
+        assert(clipVertex.reflection.outputDeclarations.some(item=>item.usage===5&&item.usageIndex===usageIndex));
+        assert(clipPixel.reflection.inputDeclarations.some(item=>item.usage===5&&item.usageIndex===usageIndex));
+    }
+    assert.equal(pipeline.linkShaderSemantics(clipVertex.reflection,clipPixel.reflection).ok,true,
+        "private clip interpolators link alongside native guest texture coordinates");
+    const unknownClipInput=structuredClone(fragment);Object.assign(unknownClipInput.instructions[0].sources[0],{type:"input",index:15});
+    assert.throws(()=>translate_fragment_program(unknownClipInput,{clips}),/unsupported shader input 15/,
+        "adding clip distances does not invent a meaning for guest fragment input 15");
     for (let channel=8;channel<10;channel++)
     {
         const extra=translate_vertex_program(routed,{result_map:[[0,0,-1,true],[7+channel,5,-1,true]]});

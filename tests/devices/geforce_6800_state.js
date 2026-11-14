@@ -142,4 +142,11 @@ o.methods.set(0x1FF4,1<<14);
 assert.deepEqual(routes.find(([semantic])=>semantic===1),[1,3,-1,false]);
 assert.deepEqual(routes.find(([semantic])=>semantic===5),[5,1,0,false]);
 assert.deepEqual(routes.find(([semantic])=>semantic===6),[6,1,1,false]);
+o.methods.set(0x1478,0x212121);o.methods.set(0x1FD0,0x1B0639);o.methods.set(0x1FD4,0x3C2500);o.methods.set(0x1FF4,0xFC0);
+assert.deepEqual(state.clips(o),[[0,14,1,-1],[1,1,2,1],[2,6,3,-1],[3,0,0,1],[4,9,1,-1],[5,15,0,1]],
+    "six clip planes use their independent byte-spaced TBUF component selectors and signs");
+o.methods.set(0x1FF4,0);assert(state.clips(o).every(([,register])=>register===-1),"disabled clip outputs are not read from TBUF");
+o.methods.set(0x1478,0);assert.deepEqual(state.clips(o),[]);
+for(const invalid of [3,0x1000000,4])
+{o.methods.set(0x1478,invalid);assert.throws(()=>state.clips(o),/invalid user clip plane/);}
 console.log("PASS: NV40 checked linear/Morton targets, atomic readback rows and inline/indexed vertex fetch");
