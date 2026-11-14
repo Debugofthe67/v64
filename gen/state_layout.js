@@ -339,7 +339,8 @@ export const STATICS = {
         HELPER_DONE: "scratch",
         // (the access caches' refused fills by reason; the a64_reserved_fill and a64_step_stats switches; the
         // step counters' sampling, each instance's own)
-        REFUSED: "debug", RESERVED_FILL_REFUSED: "machine", STEP_STATS: "machine", STEP_SAMPLED: "debug" },
+        REFUSED: "debug", RESERVED_FILL_REFUSED: "machine", STEP_STATS: "machine", STEP_SAMPLED: "debug",
+        UNCACHED_ACCESSES: "debug" },
     "aarch64/decode.rs": { BUFFER: "debug" },
     // PSCI: the cores' power states and pending CPU_ON starts, a SYSTEM_OFF
     // or SYSTEM_RESET request
