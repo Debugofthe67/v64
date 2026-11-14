@@ -91,6 +91,14 @@ case_\@:
         .endif
     .endif
     .if include
+        // Finite input FZ must raise a previously clear IDC even when the
+        // normalized operation is exact (including signed zeros/aliases).
+        .irp flags,0,0x10,0x1d,0x80,0x8800001f
+            exercise \thumb,\shape,\scalar,\op,0x00000001,0x807fffff,0xbf800000,0x80000000,\flags
+            exercise \thumb,\shape,\scalar,\op,0x3f800000,0x80000000,0x800001ff,0x00800000,\flags
+            exercise \thumb,\shape,\scalar,\op,0x007fffff,0x807fffff,0x00000000,0x807fffff,\flags
+            exercise \thumb,\shape,\scalar,\op,0x00000001,0x800009b9,0x3f000000,0x80000a16,\flags,1
+        .endr
         // RN/FZ/DN for NEON ignore FPSCR's directed mode and clear FZ/DN.
         exercise \thumb,\shape,\scalar,\op,0x3f800001,0xffffff26,0x3f7fffff,0xbf800000,0x08c0009d
         exercise \thumb,\shape,\scalar,\op,0x3bc363c6,0x00000a16,0xbc380000,0x800009b9,0x2000009d
