@@ -34,10 +34,10 @@ async function screenshot(name, frame, emulator) {
     }
     throw Error("No visible battle screenshot after full panel repaint");
 }
-let emulator, input;
+let emulator, input, frame;
 try {
     const vm = query.get("vm");if(!vm) throw Error("vm must identify the checkpoint's disposable VM");
-    const frame = document.createElement("iframe");frame.src = "/index.html?vm=" + encodeURIComponent(vm);document.body.append(frame);
+    frame = document.createElement("iframe");frame.src = "/index.html?vm=" + encodeURIComponent(vm);document.body.append(frame);
     emulator = await until(() => frame.contentWindow.v86_console?.emulator, "console");
     await emulator.stop();
     const root = await navigator.storage.getDirectory(), directory = await root.getDirectoryHandle("v86-performance");
@@ -65,6 +65,12 @@ try {
     };
     const screen_states = [];
     emulator.add_listener("ios-screen-state", state => screen_states.push(state));
+    const running_sample = async () => {
+        const d = await sample();normal_clock(d);
+        if(!d.graphics?.panel?.awake || screen_states.some(s => !s.awake))
+            throw Error("Panel slept during battle work; reject this measurement");
+        return d;
+    };
     await emulator.run();
     // Up and the next Down must have distinct running-machine timestamps.
     const input_mode = query.get("input");
@@ -76,17 +82,17 @@ try {
     const initial = await sample(), warmup = Number(query.get("warmup") || 12);
     normal_clock(initial);
     if(!initial.graphics?.native) throw Error("Build lacks native presentation counters");
-    await until(async () => { await sleep(200);return frames(await sample()) - frames(initial) >= warmup; }, "warmup game frames", 180000);
+    await until(async () => { await sleep(200);return frames(await running_sample()) - frames(initial) >= warmup; }, "warmup game frames", 180000);
     await emulator.stop();await screenshot("battle-start.png", frame, emulator);
     const photographed = frames(await sample());await emulator.run();
-    await until(async () => { await sleep(200);return frames(await sample()) - photographed >= 2; }, "post-screenshot game frames", 120000);
+    await until(async () => { await sleep(200);return frames(await running_sample()) - photographed >= 2; }, "post-screenshot game frames", 120000);
     const host_before = await (await fetch("/__host_metrics")).json();
     const before = await sample();log("Warmup completed: " + (frames(before) - frames(initial)) + " frames");
     normal_clock(before);
     const duration = Number(query.get("duration") || 60000);
     const frame_limit = Number(query.get("frames") || 0);
     if(frame_limit > 0)
-        await until(async () => { await sleep(200);return frames(await sample()) - frames(before) >= frame_limit; }, "fixed-work battle frames", duration);
+        await until(async () => { await sleep(200);return frames(await running_sample()) - frames(before) >= frame_limit; }, "fixed-work battle frames", duration);
     else await sleep(duration);
     const after = await sample();
     normal_clock(after);
@@ -113,6 +119,16 @@ try {
     if(!query.has("hold")) document.getElementById("result").textContent = "PASS: same-checkpoint measurement completed; 60 FPS acceptance requires inspecting battle-fps.json";
 } catch(error) {
     clearInterval(input);await emulator?.stop().catch(() => {});log(error.stack);
+    // A timed-out or sleeping run is evidence to diagnose, never an FPS
+    // result. Preserve the final clock/panel/CPU state and a visible image
+    // when available before the runner closes the disposable browser.
+    if(emulator) {
+        try {
+            await artifact("battle-failure.json", JSON.stringify({ error: error.stack,
+                diagnostics: await emulator.get_diagnostics() }, null, 2));
+            await screenshot("battle-failure.png", frame, emulator);
+        } catch(evidence_error) { log("Failure evidence: " + evidence_error.message); }
+    }
     window.battle_error = error.stack;
     if(!query.has("hold")) document.getElementById("result").textContent = "FAIL: " + error.stack;
 }
