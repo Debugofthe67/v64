@@ -227,7 +227,7 @@ export async function run_geforce_guest(win98)
     assert(Number.isFinite(seconds) && seconds > 0 && seconds <= 21600);
     assert(Number.isFinite(run_delay) && run_delay>=1000 && run_delay<=30000);
     let nv, error = null, launches = 0, next_launch = launch, cancelled = false, checkpoint = false, clock_start = 0;
-    let profiler=null,barrier_report=null,stall=null;
+    let profiler=null,barrier_report=null,stall=null,guest_sampler=null;
     const cancel = () => { cancelled = true; };
     process.on("SIGINT", cancel);
     vm.add_listener("emulator-error", e => { error = String(e); });
@@ -317,15 +317,38 @@ export async function run_geforce_guest(win98)
             assert(offsets.size<=32 && [...offsets].every(value=>Number.isSafeInteger(value)&&value>=0&&value<0x1000000&&!(value&3)));
             const stackWords=Number(process.env.NV_WATCH_STACK_WORDS||16);
             assert(Number.isInteger(stackWords)&&stackWords>=16&&stackWords<=256);
+            const afterDraws=Number(process.env.NV_WATCH_MMIO_AFTER_DRAWS||0);
+            assert(Number.isSafeInteger(afterDraws)&&afterDraws>=0);
             const record=nv.trace.record.bind(nv.trace),accesses=[];
             nv.trace.record=(space,offset,size,write,value,implemented)=>{
                 record(space,offset,size,write,value,implemented);
                 if(space!=="mmio" || !offsets.has(offset) || accesses.length>=512) return;
                 if(process.env.NV_WATCH_MMIO_AFTER_GRAPH_FAULT && !nv.graph.faults.length) return;
+                if((nv.graph.engine3d.backend?.stats.draws||0)<afterDraws)return;
                 accesses.push({elapsed:elapsed(),offset,size,write,value:value>>>0,eip:cpu.instruction_pointer[0]>>>0,
                     stack:read_geforce_guest_stack(cpu,stackWords)});
                 fs.writeFileSync(path.join(out,"mmio-watch.json"),JSON.stringify(accesses,null,2));
             };
+        }
+        if(process.env.NV_GUEST_CPU_SAMPLES)
+        {
+            const limit=Number(process.env.NV_GUEST_CPU_SAMPLES),samples=[];
+            assert(Number.isInteger(limit)&&limit>=1&&limit<=4096);
+            const address=process.env.NV_GUEST_RAM_ADDRESS===undefined?null:Number(process.env.NV_GUEST_RAM_ADDRESS);
+            assert(address===null||Number.isSafeInteger(address)&&address>=0&&address+16<=cpu.mem8.length&&!(address&3));
+            const file=path.join(out,"guest-cpu-samples.json");
+            const timer=setInterval(()=>{
+                if(samples.length>=limit){clearInterval(timer);return;}
+                const backend=nv.graph.engine3d.backend;
+                samples.push({elapsed:elapsed(),eip:cpu.instruction_pointer[0]>>>0,registers:[...cpu.reg32].map(x=>x>>>0),
+                    halted:cpu.in_hlt[0],stack:read_geforce_guest_stack(cpu,64),draws:backend?.stats.draws||0,
+                    backendPending:!!backend?.pending,batchDraws:backend?.batch?.draws||0,
+                    fifo:[0x3240,0x3244,0x3210,0x3270,0x3254].map(at=>nv.registers.get(at)||0),
+                    ram:address===null?null:Array.from({length:4},(_,i)=>new DataView(cpu.mem8.buffer,cpu.mem8.byteOffset+address+i*4,4).getUint32(0,true))});
+                if(samples.length%10===0||samples.length===limit)fs.writeFileSync(file,JSON.stringify({physicalAddress:address,samples}));
+            },100);
+            timer.unref();
+            guest_sampler=()=>{clearInterval(timer);fs.writeFileSync(file,JSON.stringify({physicalAddress:address,samples}));};
         }
         if(process.env.NV_FIFO_FAULTS)
         {
@@ -727,6 +750,12 @@ export async function run_geforce_guest(win98)
                         stall.captures.push({elapsed:elapsed(),unchangedSeconds:elapsed()-stall.changed,pushbuffer,
                             pendingBatch:backend?.batch?{draws:backend.batch.draws}:null,trace:trace_report()});
                         fs.writeFileSync(path.join(out,"fifo-stalls.json"),JSON.stringify(stall.captures,null,2));
+                        if(process.env.NV_STATE_SAVE_STALL && process.env.NV_STATE_SAVE && !checkpoint)
+                        {
+                            await vm.stop();
+                            try {await save_bundle(process.env.NV_STATE_SAVE,process.env.NV_OVERLAY_SAVE,process.env.NV_GAME_OVERLAY_SAVE);checkpoint=true;}
+                            finally {await vm.run();}
+                        }
                     }
                 }
             }
@@ -821,6 +850,7 @@ export async function run_geforce_guest(win98)
     catch(e) { error = e.stack || String(e); }
     finally
     {
+        if(guest_sampler)guest_sampler();
         if(profiler)
         {
             try

@@ -2158,3 +2158,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 TEX8/9 控制范围：原生 05 的 `B60=0` 暴露 XF 坐标控制只接收前八组，硬件实际为 B40–B64 共十组。已接收新增两组禁用零值、检查保留位；未知非零 TEX8/9 控制明确拒绝。真实 TEX8/9 GPU 像素用例现在先提交控制方法，完整 GPU/图形单测与 Closure 通过，见 `g4-disabled-tex89-coordinate-controls.json`。原生默认五项从之前健康状态继续，未据此完成整套或图像验收。
 
 - G1 诊断补齐：原生设备枚举通过 SetupDiOpenDevRegKey 读取实际 DriverVersion。次要对照驱动官方 61.77 安装后冷启动确认 `6.1.7.7`、设备 started/problem=0；1024×768 原生模式设置仍返回 DISP_CHANGE_FAILED，未验收其显示能力，也未替代计划要求的 93.71/81.98，见 `g1-native-driver-version-diagnostic.json`。
+
+- G6 原生等待诊断：MMIO 观察可按绘制数延迟开始，另加有界 PC/安全栈/普通 RAM 只读采样及首个 FIFO 停滞成套快照。06 的后段定向观察没有 USER GET 读取；原版显示驱动实际沿 fence 等待路径运行，完成值在 GPU 工作期间持续增长，随后驱动清理映射并报超时。清理后 DMA 页错误不当作首因；完整六项、根因修复与性能验收仍开放，见 `g6-native-fence-wait-diagnostics.json`。
