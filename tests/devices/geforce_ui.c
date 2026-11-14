@@ -2,8 +2,10 @@
  * observed, visible control through its normal Windows message handler.
  * No graphics entry points, driver state or benchmark results are changed. */
 #define WIN32_LEAN_AND_MEAN
+#define COBJMACROS
 #include <windows.h>
 #include <tlhelp32.h>
+#include <oleacc.h>
 
 static HANDLE output;
 static unsigned int written, windows;
@@ -96,6 +98,57 @@ static BOOL parse(void)
     }
     return TRUE;
 }
+// MSAA exposes the list label as Name and the remaining columns as
+// Description. Read the original control without remote process memory or
+// changing selection, scrolling, benchmark settings or result data.
+static DWORD rows(HWND window)
+{
+    HMODULE ole=LoadLibraryA("ole32.dll"),acc=LoadLibraryA("oleacc.dll"),aut=LoadLibraryA("oleaut32.dll");
+    union {FARPROC raw;HRESULT (WINAPI *call)(LPVOID);} initialize;
+    union {FARPROC raw;void (WINAPI *call)(void);} uninitialize;
+    union {FARPROC raw;HRESULT (WINAPI *call)(HWND,DWORD,REFIID,void**);} accessible;
+    union {FARPROC raw;void (WINAPI *call)(BSTR);} free_string;
+    if(!ole || !acc || !aut){text("ERROR accessibility library unavailable\r\n");return 1;}
+    initialize.raw=GetProcAddress(ole,"CoInitialize");uninitialize.raw=GetProcAddress(ole,"CoUninitialize");
+    accessible.raw=GetProcAddress(acc,"AccessibleObjectFromWindow");free_string.raw=GetProcAddress(aut,"SysFreeString");
+    if(!initialize.raw || !uninitialize.raw || !accessible.raw || !free_string.raw)
+    {text("ERROR accessibility API unavailable\r\n");return 1;}
+    HRESULT initialized=initialize.call(0);
+    if(FAILED(initialized)){text("ERROR CoInitialize=");hex((DWORD)initialized);text("\r\n");return 1;}
+    static const IID iid={0x618736e0,0x3c3d,0x11cf,{0x81,0x0c,0x00,0xaa,0x00,0x38,0x9b,0x71}};
+    IAccessible *object=0;HRESULT status=accessible.call(window,OBJID_CLIENT,&iid,(void**)&object);DWORD result=1;
+    if(SUCCEEDED(status) && object)
+    {
+        LONG count=0;status=IAccessible_get_accChildCount(object,&count);
+        if(SUCCEEDED(status) && count>=0 && count<=1024)
+        {
+            text("ACCESSIBLE_ROWS=");hex((DWORD)count);text("\r\n");result=0;
+            for(LONG i=1;i<=count;i++)
+            {
+                if(written>60000){text("ERROR remaining rows exceed output budget\r\n");result=1;break;}
+                VARIANT child={0};child.vt=VT_I4;child.lVal=i;
+                text("ROW=");hex((DWORD)i);
+                for(unsigned int column=0;column<2;column++)
+                {
+                    BSTR value=0;char utf8[2048];
+                    status=column?IAccessible_get_accDescription(object,child,&value):IAccessible_get_accName(object,child,&value);
+                    text(column?" COLUMNS=":" NAME=");
+                    if(SUCCEEDED(status) && value)
+                    {
+                        int size=WideCharToMultiByte(CP_UTF8,0,value,-1,utf8,sizeof(utf8),0,0);
+                        if(size)text(utf8);else {text("[conversion failed]");result=1;}
+                    }
+                    if(value)free_string.call(value);
+                }
+                text("\r\n");
+            }
+        }
+        else {text("ERROR accessibility row count\r\n");hex((DWORD)status);}
+        IAccessible_Release(object);
+    }
+    else {text("ERROR AccessibleObjectFromWindow=");hex((DWORD)status);text("\r\n");}
+    uninitialize.call();return result;
+}
 void __attribute__((stdcall)) entry(void)
 {
     output=CreateFileA("D:\\NVUI.TXT",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,0,CREATE_ALWAYS,0,0);
@@ -119,7 +172,9 @@ void __attribute__((stdcall)) entry(void)
     if(!IsWindow(window) || !IsWindowVisible(window) || !IsWindowEnabled(window) || !benchmark(window))
     {text("ERROR target must be a visible enabled benchmark control\r\n");goto done;}
     GetClassNameA(window,type,sizeof(type));describe(window);
-    if(!lstrcmpiA(arguments[0],"/click") && !lstrcmpiA(type,"Button"))
+    if(!lstrcmpiA(arguments[0],"/rows") && !lstrcmpiA(type,"SysListView32"))
+        result=rows(window);
+    else if(!lstrcmpiA(arguments[0],"/click") && !lstrcmpiA(type,"Button"))
     {
         LONG style=GetWindowLongA(window,GWL_STYLE)&15;
         HWND parent=GetParent(window),root=window;

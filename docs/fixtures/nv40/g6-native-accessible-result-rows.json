@@ -1,0 +1,47 @@
+{
+  "date": "2026-11-14",
+  "scope": "G6 read-only original benchmark ListView result diagnostics; native2001 full acceptance remains open.",
+  "change": "Native UI helper /rows uses dynamically loaded MSAA to retrieve Name and Description from a visible enabled SysListView32 belonging to an enumerated 3DMark process. It does not read/write remote process memory, invoke graphics APIs or change the list selection.",
+  "bounds": "At most1024 rows,2048 UTF8 bytes per property,60000-byte row budget within existing65536-byte file budget; unsupported controls/targets and unavailable accessibility APIs fail explicitly.",
+  "nativeValidation": {
+    "guest": "XP original93.71",
+    "benchmark": "Original3DMark2001SE Pro",
+    "accessibleRows": 832,
+    "result": "Original API returns the complete result rows; all game/theoretical/DX8 values except GT1 high are numeric. GT1 high and aggregate score are N/A.",
+    "originalResultRows": [
+      "RESULTS",
+      "3DMark Score, N/A",
+      "Game 1 - Car Chase - Low Detail, 0.3 fps",
+      "Game 1 - Car Chase - High Detail, N/A",
+      "Game 2 - Dragothic - Low Detail, 2.3 fps",
+      "Game 2 - Dragothic - High Detail, 1.0 fps",
+      "Game 3 - Lobby - Low Detail, 2.2 fps",
+      "Game 3 - Lobby - High Detail, 1.0 fps",
+      "Game 4 - Nature, 2.1 fps",
+      "Fill Rate (Single-Texturing), 338.7 MTexels/s",
+      "Fill Rate (Multi-Texturing), 837.7 MTexels/s",
+      "High Polygon Count (1 Light), 1.5 MTriangles/s",
+      "High Polygon Count (8 Lights), 1.4 MTriangles/s",
+      "Environment Bump Mapping, 8.4 fps",
+      "DOT3 Bump Mapping, 3.0 fps",
+      "Vertex Shader, 2.2 fps",
+      "Pixel Shader, 15.2 fps",
+      "Advanced Pixel Shader, 3.8 fps",
+      "Point Sprites, 2.4 MSprites/s"
+    ],
+    "limitation": "This is a partial native completion and evidence of the remaining missing test; no aggregate score or full21 acceptance is claimed."
+  },
+  "validation": [
+    "Strict MinGW no-CRT helper build, no additional linker dependencies",
+    "Native original SysListView32 accessibility export",
+    "Existing /list and /click still function in the same guest"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows/win32/winauto/list-view-control"
+  ],
+  "evidence": {
+    "file": "build/nv40-xp-mark2001-native-accessible-results/native-result-rows-0.txt",
+    "bytes": 53607,
+    "sha256": "8b575b7ecc40740757f71d1a3d8abb3ac3c87f2b4099efa2c05756fc2ad0e438"
+  }
+}
