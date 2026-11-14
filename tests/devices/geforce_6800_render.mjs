@@ -131,6 +131,9 @@ try
     assert.throws(()=>engine.method(graph.objects.values().next().value,0x1808,0x1015),/nested/);
     method(0x1808,0);assert.equal(captured[1],7);assert.deepEqual(captured[3],[0,1,2,3]);
     method(0x1808,0x1001);method(0x1810,0);method(0x1808,0);assert.equal(captured[1],1);
+    method(0x1808,0x1012);method(0x1810,0);const triangleSaved=graph.get_state();graph.set_state(triangleSaved);
+    assert.throws(()=>engine.method(graph.objects.values().next().value,0x1808,0x1012),/nested/);
+    method(0x1810,1);method(0x1810,2);method(0x1808,0);assert.equal(captured[1],5);assert.deepEqual(captured[3],[0,1,2]);
     assert.throws(()=>engine.method(graph.objects.values().next().value,0x1808,0x1016),/invalid/);
     engine.backend.draw=draw;
     if(remote)
@@ -141,6 +144,12 @@ try
         method(0x1808,0);await engine.backend.wait();
         for(let at=0x10000;at<0x10100;at+=4)assert.deepEqual([...vram.subarray(at,at+4)],[0x99,0x66,0x33,255],"native Direct3D triangle fan covers both triangles");
         console.log("PASS: native 0x1015 triangle fan, snapshot/index stream and real WebGPU coverage");
+        vram.fill(0,0x10000,0x10100);
+        method(0x1808,0x1012);
+        for(const word of new Uint32Array(Float32Array.of(0,0,0,16,16,16,0,0,16,16,16,0).buffer))method(0x1818,word);
+        method(0x1808,0);await engine.backend.wait();
+        for(let at=0x10000;at<0x10100;at+=4)assert.deepEqual([...vram.subarray(at,at+4)],[0x99,0x66,0x33,255],"native Direct3D triangle list covers both independent triangles");
+        console.log("PASS: native 0x1012 triangle list, snapshot/index stream and real WebGPU coverage");
         const savedClipMask=graph.object(0,0x2000).methods.get(0x1FF4);
         const positionCode=[0x401F9C6C,0x0040000D,0x81000000,0x0001EF81],clipCode=positionCode.slice();
         clipCode[1]|=1<<8;clipCode[3]=(clipCode[3]&~(31<<2|15<<13))|14<<2|2<<13;

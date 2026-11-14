@@ -92,9 +92,10 @@ export class NV40_3D
         {
             if(value)
             {
-                // Native Direct3D 93.71 emits these point/fan encodings in
-                // 03. Keep the GL encodings and reject other values.
-                const primitive=value===0x1001?1:value===0x1015?7:value;
+                // Native Direct3D emits separate point/list/fan encodings
+                // (also documented by Bochs d3d_process_vertex). Keep the
+                // canonical GL encodings and reject other values.
+                const primitive=value===0x1001?1:value===0x1012?5:value===0x1015?7:value;
                 if(primitive>10 || get(o,PRIMITIVE)) throw new RangeError("NV40 nested/invalid BEGIN");
                 o.methods.set(PRIMITIVE,primitive);o.methods.delete(VERTEX_MODE);o.stream=[];
             }

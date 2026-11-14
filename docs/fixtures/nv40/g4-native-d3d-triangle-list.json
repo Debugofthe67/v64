@@ -1,0 +1,66 @@
+{
+  "date": "2026-11-14",
+  "scope": "G4 native Direct3D triangle-list BEGIN encoding; SPEC/VSPEC input15 and full benchmark gates remain open.",
+  "nativeTrigger": {
+    "guest": "XP93.71 original driver and nativeD3D8 runtime",
+    "producer": "Independent64x64 D3D8 HAL probe, DrawPrimitiveUP(D3DPT_TRIANGLELIST,1,3vertices)",
+    "firstFault": {
+      "channel": 1,
+      "subc": 6,
+      "method": 6152,
+      "value": 4114,
+      "source": 256,
+      "status": 16384,
+      "reason": "NV40 nested/invalid BEGIN",
+      "sequence": 5268497,
+      "instance": 957280,
+      "class_id": 16535
+    },
+    "chain": "BEGIN0x1012 is rejected before inline vertices, causing later invalid vertex stream errors. No opcode is rewritten in the native program or driver."
+  },
+  "implementation": "Map only observed0x1012 to canonical triangle-list5 at BEGIN; keep nesting checks and reject unsupported neighboring0x1016.",
+  "source": {
+    "url": "https://github.com/bochs-emu/Bochs/blob/master/bochs/iodev/display/geforce.cc",
+    "fact": "Upstream d3d_process_vertex groups0x1012/TRIANGLELIST with canonical5/TRIANGLES. Only the encoding fact is used; no implementation copied."
+  },
+  "validation": [
+    "RED: prior implementation rejects0x1012 in the new stream case",
+    "GREEN: partial indexed native triangle-list stream survives snapshot and rejects nesting",
+    "RealChromeWebGPU: six inline vertices form two independent triangles and cover every8x8 pixel exactly",
+    "CompleteNV40realGPUrender regression",
+    "Graphunit suite",
+    "Closure release/plugin build completed"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-native-spec-9371-cold/trace.json",
+      "bytes": 5451533,
+      "sha256": "64629bbeb7de6abc0f70e90a12c92bf519fd867ee3fd492d66ff17365de669af"
+    },
+    {
+      "file": "build/nv40-xp-native-spec-9371-cold/NVSPEC.TXT",
+      "bytes": 145,
+      "sha256": "88091958cd600b00cc37da05f6938525394187778468bf67dfa1c8bebb9e8d1f"
+    },
+    {
+      "file": "build/nv40-native-triangle-list-red.log",
+      "bytes": 614,
+      "sha256": "431d1aa7c3d6386dfe738560861525f260a1f1e7c67d8c1145e1d6fd9d45c8e3"
+    },
+    {
+      "file": "build/nv40-native-triangle-list-unit.log",
+      "bytes": 95,
+      "sha256": "22897543f5914fffc623ba01f5b67f6b1e7fa050e7b8d13b7346ade243901c63"
+    },
+    {
+      "file": "build/nv40-native-triangle-list-gpu.log",
+      "bytes": 5658,
+      "sha256": "82093d4307b3e8e7a12d662d1186fa86a22368b1d67a4163f3c2429411ad8c51"
+    },
+    {
+      "file": "build/nv40-native-triangle-list-closure.log",
+      "bytes": 13204,
+      "sha256": "fbc00a8c0b4631ba2ef8d583e4c9daae521344ba4ffc3b4a69b71c00a14f235b"
+    }
+  ]
+}
