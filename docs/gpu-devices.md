@@ -295,7 +295,9 @@ These functional completions do not establish reference-image or isolated
 performance acceptance. The
 [05 export](fixtures/nv40/g4-xp-9371-05-cold-three-gt-cpu1.json) contains three
 graphics tests and CPU1; CPU2 and the full feature/batch selection remain open.
-Win98 2001/03, full XP 06 and the remaining IQ comparisons are still under
+[Win98 2001 SE](fixtures/nv40/g5-win98-8198-2001-native-all21.json) also
+completed all 21, with the native project, eight IQ BMPs and normal shutdown.
+Win98 03, full XP 06 and the remaining IQ comparisons are still under
 investigation. The unmodified
 NVIDIA driver advertises SM3.0 capabilities beyond the validated subset;
 known unsupported draw states and instructions produce bounded faults;

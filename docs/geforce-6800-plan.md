@@ -2172,3 +2172,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 Win98 原始 2005 版 03 冷跑在 97715 draws、零 GPU/非软件 PGRAPH 故障时提示 GT3 DDS corrupted。主 DAT 与已通过 XP 全 11 项的 DAT 及失败 overlay 的 SHA 完全一致；客体 ReadFile/只读映射却在文件页 11094000–11095000 返回同一错误 4 KiB。独立导出复算 CRC 一致，失败 RAM 的物理 CA1000 含整页错误内容，较早检查点该页为零。新增只读原生有界文件校验及系统 RAM DMA 写观察，继续定位覆盖者，未修改原始素材或宣称全套通过。见 `g5-win98-03-original-cached-file-page.json`。
 
 - G5 调查发现并独立修复 x86 分页权限：WP=0 的内核只读页写入曾把共享 TLB 填成用户可写，后续 CPL3 绕过 #PF。现该内核覆写仅缓存为 supervisor，用户读重走页表后仍可读、写仍受保护。旧核 16 种解释器/JIT、普通/PAE、小页/大页组合均静默覆盖；新核全部正确 #PF(error7)，214 原子/分页/MMIO 回归、14 QEMU 系统对照和 133 Rust 测试通过。见 `g5-legacy-supervisor-wp-cache-isolation.json`。Win98 03 的具体缓存页覆盖是否由此产生仍待干净复跑证实，未原地修补缓存或素材。
+
+- G5 Win98 2001 SE 原版全 21 项已完成，原生成功界面 193 分、七 GT 和全部理论/DX8 数值齐全；90612 draws，零 GPU/非软件 PGRAPH/FIFO 故障。原程序导出 NVW01A.3DP 与八张 IQ BMP，正常关机至 FE93D/HLT1/modeNULL。两张大图与 XP 原版逐像素一致，另两张差异 1246/68 像素；代理参考残差与性能仍开放。见 `g5-win98-8198-2001-native-all21.json`。本次为恢复客体中的完整新跑，早于单独 CPU 权限修复，不称为再次冷启动。
