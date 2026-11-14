@@ -1,0 +1,51 @@
+{
+  "date": "2026-11-15",
+  "scope": "Win98 original2005 03 default eleven stopped before GT3 on a real corrupt-file dialog. Bounded native file diagnostics identify one incorrect cached file page; root cause and full suite remain open.",
+  "runtime": {
+    "source": "Original unmodified3.6.0 installer payload, all284 application files deployed with original relative paths on generated FAT16/VFAT medium. The original installer itself failed DAT copy and is not accepted as successfully installed.",
+    "installerSHA256": "c96c7fc9403551a27fd22fcf3a36f7d1ceea11e1814b44f517921e6bb6df8bc4",
+    "datBytes": 470748903,
+    "datSHA256": "352f116cc8b4854dec0e618fccf327052828d4792cb4eda4622e7636748b77a6",
+    "hostVerification": "The main DAT from the original2005 package equals the DAT in the owner-provided XP03 image that completed eleven tests. Reading the generated FAT16 file through the failure checkpoint game overlay also yields the same SHA256."
+  },
+  "failedRun": {
+    "directory": "build/nv40-win98-mark03-original-cold-full",
+    "draws": 97715,
+    "gpuFailures": 0,
+    "nonSoftwarePgraphFaults": [],
+    "originalDialog": "File \"textures/lib/sb_rope_globe_col0000.dds\" is corrupted",
+    "checkpoint": "build/nv40-win98-mark03-original-cold-full/checkpoint-original-dds-load-error.state.bundle.json",
+    "coldBoot": true,
+    "selected": "4GT+2CPU+5feature, original81.98,128MiB VRAM,256MiB RAM; sound not selected"
+  },
+  "nativeReads": {
+    "directory": "build/nv40-win98-mark03-original-dat-range",
+    "offset": "0x1108ecf5",
+    "bytes": 174904,
+    "readFileAndMappedEqual": true,
+    "expectedCRC32": "d98897c1",
+    "readCRC32": "03e0d70b",
+    "expectedSHA256": "896cb85feb3f0f259b1e0c3a8e6b332c419cd98242aab0e9bfa2f9ecfa9dcbbc",
+    "readSHA256": "caf3ef99c4d2779422a2a108f32cd1f94ea27209ae47e3a02a55761949b29739",
+    "differentBytes": 3963,
+    "differentFilePageStart": "0x11094000",
+    "differentFilePageEnd": "0x11095000",
+    "cachedPhysicalPage": "0x00ca1000",
+    "physicalObservation": "The entire incorrect4096-byte page occurs at physicalCA1000 in the original failure snapshot. That physical page is zero in the earlier25000-draw coherent checkpoint. This alone does not establish which writer or mapping caused the corruption.",
+    "wholeReadFileCRC32": "3360afa0",
+    "hostWholeFileCRC32": "d327d1c1",
+    "resourceIntegrity": "The original archive index CRC for the XOR-decoded DDS equals its decoded bytes:7d054d27. The original resource has a valid512x512 DXT1 header and ten mip levels."
+  },
+  "helper": {
+    "source": "tests/devices/geforce_filecheck.c",
+    "mode": "Native ReadFile and PAGE_READONLY/FILE_MAP_READ; optional bounded range <=1MiB dumps to the RAM tools disk. The original file is opened GENERIC_READ/FILE_SHARE_READ.",
+    "build": "Strict freestanding i686 MinGW -Wall -Wextra -Werror passes.",
+    "observed": "Range ReadFile and MapViewOfFile finish and match each other; exported bytes independently reproduce the native CRC32. This verifies the checksum implementation for the observed range."
+  },
+  "next": "Watch actual NV DMA system-RAM write ranges during a replay from the earlier healthy checkpoint. A bounded diagnostic captures real checked PTE mappings, caller PC/stack and command state, without changing writes. Native CPU/IDE cache paths remain possible causes.",
+  "limits": [
+    "No DDS, benchmark, driver or DAT bytes were patched. No graphics fault was invented to explain a real cached-page corruption.",
+    "Native initialization status does not accept a benchmark run.",
+    "The full native Win98 03 suite and its IQ remain open."
+  ]
+}

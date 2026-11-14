@@ -2168,3 +2168,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 原生 FP15 XYZ：独立未修改 D3D8 小样例对比 SPEC/VSPEC，常量眼向量为 inline，变量眼向量生成与原版 2001 相同的 MOV input15.xyz 反射序列。依据该编译器证据与微软 VSPEC 定义，按透视插值后的 TEX1/2/3.Q 重建 XYZ；未定义 W、相对及未观察到的访问仍拒绝。175 WGSL、独立 Q 分量精确像素、不等 W 与直接插值控制逐像素一致、完整 GPU 回归与 Closure 通过。同一原生程序归一化 SHA 一致，修复前 input15 故障、修复后零 PGRAPH/GPU 故障，见 `g4-native-variable-eye-vector.json`。真实硅片穷尽一致性及 XP/Win98 完整 2001、IQ/性能仍待验收。
 
 - G4 2001 固定帧复核：四张原始 IQ 图与既有 D3D8 代理参照已逐图查看，场景几何、材质、人物与可见效果对应；MAD 为 0.6814/0.5910/0.2840/1.9015，差异集中于纹理细节与边缘。新增可复现的只读 BMP 对比工具，记录最大误差分位与有符号 RGB 均值，独立旧比较结果完全一致；已验证行方向、padding、元数据排除和截断拒绝。见 `g4-xp-9371-2001-native-iq-reference.json`。未用整体均值替代局部误差，残差原因与图像门禁继续开放。
+
+- G5 Win98 原始 2005 版 03 冷跑在 97715 draws、零 GPU/非软件 PGRAPH 故障时提示 GT3 DDS corrupted。主 DAT 与已通过 XP 全 11 项的 DAT 及失败 overlay 的 SHA 完全一致；客体 ReadFile/只读映射却在文件页 11094000–11095000 返回同一错误 4 KiB。独立导出复算 CRC 一致，失败 RAM 的物理 CA1000 含整页错误内容，较早检查点该页为零。新增只读原生有界文件校验及系统 RAM DMA 写观察，继续定位覆盖者，未修改原始素材或宣称全套通过。见 `g5-win98-03-original-cached-file-page.json`。
