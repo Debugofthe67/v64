@@ -390,6 +390,8 @@ export const STATICS = {
     "cpu/memory.rs": { mem8: "machine", ram_fast_limit: "machine", PAM_WRITE_MASK: "machine" },
     // device memory regions (frame buffers) and where they are mapped
     "cpu/mmio_ram.rs": { TABLE: "machine", TEST_TABLE: "debug" },
+    // Host-only backing-page diagnostics, present solely with ir-test-hooks.
+    "write_watch.rs": { PAGES: "debug", RECORDS: "debug", TOTAL: "debug" },
     "cpu/pic.rs": { PIC: "machine", PORT_WRITTEN: "machine" },
     // SoftFloat's state around one SSE instruction (saved and restored)
     "cpu/simd_fp.rs": { softfloat_roundingMode: "scratch", softfloat_exceptionFlags: "scratch" },
