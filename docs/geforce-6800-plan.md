@@ -2176,3 +2176,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 Win98 2001 SE 原版全 21 项已完成，原生成功界面 193 分、七 GT 和全部理论/DX8 数值齐全；90612 draws，零 GPU/非软件 PGRAPH/FIFO 故障。原程序导出 NVW01A.3DP 与八张 IQ BMP，正常关机至 FE93D/HLT1/modeNULL。两张大图与 XP 原版逐像素一致，另两张差异 1246/68 像素；代理参考残差与性能仍开放。见 `g5-win98-8198-2001-native-all21.json`。本次为恢复客体中的完整新跑，早于单独 CPU 权限修复，不称为再次冷启动。
 
 - G6 可选 BC 上传：仅在实际 GPUDevice 已启用 BC 时，对线性、AAE4 恒等 crossbar 的 BC1/2/3 保留 checked 编码字节，缺失能力和特殊 remap/gamma 继续 CPU 转换。完整块行局部上传、cube/mip 尾部与 NPOT 实际存储计数均有真实 GPU 对照；共享 GPU、190 executor 用例、完整 glbridge 与 Closure 通过。70 张纹理 CPU 微测编码缓存 35 MiB，相比 RGBA 路径 252 MiB 且避免循环解码；不当作原生 FPS。sRGB 白黑插值实测 104 对既有 102，故保守回退而不放宽阈值。见 `g6-native-bc-texture-upload.json`，完整原生与图像/性能门禁仍开放。
+
+- G6 Win16 栈诊断：Win98 USER.EXE 使用非零 SS base、16-bit SP，旧只读采样却把带陈旧高位的 ESP 当平坦地址。现按 SS base 和栈宽定位，宽度/线性边界不回绕，并记录 SS 元数据；旧实现新用例先红，修复后普通/PAE、缺页、跨页、非平坦 16/32-bit 与只读副作用检查全绿。见 `g6-native-segmented-stack-diagnostics.json`。仅修正诊断，GT2 等待原因仍待查。

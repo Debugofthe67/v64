@@ -1,0 +1,21 @@
+{
+  "date": "2026-11-15",
+  "scope": "Read-only native guest stack diagnostics; no CPU execution or memory semantics changed.",
+  "finding": "Win98 USER.EXE executes with a nonflat 16-bit SS. The previous diagnostic treated stale high ESP bits as a flat linear address. Such samples cannot identify a valid Win16 stack.",
+  "fix": "Use SS base plus SP for16-bit stacks, full ESP for32-bit stacks; stop at width/linear wrap boundaries. Record sampled SS selector/base/width. Optional absent fields retain the existing flat32 test caller convention.",
+  "validation": {
+    "red": "New segmented16-bit assertion fails with the old reader.",
+    "green": "All absent-page,4KiB,PSE,PAE,unaligned,CR2/A-D preservation controls plus nonflat16/32-bit,stale highESP and wrap controls pass. Harness syntax passes."
+  },
+  "limits": [
+    "This corrects the diagnostic only. Current Win9803 GT2 loading wait is not thereby diagnosed or fixed.",
+    "Earlier Win16 stack interpretations using flat ESP are not acceptance evidence."
+  ],
+  "tests": [
+    "tests/devices/geforce_guest_memory.mjs"
+  ],
+  "source": [
+    "tests/lib/geforce_guest_memory.mjs",
+    "tests/devices/geforce_guest.mjs"
+  ]
+}

@@ -341,7 +341,8 @@ export async function run_geforce_guest(win98)
                 if(samples.length>=limit){clearInterval(timer);return;}
                 const backend=nv.graph.engine3d.backend;
                 samples.push({elapsed:elapsed(),eip:cpu.instruction_pointer[0]>>>0,registers:[...cpu.reg32].map(x=>x>>>0),
-                    halted:cpu.in_hlt[0],stack:read_geforce_guest_stack(cpu,64),draws:backend?.stats.draws||0,
+                    halted:cpu.in_hlt[0],stackSegment:{selector:cpu.sreg[2],base:cpu.segment_offsets[2]>>>0,width:cpu.stack_size_32[0]?32:16},
+                    stack:read_geforce_guest_stack(cpu,64),draws:backend?.stats.draws||0,
                     backendPending:!!backend?.pending,batchDraws:backend?.batch?.draws||0,
                     fifo:[0x3240,0x3244,0x3210,0x3270,0x3254].map(at=>nv.registers.get(at)||0),
                     ram:address===null?null:Array.from({length:4},(_,i)=>new DataView(cpu.mem8.buffer,cpu.mem8.byteOffset+address+i*4,4).getUint32(0,true))});

@@ -3,7 +3,10 @@
 // Walk the current x86 page tables in ordinary RAM without A/D or TLB writes.
 export function read_geforce_guest_stack(cpu, count)
 {
-    const memory=cpu.mem8,cr=cpu.cr,start=cpu.reg32[4]>>>0;
+    const memory=cpu.mem8,cr=cpu.cr,stack32=!cpu.stack_size_32 || !!cpu.stack_size_32[0];
+    const offset=stack32?cpu.reg32[4]>>>0:cpu.reg32[4]&65535;
+    const base=cpu.segment_offsets?cpu.segment_offsets[2]>>>0:0;
+    const width=stack32?0x100000000:0x10000;
     const word=at=>{
         if(!Number.isSafeInteger(at)||at<0||at+4>memory.length)return null;
         return (memory[at]|memory[at+1]<<8|memory[at+2]<<16|memory[at+3]<<24)>>>0;
@@ -42,8 +45,10 @@ export function read_geforce_guest_stack(cpu, count)
         return at!==null&&at>=0&&at<memory.length?memory[at]:null;
     };
     return Array.from({length:count},(_,i)=>{
-        const at=start+i*4;
-        if(at+4>0x100000000)return null;
+        const displacement=offset+i*4,at=base+displacement;
+        // A 16-bit SS uses SP, even when ESP retains unrelated high bits.
+        // Do not wrap a diagnostic read through the stack-width boundary.
+        if(displacement+4>width || at+4>0x100000000)return null;
         const bytes=Array.from({length:4},(_,j)=>read(at+j));
         return bytes.includes(null)?null:(bytes[0]|bytes[1]<<8|bytes[2]<<16|bytes[3]<<24)>>>0;
     });
