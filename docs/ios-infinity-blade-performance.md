@@ -86,6 +86,14 @@ generation 7 + uncached RAM 修复的正式冷启已通过 UI 打开游戏，完
 4,200 个 ARM32 VFP/NEON、4,800 个 A64 SIMD（266 个 mnemonic/form）与 QEMU 一致，
 q4/qfz 的真实 MMU/page JIT 回归通过。该项仍待新冷启测量，不能据此声称游戏加速。
 
+NEON 的 VADD/VSUB/VMUL/VMLA/VMLS 增加逐 lane 的原生 JIT 路径：
+采用 NEON 标准 RN/FZ/DN 语义，只有 IXC 已经 sticky、输入为普通值且每个中间/
+最终结果不会产生其他异常时走快路径。VMLA/VMLS 保持两次舍入；所有 lane 验证完
+才写寄存器，晚出现 NaN/underflow 时不会破坏重叠源。180 个 ARM/Thumb、D/Q、
+重叠目标、初始 clear/sticky IXC、非默认 FPSCR RMode、NaN/denormal/overflow/
+underflow/符号零用例与 QEMU 一致；MMU/page JIT 与解释器一致，q4/qfz 回归通过。
+这项新 JIT 路径尚未加载到当前游戏运行中，不能把该运行的帧率归因于它。
+
 ## 测试输入（2026-11-14）
 
 机主本地提供 `Infinity_Blade_1.4.3_ios_6.0.ipa`。原包只读，

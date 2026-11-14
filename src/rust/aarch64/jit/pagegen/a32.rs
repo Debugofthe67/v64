@@ -211,6 +211,9 @@ pub enum Kind {
 /// neon.rs's lane operations)
 #[derive(Clone, Copy)]
 pub enum NeonForm {
+    /// VADD, VSUB, VMUL, VMLA, VMLS (0-4), standard RN/FZ/DN arithmetic;
+    /// ordinary lanes and sticky IXC only, otherwise the exact helper.
+    Fp { op: u8 },
     /// d = op(n, m), the lanes' operation `op`; `invert_m`: VORN's m
     /// inverted first; `test`: VTST, (n & m) != 0 with `op` the lanes' ne
     Binary { op: u32, invert_m: bool, test: bool },
@@ -570,6 +573,17 @@ fn neon_data(word: u32, thumb: bool) -> Option<Kind> {
                 )
             })
         };
+        if word & (1 << 20) == 0 {
+            let op = match (word >> 8 & 15, word >> 4 & 1, u, word >> 21 & 1) {
+                (0b1101, 0, 0, 0) => Some(0),
+                (0b1101, 0, 0, 1) => Some(1),
+                (0b1101, 1, 1, 0) => Some(2),
+                (0b1101, 1, 0, 0) => Some(3),
+                (0b1101, 1, 0, 1) => Some(4),
+                _ => None,
+            };
+            if let Some(op) = op { return neon(NeonForm::Fp { op }, &[d, n, m]); }
+        }
         return match (word >> 8 & 15, word >> 4 & 1, u) {
             (0b0001, 1, 0) => neon(
                 NeonForm::Binary {
@@ -3353,13 +3367,87 @@ impl Emitter<'_> {
         }
     }
 
+    /// Standard NEON single-precision arithmetic. Check every lane and
+    /// retain all results in locals before any architectural write, so a
+    /// fallback with overlapping operands observes the original registers.
+    #[allow(clippy::too_many_arguments)]
+    fn neon_fp(&mut self, op: u8, q: bool, d: u8, n: u8, m: u8,
+               word: u32, length: u8, offset: u16) {
+        use super::{T0, T1, T2, T3, T4};
+        self.fp_access(offset);
+        let done = self.b.block_void();
+        let slow = self.b.block_void();
+        self.load32(state::fpsr as u32);
+        self.c32(16);
+        self.b.and_i32();
+        self.b.eqz_i32();
+        self.b.br_if(slow);
+        self.c64(0); self.s(T2);
+        self.c64(0); self.s(T4);
+        for lane in 0..if q { 4 } else { 2 } {
+            self.a32_fp_load(2 * n + lane, false, T0);
+            self.a32_fp_load(2 * m + lane, false, T1);
+            for l in [T0, T1] {
+                self.fp_ordinary(l, false, false);
+                self.b.eqz_i32();
+                self.b.br_if(slow);
+            }
+            self.fp_value(T0, false);
+            self.fp_value(T1, false);
+            self.b.arithmetic_f32(if op >= 2 { 2 } else { op });
+            self.fp_bits(T3, false);
+            self.fp_ordinary(T3, false, true);
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+            if op >= 2 {
+                // Rounded zero from nonzero factors may be underflow.
+                self.g(T3); self.c64(0x7fff_ffff); self.b.and_i64();
+                self.o(crate::wasmgen::wasm_opcodes::OP_I64EQZ);
+                for l in [T0, T1] {
+                    self.g(l); self.c64(0x7fff_ffff); self.b.and_i64();
+                    self.o(crate::wasmgen::wasm_opcodes::OP_I64EQZ);
+                    self.b.eqz_i32(); self.b.and_i32();
+                }
+                self.b.br_if(slow);
+            }
+            if op >= 3 {
+                self.a32_fp_load(2 * d + lane, false, T0);
+                self.fp_ordinary(T0, false, false);
+                self.b.eqz_i32(); self.b.br_if(slow);
+                self.fp_value(T0, false);
+                self.fp_value(T3, false);
+                // VMLA/VMLS are two rounded operations, never fused.
+                self.b.arithmetic_f32(if op == 3 { 0 } else { 1 });
+                self.fp_bits(T3, false);
+                self.fp_ordinary(T3, false, true);
+                self.b.eqz_i32(); self.b.br_if(slow);
+            }
+            let into = if lane < 2 { T2 } else { T4 };
+            self.g(into); self.g(T3);
+            if lane & 1 != 0 { self.c64(32); self.b.shl_i64(); }
+            self.b.or_i64(); self.s(into);
+        }
+        self.a32_fp_store(d, true, T2);
+        if q { self.a32_fp_store(d + 1, true, T4); }
+        self.b.br(done);
+        self.b.block_end();
+        self.a32_helper(word, length, offset);
+        self.b.block_end();
+    }
+
     /// Advanced SIMD data processing (Neon): the result into D[d] (the
     /// v128's low half) or Q[d/2]
-    fn neon(&mut self, form: NeonForm, q: bool, d: u8, n: u8, m: u8, offset: u16) {
+    #[allow(clippy::too_many_arguments)]
+    fn neon(&mut self, form: NeonForm, q: bool, d: u8, n: u8, m: u8,
+            word: u32, length: u8, offset: u16) {
+        if let NeonForm::Fp { op } = form {
+            return self.neon_fp(op, q, d, n, m, word, length, offset);
+        }
         self.fp_access(offset);
         self.c32(state::v as i32 + 8 * d as i32);
         let register = |x: u8| [d, n, m][x as usize];
         match form {
+            NeonForm::Fp { .. } => unreachable!(),
             NeonForm::Binary { op, invert_m, test } => {
                 self.neon_load(n, q);
                 self.neon_load(m, q);
@@ -3930,7 +4018,7 @@ impl Emitter<'_> {
                 cond,
             } => self.when(cond, |e| e.fp_move(kind, double, d, n, m, offset)),
             Kind::It | Kind::Nop => {},
-            Kind::Neon { form, q, d, n, m } => self.neon(form, q, d, n, m, offset),
+            Kind::Neon { form, q, d, n, m } => self.neon(form, q, d, n, m, i.word, i.length, offset),
             Kind::Transfer {
                 op,
                 rt,
