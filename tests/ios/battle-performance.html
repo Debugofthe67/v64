@@ -67,8 +67,12 @@ try {
     emulator.add_listener("ios-screen-state", state => screen_states.push(state));
     await emulator.run();
     // Up and the next Down must have distinct running-machine timestamps.
-    touch([]);await sleep(2000);
-    await block();input = setInterval(block, 2000);
+    const input_mode = query.get("input");
+    if(input_mode !== "checkpoint") {
+        touch([]);await sleep(2000);
+        await block();
+        if(input_mode !== "hold") input = setInterval(block, 2000);
+    }
     const initial = await sample(), warmup = Number(query.get("warmup") || 12);
     normal_clock(initial);
     if(!initial.graphics?.native) throw Error("Build lacks native presentation counters");
@@ -90,7 +94,9 @@ try {
     const host_after = await (await fetch("/__host_metrics")).json();
     const ms = after.host_time - before.host_time, count = frames(after) - frames(before);
     const result = { label: query.get("label") || "unlabelled", checkpoint: { name: file.name, bytes: file.size, modified: file.lastModified },
-        input: "release checkpoint finger while running for 2000 ms; shield at (45/46,480), move every 2000 ms, release 100 ms every 16 s", warmup_frames: frames(before) - frames(initial),
+        input: input_mode === "checkpoint" ? "preserve checkpoint input; no host gesture during warmup or measurement" :
+            input_mode === "hold" ? "release checkpoint finger while running for 2000 ms; hold shield at (45,480) through warmup and measurement" :
+            "release checkpoint finger while running for 2000 ms; shield at (45/46,480), move every 2000 ms, release 100 ms every 16 s", warmup_frames: frames(before) - frames(initial),
         frame_limit, measurement: frame_limit ? "fixed completed-frame workload" : "fixed duration",
         screen_states,
         duration_ms: ms, game_frames: count, game_fps: count * 1000 / ms,
