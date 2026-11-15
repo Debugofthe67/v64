@@ -1,0 +1,56 @@
+{
+  "status": "native FP16 format1f mode3 fixed; original06 image recapture running",
+  "cause": "Original 93.71 emits format1f for both G16R16F and A16B16G16R16F. TEX_FILTER_OPTIMIZATION bits15..17 are0 for its two-half view and3 for its four-half view. The previous decoder used4 bytes for every format1f texture, mixing adjacent RG/BA halves in HDR postprocessing.",
+  "evidenceQualification": "The mode3 storage interpretation is inferred from original native API controls and the actual unchanged driver command streams. Envytools hardware tests establish the field width/validity, but do not name its semantic meaning. No row-pitch heuristic is used.",
+  "primarySources": [
+    {
+      "url": "https://github.com/envytools/envytools/blob/master/hwtest/pgraph_class_kelvin.cc",
+      "detail": "Curie texture optimization word validates a three-bit field starting at15 with values through4."
+    },
+    {
+      "url": "https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa/+/51a7e9723538833e74ea9aebc251db22743eaf7f/src/gallium/drivers/nouveau/nv30/nv30_format.c",
+      "detail": "Base format1f RG16F view; it is insufficient by itself to describe the original driver wide path."
+    }
+  ],
+  "nativeProbe": {
+    "source": "tests/devices/geforce_float_texture.c",
+    "api": "Original D3D9 HAL / official93.71, managed4x4 texture, known .125/.25/.5/1 source, point and bilinear filters",
+    "oldOutput": "build/nv40-xp-native-float-texture-control/NVFLOAT.TXT",
+    "newOutput": "build/nv40-xp-native-float-texture-fixed/NVFLOAT.TXT",
+    "allAPIHRESULTs": 0,
+    "oldRGBA16Pixels": [
+      "ff80ff80",
+      "ff80ff80"
+    ],
+    "fixedRGBA16Pixels": [
+      "ff204080",
+      "ff204080"
+    ],
+    "unchangedRG16Pixels": [
+      "ff2040ff",
+      "ff2040ff"
+    ],
+    "oldFailures": 4,
+    "newFailures": 0,
+    "rawFragmentMachineCodeUnchanged": true,
+    "checkpoint": "build/nv40-xp-native-float-texture-fixed/checkpoint-native-float-texture-all-four-pass.state.bundle.json",
+    "oldResultSHA256": "01ad047ea0e2cf1bedb48580a3a9d3be40dc7922d9fed4df4cca70a76602e170",
+    "newResultSHA256": "b17914637422adff414fc593b88e6a9fe20c4d9743c64b82711eaaee79881407"
+  },
+  "implementation": [
+    "decode the per-unit high mode field; format1f mode3 uses8-byte texels",
+    "route four-half RGBA storage through the original identity crossbar",
+    "retain4-byte paired format1f and independent padded row pitch",
+    "existing DMA bounds and exact byte cache keys cover both views"
+  ],
+  "validation": {
+    "unit": "old implementation fails the mode3 width assertion; exact four lanes/signed zero/subnormal/HDR/NaN bits, padding independent from component count, per-unit state and DMA end bounds pass after fix",
+    "realGPU": "Original HDR pair of masked TEX instructions now samples all four FP16 channels correctly; full NV40 GPU rendering suite passed",
+    "releaseBuild": "0 errors, 0 warnings",
+    "strictNativeC": "MinGW -Wall -Wextra -Werror"
+  },
+  "remaining": [
+    "Original06 HDR1/HDR2 fixed frames must be re-exported and compared before the HDR image gate can pass.",
+    "Code26 and every other format retain their established decoding in this step."
+  ]
+}

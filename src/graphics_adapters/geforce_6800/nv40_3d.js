@@ -175,8 +175,9 @@ export class NV40_3D
         if(at===0x1D94) {this.state.clear(o,value);return true;}
         if(!STATE_RANGES.some(([first, last]) => at >= first && at <= last) && !(at >= 0x1B00 && at <= 0x1BFC)) return false;
         // Curie exposes sixteen filter-optimization words (Rankine has four).
-        // Keep their checked state; the host sampler supplies its own filter
-        // kernel rather than reproducing NV40's physical sampling optimizer.
+        // Keep their checked state. The high mode field also selects the
+        // format1f four-half texture view used by the original native driver;
+        // low sampling hints do not replace the host's filter kernel.
         if(at >= 0xB00 && at <= 0xB3C && (value & ~0x000FFFDF || (value >>> 15 & 7) > 4))
             throw new RangeError("NV40 invalid texture filter optimization");
         // Curie has ten XF texture-coordinate controls, including TEX8/9.

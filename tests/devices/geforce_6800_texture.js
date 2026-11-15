@@ -233,6 +233,27 @@ assert.throws(()=>texture.describe(rg16,0),/float texture gamma/);
 rg16.methods.set(0x1A08,0x30303);
 assert.throws(()=>texture.images({...rg,dma:{...rg.dma,limit:0xC019}}),/limit/);
 console.log("PASS: RG16F paired half lanes,crossbar,padded mip chain,exact bits and DMA bounds");
+// 93.71's original RGBA16F upload uses format1f with TEX_FILTER_OPTIMIZATION
+// bits15..17=3; RG16F uses the same format with that field zero. Pitch alone
+// cannot distinguish them, since both layouts may contain arbitrary padding.
+const wide16={methods:new Map(rg16.methods)};
+for(const [at,value] of [[0xB00,0x1ADC0],[0x1840,24],[0x1A10,0xAAE4]])wide16.methods.set(at,value);
+const wideWords=[0x8000,1,0x4000,0xBC00,0x7C00,0x7E55,0x3C00,0x3400,
+    0x0400,0x7BFF,0,0x3C00,0x3000,0x3400,0x3800,0x3C00];
+wideWords.forEach((word,i)=>halfView.setUint16(0xC000+Math.floor(i/8)*24+i%8*2,word,true));
+const wide=texture.describe(wide16,0);assert.equal(wide.bpp,8,
+    "native format1f mode3 has four half components per texel");
+assert.deepEqual([...new Uint16Array(texture.read(wide).buffer)],wideWords,
+    "native wide FP16 preserves all four lanes and padded rows");
+assert.throws(()=>texture.read({...wide,dma:{...wide.dma,limit:0xC026}}),/limit/);
+wide16.methods.set(0x1840,12);assert.throws(()=>texture.describe(wide16,0),/pitch/);
+wide16.methods.set(0x1840,24);wide16.methods.set(0xB00,0x2DC0);
+assert.equal(texture.describe(wide16,0).bpp,4,"large row padding does not turn RG16F into RGBA16F");
+const wideUnit=7,wideUnitObject={methods:new Map([[0x184,0x10],[0xB00+wideUnit*4,0x1ADC0]])};
+for(const [at,value] of wide16.methods)if(at>=0x1A00&&at<=0x1A1C)wideUnitObject.methods.set(at+wideUnit*32,value);
+wideUnitObject.methods.set(0x1840+wideUnit*4,24);
+assert.equal(texture.describe(wideUnitObject,wideUnit).bpp,8,"wide format mode belongs to each texture unit");
+console.log("PASS: native format1f wide FP16 mode, exact lanes, independent padding and per-unit state");
 // Each packed cube face carries its complete mip chain and starts on a
 // 128-byte boundary. A clamped upload must not move the following faces.
 o.methods.set(0x1A04,0x3052D);o.methods.set(0x1A18,4<<16|4);o.methods.set(0x1A10,0xAA6C);o.methods.set(0x1A0C,0x80010000);

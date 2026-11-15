@@ -851,6 +851,18 @@ try
         method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
         assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,4)],[0x4200,0,0x3A00,0x3800],"bilinear FP16 texture sampling retains HDR and signed values");
         console.log("PASS: real WebGPU FP16 render targets, additive blending, exact VRAM half bits and HDR bilinear textures");
+        // The original HDR postprocess uses two masked TEX instructions and
+        // format1f's mode3 four-half view, with an identity component crossbar.
+        method(0x1A04,0x13F29);method(0xB00,0x1ADC0);method(0x1A10,0xAAE4);
+        [0x17008680,0x1C9DC811,0x1C800,0x1C800,0x17009881,0x1C9DC811,0x1C800,0x1C800]
+            .forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+        method(0x1808,6);
+        for(const word of new Uint32Array(Float32Array.of(0,0,.5,.5,0,16,.5,.5,16,0,.5,.5).buffer))method(0x1818,word);
+        method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
+        assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,4)],[0x4200,0,0x3A00,0x3800],
+            "native format1f mode3 and split TEX preserve RGBA, signed values and HDR filtering");
+        method(0xB00,0);
+        console.log("PASS: real WebGPU native wide FP16 mode, identity crossbar and original HDR split TEX instructions");
         for(const [at,value] of [[0x1A04,0x13429],[0x1A18,2<<16|1],[0x1A10,0xA9EE],[0x1A14,0x02020000],[0x1840,4]])method(at,value);
         new Uint16Array(vram.buffer,0x20000,2).set([0,65535]);
         method(0x1808,6);

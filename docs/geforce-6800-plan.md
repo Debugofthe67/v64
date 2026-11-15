@@ -2301,3 +2301,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 原生饱和探针新增全新XP安装对照：不加载既有overlay，由原版SetupAPI重新装93.71并切1024×768×32，四条合法shader仍为两项MOV_sat失败、DP3/MUL两项正确。排除旧OS overlay作为唯一原因；原始结果、正常关机overlay和可恢复检查点已保留，不能据此强改原生指令。见 `g4-05-native-interpreter-saturation-control.json` 的 freshDriverControl。
 
 - G3/G4 FP源精度修饰符修复：原版93.71将部分MOV_sat折叠为SRC1中的三位输入钳位，旧解码器只看目标SAT，误判为编译器/CPU丢位。现分别解码三个源并按硬件顺序应用，保留半寄存器别名与动态索引；真实GPU原版机器码先红后绿，188个WGSL验证及完整NV40渲染回归通过。相同全新安装驱动检查点重跑未修改NVSAT，四项从两失败变全部通过，6792顶点GT3气球材质离线像素恢复到原版API参考。见 `g3-fragment-source-precision.json`；原版05全图复测在运行，06 HDR/Win98显示等门禁仍开放。
+
+- G3/G4 宽FP16纹理布局修复：新增未修改原生D3D9 HAL对照，93.71对RG16F/RGBA16F都发format1f，但逐单元优化寄存器高三位分别为0/3；后者必须读取八字节及四个独立半浮点通道。旧实现混读RG/BA，原生RGBA16F点/线性像素均错；修复后四项API/回读均成功、FAILURES0，驱动机器码逐字相同。新增布局单测先红后绿，原版HDR分段TEX及全NV40真实GPU回归通过。该高位语义来自原版API控制推断，envytools仅证实字段合法范围，未冒称文档已命名。见 `g3-wide-half-float-texture-mode.json`；06原图复测在运行，HDR图像门禁尚未关闭。
