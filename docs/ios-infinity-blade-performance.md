@@ -1,5 +1,24 @@
 # Infinity Blade 安装与帧率验证
 
+## 已接受 FP 优化后的剩余瓶颈（2026-11-15）
+
+对 `df2a575c0` 核心重新克隆同一音频战斗，预热 8 帧后同时采样 CPU Worker
+和主线程，严格限制在后续 30 完整帧。起/终图分别与基准的 `d7c741183e4b…` /
+`ad48629b287c…` 一致，HP 1440、敌人 500、盾 21，无教学暂停，亮屏且 rate 1。
+Profiler 的窗口时长不作为 FPS 对照数据，也不跨不同宿主负载比较采样耗时。
+
+CPU Worker 约 83.9% 样本包含在 `run_machine_core`；解释器包含约 14.4%，
+page access 包含约 6.6%，精确 A32 helper 包含约 6.2%，IOP 包含约 5.4%，
+CLCD render 包含约 4.3%。`pages::run` 自身约 6.2%、宿主 `now` 自身约 3.8%、
+`postMessage` 自身约 4.2%。这些存在嵌套，不能相加或当成独立可回收比例。
+主线程同期约 91.2% 空闲，GLES 提交包含约 4.3%；这不是 GPU 硬件利用率测量，
+现有证据仍支持优先削减 CPU 执行、解释器退出和访存/调度开销。
+
+只读回看 AMC stats：本次恢复后完成 20 个新输入、1,414,656 个 decoded samples、
+2,829,312 bytes PCM，failures 0、errors 空。初始化 busy 问题未在该窗口复现。
+原始 CPU/main profiles、窗口元数据、起止 PNG 和音频计数在本地
+`infinity-perf-next/accepted-30*`、`accepted-profile*`。采样后关闭自有浏览器。
+
 ## IT 最后一槽的调用候选：两种寄存器策略均撤回（2026-11-15）
 
 热点代码包含 IT 后的 BL/BLX。尝试让合法的最后一槽 B/BL/BX/BLX 原生执行，
