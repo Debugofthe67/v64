@@ -1,0 +1,49 @@
+{
+  "stage": "G4 XP 93.71 original 06 required functional runs and normal shutdown",
+  "scope": "Default six and supplemental seven feature/six batch projects completed and preserved; four GT IQ captures completed. Final reference images and isolated performance remain open.",
+  "normalShutdown": {
+    "command": "C:\\WINDOWS\\system32\\shutdown.exe -s -t 0",
+    "eip": 2154770504,
+    "halted": 1,
+    "display": null,
+    "draws": 505705,
+    "gpuFailures": 0,
+    "clockMode": "normal"
+  },
+  "checkpoint": {
+    "status": "complete",
+    "guest": "xp",
+    "vramMiB": 256,
+    "memoryMiB": 1024,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark06.img",
+    "state": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-batch8-sparse-constants/checkpoint-native-default6-feature13-iq4-normal-shutdown.state",
+      "bytes": 1428504528,
+      "sha256": "20346fb7cea77f63ec0c4c74d8b744fc9e8251b7f91b14526e0faff3a9735775"
+    },
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-batch8-sparse-constants/checkpoint-native-default6-feature13-iq4-normal-shutdown.state.hda-overlay.bin",
+      "bytes": 220283016,
+      "sha256": "3aa401d3267aa89ac909bf3056f833e20c57c109dd0ea529c73382d972871309"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-batch8-sparse-constants/checkpoint-native-default6-feature13-iq4-normal-shutdown.state.game-overlay.bin",
+      "bytes": 39766,
+      "sha256": "ffad853530c47267f3a745293d2ff0b16b3678e513f4176f62c8ddc7619e9ed4"
+    }
+  },
+  "stateArchive": {
+    "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-batch8-sparse-constants/checkpoint-native-default6-feature13-iq4-normal-shutdown.state.zst",
+    "bytes": 659955285,
+    "uncompressedBytes": 1428504528,
+    "uncompressedSHA256": "20346fb7cea77f63ec0c4c74d8b744fc9e8251b7f91b14526e0faff3a9735775",
+    "verifiedLossless": true
+  },
+  "resultEvidenceFile": "build/nv40-xp-mark06-batch8-sparse-constants/result.json",
+  "limits": [
+    "Normal shutdown follows explicit stock command after all rendering and original save-success dialogs completed.",
+    "Earlier genuine 0x100000EA states remain separately recorded; this normal endpoint does not reclassify them.",
+    "The full benchmark score is functional evidence, not an isolated host performance measurement."
+  ]
+}
