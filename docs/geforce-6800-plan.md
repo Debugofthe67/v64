@@ -2275,3 +2275,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 XP06补充十三项完成：原版93.71在1280×1024/None/Optimal、SM2/CPU/HDR各0/2、feature7/7、batch6/6后返回原版结果窗口，经Save As保存NV06B.3DR（SHA1c1e87bceaf6e7e1bfe665ed80dc1e809c92d408b86b452822e5a663f89f5117）。ZIP CRC/XML逐项确认7feature+6batch均正数/status0，单位base/exp保留；最后续跑497668draw、GPU/PGRAPH/非软件FIFO错误0，原default6的NV06N SHA不变。仅从首错前配套健康状态续跑，未修补失败RAM、驱动、客体时钟或看门狗；前轮真实100000EA证据保留，不能把成功孤立归因某一优化。见 `g4-xp-9371-06-feature7-batch6.json`；原生所有要求测试的功能结果已收齐，IQ、正常关机、最终单客体性能仍继续。
 
 - G6 原生控件实际值：GetWindowTextA对外部进程只能取caption，原helper的帧号/ComboBox/owner-draw按钮常为空。对标准Edit/ComboBox/Button改用200ms有界WM_GETTEXT，保持512byte缓冲并跳过password编辑。严格MinGW通过，原版06未改动的GT1默认帧2095、1280×1024/None/Optimal/VS3/PS3及实际Run/Close文本均读回，见 `g6-native-foreign-control-values.json`。06原版IQ列表实际只提供4GT，其余特性需按计划无IQ项的固定时点取图路径比较，不能假定同05有全部feature IQ。
+
+- G4 IQ比较区域更正：原版03/05的画面信息叠层在底部，之前通用helper误默认排除了顶部64行。现增加明确的bottom排除与ROI高度，保留旧调用兼容；独立3×4 BMP用例验证底部元数据/顶部场景、双端范围和拒绝空ROI。05复测记录已改为top0/bottom64，并同时保存全图指标，未据裁剪放宽门禁：GT3全图MAD11.2359，底部64行排除后11.8772，气球/水面仍开放。最新常量优化后的GT3三次原版保存SHA相同，且与A16复测原图逐字节一致，见修订后的 `g4-05-native-a16-fixed-frames.json`。

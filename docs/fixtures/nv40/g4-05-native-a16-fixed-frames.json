@@ -30,23 +30,24 @@
       },
       "width": 1024,
       "height": 768,
-      "roi_y": 64,
+      "roi_y": 0,
+      "roi_height": 704,
       "pixels": 720896,
-      "different_pixels": 444528,
-      "exact_pixel_percent": 38.33673650568182,
-      "mean_absolute_rgb_error": 0.8293207341974432,
+      "different_pixels": 475495,
+      "exact_pixel_percent": 34.04110995205966,
+      "mean_absolute_rgb_error": 0.9409461743903883,
       "mean_signed_rgb_error": [
-        -0.526397705078125,
-        -0.5376711758700284,
-        -0.4003060080788352
+        -0.5929482199928977,
+        -0.606292724609375,
+        -0.47185863148082385
       ],
       "max_channel_error": 126,
       "pixel_max_channel_error_percentiles": {
         "50": 1,
         "90": 3,
-        "95": 4,
-        "99": 12,
-        "99.9": 29
+        "95": 5,
+        "99": 13,
+        "99.9": 30
       }
     },
     {
@@ -62,15 +63,16 @@
       },
       "width": 1024,
       "height": 768,
-      "roi_y": 64,
+      "roi_y": 0,
+      "roi_height": 704,
       "pixels": 720896,
-      "different_pixels": 540304,
-      "exact_pixel_percent": 25.05104758522727,
-      "mean_absolute_rgb_error": 1.1084294174656724,
+      "different_pixels": 538365,
+      "exact_pixel_percent": 25.320018421519887,
+      "mean_absolute_rgb_error": 1.083015673088305,
       "mean_signed_rgb_error": [
-        -0.6337793523615057,
-        -0.8072759454900568,
-        -0.7067232998934659
+        -0.6177243319424716,
+        -0.7935569069602273,
+        -0.6913646351207386
       ],
       "max_channel_error": 171,
       "pixel_max_channel_error_percentiles": {
@@ -78,7 +80,7 @@
         "90": 3,
         "95": 6,
         "99": 17,
-        "99.9": 54
+        "99.9": 55
       }
     },
     {
@@ -94,23 +96,24 @@
       },
       "width": 1024,
       "height": 768,
-      "roi_y": 64,
+      "roi_y": 0,
+      "roi_height": 704,
       "pixels": 720896,
-      "different_pixels": 613255,
-      "exact_pixel_percent": 14.93155739524148,
-      "mean_absolute_rgb_error": 9.663087324662643,
+      "different_pixels": 632228,
+      "exact_pixel_percent": 12.299693714488635,
+      "mean_absolute_rgb_error": 11.87723749334162,
       "mean_signed_rgb_error": [
-        -5.840535944158381,
-        -5.839219526811079,
-        -5.111985640092329
+        -8.45721435546875,
+        -8.579193115234375,
+        -7.542515147816051
       ],
       "max_channel_error": 134,
       "pixel_max_channel_error_percentiles": {
-        "50": 3,
-        "90": 43,
-        "95": 52,
+        "50": 4,
+        "90": 45,
+        "95": 54,
         "99": 64,
-        "99.9": 87
+        "99.9": 79
       }
     },
     {
@@ -126,7 +129,8 @@
       },
       "width": 1024,
       "height": 768,
-      "roi_y": 64,
+      "roi_y": 0,
+      "roi_height": 704,
       "pixels": 720896,
       "different_pixels": 0,
       "exact_pixel_percent": 100.0,
@@ -158,7 +162,8 @@
       },
       "width": 1024,
       "height": 768,
-      "roi_y": 64,
+      "roi_y": 0,
+      "roi_height": 704,
       "pixels": 720896,
       "different_pixels": 0,
       "exact_pixel_percent": 100.0,
@@ -190,17 +195,18 @@
       },
       "width": 1024,
       "height": 768,
-      "roi_y": 64,
+      "roi_y": 0,
+      "roi_height": 704,
       "pixels": 720896,
-      "different_pixels": 455555,
-      "exact_pixel_percent": 36.80711226029829,
-      "mean_absolute_rgb_error": 0.430989120945786,
+      "different_pixels": 462553,
+      "exact_pixel_percent": 35.83637584339488,
+      "mean_absolute_rgb_error": 0.4473733612985322,
       "mean_signed_rgb_error": [
-        -0.047434026544744316,
-        -0.037873701615767044,
-        -0.028277310458096592
+        -0.05190762606534091,
+        -0.04058144309303977,
+        -0.029893354936079544
       ],
-      "max_channel_error": 20,
+      "max_channel_error": 34,
       "pixel_max_channel_error_percentiles": {
         "50": 1,
         "90": 1,
@@ -222,15 +228,16 @@
       },
       "width": 1024,
       "height": 768,
-      "roi_y": 64,
+      "roi_y": 0,
+      "roi_height": 704,
       "pixels": 720896,
-      "different_pixels": 4119,
-      "exact_pixel_percent": 99.42862770774148,
-      "mean_absolute_rgb_error": 0.005713722922585227,
+      "different_pixels": 4165,
+      "exact_pixel_percent": 99.42224675958808,
+      "mean_absolute_rgb_error": 0.005777532404119318,
       "mean_signed_rgb_error": [
-        0.00032320889559659093,
-        0.00032320889559659093,
-        0.00032320889559659093
+        0.0003398548473011364,
+        0.0003398548473011364,
+        0.0003398548473011364
       ],
       "max_channel_error": 1,
       "pixel_max_channel_error_percentiles": {
@@ -254,15 +261,16 @@
       },
       "width": 1024,
       "height": 768,
-      "roi_y": 64,
+      "roi_y": 0,
+      "roi_height": 704,
       "pixels": 720896,
-      "different_pixels": 560314,
-      "exact_pixel_percent": 22.275335138494324,
-      "mean_absolute_rgb_error": 1.7548148415305398,
+      "different_pixels": 549550,
+      "exact_pixel_percent": 23.76847700639204,
+      "mean_absolute_rgb_error": 1.7632806951349431,
       "mean_signed_rgb_error": [
-        0.46112199263139203,
-        0.6739321621981534,
-        -0.3772069757634943
+        0.5081592906605114,
+        0.7098777077414773,
+        -0.3271539861505682
       ],
       "max_channel_error": 58,
       "pixel_max_channel_error_percentiles": {
@@ -456,5 +464,107 @@
     "Parallel/pause-resumed runs are functional and image diagnostics only; no original FPS claim.",
     "Original partial precision flags are a hypothesis for the small PS residual, not a proven explanation.",
     "Original full16 normal shutdown was separately verified; these closed IQ diagnostic guests were stopped after original save-success and stable GPU counters."
-  ]
+  ],
+  "comparisonRegionCorrection": {
+    "reason": "Previous comparison helper excluded top64; the original05 metadata overlay is at the bottom. Corrected ROI is top0/bottom64, with full-image metrics also retained. No gate is relaxed.",
+    "priorCommit": "a5c1a5b4c",
+    "metadataLocationVerifiedFrom": "Original native and proxy BMP previews"
+  },
+  "fullFrameComparison": [
+    {
+      "name": "GT1",
+      "frame": 480,
+      "roi_y": 0,
+      "roi_height": 768,
+      "mean_absolute_rgb_error": 0.8735758463541666,
+      "max_channel_error": 126
+    },
+    {
+      "name": "GT2",
+      "frame": 897,
+      "roi_y": 0,
+      "roi_height": 768,
+      "mean_absolute_rgb_error": 1.0530806647406683,
+      "max_channel_error": 171
+    },
+    {
+      "name": "GT3",
+      "frame": 1630,
+      "roi_y": 0,
+      "roi_height": 768,
+      "mean_absolute_rgb_error": 11.235900455050999,
+      "max_channel_error": 134
+    },
+    {
+      "name": "fillrate1",
+      "frame": 1,
+      "roi_y": 0,
+      "roi_height": 768,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "name": "fillrate2",
+      "frame": 1,
+      "roi_y": 0,
+      "roi_height": 768,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0
+    },
+    {
+      "name": "PS",
+      "frame": 1,
+      "roi_y": 0,
+      "roi_height": 768,
+      "mean_absolute_rgb_error": 0.4359330071343316,
+      "max_channel_error": 34
+    },
+    {
+      "name": "vssimple",
+      "frame": 1,
+      "roi_y": 0,
+      "roi_height": 768,
+      "mean_absolute_rgb_error": 0.005298614501953125,
+      "max_channel_error": 1
+    },
+    {
+      "name": "vscomplex",
+      "frame": 1,
+      "roi_y": 0,
+      "roi_height": 768,
+      "mean_absolute_rgb_error": 1.6557138231065538,
+      "max_channel_error": 58
+    }
+  ],
+  "latestGt3DiagnosticVsPriorA16": {
+    "native": {
+      "file": "build/nv40-xp-mark05-gt3-pixel-history/iq-artifacts/NV05GT3_GT3_1630.BMP",
+      "sha256": "cc4392ae01cd416da6b7bf5bcf832be2d2a54724c24f61facc6b0abe249919bb"
+    },
+    "reference": {
+      "file": "build/nv40-xp-mark05-ps-a16-alias-control/iq-artifacts/NV05IQ_GT3_1630.BMP",
+      "sha256": "cc4392ae01cd416da6b7bf5bcf832be2d2a54724c24f61facc6b0abe249919bb"
+    },
+    "width": 1024,
+    "height": 768,
+    "roi_y": 0,
+    "roi_height": 768,
+    "pixels": 786432,
+    "different_pixels": 0,
+    "exact_pixel_percent": 100.0,
+    "mean_absolute_rgb_error": 0.0,
+    "mean_signed_rgb_error": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "max_channel_error": 0,
+    "pixel_max_channel_error_percentiles": {
+      "50": 0,
+      "90": 0,
+      "95": 0,
+      "99": 0,
+      "99.9": 0
+    }
+  }
 }

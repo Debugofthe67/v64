@@ -3,7 +3,8 @@
 
 Example: geforce_iq_compare.py native-dir proxy-dir --native-suffix NV01A
          --reference-suffix S6MK01 --cases 4 --output comparison.json
-The original IQ images have a 64-row metadata band above the rendered frame.
+Metadata placement depends on the original benchmark. Specify the matching
+top or bottom exclusion explicitly; 03/05 overlays are at the bottom.
 """
 
 import argparse
@@ -34,16 +35,18 @@ def bitmap(path):
     return width, abs(height), rows, hashlib.sha256(data).hexdigest()
 
 
-def compare(native, reference, exclude_top=64):
+def compare(native, reference, exclude_top=64, exclude_bottom=0):
     width, height, a, native_hash = bitmap(native)
     rw, rh, b, reference_hash = bitmap(reference)
-    if (width, height) != (rw, rh) or not 0 <= exclude_top < height:
+    if ((width, height) != (rw, rh) or exclude_top < 0 or exclude_bottom < 0
+            or exclude_top + exclude_bottom >= height):
         raise ValueError("IQ dimensions or metadata exclusion do not match")
     histogram = Counter()
     absolute = [0, 0, 0]
     signed = [0, 0, 0]
     different = 0
-    for left, right in zip(a[exclude_top:], b[exclude_top:]):
+    bottom = height - exclude_bottom
+    for left, right in zip(a[exclude_top:bottom], b[exclude_top:bottom]):
         for x in range(0, width * 3, 3):
             delta = [left[x + c] - right[x + c] for c in range(3)]
             peak = max(map(abs, delta))
@@ -52,7 +55,7 @@ def compare(native, reference, exclude_top=64):
             for c in range(3):
                 absolute[c] += abs(delta[c])
                 signed[c] += delta[c]
-    pixels = width * (height - exclude_top)
+    pixels = width * (height - exclude_top - exclude_bottom)
     cumulative = 0
     quantiles = {}
     for error, count in sorted(histogram.items()):
@@ -64,6 +67,7 @@ def compare(native, reference, exclude_top=64):
         "native": {"file": str(native), "sha256": native_hash},
         "reference": {"file": str(reference), "sha256": reference_hash},
         "width": width, "height": height, "roi_y": exclude_top,
+        "roi_height": height - exclude_top - exclude_bottom,
         "pixels": pixels, "different_pixels": different,
         "exact_pixel_percent": 100 * (1 - different / pixels),
         "mean_absolute_rgb_error": sum(absolute) / (pixels * 3),
@@ -82,6 +86,7 @@ def main():
     parser.add_argument("--reference-suffix", required=True)
     parser.add_argument("--cases", required=True, type=int)
     parser.add_argument("--exclude-top", default=64, type=int)
+    parser.add_argument("--exclude-bottom", default=0, type=int)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     if not 1 <= args.cases <= 100:
@@ -91,7 +96,7 @@ def main():
         result = compare(
             args.native / f"Quality_IQ{case:02}I_{args.native_suffix}.bmp",
             args.reference / f"Quality_IQ{case:02}I_{args.reference_suffix}.bmp",
-            args.exclude_top)
+            args.exclude_top, args.exclude_bottom)
         results.append({"case": case, **result})
     args.output.write_text(json.dumps({
         "scope": "Unchanged original IQ images; metadata rows excluded. No acceptance threshold is inferred.",
