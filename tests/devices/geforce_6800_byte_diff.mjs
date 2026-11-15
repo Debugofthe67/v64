@@ -28,7 +28,7 @@ for(let trial=0;trial<4096;trial++)
     check(a,b);
 }
 const a=new Uint8Array(4<<20),b=new Uint8Array(a.length);
-for(const at of [0,1,31,32,4095,4096,a.length>>>1,a.length-4,a.length-1])
+for(const at of [0,1,27,28,29,30,31,32,33,59,60,61,62,63,64,65,4095,4096,a.length>>>1,a.length-4,a.length-1])
 {b[at]=255;assert.deepEqual(nv40_changed_bytes(a,b),[at,at+1]);b[at]=0;}
 assert.equal(nv40_changed_bytes(a,b),null);assert.equal(nv40_changed_bytes(a,a),null);
 assert.deepEqual(nv40_changed_bytes(null,b),[0,b.length]);

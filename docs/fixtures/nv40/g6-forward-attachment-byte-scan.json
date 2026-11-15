@@ -1,0 +1,204 @@
+{
+  "stage": "G6 exact forward attachment-comparison scan",
+  "nativeTrigger": "Original supplemental06 currently issues eight triangles per draw; readonly vertex sample confirms24 indices and original grid coordinates. Driver CPU wait is ring-space polling, not proof of a stopped GPU.",
+  "profile": {
+    "seconds": 40.121117,
+    "changedByteScanSelfSeconds": 11.923187,
+    "scope": "Targeted Node40s concurrent host diagnostic, not final isolated native performance acceptance."
+  },
+  "change": "Compare eight forward DWORDs per loop, then locate the exact first differing DWORD/byte. Existing exact trailing scan, all returned byte intervals and fresh guest reads remain unchanged.",
+  "microbenchmark": {
+    "scope": "Same-process alternating CPU microbenchmark, explicit GC before each measurement; not native FPS",
+    "guard": 0,
+    "result": [
+      {
+        "scenario": "unchanged",
+        "size": 5242880,
+        "iterations": 32,
+        "rounds": 7,
+        "CPUms": {
+          "before": [
+            48.016,
+            49.855,
+            48.757,
+            48.841,
+            49.219,
+            50.845,
+            50.031
+          ],
+          "after": [
+            45.101,
+            44.2,
+            43.047,
+            43.518,
+            44.199,
+            43.342,
+            43.65
+          ]
+        },
+        "medianCPUms": {
+          "before": 49.219,
+          "after": 43.65
+        }
+      },
+      {
+        "scenario": "last-byte",
+        "size": 5242880,
+        "iterations": 32,
+        "rounds": 7,
+        "CPUms": {
+          "before": [
+            54.192,
+            50.594,
+            49.9,
+            52.758,
+            49.576,
+            51.798,
+            48.901
+          ],
+          "after": [
+            47.191,
+            37.35,
+            36.624,
+            36.458,
+            35.792,
+            35.493,
+            36.162
+          ]
+        },
+        "medianCPUms": {
+          "before": 50.594,
+          "after": 36.458
+        }
+      },
+      {
+        "scenario": "middle-byte",
+        "size": 5242880,
+        "iterations": 32,
+        "rounds": 7,
+        "CPUms": {
+          "before": [
+            51.472,
+            34.049,
+            34.117,
+            34.387,
+            33.992,
+            34.102,
+            33.942
+          ],
+          "after": [
+            36.127,
+            36.583,
+            36.429,
+            36.088,
+            36.309,
+            35.936,
+            35.554
+          ]
+        },
+        "medianCPUms": {
+          "before": 34.102,
+          "after": 36.127
+        }
+      },
+      {
+        "scenario": "first-byte",
+        "size": 5242880,
+        "iterations": 32,
+        "rounds": 7,
+        "CPUms": {
+          "before": [
+            38.304,
+            38.404,
+            38.185,
+            37.984,
+            38.403,
+            38.754,
+            38.207
+          ],
+          "after": [
+            38.623,
+            35.949,
+            36.351,
+            36.314,
+            36.411,
+            36.472,
+            36.305
+          ]
+        },
+        "medianCPUms": {
+          "before": 38.304,
+          "after": 36.351
+        }
+      },
+      {
+        "scenario": "whole-image",
+        "size": 5242880,
+        "iterations": 32,
+        "rounds": 7,
+        "CPUms": {
+          "before": [
+            0.018,
+            0.019,
+            0.012,
+            0.006,
+            0.007,
+            0.011,
+            0.006
+          ],
+          "after": [
+            0.039,
+            0.012,
+            0.007,
+            0.007,
+            0.009,
+            0.011,
+            0.006
+          ]
+        },
+        "medianCPUms": {
+          "before": 0.011,
+          "after": 0.009
+        }
+      }
+    ]
+  },
+  "validation": [
+    "Independent byte-index oracle, every tail length,4096 randomized cases and both sides of32/64-byte boundaries pass.",
+    "Complete real WebGPU pixels, texture/attachment aliases, CPU-write ordering, queries and snapshot sequence pass.",
+    "Closure0errors/0warnings."
+  ],
+  "interpretation": "Unchanged native-sized images median49.219\u219243.650ms CPU; last-byte50.594\u219236.458ms. Middle-byte34.102\u219236.127ms is a regression in this run, not hidden or an overall speedup claim. No native FPS claim.",
+  "evidence": [
+    {
+      "file": "build/nv40-byte-forward-benchmark.json",
+      "bytes": 2763,
+      "sha256": "825baf551f3f9bd9df3367cb54c061b6da1d172096045bf7136fe52c7d3c4b9d"
+    },
+    {
+      "file": "build/nv40-byte-forward-gpu.log",
+      "bytes": 6177,
+      "sha256": "de0c20cb9a72906e9aa0446b4e7e42a62666adc45a92619d1b824eecb273d6f5"
+    },
+    {
+      "file": "build/nv40-byte-forward-render-unit.log",
+      "bytes": 95,
+      "sha256": "22897543f5914fffc623ba01f5b67f6b1e7fa050e7b8d13b7346ade243901c63"
+    },
+    {
+      "file": "build/nv40-byte-forward-closure.log",
+      "bytes": 3020,
+      "sha256": "928cdedd9ef614b44a371f6342106afd0f2aa0671fe80e28dd774fb3f4091174"
+    },
+    {
+      "file": "build/nv40-xp-mark06-feature13-long-trace/batch8-diagnostic.cpuprofile",
+      "bytes": 478197,
+      "sha256": "6642983c6bf02351cf28c26f40aea6aa030c080dcee66da17fc8df333ca27a70"
+    },
+    {
+      "file": "build/nv40-xp-mark06-feature13-long-trace/native06-eight-triangle-vertices.json",
+      "bytes": 71113,
+      "sha256": "76e453b872490ae3cd97b2960cefc2a68167fae8a381771d0a26ea8ca2591c42"
+    }
+  ]
+}

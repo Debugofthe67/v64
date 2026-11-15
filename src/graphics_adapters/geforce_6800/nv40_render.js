@@ -33,7 +33,14 @@ export function nv40_changed_bytes(a,b)
     if(a===b) return null;
     if(!a || a.length!==b.length) return [0,b.length];
     const count=a.length>>>2,aw=new Uint32Array(a.buffer,a.byteOffset,count),bw=new Uint32Array(b.buffer,b.byteOffset,count);
-    let first=0;while(first<count && aw[first]===bw[first])first++;
+    let first=0;
+    // Native small-batch draws repeatedly compare a full unchanged attachment.
+    // Check groups without losing the exact first modified DWORD/byte.
+    while(count-first>=8 && aw[first]===bw[first] && aw[first+1]===bw[first+1] &&
+        aw[first+2]===bw[first+2] && aw[first+3]===bw[first+3] &&
+        aw[first+4]===bw[first+4] && aw[first+5]===bw[first+5] &&
+        aw[first+6]===bw[first+6] && aw[first+7]===bw[first+7])first+=8;
+    while(first<count && aw[first]===bw[first])first++;
     first*=4;while(first<b.length && a[first]===b[first])first++;
     if(first===b.length) return null;
     // Sparse guest updates can leave megabytes of unchanged trailing rows.
