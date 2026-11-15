@@ -1,5 +1,22 @@
 # Infinity Blade 安装与帧率验证
 
+## 第一血脉导航检查点已保存并恢复（2026-11-15）
+
+从配对剧情主副本继续正常运行，使用原生触摸保活。黑屏旋转指示期间 NAND
+在独立 10 秒窗口读取 8,970,240 bytes，指令计数持续增加；继续运行后进入
+`Start Bloodline` 原生画面。该段是导航/资源加载，不纳入战斗 FPS。
+
+保存 RAM 1,008,609,217 bytes，关闭浏览器后冻结为
+`infinity-next/bloodline-start-master-profile`，再从其克隆工作副本独立恢复。
+恢复后正常运行 2.5 秒，截图仍为相同第一血脉起点，屏幕唤醒、clock rate 1。
+它用于继续寻找更长的战斗窗口，尚未替代旧战斗 A/B 基准。配对源、保存记录、
+恢复图分别在本地 `bloodline-state-save.json`、`bloodline-checkpoint*`、
+`bloodline-navigation/bloodline-restored.png`，均不提交游戏资源。
+
+同时只读检查实际接收的 63 个着色器，其中 7 个含 BoneMatrices、BlendWeight、
+BlendIndices 及骨骼加权运算，表明后端已接收 GPU 骨骼处理路径；仅此不能量化
+其当前绘制占比。原始检查在本地 `skin-shader-probe.json`。
+
 ## PL1 线程 ID 直访：实际战斗退步，撤回（2026-11-15）
 
 针对高频 MCR p15,c13，尝试只在 PL1 将 TPIDRURW/TPIDRURO/TPIDRPRW 的
