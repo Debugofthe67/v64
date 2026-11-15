@@ -491,6 +491,8 @@
         case D3DFMT_A4R4G4B4:
         case D3DFMT_R16F:
             return 2;
+        case D3DFMT_A8B8G8R8:
+        case D3DFMT_X8B8G8R8:
         case D3DFMT_A8R8G8B8:
         case 71: // D32
         case 75: // D24S8
@@ -587,6 +589,14 @@
                 destination[destinationAt + 1] = unorm(g, 255);
                 destination[destinationAt + 2] = unorm(r, 255);
                 destination[destinationAt + 3] = format === D3DFMT_A8R8G8B8 || preserveXrgbBits
+                    ? unorm(a, 255) : 0xff;
+                break;
+            case D3DFMT_A8B8G8R8:
+            case D3DFMT_X8B8G8R8:
+                destination[destinationAt] = unorm(r, 255);
+                destination[destinationAt + 1] = unorm(g, 255);
+                destination[destinationAt + 2] = unorm(b, 255);
+                destination[destinationAt + 3] = format === D3DFMT_A8B8G8R8 || preserveXrgbBits
                     ? unorm(a, 255) : 0xff;
                 break;
             case D3DFMT_R5G6B5:

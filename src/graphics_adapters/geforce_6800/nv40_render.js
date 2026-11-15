@@ -137,7 +137,7 @@ export function nv40_color_masks(o,colors)
             (mask&0x10000?1:0)|(mask&0x100?2:0)|(mask&1?4:0)|(mask&0x1000000?8:0);
         // XRGB/RGB565 have no alpha channel; R32F stores only R. Their
         // padding/absent lanes cannot turn a read-only query into a color write.
-        const channels=colors[index].d3d===114?1:[22,23,24].includes(colors[index].d3d)?7:15;
+        const channels=colors[index].d3d===114?1:[22,23,24,33].includes(colors[index].d3d)?7:15;
         return enabled&channels;
     });
 }
@@ -420,7 +420,7 @@ export class NV40Render
         const cull=nv40_cull_state(o);
         const area=active?null:this.engine.state.raster_area(o);
         const target=active?this.engine.state.target(o):{...area,pitch:area.width*4,bpp:4,d3d:21};
-        if(![21,22,23,24,113,114,116].includes(target.d3d)) throw new RangeError("NV40 target format is not connected to renderer");
+        if(![21,22,23,24,32,33,113,114,116].includes(target.d3d)) throw new RangeError("NV40 target format is not connected to renderer");
         if([114,116].includes(target.d3d) && (((get(o,0x310)?1:0)|(get(o,0x36C)&14))&active)) throw new RangeError("NV40 FP32 target blending is not connected");
         if(target.d3d===116 && [0,1,2,3].filter(index=>active&1<<index).length>2)
             throw new RangeError("NV40 FP32 MRT exceeds the guaranteed host attachment byte budget");

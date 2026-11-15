@@ -5,6 +5,18 @@ const native = Uint8Array.from([0x33, 0x66, 0x99, 0x80, 0x40, 0x20, 0x10, 0xff])
 F.expandRowToGPU(21, native, 0, 2, copied, 0);assert.deepEqual(copied, native);
 assert.equal(F.formatToGPU(21), "bgra8unorm");assert.equal(F.isRenderableGPUFormat("bgra8unorm"), true);
 const readback = new Uint8Array(8);F.packGPUReadbackRow(21, "bgra8unorm", copied, 0, 2, readback, 0);assert.deepEqual(readback, native);
+for(const format of [32,33]) {
+    assert.equal(F.d3dBytesPerTexel(format),4,"RGBA8 readback has four native bytes");
+    for(const gpuFormat of ["rgba8unorm","bgra8unorm"]) {
+        const input=Uint8Array.of(0x55,0x55,...(gpuFormat==="rgba8unorm"?[17,34,51,68,85,102,119,136]:[51,34,17,68,119,102,85,136]),0x55,0x55);
+        const output=new Uint8Array(14).fill(0xAA);
+        F.packGPUReadbackRow(format,gpuFormat,input,2,2,output,3);
+        assert.deepEqual([...output.subarray(3,11)],[17,34,51,format===32?68:255,85,102,119,format===32?136:255]);
+        assert(output.subarray(0,3).every(v=>v===0xAA));assert(output.subarray(11).every(v=>v===0xAA));
+        F.packGPUReadbackRow(format,gpuFormat,input,2,2,output,3,true);
+        assert.deepEqual([...output.subarray(3,11)],[17,34,51,68,85,102,119,136],"explicit XRGB-padding readback retains actual alpha bits");
+    }
+}
 const packed = new Uint8Array(65536 * 2), rgba = new Uint8Array(65536 * 4), roundtrip = new Uint8Array(packed.length);
 for (let i = 0; i < 65536; i++) new DataView(packed.buffer).setUint16(i * 2, i, true);
 F.expandRowToGPU(23, packed, 0, 65536, rgba, 0);

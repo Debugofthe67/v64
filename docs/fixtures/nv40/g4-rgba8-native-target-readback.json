@@ -1,0 +1,71 @@
+{
+  "stage": "G4 native RGBA8 render targets and checked readback packing",
+  "change": [
+    "Connect the existing NV RT color15/16 descriptors to X8B8G8R8/A8B8G8R8 GPU targets.",
+    "Treat X8B8G8R8 alpha as padding, preserving opaque destination alpha inside one GPU batch.",
+    "Shared D3D readback now has a four-byte layout and explicit R/G/B/A packing for formats32/33, including opaque X alpha or explicit padding-bit preservation."
+  ],
+  "red": [
+    "X8B8G8R8 alpha-only mask incorrectly reports an effective alpha write.",
+    "Real native GPU test initially rejects the described RGBA target as unconnected.",
+    "Shared pure format regression sees bytes-per-texel0 instead of4; real target readback cannot commit correct pixels."
+  ],
+  "green": [
+    "Two draws in one GPU batch for both XRGB byte orders preserve destination alpha1; final distinct RGB values round-trip as BGRA[191,128,64,255] and RGBA[64,128,191,255].",
+    "A8B8G8R8 retains real fractional destination alpha; the same blend produces RGBA[16,32,48,255].",
+    "Pure two-pixel packing covers RGBA/BGRA host order, nonzero source/destination offsets, opaque/preserved X bits and surrounding sentinels.",
+    "Complete real NV40 WebGPU rendering suite, NV state/graph units, all65536 RGB565 round trips and Closure zero errors/warnings.",
+    "Complete make test-glbridge passed."
+  ],
+  "scope": "Standalone native FIFO/GPU and shared format controls. No additional original benchmark completion or full IQ acceptance is inferred.",
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dformat"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xbgr-mask-before.log",
+      "bytes": 723,
+      "sha256": "a80a4d7218f7f90b8c06b4918cab9d7b62ecdac2bbd34807c357c4409481280e"
+    },
+    {
+      "file": "build/nv40-xbgr-mask-gpu.log",
+      "bytes": 1660,
+      "sha256": "4e1be5f3a9e50f0d076d1aff57d26ddff61cd68dd607dc418bc2d012be41ee12"
+    },
+    {
+      "file": "build/nv40-rgba-readback-before.log",
+      "bytes": 844,
+      "sha256": "af90e20daa8de979cbda555068c7bd743735240007c647134cd79bc202c5f449"
+    },
+    {
+      "file": "build/nv40-rgba-readback-unit.log",
+      "bytes": 106,
+      "sha256": "694be2e01f9d471c788b5f6a378ad51791aa8513f266bcc56951afb901c2c1de"
+    },
+    {
+      "file": "build/nv40-rgba-target-gpu-final.log",
+      "bytes": 6177,
+      "sha256": "de0c20cb9a72906e9aa0446b4e7e42a62666adc45a92619d1b824eecb273d6f5"
+    },
+    {
+      "file": "build/nv40-xbgr-mask-closure.log",
+      "bytes": 3020,
+      "sha256": "928cdedd9ef614b44a371f6342106afd0f2aa0671fe80e28dd774fb3f4091174"
+    },
+    {
+      "file": "build/nv40-rgba-target-state.log",
+      "bytes": 95,
+      "sha256": "3b46c030f7cbdd9d353ab75ba47c23365445405c52fa541ce758ffc113f38667"
+    },
+    {
+      "file": "build/nv40-rgba-target-graph.log",
+      "bytes": 1104,
+      "sha256": "c6aec485b53c53ece999006a90a06b1b0039996116d15108aad4a54bd205edcd"
+    },
+    {
+      "file": "build/nv40-rgba-readback-glbridge.log",
+      "bytes": 11586,
+      "sha256": "965181364b15e1d2c441a6564d04614f991701c4e65aa5b4c276763b0f2a8c58"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ const channelMasks={methods:new Map([[0x324,0x01000000],[0x370,0x1110]])};
 assert.deepEqual(nv40_color_masks(channelMasks,[{d3d:22},{d3d:21},{d3d:114},{d3d:24}]),[0,8,0,0],"only real format channels can be written");
 channelMasks.methods.set(0x370,0x2220);
 assert.deepEqual(nv40_color_masks(channelMasks,[{d3d:23},{d3d:21},{d3d:114},null]),[0,1,1,0],"MRT channel routing and inactive slots stay independent");
+assert.deepEqual(nv40_color_masks({methods:new Map([[0x324,0x01000000]])},[{d3d:33}]),[0,0,0,0],"X8B8G8R8 padding alpha is absent just like X8R8G8B8");
 const input={bytes:Uint8Array.of(0,1,2,3,4),count:5,stride:1};
 assert.deepEqual([...expand_primitives(input,6).bytes],[0,1,2,2,1,3,2,3,4]);
 assert.deepEqual([...expand_primitives(input,8).bytes],[0,1,2,0,2,3]);
@@ -429,27 +430,30 @@ try
         new Uint32Array(vram.buffer,0x9000,4).set(nopWords);
         for(const [at,value] of [[0x208,0x148],[0x324,0x01010101],[0x304,0],[0xA74,0],[0xA70,0],[0xA6C,8],[0x17CC,0]])method(at,value);
         console.log("PASS: native NOP-only XRGB alpha mask, real occlusion/depth tests and alpha-bearing/test rejection");
-        const savedXrgbColor=vram.slice(0x10000,0x10100),beforeXrgbBatches=engine.backend.stats.batches;
-        method(0x208,0x144);method(0x310,0);
-        const emitXrgb=color=>{
-            new Float32Array(vram.buffer,0x4000,12).set([0,0,.5,1,0,16,.5,1,16,0,.5,1]);
-            new Float32Array(vram.buffer,0x9010,4).set(color);
-            method(0x1808,5);method(0x1814,2<<24);method(0x1808,0);
-        };
-        device.fifo.running=true;
-        try
+        for(const xrgbFormat of [0x144,0x14F,0x150])
         {
-            emitXrgb([1,0,0,.25]);
-            for(const [at,value] of [[0x310,1],[0x314,0x00010304],[0x318,0],[0x320,0x80068006]])method(at,value);
-            emitXrgb([0,1,0,1]);
+            const savedXrgbColor=vram.slice(0x10000,0x10100),beforeXrgbBatches=engine.backend.stats.batches;
+            method(0x208,xrgbFormat);method(0x310,0);
+            const emitXrgb=color=>{
+                new Float32Array(vram.buffer,0x4000,12).set([0,0,.5,1,0,16,.5,1,16,0,.5,1]);
+                new Float32Array(vram.buffer,0x9010,4).set(color);
+                method(0x1808,5);method(0x1814,2<<24);method(0x1808,0);
+            };
+            device.fifo.running=true;
+            try
+            {
+                emitXrgb([1,0,0,.25]);
+                for(const [at,value] of [[0x310,1],[0x314,0x00010304],[0x318,0],[0x320,0x80068006]])method(at,value);
+                emitXrgb([.25,.5,.75,1]);
+            }
+            finally {device.fifo.running=false;}
+            await engine.backend.wait();
+            assert.equal(engine.backend.stats.batches-beforeXrgbBatches,1,"XRGB blending is checked before an intervening readback/upload");
+            assert.deepEqual([...vram.subarray(0x10000,0x10004)],xrgbFormat===0x144?[191,128,64,255]:xrgbFormat===0x14F?[64,128,191,255]:[16,32,48,255],"XRGB alpha stays opaque, ARGB alpha remains meaningful and both byte orders round-trip");
+            vram.set(savedXrgbColor,0x10000);
+            for(const [at,value] of [[0x208,0x148],[0x310,0],[0x314,0x00010001],[0x318,0]])method(at,value);
         }
-        finally {device.fifo.running=false;}
-        await engine.backend.wait();
-        assert.equal(engine.backend.stats.batches-beforeXrgbBatches,1,"XRGB blending is checked before an intervening readback/upload");
-        assert.deepEqual([...vram.subarray(0x10000,0x10003)],[0,255,0],"XRGB destination alpha stays opaque across GPU draws");
-        vram.set(savedXrgbColor,0x10000);
-        for(const [at,value] of [[0x208,0x148],[0x310,0],[0x314,0x00010001],[0x318,0]])method(at,value);
-        console.log("PASS: XRGB destination alpha remains one across two batched draws");
+        console.log("PASS: both XRGB byte orders keep opaque destination alpha; RGBA alpha remains meaningful in batched draws");
         method(0x183C,1);method(0x1830,0x405);method(0x1834,0x900);
         await depthDraw(.5,[1,0,0,1]);assert.deepEqual([...vram.subarray(0x10000,0x10004)],[0,255,0,255],"CW front faces cull the CCW window-space triangle");
         method(0x1834,0x901);await depthDraw(.5,[1,0,0,1]);
