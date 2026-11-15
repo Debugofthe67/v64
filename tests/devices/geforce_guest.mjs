@@ -1022,7 +1022,7 @@ export async function run_geforce_guest(win98)
         }
         // Periodic captures may be disabled for profiling. Refresh from the
         // stopped guest's authoritative VRAM after any pending GPU readback.
-        cpu.devices.display.request_frame(true);
+        vm.v86.cpu.devices.display.request_frame(true);
         save_png(sink, out, "final");
         fs.writeFileSync(path.join(out, "screen.txt"), sink.text.join("\n"));
         for(const name of new Set(["MACHINE.INF", "NVDOS.TXT", "DXDIAG.TXT", "DDXP.TXT", "NVLAUNCH.TXT",
