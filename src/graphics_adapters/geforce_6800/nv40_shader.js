@@ -92,7 +92,29 @@ class Shader
         }
         else throw new RangeError("NV40 invalid shader operand");
         const swizzle=scalar?Array(4).fill(source.swizzle[0]):source.swizzle;
+        if(this.stage==="fragment" && source.precision && source.precision!==5)
+            return this.source_precision(src(type,index,swizzle),source);
         return src(type,index,swizzle,source.negate,source.absolute);
+    }
+    source_precision(token,source)
+    {
+        const precision=source.precision||0;
+        if(!precision || precision===5) return token;
+        if(precision>4) throw new RangeError("NV40 invalid fragment source precision "+precision);
+        const index=this.temp("source-precision-"+precision+"-"+token);
+        // Curie source clamping precedes negation. Saturation additionally
+        // precedes ABS; the other precision ranges clamp the absolute value.
+        // The ranges describe input limits, not a half-register bit conversion.
+        if(precision===4)
+        {
+            this.emit(0x1009,dst(0,index),token);
+            return src(0,index,[0,1,2,3],source.negate,source.absolute);
+        }
+        this.emit(source.absolute?OP.ABS:OP.MOV,dst(0,index),token);
+        const limit=[0,65504,2,1][precision];
+        this.emit(OP.MAX,dst(0,index),src(0,index),this.literal(-limit));
+        this.emit(OP.MIN,dst(0,index),src(0,index),this.literal(limit));
+        return src(0,index,[0,1,2,3],source.negate);
     }
     literal(value)
     {
@@ -720,8 +742,10 @@ export function translate_fragment_program(program,options={})
             .map(source=>{
                 if(!i.input_relative || source.type!=="input") return shader.source(source,i.constant);
                 if(!blocks.some(b=>b.name==="LOOP")) throw new RangeError("NV40 relative fragment input outside LOOP");
-                const token=shader.source({...source,index:4},i.constant);
-                return [(token|0x2000|i.address)>>>0,src(15,0,[0,0,0,0])];
+                const modified=source.precision && source.precision!==5;
+                const token=shader.source({...source,index:4,...(modified?{precision:0,negate:false,absolute:false}:{})},i.constant);
+                const relative=[(token|0x2000|i.address)>>>0,src(15,0,[0,0,0,0])];
+                return modified?shader.source_precision(relative,source):relative;
             });
         const conditional=i.predicate.condition!==7;
         if(conditional || i.name==="KIL")
@@ -749,7 +773,8 @@ export function translate_fragment_program(program,options={})
         }
         const shift=i.scale<4?i.scale:8-i.scale+12;
         if(i.scale===4) throw new RangeError("NV40 invalid fragment scale");
-        const copy=i.name==="MOV" && i.sources[0].type==="temp" && !!i.sources[0].half===half && !i.scale && !i.saturate;
+        const copy=i.name==="MOV" && i.sources[0].type==="temp" && !!i.sources[0].half===half &&
+            (!i.sources[0].precision || i.sources[0].precision===5) && !i.scale && !i.saturate;
         const destination=dst(0,30,i.destination.mask,false,shift);
         if(texture)
         {
@@ -821,7 +846,7 @@ export function translate_fragment_program(program,options={})
         }
         else if(unpack>=0)
         {
-            const source=i.sources[0],physical=source.type==="temp";
+            const source=i.sources[0],physical=source.type==="temp" && (!source.precision || source.precision===5);
             if(physical && source.half) throw new RangeError("NV40 unpack requires a full register source");
             const token=physical?src(0,source.index,source.swizzle,source.negate,source.absolute):sources[0];
             shader.emit(0x1006|(unpack|+physical<<2)<<16,destination,token);

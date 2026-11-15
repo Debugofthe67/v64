@@ -230,6 +230,19 @@ try
     assert.throws(()=>translate_fragment_program({constants:fragment.constants,word_count:12,instructions:[fpFlow("IF",0,10),fpMove(4)]}),/scope/);
     const alias=structuredClone(fragment),later=structuredClone(alias.instructions[0]);later.sources[0]={type:"temp",index:0,half:false,swizzle:[0,1,2,3]};alias.instructions.push(later);
     validate("fragment-half-full-alias",translate_fragment_program(alias));
+    for(const precision of [0,1,2,3,4,5]) for(const absolute of [false,true])
+    {
+        const p=structuredClone(alias);Object.assign(p.instructions[1].sources[0],{precision,absolute,negate:true});
+        validate("fragment-source-precision-"+precision+"-"+absolute,translate_fragment_program(p));
+    }
+    for(const precision of [6,7])
+    {
+        const p=structuredClone(fragment);p.instructions[0].sources[0].precision=precision;
+        assert.throws(()=>translate_fragment_program(p),/source precision/);
+    }
+    const preciseIndexed=structuredClone(indexed);preciseIndexed.sources[0].precision=4;
+    validate("fragment-indexed-source-saturation",translate_fragment_program({constants:fragment.constants,word_count:16,
+        instructions:[loop,preciseIndexed,fpMove(8)]}));
     for (const half of [false,true])
     {
         const p=structuredClone(alias);p.instructions[1].sources[0].half=half;

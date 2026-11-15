@@ -916,6 +916,15 @@ try
             method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
             return [...vram.subarray(0x10000,0x10004)];
         };
+        // Original 93.71 compilation of MOV_sat r0,c0; ADD oC0,r0,c1.
+        // The clamp is folded into ADD's source0 precision field, without
+        // an output SAT bit. Keep the original instruction and constant bits.
+        assert.deepEqual(await conditionalDraw([
+            0x01001600,0x1C9D4802,0x0001C800,0x0001C800,
+            ...new Uint32Array(Float32Array.of(.25,.25,-.25,.25).buffer),
+            0x03000E81,0x1C9DC802,0x00216800,0x0001C800,
+            ...new Uint32Array(Float32Array.of(-.5,.25,1.5,-.5).buffer)]),[191,128,64,255],
+            "native folded source saturation clamps before ADD, independently of destination SAT");
         const conditions=[()=>false,x=>x<0,x=>x===0,x=>x<=0,x=>x>0,x=>x!==0,x=>x>=0,()=>true];
         const fpMove=(destination,half,source,sourceHalf,{mask=15,swizzle=[0,1,2,3],condition=7,end=false}={})=>[
             (1<<24|destination<<1|+half<<7|mask<<9|+end)>>>0,
@@ -923,6 +932,34 @@ try
         const fpLiteral=(destination,half,values,{mask=15,end=false}={})=>[
             (1<<24|destination<<1|+half<<7|mask<<9|+end)>>>0,7<<18|0x1C802,0,0,
             ...new Uint32Array(Float32Array.from(values).buffer)];
+        for(const operand of [0,1,2])
+        {
+            const values=[[.5,.5,.5,.5],[.5,.5,.5,.5],[.25,.25,.25,.25]];
+            values[operand]=[-.5,.25,1.5,NaN];
+            const words=values.flatMap((v,i)=>fpLiteral(i+1,false,v));
+            words.push(4<<24|128|15<<9|1,7<<18|0x1C804,
+                0x1C808|4<<(19+operand*3),0x1C80C);
+            assert.deepEqual(await conditionalDraw(words),operand===2?[255,128,64,64]:[191,96,64,64],
+                "MAD independently clamps source "+operand+", including NaN to zero");
+        }
+        assert.deepEqual(await conditionalDraw([
+            ...fpLiteral(1,false,[-.5,.25,1.5,NaN]),...fpLiteral(2,false,[.5,.5,.5,.5]),
+            3<<24|128|15<<9|1,7<<18|0x1C804|1<<29|1<<17,0x1C808|4<<19,0x1C800]),[0,64,128,128],
+            "source saturation precedes ABS and negation");
+        const clampedCopy=fpMove(0,true,2,true,{end:true});clampedCopy[2]|=4<<19;
+        assert.deepEqual(await conditionalDraw([
+            ...fpLiteral(2,true,[-.5,.25,1.5,NaN]),...clampedCopy]),[255,64,0,0],
+            "half-register MOV with source saturation cannot take the unmodified raw-copy path");
+        for(const [precision,limit] of [[1,65504],[2,2],[3,1],[5,2]])
+        {
+            const values=precision===5?[-2,-.5,.5,2]:[-limit*2,-limit/4,limit/4,limit*2];
+            assert.deepEqual(await conditionalDraw([
+                ...fpLiteral(1,false,values),...fpLiteral(2,false,Array(4).fill(.5/limit)),
+                ...fpLiteral(3,false,Array(4).fill(.5)),
+                4<<24|128|15<<9|1,7<<18|0x1C804,0x1C808|precision<<19,0x1C80C]),[159,96,0,255],
+                "source precision range "+precision+" is applied before the arithmetic");
+        }
+        console.log("PASS: real WebGPU folded native saturation, three source slots, modifier order, NaN and half-register MOV");
         assert.deepEqual(await conditionalDraw([
             ...fpLiteral(2,true,[.25,.5,.75,1]),...fpMove(0,false,1,false,{end:true})]),[191,128,64,255],
             "full-register MOV copies both packed halves to their aliased H output");

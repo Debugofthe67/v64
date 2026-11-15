@@ -81,7 +81,10 @@ export function decode_fragment_program(words,read=null)
         const opcode=a>>>24&63, input=a>>>13&15;
         const sources = [b,c,d].map((bits,i) => ({type: ["temp","input","constant","invalid"][bits&3],
             index: (bits&3)===1 ? input : bits>>>2&63, swizzle: swizzle(bits,[9,11,13,15]),
-            half: !!(bits&256), negate: !!(bits&0x20000), absolute: !!([b>>>29,c>>>18,d>>>18][i]&1)}));
+            half: !!(bits&256), negate: !!(bits&0x20000), absolute: !!([b>>>29,c>>>18,d>>>18][i]&1),
+            // SRC1 carries independent precision modifiers for all operands.
+            // In particular 4 clamps the source, even when OUT_SAT is clear.
+            precision:branch?0:c>>>(19+i*3)&7}));
         let constant=-1;
         if(!branch && sources.some(source=>source.type==="constant"))
         {

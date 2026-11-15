@@ -56,6 +56,9 @@ assert.equal(decode_vertex_program(ret).instructions[0].scalar.name,"RET","an em
 // and out of the cache key; different constants share the normalized program.
 const fp=Uint32Array.of(0x01001E81,0x001DC802,0,0,0x3F800000,0x3F000000,0,0x3F800000);
 const fragment=decode_fragment_program(fp);assert.equal(fragment.instructions.length,1);
+const sourcePrecision=fp.slice();sourcePrecision[2]=4<<19|2<<22|3<<25;
+assert.deepEqual(decode_fragment_program(sourcePrecision).instructions[0].sources.map(s=>s.precision),[4,2,3],
+    "fragment source precision modifiers occupy three independent three-bit fields in SRC1");
 assert.equal(fragment.instructions[0].name,"MOV");assert.equal(fragment.instructions[0].destination.half,true);
 assert.equal(fragment.instructions[0].destination.mask,15);assert.equal(fragment.word_count,8);
 assert.deepEqual(fragment.constants[0],[0x3F800000,0x3F000000,0,0x3F800000]);
