@@ -209,9 +209,10 @@ export class NV40_3D
         return this.captured.size ? Array.from(this.captured.values()) :
             Array.from(this.graph.objects.values()).filter(o=>o.class_id===0x4097).map(o=>this.program(o));
     }
-    program(o)
+    program(o, include_state = true)
     {
-        const result={channel:o.channel,instance:o.instance,vertex:null,fragment:null,state:Array.from(o.methods).filter(([at])=>at<0x2000),errors:[]};
+        const result={channel:o.channel,instance:o.instance,vertex:null,fragment:null,
+            state:include_state?Array.from(o.methods).filter(([at])=>at<0x2000):[],errors:[]};
         try { result.vertex=decode_vertex_program(this.vertex_program(o,0),0,get(o,0x1EA0)); }
         catch(error) { result.errors.push(String(error)); }
         try
@@ -229,7 +230,9 @@ export class NV40_3D
     }
     shaders(o, options = {})
     {
-        const program = this.program(o);
+        // Drawing needs fresh checked shader code and inline constants, but
+        // the full method snapshot belongs only to program diagnostics.
+        const program = this.program(o,false);
         if(program.errors.length) throw new RangeError(program.errors.join("; "));
         const clips=this.state.clips(o);
         const vertexOptions={...options,result_map:this.state.results(o),clips},fragmentOptions={...options,clips,

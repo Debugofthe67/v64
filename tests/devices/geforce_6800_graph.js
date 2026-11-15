@@ -182,6 +182,10 @@ const shaders=graph.engine3d.shaders(graph.object(0,0x4400));
 assert.equal(shaders.vertex.bytecode[0],0xFFFE0300);assert.equal(shaders.fragment.bytecode[0],0xFFFF0300);
 assert.deepEqual([...shaders.fragment.constant_values[0]],[0x3F800000,0,0,0x3F800000]);
 const shaderObject=graph.object(0,0x4400),shaderEngine=graph.engine3d;
+assert(shaderEngine.program(shaderObject).state.some(([at])=>at===0x8E4),"diagnostic programs retain native method state");
+shaderObject.methods[Symbol.iterator]=()=>{throw Error("draw path enumerated all native methods");};
+try {assert.doesNotThrow(()=>shaderEngine.shaders(shaderObject),"drawing does not collect diagnostic method snapshots");}
+finally {delete shaderObject.methods[Symbol.iterator];}
 assert.equal(shaderEngine.shaders(shaderObject).fragment.bytecode,shaders.fragment.bytecode,"unchanged shaders reuse translated bytecode");
 new DataView(vram.buffer).setUint32(0x9010,0x3F000000,true);
 const changedConstant=shaderEngine.shaders(shaderObject);
