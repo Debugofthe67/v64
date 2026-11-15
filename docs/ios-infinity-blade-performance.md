@@ -1,5 +1,21 @@
 # Infinity Blade 安装与帧率验证
 
+## 动态战斗复采与查找缓存撤回（2026-11-15）
+
+重新从主副本复现预热 8 帧，再只采样后续 30 个完整战斗帧。起止图确认全程
+动态格挡、亮屏、rate 1。CPU Worker 的 `run_machine_core` 包含约 85.4% 样本，
+`pages::run` 自身约 7.2%、解释器包含约 14.6%、时钟宿主 `now` 自身约 4.8%；
+主线程同期约 88.0% 空闲，GLES 提交包含约 7.0%。包含时间有嵌套，不相加。
+这份采样替代此前在教学暂停页取得的 CPU profile，原始文件为
+`infinity-perf-next/live-30.cpuprofile*`，起止 PNG 在 `live-profile/`。
+
+针对新的热点，将旧实验的函数索引缓存扩为 256 槽后重测；每次仍验证翻译、
+模式、Ready 状态、代码 key 和入口，ASID 切换、DMA 改码/逐出/快照及
+AArch32 回归通过。但两对 30 帧实测控制/候选为 5.447/5.919 FPS（+8.7%）及
+5.945/5.950 FPS（约 +0.1%）；结束 PNG 有相邻帧差异，不能确认稳定收益。
+撤回运行时缓存，默认源码和核心保持已接受的同步 helper 优化。补丁和日志留在
+本地 `infinity-perf-next/cache256-*` 与 `cache-30-*`，不把该尝试计为性能提升。
+
 ## 同步 helper 的寄存器保存优化（2026-11-15）
 
 对已校验编码的 ARM/Thumb LDREX/STREX（含 byte/half/double）及屏障/CLREX，
