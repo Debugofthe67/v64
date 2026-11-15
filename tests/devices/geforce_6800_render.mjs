@@ -877,6 +877,27 @@ try
         method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
         assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,4)],[0x3800,0x3800,0x3C00,0x3C00],"A16L16 filters both independent UNORM16 channels");
         console.log("PASS: real WebGPU native A16L16 crossbar and independent bilinear channels");
+        // Unmodified93.71 A16B16G16R16 emits format15/mode3, AA4E,
+        // and these two masked TEX instructions. G16R16 keeps mode0.
+        method(0x1A04,0x1B529);method(0x1A10,0xAA4E);method(0xB00,0x1ADC0);method(0x1840,16);
+        new Uint16Array(vram.buffer,0x20000,8).set([0,16384,32768,65535,16384,49152,65535,32768]);
+        for(const fullMask of [false,true])
+        {
+            const code=fullMask?[0x17009E81,0x1C9DC811,0x1C800,0x1C800]:
+                [0x17008880,0x1C9DC811,0x1C800,0x1C800,0x17008681,0x1C9DC811,0x1C800,0x1C800];
+            code.forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+            for(const [filter,rgb,alpha] of [[0x01014000,[0x3400,0x3A00,0x3C00],0x3800],
+                [0x02024000,[0x3000,0x3800,0x3A00],0x3A00]])
+            {
+                method(0x1A14,filter);method(0x1808,6);
+                for(const word of new Uint32Array(Float32Array.of(0,0,.5,.5,0,16,.5,.5,16,0,.5,.5).buffer))method(0x1818,word);
+                method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
+                assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,4)],[...rgb,fullMask?alpha:0],
+                    "native wide UNORM16 original RGB mask and explicit RGBA export preserve point/bilinear channels");
+            }
+        }
+        method(0xB00,0);
+        console.log("PASS: real WebGPU native wide UNORM16 storage, four-channel filtering and original masked TEX");
         method(0x1A04,0x12B29);method(0x1A10,0x696C);method(0x1840,4);method(0x1A14,0xC2020000);
         vram.set([128,127,127,128],0x20000);
         method(0x1808,6);

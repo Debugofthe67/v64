@@ -1,0 +1,85 @@
+{
+  "stage": "G3/G4 native four-component UNORM16 texture mode",
+  "status": "Original native API control and unit/GPU/release checks pass; original HDR recapture continues",
+  "cause": "Official93.71 uses base format15 for both G16R16 and A16B16G16R16. Per-unit filter-optimization bits15..17=3 select eight-byte/four-UNORM16 storage. The old decoder always read four bytes, mixing RG/BA and truncating each row of the original HDR reflection cubes.",
+  "evidenceQualification": "Mode3 and the independent UNORM component order are inferred from unchanged native API controls and original driver method streams, not a row-pitch heuristic or a claim that hardware documents name this field.",
+  "implementation": {
+    "baseFormatHex": "15",
+    "mode": 3,
+    "texelBytes": 8,
+    "nativeCrossbarHex": "AA4E",
+    "storageComponentOrder": [
+      0,
+      3,
+      2,
+      1
+    ],
+    "pairedMode0Preserved": true,
+    "floatComponentOrdersUnchanged": true,
+    "DMAAndExactByteCacheRetained": true
+  },
+  "nativeProbe": {
+    "source": "tests/devices/geforce_float_texture.c",
+    "binary": "build/NVFLOAT-v4.EXE",
+    "bytes": 11659,
+    "sha256": "ae85b7d6a5c8f0da6d3ea59570135cb6dc8f900f0e837ce40c4809df6ab61888",
+    "sourceRGBA16Words": [
+      8192,
+      16384,
+      32768,
+      65535
+    ],
+    "API": "Unmodified D3D9 HAL / official93.71; managed4x4; point and bilinear",
+    "oldResult": "build/nv40-xp-mark06-hdr-material-cause/NVFLOAT.TXT",
+    "fixedResult": "build/nv40-xp-native-unorm16-wide-fixed/NVFLOAT.TXT",
+    "oldWidePixels": [
+      "ff80ff80",
+      "ff80ff80"
+    ],
+    "fixedWidePixels": [
+      "ff204080",
+      "ff204080"
+    ],
+    "pairedUNORMUnchanged": [
+      "ff2040ff",
+      "ff2040ff"
+    ],
+    "supportedDraws": 10,
+    "oldWrongRGBChannels": 4,
+    "fixedFailures": 0,
+    "supportedCreateDrawReadbackLockHRESULTs": 0,
+    "unsupported": "R16F CheckDeviceFormat returns D3DERR_NOTAVAILABLE and is explicitly skipped",
+    "allTenRawFragmentProgramsUnchanged": true,
+    "sameSourceCheckpoint": "build/nv40-xp-mark06-hdr-material-cause/checkpoint-native-hdr1-original-save-material-diagnostic.state.bundle.json",
+    "failureCheckpoint": "build/nv40-xp-mark06-hdr-material-cause/checkpoint-native-unorm16-wide-probe-failure.state.bundle.json",
+    "fixedCheckpoint": "build/nv40-xp-native-unorm16-wide-fixed/checkpoint-native-unorm16-ten-supported-draws-pass.state.bundle.json"
+  },
+  "validation": {
+    "unit": "Old decoder fails bpp4 vs8. Fixed exact four-word values, independent UNORM crossbar, ZERO/ONE, padded mip rows, six linear cube faces, paired mode and DMA last-byte bounds pass.",
+    "realGPU": "Full NV40 real WebGPU suite passes; original RGB-only masked TEX plus explicit RGBA export, point and bilinear filtering all verified.",
+    "releaseBuild": "Closure 0 errors,0 warnings",
+    "strictC": "MinGW -Wall -Wextra -Werror"
+  },
+  "artifacts": {
+    "build/nv40-xp-mark06-hdr-material-cause/NVFLOAT.TXT": {
+      "bytes": 1928,
+      "sha256": "5736c54cf1f8a4051b1e731d0ab0be142cadaf1b6bd27aa1738a6aa730251aab"
+    },
+    "build/nv40-xp-native-unorm16-wide-fixed/NVFLOAT.TXT": {
+      "bytes": 1928,
+      "sha256": "b794ced8574a9a14fa5231861619c4aa39d9f89c0c855f455cdae87d479d3f63"
+    },
+    "build/nv40-xp-mark06-hdr-material-cause/native-float-probe-programs.json": {
+      "bytes": 607217,
+      "sha256": "8b04bcdb882148b824f07790d094cc1c033453176ceb9de475d3e6914785d6f0"
+    },
+    "build/nv40-xp-native-unorm16-wide-fixed/native-float-probe-programs.json": {
+      "bytes": 607188,
+      "sha256": "081facfa448e19d56980fafbe746a9e4fbc6fb9080c61517d67409a1668f5c09"
+    }
+  },
+  "limits": [
+    "The old control guest was stopped only after preserving matching original-IQ and probe-failure RAM/disk bundles; no normal shutdown is claimed for that diagnostic.",
+    "Actual original06 HDR1/HDR2 images must be re-exported before accepting their remaining color residuals."
+  ]
+}

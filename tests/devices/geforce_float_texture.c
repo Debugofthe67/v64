@@ -1,4 +1,4 @@
-/* Original D3D9 HAL float-texture/filter control. No proxy or driver patch. */
+/* Original D3D9 HAL 16-bit UNORM and float-texture/filter control. No proxy or driver patch. */
 #define WIN32_LEAN_AND_MEAN
 #define COBJMACROS
 #include <windows.h>
@@ -67,10 +67,11 @@ void WINAPI entry(void)
         {0,128,0,1,.375f,.375f},{128,0,0,1,.375f,.375f}};
     const WORD values[]={0x3000,0x3400,0x3800,0x3c00}; /* .125,.25,.5,1 */
     const float full_values[]={.125f,.25f,.5f,1};
-    const UINT formats[]={111,112,113,114,116};
+    const WORD unorm_values[]={8192,16384,32768,65535};
+    const UINT formats[]={34,36,111,112,113,114,116};
     for(UINT test=0;test<sizeof(formats)/sizeof(formats[0]);test++)
     {
-        UINT format=formats[test],channels=format==113||format==116?4:format==112?2:1;
+        UINT format=formats[test],channels=format==36||format==113||format==116?4:format==34||format==112?2:1;
         IDirect3DDevice9_SetPixelShader(device,channels==1?scalar_shader:shader);
         IDirect3DTexture9 *texture=0;report("FORMAT",format);
         hr=IDirect3D9_CheckDeviceFormat(d3d,0,D3DDEVTYPE_HAL,mode.Format,0,D3DRTYPE_TEXTURE,(D3DFORMAT)format);
@@ -85,7 +86,7 @@ void WINAPI entry(void)
         for(UINT y=0;y<4;y++)for(UINT x=0;x<4;x++)for(UINT c=0;c<channels;c++)
         {
             if(format>=114)*(float*)((BYTE*)locked.pBits+y*locked.Pitch+(x*channels+c)*4)=full_values[c];
-            else *(WORD*)((BYTE*)locked.pBits+y*locked.Pitch+(x*channels+c)*2)=values[c];
+            else *(WORD*)((BYTE*)locked.pBits+y*locked.Pitch+(x*channels+c)*2)=format<111?unorm_values[c]:values[c];
         }
         IDirect3DTexture9_UnlockRect(texture,0);
         IDirect3DDevice9_SetTexture(device,0,(IDirect3DBaseTexture9*)texture);

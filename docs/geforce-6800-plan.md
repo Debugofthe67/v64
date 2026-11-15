@@ -2316,3 +2316,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G7 文档状态同步：gpu-devices、驱动安装说明和偏差表已链接已完成的 Win98 03 十一项、XP06 补充十三项及正常关机证据，去掉这些功能覆盖仍未完成的过期表述；明确九图复测、HDR1偏色、06 feature画面和最终独立profile仍开放。历史305秒测量保留并标明早于后续成功，不将此同步当作G7完成。
 
 - G4 FP32修复后06四张原版IQ及正常关机复核：四图逐项保存成功、GPU静止60秒和完整BMP验证，8042draws零GPU错误；1521183076字节健康RAM无损压缩校验为642168925字节并删除raw，stock XP正常关机及冷磁盘对已导出。HDR1 scene MAD15.3424/max157仍明显偏绿，未验收；新材质记录与原生格式探针进一步指出UNORM16 mode3宽布局，继续修复，不把FP32探针通过当作HDR全图通过。见 `g4-06-float32-four-fixed-frames.json`。
+
+- G3/G4 原生宽UNORM16采样修复：官方93.71的G16R16/A16B16G16R16同发format15，后者mode3必须八字节且有独立AA4E通道排列；旧四字节路径混读原版HDR反射立方体。未修改HAL探针十次受支持draw的机器码全相同，宽UNORM两种过滤均由ff80ff80恢复ff204080、FAILURES4→0，原双通道和FP16/32结果保持。新增单测先红后绿，精确16位/padded六面mip/DMA边界及完整真实GPU、Closure均通过，见 `g3-native-wide-unorm16-texture-mode.json`；原版HDR全图复测继续，未据探针关闭IQ门禁。

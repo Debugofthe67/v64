@@ -56,6 +56,39 @@ for(let face=0;face<6;face++) new Uint16Array(vram.buffer,0x9000+face*128,2).set
 assert.deepEqual(texture.images(texture.describe(pair16,0)).map(bytes=>[...new Uint16Array(bytes.buffer)].slice(0,2)),
     Array.from({length:6},(_,face)=>[face+1,65535-face]),"A16L16 native cube faces retain 128-byte alignment");
 console.log("PASS: native A16L16 UNORM16 pair, crossbar, padded rows and aligned cube faces");
+// Original93.71 uses format15 for both G16R16 and A16B16G16R16.
+// Mode3 selects the four-word view with the driver's AA4E crossbar.
+const wideUnorm={methods:new Map([[0x184,0x10],[0x1A00,0xD000],[0x1A04,0x2B529],
+    [0x1A08,0x30303],[0x1A0C,0x80008000],[0x1A10,0xAA4E],[0x1A14,0x02060000],
+    [0x1A18,2<<16|2],[0x1840,24],[0xB00,0x1ADC0]])};
+const unormWords=[1,2,3,4,8192,16384,32768,65535,65534,32769,16383,0,17,31,63,127];
+const unormView=new DataView(vram.buffer);
+unormWords.forEach((word,i)=>unormView.setUint16(0xD000+Math.floor(i/8)*24+i%8*2,word,true));
+[5,6,7,8].forEach((word,i)=>unormView.setUint16(0xD030+i*2,word,true));
+const wideUnormSurface=texture.describe(wideUnorm,0);
+assert.equal(wideUnormSurface.bpp,8,"native format15 mode3 uses four UNORM16 words");
+assert.equal(wideUnormSurface.d3d,36);
+assert.deepEqual(texture.images(wideUnormSurface).map(bytes=>[...new Uint16Array(bytes.buffer)]),
+    [unormWords,[5,6,7,8]],"wide UNORM16 native crossbar preserves every bit and padded mip rows");
+wideUnorm.methods.set(0x1A10,0xAA6C);
+assert.deepEqual([...new Uint16Array(texture.read(texture.describe(wideUnorm,0)).buffer)].slice(0,4),
+    [1,4,3,2],"wide UNORM16 has its own storage component order");
+wideUnorm.methods.set(0x1A10,0x5500);
+assert([...new Uint16Array(texture.read(texture.describe(wideUnorm,0)).buffer)].every(word=>word===65535));
+assert.throws(()=>texture.images({...wideUnormSurface,dma:{...wideUnormSurface.dma,limit:0xD036}}),/limit/);
+wideUnorm.methods.set(0x1A10,0xAA4E);wideUnorm.methods.set(0x1840,12);
+assert.throws(()=>texture.describe(wideUnorm,0),/pitch/);
+wideUnorm.methods.set(0x1840,24);wideUnorm.methods.set(0xB00,0x2DC0);
+assert.equal(texture.describe(wideUnorm,0).bpp,4,"padding alone never widens paired UNORM16");
+wideUnorm.methods.set(0xB00,0x1ADC0);wideUnorm.methods.set(0x1A04,0x2B52D);
+for(let face=0;face<6;face++)for(const [offset,count,base]of[[0,4,face*32],[48,1,face*32+16]])
+    for(let pixel=0;pixel<count;pixel++)for(let channel=0;channel<4;channel++)
+        unormView.setUint16(0xD000+face*72+offset+Math.floor(pixel/2)*24+pixel%2*8+channel*2,base+channel+1,true);
+assert.deepEqual(texture.images(texture.describe(wideUnorm,0)).map(bytes=>[...new Uint16Array(bytes.buffer)].slice(0,4)),
+    Array.from({length:6},(_,face)=>[[1,2,3,4].map(n=>n+face*32),[17,18,19,20].map(n=>n+face*32)]).flat(),
+    "linear wide UNORM16 cube faces retain the complete padded mip chain");
+console.log("PASS: native wide UNORM16 mode, component order, exact words, padded cube mip chains and DMA bounds");
+
 for(const [code,bpp,format] of [[16,4,75],[18,2,80]])
 {
     const depth={methods:new Map([[0x184,0x10],[0x1A00,0x9000],[0x1A04,0x12021|code<<8],[0x1A08,0x60000303],

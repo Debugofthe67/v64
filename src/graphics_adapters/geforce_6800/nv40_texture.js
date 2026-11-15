@@ -4,6 +4,7 @@ const get=(o,at,fallback=0)=>o.methods.has(at)?o.methods.get(at):fallback;
 // TEX_SWIZZLE fields are A/R/G/B from low to high (Mesa nv30_texture).
 const CROSSBAR_SHIFT=[2,4,6,0];
 const WIDE_FLOAT_COMPONENT=[2,1,0,3];
+const WIDE_UNORM_COMPONENT=[0,3,2,1];
 const BYTES=new Map([[1,1],[2,2],[3,2],[4,2],[5,4],[11,2],[16,4],[18,2],[20,2],[21,4],[26,8],[27,16],[28,4],[31,4]]);
 const BLOCK_BYTES=new Map([[6,8],[7,16],[8,16]]);
 // Normalized byte ratios have odd denominators, so none land on a binary16
@@ -75,10 +76,11 @@ export class NV40Texture
         // Original 93.71 RG16F/RGBA16F API controls use format1f in both
         // cases. TEX_FILTER_OPTIMIZATION mode3 selects the four-half view;
         // mode0 retains the paired view. Format1c mode4 similarly selects
-        // four float32 components. Never infer width from padded row pitch.
+        // four float32 components. Format15 mode3 is the four-UNORM16 view,
+        // with its independent storage crossbar. Never infer width from pitch.
         const format_mode=get(o,0xB00+unit*4)>>>15&7;
         const dimension=format>>>4&15,width=size>>>16,height=dimension===1?1:size&65535,
-            block=BLOCK_BYTES.get(code),bpp=code===31 && format_mode===3?8:code===28 && format_mode===4?16:BYTES.get(code)||block,pitch=get(o,0x1840+unit*4)&65535;
+            block=BLOCK_BYTES.get(code),bpp=(code===21 || code===31) && format_mode===3?8:code===28 && format_mode===4?16:BYTES.get(code)||block,pitch=get(o,0x1840+unit*4)&65535;
         if(!(get(o,at+12)&0x80000000)) throw new RangeError("NV40 sampled texture is disabled");
         const cube=!!(format&4),volume=dimension===3;
         const depthCompare=code===16 || code===18;
@@ -284,8 +286,8 @@ export class NV40Texture
                 // A16L16 and RG16F repeat low X in B/R and high Y in G/A.
                 // Expand UNORM16 RGBA without quantizing either lane to 8 bits.
                 const value=texture.code===20?source.getUint16(pixel*2,true):
-                    texture.code===21 || texture.code===31 && texture.bpp===4?source.getUint16(pixel*4+(component&1?2:0),true):
-                        texture.code===31?source.getUint16(pixel*8+WIDE_FLOAT_COMPONENT[component]*2,true):
+                    (texture.code===21 || texture.code===31) && texture.bpp===4?source.getUint16(pixel*4+(component&1?2:0),true):
+                        texture.code===21 || texture.code===31?source.getUint16(pixel*8+(texture.code===21?WIDE_UNORM_COMPONENT:WIDE_FLOAT_COMPONENT)[component]*2,true):
                         source.getUint16(pixel*8+component*2,true);
                 output.setUint16(pixel*8+channel*2,select===0?0:select===1?(floating?0x3C00:65535):value,true);
             }
