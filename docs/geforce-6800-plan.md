@@ -2251,3 +2251,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 附件读取复制：只对 packed/非swizzle/对齐线性VRAM提供同步checked视图，每次仍校验完整权限/范围并精确比较新鲜字节。相同图像保留旧独立副本，变化的VRAM先复制再缓存；默认读取与其他布局仍复制，CPU后写不能污染比较基线。权限/边界/CPU修改回归、完整真实GPU混合/别名/深度查询/快照、state/render/texture/DMA及Closure通过。同进程交错微测32次1280×1024绑定的读取复制167772160→0bytes，CPU中位62.547→42.444ms；非原生FPS。见 `g6-checked-attachment-views.json`，从配套Batch8状态继续原版06。
 
 - G4 A16光照查找别名修正：原版93.71的05 PS帧用纹理11/格式14/remapA9EE/TEX h2.x读取标量；先前据相关RSX把B/R补1的推断不适用于此原生消费者。现标量在所有storage lane保留原16位值，常数仍由显式crossbar ZERO/ONE控制。旧源码新回归先红，0/1/32768/65535、padding/DMA/常数及真实GPU双线性与完整回归、Closure均绿。同一健康RAM的原版PS帧全图MAD16.8453→0.43593、max234→34；新参照BMP与旧参照SHA完全一致。见 `g4-native-a16-scalar-aliases.json`；仍保留残差，继续GT1及其余固定帧，未宣布整套图像门禁通过。
+
+- G6 同步FIFO附件复用：每次NVFIFO.run有独立临时scope，返回客体前清除；同scope且同GPU批次内，CPU不会执行，别名FIFO写仍按原屏障退役批次，因此可复用已校验的独立packed线性VRAM图像。每draw完整读写权限/范围检查不变，新scope/布局/描述符/批次重读；scope与图像不进快照。实际双draw混合只读附件一次，像素/单次回读/REF顺序不变；CPU后写、权限、完整GPU别名/保护/快照与单测、Closure通过。32绑定微测CPU38.407→2.369ms、读取32→1而64次校验全保留。见 `g6-fifo-scope-attachment-reuse.json`；非原生FPS，继续06配套状态。

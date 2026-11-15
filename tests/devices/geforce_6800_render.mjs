@@ -76,6 +76,23 @@ const graph=device.graph,engine=graph.engine3d;
     assert.equal(resource.images[0],changed,"an unchanged view retains the immutable image");
     vram[surface.offset]=91;assert.equal(changed[0],37,"later CPU writes remain visible to the next comparison");
     cache.target(surface,engine.state.read(surface,true));assert.equal(cache.stats.uploads,3);
+    const fifo=device.fifo,wasRunning=fifo.running,oldScope=fifo.run_scope;
+    try
+    {
+        fifo.running=true;fifo.run_scope={};cache.batch={outputs:new Map(),guards:new Map()};
+        cache.target(surface,cache.attachment_image(surface,1));
+        const firstScope=resource.images[0];
+        assert.equal(cache.attachment_image(surface,1),firstScope,"one synchronous scope reuses its immutable image");
+        assert.throws(()=>cache.attachment_image({...surface,dma:{...surface.dma,flags:surface.dma.flags|0x8000}},1),/access denied/);
+        fifo.run_scope=null;fifo.running=false;vram[surface.offset]=113;
+        assert.equal(cache.attachment_image(surface,1)[0],113,"CPU writes are reread outside a FIFO scope");
+        fifo.running=true;fifo.run_scope={};
+        const nextScope=cache.attachment_image(surface,1);
+        assert.equal(nextScope[0],113);assert.notEqual(nextScope,firstScope,"a new scope cannot reuse the old comparison image");
+        cache.target(surface,nextScope);assert.equal(cache.stats.uploads,4);
+        assert.equal(cache.attachment_image(surface,1),resource.images[0]);
+    }
+    finally {fifo.running=wasRunning;fifo.run_scope=oldScope;cache.batch=null;}
     vram.fill(0,surface.offset,surface.offset+256);
 }
 ram.setUint32(0x1000,0x303D,true);ram.setUint32(0x1004,0xFFFFF,true);ram.setUint32(0x1008,3,true);
@@ -1665,7 +1682,11 @@ try
         queued.forEach(([at,value],i)=>{const slot=(start+i*4)&0xFFC,offset=0x90000+(slot&0x7FC)*2;device.registers.set(offset,at);device.registers.set(offset+4,value);});
         for(const [at,value] of [[0x3210,(start+queued.length*4)&0xFFC],[0x3240,0],[0x3244,0],[0x3248,0],[0x3228,0],[0x322C,0x100],
             [0x3200,1],[0x3220,1],[0x2504,1],[0x2508,1],[0x3254,0]])device.registers.set(at,value);
-        const beforeBatch={...engine.backend.stats};device.fifo.run();
+        const beforeBatch={...engine.backend.stats},readAttachment=engine.state.read;let attachmentReads=0;
+        engine.state.read=function(...args){attachmentReads++;return readAttachment.apply(this,args);};
+        try {device.fifo.run();} finally {engine.state.read=readAttachment;}
+        assert.equal(attachmentReads,1,"two synchronous FIFO draws share one checked immutable attachment image");
+        assert.equal(device.fifo.run_scope,null,"the image-reuse scope ends before guest CPU execution resumes");
         assert.equal(engine.backend.stats.draws-beforeBatch.draws,2);assert.equal(engine.backend.stats.batches-beforeBatch.batches,1);
         assert.equal(device.registers.get(0x3248),0,"REF remains behind the whole GPU batch");
         await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));

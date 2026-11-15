@@ -17,6 +17,7 @@ export class NVFIFO
         this.active = -1;
         this.channels = new Map();
         this.running = false;
+        this.run_scope = null;
     }
 
     reset()
@@ -24,6 +25,7 @@ export class NVFIFO
         this.active = -1;
         this.channels = new Map();
         this.running = false;
+        this.run_scope = null;
     }
 
     reg(at) { return this.device.registers.get(at) || 0; }
@@ -280,6 +282,8 @@ export class NVFIFO
     {
         if(this.running || !(this.reg(0x200) & 0x100) || !(this.reg(0x3200) & 1)) return;
         this.running = true;
+        // No guest CPU code can run inside this synchronous execution scope.
+        this.run_scope = {};
         try
         {
             for(let id = 0; id < 32 && budget > 0; id++)
@@ -355,7 +359,7 @@ export class NVFIFO
             if(!(error instanceof RangeError)) throw error;
             this.fault(6,error.message,error["nv_dma"]||null);
         }
-        finally { this.running = false;this.device.graph?.engine3d?.backend?.flush(); }
+        finally { this.run_scope = null;this.running = false;this.device.graph?.engine3d?.backend?.flush(); }
     }
 
     get_state() { return [2, this.active, Array.from(this.channels, ([id, ch]) => [id, ch.bindings, ch.dma, ch.offset])]; }

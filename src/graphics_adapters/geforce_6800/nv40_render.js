@@ -9,6 +9,7 @@ const get=(o,at,fallback=0)=>o.methods.has(at)?o.methods.get(at):fallback;
 const float_value=word=>new Float32Array(Uint32Array.of(word).buffer)[0];
 const float_word=value=>new Uint32Array(Float32Array.of(value).buffer)[0];
 const data=typed=>new Uint8Array(typed.buffer,typed.byteOffset,typed.byteLength);
+const resource_key=(surface,levels,usage)=>JSON.stringify([surface.dma,surface.offset,surface.pitch,surface.width,surface.height,surface.d3d,surface.swizzle,surface.u,surface.v,levels,usage,!!surface.cube,!!surface.volume,surface.depth]);
 function changed_tail(a,b,first,aw,bw)
 {
     let last=b.length;
@@ -226,12 +227,30 @@ export class NV40Render
             this.resources.delete(key);this.stats.resourceBytes-=resource.bytes;this.stats.resourceEvictions++;
         }
     }
+    attachment_image(surface,usage)
+    {
+        const scope=this.device.fifo?.running && this.device.fifo.run_scope;
+        if(scope && this.batch?.image_scope===scope && !surface.swizzle && surface.dma.linear && !surface.dma.target &&
+            this.engine.state.packed(surface))
+        {
+            const cached=this.batch.initial_images.get(resource_key(surface,1,usage));
+            if(cached)
+            {
+                // Permissions and the complete range still matter on every
+                // draw. Intervening FIFO writes to attachments/guards already
+                // retire this batch; guest CPU writes require a new run scope.
+                this.engine.state.validate(surface,false);
+                return cached;
+            }
+        }
+        return this.engine.state.read(surface,true);
+    }
     target(surface,bytes,usage=1)
     {
         // A null image creates a host-only scratch attachment. Colorless NV
         // draws never upload, download or access guest memory for this image.
         const images=bytes===null?null:Array.isArray(bytes)?bytes:[bytes],levels=surface.cube?surface.level_count:images?images.length:1;
-        const key=JSON.stringify([surface.dma,surface.offset,surface.pitch,surface.width,surface.height,surface.d3d,surface.swizzle,surface.u,surface.v,levels,usage,!!surface.cube,!!surface.volume,surface.depth]);
+        const key=resource_key(surface,levels,usage);
         let resource=this.resources.get(key);
         if(!resource)
         {
@@ -281,6 +300,14 @@ export class NV40Render
             return bytes.buffer===this.device.vram().buffer?new Uint8Array(bytes):bytes;
         });
         resource.images=retained;
+        const scope=this.device.fifo?.running && this.device.fifo.run_scope;
+        if(scope && usage && retained && this.batch && !surface.swizzle && surface.dma.linear && !surface.dma.target &&
+            this.engine.state.packed(surface))
+        {
+            if(this.batch.image_scope!==scope)
+            {this.batch.image_scope=scope;this.batch.initial_images=new Map();}
+            this.batch.initial_images.set(key,retained[0]);
+        }
         return handle;
     }
     shader(code,vertex)
@@ -499,14 +526,14 @@ export class NV40Render
         if(!active && !zsa.enabled && !get(o,0x17CC)) return;
         const initial=colors.map(surface=>{
             if(!surface) return null;
-            this.engine.state.validate(surface,true);return this.engine.state.read(surface,true);
+            this.engine.state.validate(surface,true);return this.attachment_image(surface,1);
         });
         let depth=null,depthBytes=null;
         if(zsa.enabled)
         {
             depth=this.engine.state.target(o,0,true);this.engine.state.validate(depth,true);
             if(zsa.stencil && depth.d3d!==75) throw new RangeError("NV40 stencil needs D24S8");
-            depthBytes=this.engine.state.read(depth,true);
+            depthBytes=this.attachment_image(depth,2);
         }
         // Everything that can fault on guest state is checked before emitting
         // commands or changing the host's resource cache.

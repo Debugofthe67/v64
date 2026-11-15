@@ -1,0 +1,124 @@
+{
+  "stage": "G6 immutable attachment reuse within one synchronous FIFO execution",
+  "invariant": "NVFIFO.run executes synchronously; no guest CPU instructions run inside that scope. Alias-sensitive FIFO writes retire the GPU batch. Each run gets a distinct ephemeral scope, cleared before CPU execution and final flush; neither scope nor batch-local images are serialized.",
+  "change": "Within the same scope and GPU batch, reuse one immutable packed linear VRAM attachment image. Every draw still revalidates full read/write DMA permissions/ranges; a new scope, descriptor/layout or batch rereads fresh VRAM. Existing M2MF/IFC/texture/guard alias barriers are unchanged.",
+  "validation": [
+    "Unit FIFO/state/DMA/graph/render suites pass. New scope and out-of-scope CPU writes are observed; changed permissions reject.",
+    "Actual FIFO two-draw blend test verifies one attachment read, cleared scope, unchanged exact pixels, one readback and REF after combined completion.",
+    "Complete real GPU texture/render aliases, read-only depth guards, disjoint M2MF, IFC notifier/RAMIN alias and snapshot quiescence tests pass.",
+    "Closure0errors/0warnings."
+  ],
+  "microbenchmark": {
+    "scope": "Same-process alternating CPU microbenchmark of32 attachment bindings inside one synchronous FIFO scope;1280x1024 unchanged image,7rounds,explicitGC;not nativeFPS",
+    "times": {
+      "fresh": [
+        54.657,
+        70.748,
+        36.827,
+        45.074,
+        36.252,
+        38.407,
+        37.147
+      ],
+      "scoped": [
+        5.939,
+        5.545,
+        2.369,
+        2.369,
+        1.845,
+        1.917,
+        2.074
+      ]
+    },
+    "medianCPUms": {
+      "fresh": 38.407,
+      "scoped": 2.369
+    },
+    "work": {
+      "fresh": [
+        {
+          "readCalls": 32,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 32,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 32,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 32,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 32,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 32,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 32,
+          "permissionRangeChecks": 64
+        }
+      ],
+      "scoped": [
+        {
+          "readCalls": 1,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 1,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 1,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 1,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 1,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 1,
+          "permissionRangeChecks": 64
+        },
+        {
+          "readCalls": 1,
+          "permissionRangeChecks": 64
+        }
+      ]
+    },
+    "uploads": 1
+  },
+  "limits": "Microbenchmark32-bind CPU38.407\u21922.369ms; actual reads32\u21921, all64permission/range checks retained. No nativeFPS claim; original06 continues from paired healthy checkpoints.",
+  "evidence": [
+    {
+      "file": "build/nv40-fifo-image-scope-unit.log",
+      "bytes": 1591,
+      "sha256": "f53c7b65ef4ff76295c802981f7863ddc474045c1522e4e3f53199fbc000cba4"
+    },
+    {
+      "file": "build/nv40-fifo-image-scope-gpu.log",
+      "bytes": 6177,
+      "sha256": "de0c20cb9a72906e9aa0446b4e7e42a62666adc45a92619d1b824eecb273d6f5"
+    },
+    {
+      "file": "build/nv40-fifo-image-scope-closure.log",
+      "bytes": 3020,
+      "sha256": "0e64ed2d781c7283563950b1a736009fc8b3ac9d0f5653cc2e299fbd92b1693c"
+    },
+    {
+      "file": "build/nv40-fifo-image-scope-benchmark.json",
+      "bytes": 1653,
+      "sha256": "e3d3d271d895812b79b32fde43e18f8d5edfdf3df9cc5b0d3240de494ba571b4"
+    }
+  ]
+}
