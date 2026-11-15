@@ -44,7 +44,8 @@
     "gpuFailures": 0,
     "originalImagesUnchanged": true,
     "invalidNegativeThresholdRejectedBeforeGuestStart": true,
-    "harnessSyntax": "node --check passed"
+    "harnessSyntax": "node --check passed",
+    "restore": "Real guard RAM/OS/game restored in nv40-xp-mark05-current-format-resume; original GT2 completed save and remaining five IQ cases saved; complete eight-image checkpoint later restored again and stock XP normal shutdown verified."
   },
   "retainedOriginalFrames": {
     "Win98_03": [

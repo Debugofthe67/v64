@@ -2325,3 +2325,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 Win98 03九张原版固定帧及桌面生命周期完成：六张既有成功导出在宿主ENOSPC前保留，其余VS60/PS660/Ragtroll60从同一正常关机磁盘对冷启动补齐；每图原版成功提示、完整BMP、SHA及GPU静止60秒均验证。八张scene与XP逐像素相同，GT3最大差2；四GT/五feature与代理场景内容一致，所有原始残差保留而未新设阈值。最后通过确认焦点的系统菜单关闭03，实见RGB565桌面及开始菜单响应；stock ExitWindows至FE93D/HLT1/display=null，冷磁盘对SHA和原盘未变。健康桌面679298360字节RAM无损压缩校验为236940270字节后删除raw。见 `g5-win98-8198-03-nine-iq-desktop-return.json`；不把两次运行说成单次九图，06与最终性能门禁继续。
 
 - G3/G4 原生完整通道控制通过：同一未修改93.71 HAL读取UNORM16、FP16/FP32的全部RGB及缺省通道，新增G32R32F，十一draw均成功、FAILURES0；R16F明确不支持跳过。R32F由驱动MOV补GB=1，G32R32F由两次UNORM16取样及PK2US重建，不据API格式名臆造新物理布局。严格C构建通过，见 `g3-native-float-complete-channels.json`。同时将旧宽UNORM探针前十draw固化为与原SHA完全相同的独立文件，避免后续HDR观察记录追加改变证据哈希。
+
+- G4 最新纹理格式下05八张原版固定帧已补齐并正常关机：前两图及真实磁盘余量checkpoint恢复后的六次保存均保留原版成功提示、完整BMP和60秒静止；GT2在恢复点已完成，明确未声称新增绘制。六张scene与上一轮完全相同，GT1/GT2仅小变化，全部误差保留。宿主检查器信号误用导致一次中断后，恢复健康八图配套状态，stock XP关机至806F3048/HLT1、display=null且导出冷磁盘对，见 `g4-05-current-format-eight-fixed-frames.json`。
