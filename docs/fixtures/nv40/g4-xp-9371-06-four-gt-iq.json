@@ -1,0 +1,102 @@
+{
+  "stage": "G4 XP 93.71 original 3DMark06 four GT IQ captures",
+  "scope": "Original four GT fixed-frame captures completed. Proxy comparison, seven feature fixed-point images, and final image acceptance remain open. Original IQ menu contains only four GTs.",
+  "settings": {
+    "resolution": "1280x1024",
+    "antiAliasing": "None",
+    "filtering": "Optimal",
+    "VS": "3_0",
+    "PS": "3_0",
+    "forceFullPrecision": false,
+    "disableDST": false,
+    "disablePostprocessing": false,
+    "softwareVS": false,
+    "colorMipmaps": false,
+    "referenceRasterizer": false
+  },
+  "cases": [
+    {
+      "case": "GT1",
+      "testIndex": 0,
+      "actualDefaultFrame": 2095,
+      "draws": 500250,
+      "stableGPUSeconds": 60
+    },
+    {
+      "case": "GT2",
+      "testIndex": 1,
+      "actualDefaultFrame": 1139,
+      "draws": 502321,
+      "stableGPUSeconds": 60
+    },
+    {
+      "case": "HDR1",
+      "testIndex": 2,
+      "actualDefaultFrame": 1225,
+      "draws": 504362,
+      "stableGPUSeconds": 60
+    },
+    {
+      "case": "HDR2",
+      "testIndex": 3,
+      "actualDefaultFrame": 1428,
+      "draws": 505705,
+      "stableGPUSeconds": 60
+    }
+  ],
+  "images": [
+    {
+      "file": "NV06IQ/GT1_2095.BMP",
+      "name": "NV06IQ_GT1_2095.BMP",
+      "bytes": 3932216,
+      "sha256": "86afef64ed55e2a0f0ef59a3299ce8922066c11c4949d2f6929c703458516992",
+      "width": 1280,
+      "height": 1024
+    },
+    {
+      "file": "NV06IQ/GT2_1139.BMP",
+      "name": "NV06IQ_GT2_1139.BMP",
+      "bytes": 3932216,
+      "sha256": "4fc56b126b249a94d119224851b422e8087dc0cdcc5cb72cdb366d200e311524",
+      "width": 1280,
+      "height": 1024
+    },
+    {
+      "file": "NV06IQ/hdr1_1225.bmp",
+      "name": "NV06IQ_hdr1_1225.bmp",
+      "bytes": 3932216,
+      "sha256": "76b6eda7c8401eeb300553d8767649816ac667016c1f72f557c27d7279897834",
+      "width": 1280,
+      "height": 1024
+    },
+    {
+      "file": "NV06IQ/hdr2_1428.bmp",
+      "name": "NV06IQ_hdr2_1428.bmp",
+      "bytes": 3932216,
+      "sha256": "e60bc98d9a4e110c8b829635a6389746b324cb392e2aad9d9bad6745765bd746",
+      "width": 1280,
+      "height": 1024
+    }
+  ],
+  "sourceRevision": "2f19ee38e",
+  "guestMemoryMiB": 1024,
+  "vramMiB": 256,
+  "originalProjects": [
+    {
+      "file": "NV06N.3DR",
+      "bytes": 4365,
+      "sha256": "cf896645ce21232a01a267cde4d1e18d16b07e65be3184c439353537ca039dcb"
+    },
+    {
+      "file": "NV06B.3DR",
+      "bytes": 4618,
+      "sha256": "1c1e87bceaf6e7e1bfe665ed80dc1e809c92d408b86b452822e5a663f89f5117"
+    }
+  ],
+  "limits": [
+    "Only the four entries actually exposed by the original IQ tool are counted.",
+    "Seven feature tests require the plan fixed-point capture fallback.",
+    "GPU/PGRAPH success alone is not an image acceptance.",
+    "Registration and raw XML/UI remain private ignored build artifacts."
+  ]
+}

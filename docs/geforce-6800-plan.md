@@ -2277,3 +2277,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 原生控件实际值：GetWindowTextA对外部进程只能取caption，原helper的帧号/ComboBox/owner-draw按钮常为空。对标准Edit/ComboBox/Button改用200ms有界WM_GETTEXT，保持512byte缓冲并跳过password编辑。严格MinGW通过，原版06未改动的GT1默认帧2095、1280×1024/None/Optimal/VS3/PS3及实际Run/Close文本均读回，见 `g6-native-foreign-control-values.json`。06原版IQ列表实际只提供4GT，其余特性需按计划无IQ项的固定时点取图路径比较，不能假定同05有全部feature IQ。
 
 - G4 IQ比较区域更正：原版03/05的画面信息叠层在底部，之前通用helper误默认排除了顶部64行。现增加明确的bottom排除与ROI高度，保留旧调用兼容；独立3×4 BMP用例验证底部元数据/顶部场景、双端范围和拒绝空ROI。05复测记录已改为top0/bottom64，并同时保存全图指标，未据裁剪放宽门禁：GT3全图MAD11.2359，底部64行排除后11.8772，气球/水面仍开放。最新常量优化后的GT3三次原版保存SHA相同，且与A16复测原图逐字节一致，见修订后的 `g4-05-native-a16-fixed-frames.json`。
+
+- G4 XP06 原版四张 GT IQ 收齐：原版工具自身默认帧 GT1=2095、GT2=1139、HDR1=1225、HDR2=1428，1280×1024/None/Optimal/VS3/PS3；每次原版保存成功提示和 GPU 静止60秒后直接导出 BMP，四图头/像素数据和 SHA 已验证。原 default6 与补充13项项目 SHA 不变；见 `g4-xp-9371-06-four-gt-iq.json`。这里只记录四张真实菜单项，不把它等同七项 feature 的画面覆盖；代理参照、feature 固定时点和正常关机继续。
