@@ -1,5 +1,36 @@
 # Infinity Blade 安装与帧率验证
 
+## 预热 362 帧后的 CPU Worker/主线程采样（2026-11-15）
+
+重新克隆 Never 配对主副本，使用默认 CPSID 核心，预热 362 帧后对接下来的
+90 个完整游戏帧同时采样两条线程。结束仍是同一守卫战斗，HP 360/敌人 115/
+盾 4，无教学覆盖。窗口 normal rate 1、每次检查均 awake、discarded_host
+增量 0，NAND 读写增量均 0。采样已停止，结束截图已保存，浏览器已关闭。
+带 profiler 的窗口用于归因，不作为候选/控制 FPS。
+
+CPU Worker 样本权重总计约 19,483.9 ms，9773 个样本：
+
+| 路径 | 包含权重 | 自身权重 |
+| --- | ---: | ---: |
+| run_machine_core | 87.1% | — |
+| pages::run | 74.1% | 2.7% |
+| interpret_one | 15.1% | 1.3% |
+| a64_page_access | 8.5% | 2.7% |
+| a32_page_helper | 6.9% | 1.2% |
+| now | — | 4.9% |
+| postMessage | — | 4.8% |
+
+包含关系重叠，不能相加。主线程约 91.4% 的样本权重为空闲。较长预热后，
+解释器、访存慢路径和辅助函数的分布仍接近原来的短预热采样；结合此前 GPU
+队列观测，仍优先定位模拟 CPU 路径。采样受宿主调度及 profiler 影响，不是
+GPU 硬件利用率或精确的各核 CPU 时间。窗口内 Rust page 生成计时增加 36 ms，
+该值不包含 V8 后台机器码编译，不能由它断言所有编译已结束。
+
+原始数据为本地 `golem-hot-cpsid-90.cpuprofile`、同名前缀的主线程/profile
+窗口 JSON、`golem-hot-cpsid-profile/hot-profile-end.png`。主/fallback 默认
+Wasm 哈希均核对为已接受的 CPSID 构建；本轮两个候选均未默认启用。
+后续应从这些较大的持续成本继续定位，60 FPS 仍未达到。
+
 ## AP PMGR 快路径：回退减少但 FPS 不稳定，撤回（2026-11-15）
 
 候选把既有 IOP 标量计数器的一次性值路径移到翻译/权限检查之后、Device
