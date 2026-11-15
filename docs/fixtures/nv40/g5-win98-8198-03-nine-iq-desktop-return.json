@@ -1,0 +1,658 @@
+{
+  "stage": "G5 Win98 original03 nine fixed frames and desktop lifecycle",
+  "status": "All nine original images, live desktop return and normal shutdown verified; precise reference residuals retained",
+  "functionalSuite": "docs/fixtures/nv40/g5-win98-8198-03-full-eleven.json",
+  "configuration": {
+    "guest": "Win98 SE",
+    "driver": "81.98",
+    "memoryMiB": 512,
+    "vramMiB": 128,
+    "resolution": [
+      1024,
+      768
+    ],
+    "AA": "None",
+    "filter": "Optimal",
+    "IQOverrides": "All original feature overrides unchecked",
+    "clock": "normal",
+    "CPUWasmSHA256": "808c5fc9f0858ea23baf6a13d53f6c876e970f0de0427a4f3d48d57d820c2ff8",
+    "helper": "Native GUI NVUI from IDE D drive, no removable-media change"
+  },
+  "source": "build/nv40-win98-mark03-xrgb-nop-fixed/checkpoint-native-full11-normal-shutdown.state.bundle.json",
+  "captureRuns": [
+    {
+      "directory": "build/nv40-win98-mark03-ide-ui-iq",
+      "confirmedOriginalSaves": 6,
+      "end": "Host ENOSPC; no normal shutdown claimed for that run"
+    },
+    {
+      "directory": "build/nv40-win98-mark03-final-three-iq",
+      "confirmedOriginalSaves": 3,
+      "start": "Cold boot of the same verified normally-shut-down disk pair",
+      "end": "Live desktop/Start menu verified, then stock normal shutdown"
+    }
+  ],
+  "singleRunAllNine": false,
+  "metadataROI": {
+    "topExcluded": 0,
+    "bottomExcluded": 64
+  },
+  "frames": [
+    {
+      "case": "GT1",
+      "frame": 1038,
+      "original": {
+        "case": "GT1",
+        "testIndex": 0,
+        "frame": 1038,
+        "draws": 1350,
+        "readbacks": 698,
+        "successUI": "build/nv40-win98-mark03-ide-ui-iq/fixed-GT1-success-0.txt",
+        "stableGPUSeconds": 60,
+        "artifact": "build/nv40-win98-mark03-ide-ui-iq/iq-artifacts/NV98I0101038.bmp",
+        "bytes": 2363392,
+        "sha256": "95fb9e85dfd8bf04b88023d0a5a9936bf058f80c759fdce1801d25f6c0f53f16",
+        "hostTime": "2026-11-15T08:05:12.678320+00:00"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03GT1_01038.bmp",
+        "sha256": "14453ee23a949b1eec7a8dfeedbda85a35b8b151bc35be1c4b4377a612992726"
+      },
+      "proxyScene": {
+        "mean_absolute_rgb_error": 1.0324179909446023,
+        "max_channel_error": 103,
+        "exact_pixel_percent": 38.17957097833807,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 3,
+          "95": 4,
+          "99": 8,
+          "99.9": 26
+        },
+        "mean_signed_rgb_error": [
+          0.4702217795632102,
+          0.19437616521661932,
+          0.5401944247159091
+        ]
+      },
+      "XPReference": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03G1F_01038.bmp",
+        "sha256": "95fb9e85dfd8bf04b88023d0a5a9936bf058f80c759fdce1801d25f6c0f53f16"
+      },
+      "XPScene": {
+        "mean_absolute_rgb_error": 0.0,
+        "max_channel_error": 0,
+        "exact_pixel_percent": 100.0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        },
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 1.0180935329861112,
+        "max_channel_error": 103
+      }
+    },
+    {
+      "case": "GT2",
+      "frame": 1000,
+      "original": {
+        "case": "GT2",
+        "testIndex": 1,
+        "frame": 1000,
+        "draws": 2191,
+        "readbacks": 1158,
+        "successUI": "build/nv40-win98-mark03-ide-ui-iq/fixed-GT2-success-0.txt",
+        "stableGPUSeconds": 60,
+        "artifact": "build/nv40-win98-mark03-ide-ui-iq/iq-artifacts/NV98I0201000.bmp",
+        "bytes": 2363392,
+        "sha256": "a8146a8392bc8e34642c63597817aabe8aad530c8c33cb2abb92fc05367bd790",
+        "hostTime": "2026-11-15T08:09:18.328289+00:00"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0201000.bmp",
+        "sha256": "063d8f58340e9edd5659f8050431b770040580135d525f2a7f233d6cebd86086"
+      },
+      "proxyScene": {
+        "mean_absolute_rgb_error": 0.17996077104048294,
+        "max_channel_error": 89,
+        "exact_pixel_percent": 78.9095791903409,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 2,
+          "99": 6,
+          "99.9": 18
+        },
+        "mean_signed_rgb_error": [
+          -0.013725974343039772,
+          -0.0008045543323863636,
+          0.0023581764914772725
+        ]
+      },
+      "XPReference": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0201000.bmp",
+        "sha256": "a8146a8392bc8e34642c63597817aabe8aad530c8c33cb2abb92fc05367bd790"
+      },
+      "XPScene": {
+        "mean_absolute_rgb_error": 0.0,
+        "max_channel_error": 0,
+        "exact_pixel_percent": 100.0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        },
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.16940816243489584,
+        "max_channel_error": 89
+      }
+    },
+    {
+      "case": "GT3",
+      "frame": 1000,
+      "original": {
+        "case": "GT3",
+        "testIndex": 2,
+        "frame": 1000,
+        "draws": 3148,
+        "readbacks": 1722,
+        "successUI": "build/nv40-win98-mark03-ide-ui-iq/fixed-GT3-success-0.txt",
+        "stableGPUSeconds": 60,
+        "artifact": "build/nv40-win98-mark03-ide-ui-iq/iq-artifacts/NV98I0301000.bmp",
+        "bytes": 2363392,
+        "sha256": "00da4df6a221accfeeb28e297c63959af179ce76f0fe8aecb4ce2df5a5ff41c3",
+        "hostTime": "2026-11-15T08:13:55.910468+00:00"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0301000.bmp",
+        "sha256": "972feabf39b9ba59a2f2ea838d6ca2710d34eea13e228366095df40d540189f2"
+      },
+      "proxyScene": {
+        "mean_absolute_rgb_error": 0.22393243963068182,
+        "max_channel_error": 81,
+        "exact_pixel_percent": 82.2329434481534,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 2,
+          "99": 5,
+          "99.9": 17
+        },
+        "mean_signed_rgb_error": [
+          -0.018058083274147728,
+          -0.018031727183948864,
+          -0.02137201482599432
+        ]
+      },
+      "XPReference": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0301000.bmp",
+        "sha256": "cdc3f1c7f34d88149ffde7ac7b252fdb16c3b6249a3a45946ac275cadfa51742"
+      },
+      "XPScene": {
+        "mean_absolute_rgb_error": 0.0004032019412878788,
+        "max_channel_error": 2,
+        "exact_pixel_percent": 99.93189031427558,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        },
+        "mean_signed_rgb_error": [
+          0.0006519664417613636,
+          0.00042447176846590907,
+          0.00013316761363636363
+        ]
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.20685450236002603,
+        "max_channel_error": 81
+      }
+    },
+    {
+      "case": "GT4",
+      "frame": 1000,
+      "original": {
+        "case": "GT4",
+        "testIndex": 3,
+        "frame": 1000,
+        "draws": 37362,
+        "readbacks": 21396,
+        "successUI": "build/nv40-win98-mark03-ide-ui-iq/fixed-GT4-success-0.txt",
+        "stableGPUSeconds": 60,
+        "artifact": "build/nv40-win98-mark03-ide-ui-iq/iq-artifacts/NV98I0401000.bmp",
+        "bytes": 2363392,
+        "sha256": "c5513b9928bbf390b00a00a3e3b9c8bca0973f8f8d482ab2059899185a57377c",
+        "hostTime": "2026-11-15T08:28:15.684204+00:00"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0401000.bmp",
+        "sha256": "2a78a77f1f8d5696bf3b89eeb589de45266927f1472179df90c9035793edba76"
+      },
+      "proxyScene": {
+        "mean_absolute_rgb_error": 0.3328653971354167,
+        "max_channel_error": 100,
+        "exact_pixel_percent": 70.67413330078125,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 2,
+          "99": 6,
+          "99.9": 12
+        },
+        "mean_signed_rgb_error": [
+          -0.022854891690340908,
+          -0.023825905539772728,
+          -0.023501309481534092
+        ]
+      },
+      "XPReference": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0401000.bmp",
+        "sha256": "c5513b9928bbf390b00a00a3e3b9c8bca0973f8f8d482ab2059899185a57377c"
+      },
+      "XPScene": {
+        "mean_absolute_rgb_error": 0.0,
+        "max_channel_error": 0,
+        "exact_pixel_percent": 100.0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        },
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.33815934922960067,
+        "max_channel_error": 100
+      }
+    },
+    {
+      "case": "fillrate1",
+      "frame": 60,
+      "original": {
+        "case": "fillrate1",
+        "testIndex": 4,
+        "frame": 60,
+        "draws": 37788,
+        "readbacks": 21621,
+        "successUI": "build/nv40-win98-mark03-ide-ui-iq/fixed-fillrate1-success-0.txt",
+        "stableGPUSeconds": 60,
+        "artifact": "build/nv40-win98-mark03-ide-ui-iq/iq-artifacts/NV98I0500060.bmp",
+        "bytes": 2363392,
+        "sha256": "793272bd9936b40cd02d4c53f4967ee72de5da44315c9bd2e2287c065a60668c",
+        "hostTime": "2026-11-15T08:31:52.236200+00:00"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0500060.bmp",
+        "sha256": "78b6d10cab1298748e47140f748ee26f20781361345a7c1423f2acaeb5610e35"
+      },
+      "proxyScene": {
+        "mean_absolute_rgb_error": 0.3621312921697443,
+        "max_channel_error": 21,
+        "exact_pixel_percent": 49.06352650035512,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 2,
+          "95": 2,
+          "99": 3,
+          "99.9": 5
+        },
+        "mean_signed_rgb_error": [
+          -0.3346585360440341,
+          -0.46810496937144885,
+          -0.2807228781960227
+        ]
+      },
+      "XPReference": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0500060.bmp",
+        "sha256": "793272bd9936b40cd02d4c53f4967ee72de5da44315c9bd2e2287c065a60668c"
+      },
+      "XPScene": {
+        "mean_absolute_rgb_error": 0.0,
+        "max_channel_error": 0,
+        "exact_pixel_percent": 100.0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        },
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.3499988979763455,
+        "max_channel_error": 21
+      }
+    },
+    {
+      "case": "fillrate2",
+      "frame": 60,
+      "original": {
+        "case": "fillrate2",
+        "testIndex": 5,
+        "frame": 60,
+        "draws": 38212,
+        "readbacks": 21879,
+        "successUI": "build/nv40-win98-mark03-ide-ui-iq/fixed-fillrate2-success-0.txt",
+        "stableGPUSeconds": 60,
+        "artifact": "build/nv40-win98-mark03-ide-ui-iq/iq-artifacts/NV98I0600060.bmp",
+        "bytes": 2363392,
+        "sha256": "e94f0f748b4a8503e9551da46849ff94bdf81e0c9844cf7a8d8c65fbaa6574fe",
+        "hostTime": "2026-11-15T08:35:29.559875+00:00"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0600060.bmp",
+        "sha256": "95e200449081494561de659c074b181ef39cd3a3ad98df92ca8b1cc2516b1445"
+      },
+      "proxyScene": {
+        "mean_absolute_rgb_error": 0.045642737186316285,
+        "max_channel_error": 3,
+        "exact_pixel_percent": 88.04376775568181,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 1,
+          "99": 1,
+          "99.9": 2
+        },
+        "mean_signed_rgb_error": [
+          -0.009148337624289772,
+          -0.023680253462357956,
+          -0.010308005593039772
+        ]
+      },
+      "XPReference": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0600060.bmp",
+        "sha256": "e94f0f748b4a8503e9551da46849ff94bdf81e0c9844cf7a8d8c65fbaa6574fe"
+      },
+      "XPScene": {
+        "mean_absolute_rgb_error": 0.0,
+        "max_channel_error": 0,
+        "exact_pixel_percent": 100.0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        },
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.04482057359483507,
+        "max_channel_error": 3
+      }
+    },
+    {
+      "case": "VS",
+      "frame": 60,
+      "original": {
+        "case": "VS",
+        "testIndex": 6,
+        "frame": 60,
+        "draws": 1092,
+        "readbacks": 502,
+        "successUI": "build/nv40-win98-mark03-final-three-iq/fixed-VS-success-0.txt",
+        "stableGPUSeconds": 60,
+        "artifact": "build/nv40-win98-mark03-final-three-iq/iq-artifacts/NV98J0700060.bmp",
+        "bytes": 2363392,
+        "sha256": "1d30083ff9c7ebf9b8a1ff101cb7760a52cf80b702908d18a6ca8918c38f9924",
+        "hostTime": "2026-11-15T08:57:40.905284+00:00"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0700060.bmp",
+        "sha256": "6835aa79881e27f23cb937f6d3c1ea16929a91e023d4ebaf50ccc6f06dbac475"
+      },
+      "proxyScene": {
+        "mean_absolute_rgb_error": 0.9838326194069602,
+        "max_channel_error": 250,
+        "exact_pixel_percent": 22.621432217684657,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 3,
+          "95": 4,
+          "99": 7,
+          "99.9": 14
+        },
+        "mean_signed_rgb_error": [
+          -0.07439491965553978,
+          -0.05500516024502841,
+          -0.04352500221946023
+        ]
+      },
+      "XPReference": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0700060.bmp",
+        "sha256": "1d30083ff9c7ebf9b8a1ff101cb7760a52cf80b702908d18a6ca8918c38f9924"
+      },
+      "XPScene": {
+        "mean_absolute_rgb_error": 0.0,
+        "max_channel_error": 0,
+        "exact_pixel_percent": 100.0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        },
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.9227316114637587,
+        "max_channel_error": 250
+      }
+    },
+    {
+      "case": "PS",
+      "frame": 660,
+      "original": {
+        "case": "PS",
+        "testIndex": 7,
+        "frame": 660,
+        "draws": 1971,
+        "readbacks": 1013,
+        "successUI": "build/nv40-win98-mark03-final-three-iq/fixed-PS-success-0.txt",
+        "stableGPUSeconds": 60,
+        "artifact": "build/nv40-win98-mark03-final-three-iq/iq-artifacts/NV98J0800660.bmp",
+        "bytes": 2363392,
+        "sha256": "b08b83b8d044ed8cf291cb3d564213c1e8638ac27aa1e8da249a6581f1a25487",
+        "hostTime": "2026-11-15T09:01:44.425016+00:00"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0800660.bmp",
+        "sha256": "f4b60b65792403c7b8352821529450e7dbd95df3295e1499327d99b3dd2c916c"
+      },
+      "proxyScene": {
+        "mean_absolute_rgb_error": 0.09952429569128787,
+        "max_channel_error": 33,
+        "exact_pixel_percent": 87.99355246803977,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 1,
+          "99": 2,
+          "99.9": 10
+        },
+        "mean_signed_rgb_error": [
+          -0.0015050714666193182,
+          0.001629916104403409,
+          0.0012123801491477273
+        ]
+      },
+      "XPReference": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0800660.bmp",
+        "sha256": "b08b83b8d044ed8cf291cb3d564213c1e8638ac27aa1e8da249a6581f1a25487"
+      },
+      "XPScene": {
+        "mean_absolute_rgb_error": 0.0,
+        "max_channel_error": 0,
+        "exact_pixel_percent": 100.0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        },
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.09310362074110243,
+        "max_channel_error": 33
+      }
+    },
+    {
+      "case": "Ragtroll",
+      "frame": 60,
+      "original": {
+        "case": "Ragtroll",
+        "testIndex": 8,
+        "frame": 60,
+        "draws": 2809,
+        "readbacks": 1389,
+        "successUI": "build/nv40-win98-mark03-final-three-iq/fixed-Ragtroll-success-0.txt",
+        "stableGPUSeconds": 60,
+        "artifact": "build/nv40-win98-mark03-final-three-iq/iq-artifacts/NV98J0900060.bmp",
+        "bytes": 2363392,
+        "sha256": "c63658dac20bac0808be6d2eab26387e2531ad4d21f79150ab5b171d6589f270",
+        "hostTime": "2026-11-15T09:05:17.393190+00:00"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0900060.bmp",
+        "sha256": "4eb36cc85685d6d1f40f2f90615fdae29b20e2132c1cede971a62b303b5d042a"
+      },
+      "proxyScene": {
+        "mean_absolute_rgb_error": 0.32415031664299243,
+        "max_channel_error": 144,
+        "exact_pixel_percent": 59.53993363813921,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 2,
+          "99": 5,
+          "99.9": 13
+        },
+        "mean_signed_rgb_error": [
+          0.03353188254616477,
+          0.07538119229403409,
+          0.06294527920809659
+        ]
+      },
+      "XPReference": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0900060.bmp",
+        "sha256": "c63658dac20bac0808be6d2eab26387e2531ad4d21f79150ab5b171d6589f270"
+      },
+      "XPScene": {
+        "mean_absolute_rgb_error": 0.0,
+        "max_channel_error": 0,
+        "exact_pixel_percent": 100.0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        },
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.31034935845269096,
+        "max_channel_error": 144
+      }
+    }
+  ],
+  "visualReview": {
+    "sceneContent": "All four game scenes and five visible feature cases match their proxy references; point-sprite trails, lighting, textures and required objects present",
+    "previews": [
+      "build/nv40-win98-03-games-native-reference-review.png",
+      "build/nv40-win98-03-features-native-reference-review.png"
+    ],
+    "XPAgreement": "Eight scene regions are pixel-identical; GT3 has maximum2-channel-value difference",
+    "qualification": "No new numeric threshold or universal pixel-equality claim is inferred from these retained residuals."
+  },
+  "desktopReturn": {
+    "mode": {
+      "width": 1024,
+      "height": 768,
+      "pitch": 2048,
+      "bytes": 2,
+      "rgb565": true
+    },
+    "front": 0,
+    "draws": 2809,
+    "failures": 0,
+    "pgraphFaults": [],
+    "clockMode": "normal",
+    "screenshot": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-mark03-final-three-iq/native-desktop-return-start-menu.png",
+    "acceptedDesktopReturn": true,
+    "observed": "Original03 main closed through observed system-menu Close; visible desktop and Start menu respond through native input",
+    "displayBits": 16
+  },
+  "normalShutdown": {
+    "command": "rundll32.exe user.exe,ExitWindows",
+    "eip": 1042749,
+    "halted": 1,
+    "display": null,
+    "draws": 2809,
+    "failures": 0
+  },
+  "coldDisks": "build/nv40-win98-mark03-final-three-iq/native-iq-normal-shutdown.cold.json",
+  "healthyDesktopCheckpoint": {
+    "bundle": "build/nv40-win98-mark03-final-three-iq/checkpoint-native-nine-original-iq-desktop-return.state.bundle.json",
+    "rawBytes": 679298360,
+    "compressed": "build/nv40-win98-mark03-final-three-iq/checkpoint-native-nine-original-iq-desktop-return.state.zst",
+    "compressedBytes": 236940270,
+    "losslessFullSHAVerified": true,
+    "rawRemoved": true
+  },
+  "GPUFailures": 0,
+  "PGRAPHFaults": [],
+  "originalImagesUnchanged": true,
+  "driverState": "INITIALIZED",
+  "remaining": "Overall06 HDR/feature-image and final performance gates are separate from this Win98 capture/lifecycle completion."
+}

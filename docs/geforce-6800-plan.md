@@ -2321,3 +2321,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G3/G4 原生宽UNORM16采样修复：官方93.71的G16R16/A16B16G16R16同发format15，后者mode3必须八字节且有独立AA4E通道排列；旧四字节路径混读原版HDR反射立方体。未修改HAL探针十次受支持draw的机器码全相同，宽UNORM两种过滤均由ff80ff80恢复ff204080、FAILURES4→0，原双通道和FP16/32结果保持。新增单测先红后绿，精确16位/padded六面mip/DMA边界及完整真实GPU、Closure均通过，见 `g3-native-wide-unorm16-texture-mode.json`；原版HDR全图复测继续，未据探针关闭IQ门禁。
 
 - G6 宿主磁盘余量保护：并行客体与检查点累积曾使98/06宿主写盘ENOSPC退出，已保存成功的六张98/三张06原图保留，未导出部分不计完成。harness现默认8GiB余量，每循环检查，预算足够时停止CPU并保存RAM/OS/game配套后以PAUSED_DISK退出；预算不足不再追加大状态文件。真实release05状态用高测试阈值验证自动配套保存/干净关闭、所有SHA及原盘未变，负阈值拒绝、语法检查通过。清理约2.15GB可再生驱动缓存/未引用旧99调试RAM，05中断压缩先核对原RAM再无损重压，后续单客体串行。见 `g6-native-host-disk-reserve.json`；剩余原图续跑，未把宿主ENOSPC称为驱动失败。
+
+- G5 Win98 03九张原版固定帧及桌面生命周期完成：六张既有成功导出在宿主ENOSPC前保留，其余VS60/PS660/Ragtroll60从同一正常关机磁盘对冷启动补齐；每图原版成功提示、完整BMP、SHA及GPU静止60秒均验证。八张scene与XP逐像素相同，GT3最大差2；四GT/五feature与代理场景内容一致，所有原始残差保留而未新设阈值。最后通过确认焦点的系统菜单关闭03，实见RGB565桌面及开始菜单响应；stock ExitWindows至FE93D/HLT1/display=null，冷磁盘对SHA和原盘未变。健康桌面679298360字节RAM无损压缩校验为236940270字节后删除raw。见 `g5-win98-8198-03-nine-iq-desktop-return.json`；不把两次运行说成单次九图，06与最终性能门禁继续。

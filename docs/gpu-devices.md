@@ -303,7 +303,10 @@ completed all 21, with the native project, eight IQ BMPs and normal shutdown.
 The [Win98 03 run](fixtures/nv40/g5-win98-8198-03-full-eleven.json), using
 512 MiB RAM and 128 MiB VRAM, completed all four graphics, two CPU and five
 feature tests, exported its original successful project and shut down normally.
-Its latest nine-frame IQ recapture is still running.
+Its [nine original IQ frames](fixtures/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)
+were exported and visually reviewed against the proxy. Eight scene regions
+match XP exactly and GT3 differs by at most two channel values. Live RGB565
+desktop/Start-menu return and a later normal shutdown were verified.
 
 The [XP06 default-six run](fixtures/nv40/g4-xp-9371-06-native-default6.json)
 completed both SM2.0, both CPU and both HDR/SM3.0 tests. The separate
