@@ -2231,3 +2231,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 小工具盘输出：原生 UI helper 增加编译期 NV_UI_OUTPUT，默认路径不变；真实 XP 原版 05 在 1.44 MiB 内存 FAT12 软盘写出新 REQUEST_TICK、成功窗口和实际控件，经公开 set_fda/get_disk_fda 与 FAT12 读取验证。避免每次 UI 查询导出整张游戏临时 IMG，临时 raw 验证后删除。见 `g6-native-ui-floppy-output.json`。
 
 - G6 原版 BC 同状态对照：同一健康 05 IQ-ready 配套状态分别自动 BC/CPU，均成功保存 GT1 frame480，无 GPU/PGRAPH 故障。自动路径 499 次编码上传 19,847,360 bytes，总上传较 CPU 少 104,671,064 bytes；全图 MAD0.17475/max46。相同 CPU 实例重复图 MAD0.00278/max75，但重复不变的像素仍有 BC max46，不能把差异全归于原版重复性。原全16结果 SHA 不变，临时120 MiB导出验证后删除。见 `g6-native-05-bc-fixed-frame-control.json`；非 FPS、最终图像门禁继续。
+
+- G4 XP05 正常关机补齐：全16完成后的健康 IQ-ready 血缘继续，经原生按钮关闭取图窗口，以 stock shutdown.exe 正常关闭；先见 Saving your settings，后稳定在 806F3048/HLT1/display=null、clock normal。保存完成的 RAM/OS/game 配套 bundle 后停止，原盘 size/mtime 未变；RAM 无损压缩校验后删除解压副本。原全16结果 SHA 仍一致，见 `g4-xp-9371-05-full16-normal-shutdown.json`；代理固定帧与最终性能继续。
