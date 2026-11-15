@@ -52,7 +52,9 @@
     "allTenRawFragmentProgramsUnchanged": true,
     "sameSourceCheckpoint": "build/nv40-xp-mark06-hdr-material-cause/checkpoint-native-hdr1-original-save-material-diagnostic.state.bundle.json",
     "failureCheckpoint": "build/nv40-xp-mark06-hdr-material-cause/checkpoint-native-unorm16-wide-probe-failure.state.bundle.json",
-    "fixedCheckpoint": "build/nv40-xp-native-unorm16-wide-fixed/checkpoint-native-unorm16-ten-supported-draws-pass.state.bundle.json"
+    "fixedCheckpoint": "build/nv40-xp-native-unorm16-wide-fixed/checkpoint-native-unorm16-ten-supported-draws-pass.state.bundle.json",
+    "fixedPrograms": "build/nv40-xp-native-unorm16-wide-fixed/native-probe-first-ten-programs.json",
+    "captureQualification": "The first ten probe draws are copied without reformatting and match the originally recorded SHA. The continuing raw observer log later appended two unrelated original HDR draws and is retained separately."
   },
   "validation": {
     "unit": "Old decoder fails bpp4 vs8. Fixed exact four-word values, independent UNORM crossbar, ZERO/ONE, padded mip rows, six linear cube faces, paired mode and DMA last-byte bounds pass.",
@@ -73,7 +75,7 @@
       "bytes": 607217,
       "sha256": "8b04bcdb882148b824f07790d094cc1c033453176ceb9de475d3e6914785d6f0"
     },
-    "build/nv40-xp-native-unorm16-wide-fixed/native-float-probe-programs.json": {
+    "build/nv40-xp-native-unorm16-wide-fixed/native-probe-first-ten-programs.json": {
       "bytes": 607188,
       "sha256": "081facfa448e19d56980fafbe746a9e4fbc6fb9080c61517d67409a1668f5c09"
     }

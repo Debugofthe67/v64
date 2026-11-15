@@ -68,11 +68,11 @@ void WINAPI entry(void)
     const WORD values[]={0x3000,0x3400,0x3800,0x3c00}; /* .125,.25,.5,1 */
     const float full_values[]={.125f,.25f,.5f,1};
     const WORD unorm_values[]={8192,16384,32768,65535};
-    const UINT formats[]={34,36,111,112,113,114,116};
+    const UINT formats[]={34,36,111,112,113,114,115,116};
     for(UINT test=0;test<sizeof(formats)/sizeof(formats[0]);test++)
     {
-        UINT format=formats[test],channels=format==36||format==113||format==116?4:format==34||format==112?2:1;
-        IDirect3DDevice9_SetPixelShader(device,channels==1?scalar_shader:shader);
+        UINT format=formats[test],channels=format==36||format==113||format==116?4:format==34||format==112||format==115?2:1;
+        IDirect3DDevice9_SetPixelShader(device,shader);
         IDirect3DTexture9 *texture=0;report("FORMAT",format);
         hr=IDirect3D9_CheckDeviceFormat(d3d,0,D3DDEVTYPE_HAL,mode.Format,0,D3DRTYPE_TEXTURE,(D3DFORMAT)format);
         report("TEXTURE_CAPS",hr);
@@ -112,9 +112,9 @@ void WINAPI entry(void)
                 else
                 {
                     DWORD pixel=*(DWORD*)((BYTE*)locked.pBits+16*locked.Pitch+16*4);report("PIXEL",pixel);
-                    DWORD expected=channels==1?0x00202020:0x00204080;
+                    DWORD expected=channels==1?0x0020ffff:channels==2?0x002040ff:0x00204080;
                     report("EXPECTED_RGB",expected);
-                    for(UINT c=channels==2?1:0;c<3;c++)
+                    for(UINT c=0;c<3;c++)
                     {
                         int delta=(int)(pixel>>(c*8)&255)-(int)(expected>>(c*8)&255);
                         if(delta < -1 || delta > 1)failures++;

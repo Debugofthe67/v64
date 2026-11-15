@@ -2323,3 +2323,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 宿主磁盘余量保护：并行客体与检查点累积曾使98/06宿主写盘ENOSPC退出，已保存成功的六张98/三张06原图保留，未导出部分不计完成。harness现默认8GiB余量，每循环检查，预算足够时停止CPU并保存RAM/OS/game配套后以PAUSED_DISK退出；预算不足不再追加大状态文件。真实release05状态用高测试阈值验证自动配套保存/干净关闭、所有SHA及原盘未变，负阈值拒绝、语法检查通过。清理约2.15GB可再生驱动缓存/未引用旧99调试RAM，05中断压缩先核对原RAM再无损重压，后续单客体串行。见 `g6-native-host-disk-reserve.json`；剩余原图续跑，未把宿主ENOSPC称为驱动失败。
 
 - G5 Win98 03九张原版固定帧及桌面生命周期完成：六张既有成功导出在宿主ENOSPC前保留，其余VS60/PS660/Ragtroll60从同一正常关机磁盘对冷启动补齐；每图原版成功提示、完整BMP、SHA及GPU静止60秒均验证。八张scene与XP逐像素相同，GT3最大差2；四GT/五feature与代理场景内容一致，所有原始残差保留而未新设阈值。最后通过确认焦点的系统菜单关闭03，实见RGB565桌面及开始菜单响应；stock ExitWindows至FE93D/HLT1/display=null，冷磁盘对SHA和原盘未变。健康桌面679298360字节RAM无损压缩校验为236940270字节后删除raw。见 `g5-win98-8198-03-nine-iq-desktop-return.json`；不把两次运行说成单次九图，06与最终性能门禁继续。
+
+- G3/G4 原生完整通道控制通过：同一未修改93.71 HAL读取UNORM16、FP16/FP32的全部RGB及缺省通道，新增G32R32F，十一draw均成功、FAILURES0；R16F明确不支持跳过。R32F由驱动MOV补GB=1，G32R32F由两次UNORM16取样及PK2US重建，不据API格式名臆造新物理布局。严格C构建通过，见 `g3-native-float-complete-channels.json`。同时将旧宽UNORM探针前十draw固化为与原SHA完全相同的独立文件，避免后续HDR观察记录追加改变证据哈希。
