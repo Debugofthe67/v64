@@ -1,0 +1,22 @@
+{
+  "date": "2026-11-15",
+  "status": "Cold XP03 boot with data floppy reaches original NVIDIA desktop, healthy native device probe and original benchmark IQ dialog.",
+  "change": "Use HDD-first boot order when NV_FDA supplies a data/tools floppy; preserve the normal order without FDA and existing Win98/CDROM override.",
+  "sourceBundle": "build/nv40-xp-mark03-cold-final-continue2.state.bundle.json",
+  "nativeProbe": "BEGIN\nPCI PCI\\VEN_10DE&DEV_0045&SUBSYS_004510DE&REV_A1\nDEVICE PCI\\VEN_10DE&DEV_0045&SUBSYS_004510DE&REV_A1 problem=0 cm=0 started=1 service=nv driver={4D36E968-E325-11CE-BFC1-08002BE10318}\\0000 description=NVIDIA GeForce 6800 GT version=6.14.10.9371\nPCI PCI\\VEN_8086&DEV_1237&SUBSYS_00000000&REV_02\nPCI PCI\\VEN_8086&DEV_7000&SUBSYS_00000000&REV_00\nPCI PCI\\VEN_8086&DEV_7010&SUBSYS_82D41043&REV_00\nENUM_END error=259 count=77 properties=77\nPCI PCI\\VEN_10DE&DEV_0045&SUBSYS_004510DE&REV_A1\nDEVICE PCI\\VEN_10DE&DEV_0045&SUBSYS_004510DE&REV_A1 problem=0 cm=0 started=1 service=nv driver={4D36E968-E325-11CE-BFC1-08002BE10318}\\0000 description=NVIDIA GeForce 6800 GT version=6.14.10.9371\nPCI PCI\\VEN_8086&DEV_1237&SUBSYS_00000000&REV_02\nPCI PCI\\VEN_8086&DEV_7000&SUBSYS_00000000&REV_00\nPCI PCI\\VEN_8086&DEV_7010&SUBSYS_82D41043&REV_00\nENUM_END error=259 count=77 properties=77\nSCREEN 1024x768\nREGISTRY_FLUSH status=0\nEND\n",
+  "screenshots": [
+    {
+      "file": "build/nv40-xp-mark03-current-iq-cold-hdd/capture-0011.png",
+      "sha256": "031c02e7179dda1dfa2c051445f6330875e903a5a587580c4ef3c34c7de423fa"
+    },
+    {
+      "file": "build/nv40-xp-mark03-current-iq-cold-hdd/capture-0024.png",
+      "sha256": "5c7ea0988e4942b91921746015ae335d0eb1656b671b5d235cca7e5b80399d3b"
+    }
+  ],
+  "priorFailure": "With FDA and floppy-first order the template boot sector loops before the installed OS starts.",
+  "limits": [
+    "No benchmark result or image acceptance is inferred from reaching the GUI.",
+    "Original OS/game files remain read-only; normal-shutdown overlay sizes and hashes were verified before launch."
+  ]
+}

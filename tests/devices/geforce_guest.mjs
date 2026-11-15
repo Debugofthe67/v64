@@ -237,7 +237,9 @@ export async function run_geforce_guest(win98)
     const vm = new V86({ ...(remote?{graphics_adapter_renderer_channel:remote.renderer}:{}), disable_jit:!!process.env.NV_DISABLE_JIT, wasm_path, graphics_adapter: "geforce_6800", vram_size: vram_mb << 20,
         bios: { url: root + "bios/seabios.bin" },
         ...(process.env.NV_ROM ? { vga_bios: { url: path.resolve(process.env.NV_ROM) } } : {}),
-        hda: disk, hdb: tools, boot_order: 0x213, memory_size: memory_mb << 20,
+        // NV_FDA is a data/tools floppy. Its template boot sector must not
+        // take precedence over the installed guest during a cold boot.
+        hda: disk, hdb: tools, boot_order: process.env.NV_FDA ? 0x132 : 0x213, memory_size: memory_mb << 20,
         ...(win98 || process.env.NV_CDROM ? { cdrom: { url: process.env.NV_CDROM || process.env.NV_WIN98_ISO || path.join(site_directory(root), "windows98/windows98se.iso"), async: true }, boot_order: 0x132 } : {}),
         screen_adapter: sink, acpi: false, net_device: { type: "none" }, disable_speaker: true,
         autostart: !process.env.NV_STATE_LOAD && !game, log_level: 0 });
