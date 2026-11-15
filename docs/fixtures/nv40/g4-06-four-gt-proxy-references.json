@@ -1,0 +1,204 @@
+{
+  "stage": "G4 original06 four-GT proxy references and native comparison",
+  "scope": "Four original default-option IQ reference saves and bounded verified exports. HDR1/HDR2 comparison fails visual review; this is not overall image acceptance.",
+  "configuration": {
+    "guest": "XP SP3",
+    "reference": "Existing D3D9 proxy, main-thread V86, immutable pinned CPU assets",
+    "memoryMiB": 1024,
+    "proxyVramMiB": 16,
+    "resolution": [
+      1280,
+      1024
+    ],
+    "AA": "None",
+    "filter": "Optimal",
+    "VS": "3_0",
+    "PS": "3_0",
+    "featureOverrides": "All unchecked",
+    "registration": "User-provided license accepted by the original registration UI; private values excluded."
+  },
+  "frames": [
+    {
+      "case": "GT1",
+      "frame": 2095,
+      "readbacks": 2,
+      "draws": 8043,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy06-four-gt-iq/ui-GT1-success.txt",
+      "screenshot": "build/nv40-proxy06-four-gt-iq/frame-00081.png",
+      "hostTime": "2026-11-15T06:04:44.512894+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark06-batch8-sparse-constants/iq-artifacts/NV06IQ_GT1_2095.BMP",
+        "sha256": "86afef64ed55e2a0f0ef59a3299ce8922066c11c4949d2f6929c703458516992"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_GT1_2095.BMP",
+        "sha256": "8ed87426ef79fc54ee074d564313205e2142a212693610e0634ccbee185ffd0e"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 960,
+        "mean_absolute_rgb_error": 0.8001459418402778,
+        "max_channel_error": 99,
+        "exact_pixel_percent": 15.304606119791664,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 3,
+          "95": 3,
+          "99": 6,
+          "99.9": 14
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.7986274719238281,
+        "max_channel_error": 99
+      }
+    },
+    {
+      "case": "GT2",
+      "frame": 1139,
+      "readbacks": 4,
+      "draws": 15946,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy06-four-gt-iq/ui-GT2-success.txt",
+      "screenshot": "build/nv40-proxy06-four-gt-iq/frame-00089.png",
+      "hostTime": "2026-11-15T06:07:14.694125+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark06-batch8-sparse-constants/iq-artifacts/NV06IQ_GT2_1139.BMP",
+        "sha256": "4fc56b126b249a94d119224851b422e8087dc0cdcc5cb72cdb366d200e311524"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_GT2_1139.BMP",
+        "sha256": "0976f12451502e153d99919b4fb0df632e58040d837210ff4531f907ece732fe"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 960,
+        "mean_absolute_rgb_error": 1.746167263454861,
+        "max_channel_error": 176,
+        "exact_pixel_percent": 14.359863281249996,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 5,
+          "95": 10,
+          "99": 27,
+          "99.9": 52
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 1.6996798197428384,
+        "max_channel_error": 176
+      }
+    },
+    {
+      "case": "HDR1",
+      "frame": 1225,
+      "readbacks": 6,
+      "draws": 23992,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy06-four-gt-iq/ui-HDR1-success.txt",
+      "screenshot": "build/nv40-proxy06-four-gt-iq/frame-00098.png",
+      "hostTime": "2026-11-15T06:10:13.887296+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark06-batch8-sparse-constants/iq-artifacts/NV06IQ_hdr1_1225.bmp",
+        "sha256": "76b6eda7c8401eeb300553d8767649816ac667016c1f72f557c27d7279897834"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_hdr1_1225.bmp",
+        "sha256": "e300a8a89cfb4234b1864f581823c5ddc9084385993da1e74a215ecd53e39676"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 960,
+        "mean_absolute_rgb_error": 35.18076443142361,
+        "max_channel_error": 181,
+        "exact_pixel_percent": 0.00016276041666651864,
+        "pixel_max_channel_error_percentiles": {
+          "50": 46,
+          "90": 96,
+          "95": 113,
+          "99": 136,
+          "99.9": 168
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 34.37915598551432,
+        "max_channel_error": 181
+      }
+    },
+    {
+      "case": "HDR2",
+      "frame": 1428,
+      "readbacks": 8,
+      "draws": 32026,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy06-four-gt-iq/ui-HDR2-success.txt",
+      "screenshot": "build/nv40-proxy06-four-gt-iq/frame-00105.png",
+      "hostTime": "2026-11-15T06:12:34.727012+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark06-batch8-sparse-constants/iq-artifacts/NV06IQ_hdr2_1428.bmp",
+        "sha256": "e60bc98d9a4e110c8b829635a6389746b324cb392e2aad9d9bad6745765bd746"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_hdr2_1428.bmp",
+        "sha256": "c29dc6aaa1164e229c15625e4a3345ccec6f0a118bab0c62d1a82915613010a7"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 960,
+        "mean_absolute_rgb_error": 52.14611300998264,
+        "max_channel_error": 198,
+        "exact_pixel_percent": 0.0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 77,
+          "90": 152,
+          "95": 162,
+          "99": 177,
+          "99.9": 188
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 49.86794789632162,
+        "max_channel_error": 198
+      }
+    }
+  ],
+  "referenceValidation": {
+    "originalSuccessAndGPUQuietSeconds": 60,
+    "commandsFailed": 0,
+    "droppedDraws": 0,
+    "hostErrors": 0,
+    "gpuErrors": 0,
+    "export": "D3D_ARTIFACT_DIRECT=1; browser and host SHA256 agree for every image; no full disk IMG/chunks created.",
+    "artifactManifest": "build/nv40-proxy06-four-gt-iq/extracted-artifacts.json",
+    "closedAfterCompleteExports": "build/nv40-proxy06-four-gt-iq/closed-after-all-exports.json",
+    "coreAssets": {
+      "libv86.js": {
+        "bytes": 884101,
+        "sha256": "05cce8be86d03b097c7f96c20379ec1eb351d7156fdbd1abbf89e08df9810f75"
+      },
+      "v86.wasm": {
+        "bytes": 3035311,
+        "sha256": "808c5fc9f0858ea23baf6a13d53f6c876e970f0de0427a4f3d48d57d820c2ff8"
+      },
+      "cpu-worker.js": {
+        "bytes": 896712,
+        "sha256": "ec010665068f61cd6284bcd3ceb2c5c3008df1be9f2558943c0a374360c3957c"
+      },
+      "v86-bochs-vga.js": {
+        "bytes": 44376,
+        "sha256": "ce8415006ca38dc53bd807323fc01fcfc47e9d3c31b7aad3934636e4408d1984"
+      }
+    }
+  },
+  "visualReview": {
+    "GT1_GT2": "Captured paired scenes for residual review. Numerical differences remain documented.",
+    "HDR1_HDR2": "Native images contain strong green vertical patterns and incorrect illumination relative to the original proxy scenes. These are substantive defects and remain an open gate.",
+    "preview": "build/nv40-06-hdr-native-reference-contact.png"
+  },
+  "limits": [
+    "Functional native default6 plus feature7/batch6 completion and normal shutdown remain separately recorded.",
+    "No native score, guest clock, driver program or shader was patched to match these references.",
+    "Seven feature fixed-point images, HDR diagnosis and final isolated performance remain unfinished."
+  ]
+}

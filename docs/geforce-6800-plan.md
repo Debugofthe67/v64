@@ -2291,3 +2291,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G3/G4 SM3点精灵连接修复：原生03 GT1有真实尾迹几何，但SM3 VP未声明TEX0时linker未连接光栅器生成UV，PS采透明纹理边缘。对实际点精灵扩展的TEXCOORD0–7连接生成(u,v,0,1)，普通绘制/未写入零值和反射对象保持；微软point-sprites契约支持此行为。新增unit与真实GPU四色checker旧实现先红，现58着色器单测、199 naga及完整NV40真实GPU回归通过。相同健康RAM配套源的原版GT1 frame1038重取白色尾迹恢复，scene MAD4.3613→1.0324，max183→103；旧三次原生重复全图一致。原图及全图/ROI残差均保留，见 `g4-sm3-point-sprite-semantic-coordinates.json`。全glbridge套件仍在后台运行，不列为已通过；其余图像/最终性能门禁继续。
 
 - G4 03 点精灵修复后的九张原版固定帧复测：GT1/2/3/4 分别为1038/1000/1000/1000，四项可见特性帧60、PS660。每张均等原版保存成功及GPU计数静止60秒后直接导出，40738draws、零GPU/PGRAPH错误；随后 stock XP 正常关机并校验配套冷启动 overlay。GT1 白色尾迹已恢复；其余帧保留场景与完整图误差，无新设容差门槛。完整glbridge串行315文件测试已通过。见 `g4-03-nine-point-sprite-fixed-frames.json`。05 GT3、06 HDR与最终门禁继续。
+
+- G4 06 四个原版代理固定帧参考已直接导出并完成 browser/host SHA 校验，默认1280×1024、None AA、Optimal、VS/PS3.0，GT1/GT2/HDR1/HDR2 为2095/1139/1225/1428，零命令/GPU错误。与原生同帧比较后，HDR1/HDR2 的绿色竖纹及光照错误构成实质画面缺陷，不能以功能跑完代替IQ验收；保留原始图及误差，继续定位。见 `g4-06-four-gt-proxy-references.json`。
