@@ -1,0 +1,179 @@
+{
+  "stage": "G4/G6 original05 GT3 interpreter and native saturation compiler control",
+  "scope": "Completed causal diagnostic. GT3 image defect and MOV-saturation failures remain unresolved; no native program was modified to obtain a pass.",
+  "configuration": {
+    "coldPair": "build/nv40-xp-mark05-bc-current-cpu/checkpoint-native-all16-normal-shutdown.state.bundle.json",
+    "driver": "93.71",
+    "memoryMiB": 1024,
+    "vramMiB": 256,
+    "cpu": "build/nv40-wp-fixed.wasm",
+    "jitDisabledFromColdBoot": true,
+    "guestClock": "Unmodified",
+    "GT3Frame": 1630,
+    "originalIQOptions": "None AA, Optimal, VS/PS3_0, all feature overrides unchecked"
+  },
+  "originalIQ": {
+    "artifact": [
+      {
+        "file": "NV05INT/GT3_1630.BMP",
+        "name": "NV05INT_GT3_1630.BMP",
+        "bytes": 2359352,
+        "sha256": "cc4392ae01cd416da6b7bf5bcf832be2d2a54724c24f61facc6b0abe249919bb"
+      }
+    ],
+    "nativeInterpreterVsNativeJit": {
+      "MAD": 0,
+      "maxChannelError": 0,
+      "sha256": "cc4392ae01cd416da6b7bf5bcf832be2d2a54724c24f61facc6b0abe249919bb"
+    },
+    "successLog": "build/nv40-xp-mark05-gt3-interpreter-control/iq-interpreter-serial-success.json",
+    "apiShaderReadOnlySearch": "build/nv40-xp-mark05-gt3-interpreter-control/original-api-pixel-shader-memory-control.json",
+    "observation": "One exact unchanged reference D3D9 PS bytecode copy found in ordinary guest RAM; this alone is not an API-call trace."
+  },
+  "nativeProbe": {
+    "source": "tests/devices/geforce_saturate.c",
+    "sourceSha256": "c72eb8765d3d6d7e0db64d7cb3400fb334eda649f850eb43343fce14751606b2",
+    "strictMingwBuild": "PASS -Wall -Wextra -Werror",
+    "result": "DEVICE=00000000\nTARGET=00000000\nREADBACK_SURFACE=00000000\nCASE=00000000\nCREATE_SHADER=00000000\nDRAW=00000000\nREADBACK=00000000\nLOCK=00000000\nPIXEL=ff0080ff\nEXPECTED_RGB=004080bf\nCASE=00000001\nCREATE_SHADER=00000000\nDRAW=00000000\nREADBACK=00000000\nLOCK=00000000\nPIXEL=ff0080ff\nEXPECTED_RGB=004080bf\nCASE=00000002\nCREATE_SHADER=00000000\nDRAW=00000000\nREADBACK=00000000\nLOCK=00000000\nPIXEL=ff404000\nEXPECTED_RGB=00404000\nCASE=00000003\nCREATE_SHADER=00000000\nDRAW=00000000\nREADBACK=00000000\nLOCK=00000000\nPIXEL=ff404000\nEXPECTED_RGB=00404000\nFAILURES=00000004\n",
+    "validShaderCases": 4,
+    "passingCases": [
+      2,
+      3
+    ],
+    "failingCases": [
+      0,
+      1
+    ],
+    "failureCountMeaning": "Four RGB channel assertions across two MOV_sat cases. All original creation/draw/readback/lock HRESULTs were0.",
+    "programsFile": "build/nv40-xp-mark05-gt3-interpreter-control/native-saturate-probe-v2-programs.json",
+    "encodedSaturateByCase": [
+      [
+        {
+          "op": "MOV",
+          "word0": "0x1001600",
+          "sat": false
+        },
+        {
+          "op": "ADD",
+          "word0": "0x3000e81",
+          "sat": false
+        }
+      ],
+      [
+        {
+          "op": "MOV",
+          "word0": "0x1001600",
+          "sat": false
+        },
+        {
+          "op": "ADD",
+          "word0": "0x3000e81",
+          "sat": false
+        }
+      ],
+      [
+        {
+          "op": "MOV",
+          "word0": "0x1400e80",
+          "sat": false
+        },
+        {
+          "op": "DP3",
+          "word0": "0x85400280",
+          "sat": true
+        },
+        {
+          "op": "ADD",
+          "word0": "0x3000e81",
+          "sat": false
+        }
+      ],
+      [
+        {
+          "op": "MOV",
+          "word0": "0x1400e80",
+          "sat": false
+        },
+        {
+          "op": "DP3",
+          "word0": "0x5400280",
+          "sat": false
+        },
+        {
+          "op": "MUL",
+          "word0": "0x82400280",
+          "sat": true
+        },
+        {
+          "op": "ADD",
+          "word0": "0x3000e81",
+          "sat": false
+        }
+      ]
+    ],
+    "earlierInvalidControl": "The first probe revision used two different constant registers in one PS instruction; its last two rejected cases are retained separately and excluded from this four-valid-case result."
+  },
+  "offlinePixelControl": {
+    "source": "Captured native vertices/programs/textures; native VS held fixed; depth/blend/alpha disabled only for separate offline diagnosis. Not IQ acceptance.",
+    "results": "build/nv40-gt3-reference-pixel-control.json",
+    "point": [
+      700,
+      100
+    ],
+    "nativeMaterialBGRA": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "referencePixelProgramBGRA": [
+      27,
+      33,
+      33,
+      255
+    ],
+    "nativeSatHypothesisBGRA": [
+      27,
+      33,
+      33,
+      255
+    ],
+    "limits": "The saturation edit exists only in an explicitly labeled offline hypothesis. Production code, native driver, original shader and benchmark were not patched."
+  },
+  "checkpointOriginalIQ": "build/nv40-xp-mark05-gt3-interpreter-control/checkpoint-native-interpreter-gt3-original-save-before-probe.state.bundle.json",
+  "checkpointNativeFailure": "build/nv40-xp-mark05-gt3-interpreter-control/checkpoint-native-interpreter-saturation-probe-original-failure.state.bundle.json",
+  "normalShutdown": {
+    "kind": "cold-boot-only disk overlay pair; no RAM checkpoint",
+    "guest": "xp",
+    "memoryMiB": 1024,
+    "vramMiB": 256,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark05.img",
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark05-gt3-interpreter-control/native-iq-normal-shutdown-os-overlay.bin",
+      "bytes": 125518068,
+      "sha256": "2aa78d9f8d2c948e15b2921c00b0e7e28b2c2d9df9b9802897241d13d716cbba"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark05-gt3-interpreter-control/native-iq-normal-shutdown-game-overlay.bin",
+      "bytes": 443794,
+      "sha256": "74e4079caf4f29c564302d374d58da4ae3463ca8b1dd91ff2ce3a70cce3caa54"
+    },
+    "normalShutdown": {
+      "command": "stock XP shutdown.exe -s -t 0",
+      "eip": 2154770504,
+      "halted": 1,
+      "display": null,
+      "draws": 1531,
+      "failures": 0
+    }
+  },
+  "primarySources": [
+    "https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx9-graphics-reference-asm-ps-instructions-modifiers-ps-2-0",
+    "https://chromium.googlesource.com/external/gitlab.freedesktop.org/mesa/mesa/+/51a7e9723538833e74ea9aebc251db22743eaf7f/src/gallium/drivers/nouveau/nv30/nvfx_shader.h"
+  ],
+  "limits": [
+    "Identical original interpreter/JIT IQ excludes a JIT-only cause. Shared CPU behavior and driver compilation still require investigation.",
+    "Native green HDR patterns in06 are a separate open defect; do not infer that this observation explains them."
+  ]
+}

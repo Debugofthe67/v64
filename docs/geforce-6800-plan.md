@@ -2293,3 +2293,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 03 点精灵修复后的九张原版固定帧复测：GT1/2/3/4 分别为1038/1000/1000/1000，四项可见特性帧60、PS660。每张均等原版保存成功及GPU计数静止60秒后直接导出，40738draws、零GPU/PGRAPH错误；随后 stock XP 正常关机并校验配套冷启动 overlay。GT1 白色尾迹已恢复；其余帧保留场景与完整图误差，无新设容差门槛。完整glbridge串行315文件测试已通过。见 `g4-03-nine-point-sprite-fixed-frames.json`。05 GT3、06 HDR与最终门禁继续。
 
 - G4 06 四个原版代理固定帧参考已直接导出并完成 browser/host SHA 校验，默认1280×1024、None AA、Optimal、VS/PS3.0，GT1/GT2/HDR1/HDR2 为2095/1139/1225/1428，零命令/GPU错误。与原生同帧比较后，HDR1/HDR2 的绿色竖纹及光照错误构成实质画面缺陷，不能以功能跑完代替IQ验收；保留原始图及误差，继续定位。见 `g4-06-four-gt-proxy-references.json`。
+
+- G4 05 GT3 冷启动纯解释器对照完成：原版1630帧与JIT原图逐字节相同（SHA cc4392ae…bb、完整图MAD0），排除JIT独有问题。新增独立原生D3D9饱和运算探针；四条合法shader的API/回读全部成功，其中常量MOV_sat的两项像素失败，DP3合并饱和和MUL_sat两项正确，保留原生机器码及失败配套检查点。此步骤是缩小根因范围，不是修复或G4验收；未强行改原生SAT位。见 `g4-05-native-interpreter-saturation-control.json`。
