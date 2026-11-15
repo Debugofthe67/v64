@@ -187,6 +187,10 @@ shaderObject.methods[Symbol.iterator]=()=>{throw Error("draw path enumerated all
 try {assert.doesNotThrow(()=>shaderEngine.shaders(shaderObject),"drawing does not collect diagnostic method snapshots");}
 finally {delete shaderObject.methods[Symbol.iterator];}
 assert.equal(shaderEngine.shaders(shaderObject).fragment.bytecode,shaders.fragment.bytecode,"unchanged shaders reuse translated bytecode");
+method(0,0x4400,0x1E9C,0);method(0,0x4400,0xB84,0x0040010D);
+assert.notEqual(shaderEngine.shaders(shaderObject).vertex.bytecode,shaders.vertex.bytecode,"vertex instruction bits invalidate the translation key");
+method(0,0x4400,0x1E9C,0);method(0,0x4400,0xB84,0x0040000D);
+assert.equal(shaderEngine.shaders(shaderObject).vertex.bytecode,shaders.vertex.bytecode,"restored vertex words reuse their original translation");
 new DataView(vram.buffer).setUint32(0x9010,0x3F000000,true);
 const changedConstant=shaderEngine.shaders(shaderObject);
 assert.equal(changedConstant.fragment.bytecode,shaders.fragment.bytecode,"inline values do not invalidate normalized code");

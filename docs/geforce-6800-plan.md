@@ -2265,3 +2265,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 顶点常量热点：翻译结果记录程序可读的native常量连续范围；每draw仍新读当前值，相对寻址保守读取全部544，生成的viewport/texture常量顺序保持。真实Batch8六指令VP的native常量载荷8704→64bytes；10000次新鲜读取的七轮交错CPU中位282.274→4.952ms，位值与全量快照选择结果一致。空/稀疏/相邻/543/相对范围、真实GPU同代码c543两次修改191→64像素及完整回归/Closure通过，见 `g6-referenced-vertex-constant-ranges.json`，不作原生FPS或看门狗修复声明。
 
 - G6 VP表读取热点：decoder增加可选有界指令provider，沿原可达控制流每次新读当前指令，native绘制不再先复制整个544槽VP表；公开全表API保留。跨越不可达存储、入口544、缺END最多544次和短指令拒绝回归先红后绿；104个原版05/06程序与旧全表/原decode数据完全一致，完整GPU/graph/着色器WGSL/Closure通过。Batch8六指令读取2176→24DWORD，10000次七轮交错CPU中位310.458→33.313ms。见 `g6-reachable-vertex-program-fetch.json`，不据此验收原生FPS或看门狗。
+
+- G6 精确着色器键：用VP入口/可达PC/原始四DWORD及FP normalized原始词替代重复序列化扩展decoder对象，所有lowering选项保留，不以hash或DMA地址替代源码。104原版程序的键等价关系双向一致；VP/FP改码失效、恢复复用、inline常量、LRU/字节预算及完整真实GPU/Closure通过。独立10000次键序列化七轮CPU中位251.953→16.206ms，示例4878→468字符，非绘制/FPS测量；见 `g6-exact-raw-shader-keys.json`。

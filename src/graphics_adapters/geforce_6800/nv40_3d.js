@@ -241,7 +241,10 @@ export class NV40_3D
                 linear:o.methods.has(0x8D4)?new Float32Array(Uint32Array.of(get(o,0x8D4)).buffer)[0]:1}};
         // Exact code and lowering state, never DMA addresses or hashes. Inline
         // FP constants change independently of normalized instruction words.
-        const key=JSON.stringify([program.vertex,program.fragment.normalized,vertexOptions,fragmentOptions]);
+        // All decoded VP fields are determined by these exact instruction
+        // words and PCs. Avoid serializing their expanded diagnostic objects.
+        const vertexCode=program.vertex.instructions.map(i=>[i.pc,...i.words]);
+        const key=JSON.stringify([program.vertex.entry,vertexCode,Array.from(program.fragment.normalized),vertexOptions,fragmentOptions]);
         let compiled=this.translated.get(key);
         if(compiled)
         {

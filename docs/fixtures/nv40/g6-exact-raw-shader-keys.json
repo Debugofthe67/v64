@@ -1,0 +1,51 @@
+{
+  "date": "2026-11-15",
+  "status": "Lossless raw shader key representation replaces repeated expanded decoder-object serialization.",
+  "change": "VP entry, reachable instruction PCs and all four raw words plus the exact normalized FP words and existing lowering options form the key. No hashes or DMA addresses replace code identity.",
+  "validation": [
+    "Both key-equivalence directions agree across104 original native programs",
+    "VP source-word change invalidates and restoring it reuses original compiled bytecode",
+    "FP instruction/inline-constant changes, LRU/byte budget, complete graph/shader and real GPU pixel/branch/query/alias/snapshot regressions pass",
+    "Closure0 errors/0 warnings"
+  ],
+  "microbenchmark": {
+    "nativePrograms": 104,
+    "collisionEquivalence": "Exact both directions across the original native corpus",
+    "iterations": 10000,
+    "rounds": 7,
+    "unit": "Node CPU milliseconds",
+    "sampleKeyChars": {
+      "expanded": 4878,
+      "raw": 468
+    },
+    "samples": {
+      "expanded": [
+        254.838,
+        247.68,
+        249.548,
+        252.388,
+        249.593,
+        251.953,
+        252.341
+      ],
+      "raw": [
+        18.882,
+        23.065,
+        24.356,
+        15.775,
+        15.259,
+        14.373,
+        16.206
+      ]
+    },
+    "medians": {
+      "expanded": 251.953,
+      "raw": 16.206
+    },
+    "sink": 0
+  },
+  "limits": [
+    "Microbenchmark isolates key serialization with identical fixed shared options; not a draw-time or original FPS result.",
+    "Native watchdog and image gates remain open."
+  ]
+}
