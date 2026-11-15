@@ -300,10 +300,27 @@ cover all three game scenes and five feature tests. Proxy-image comparison,
 normal shutdown and isolated performance validation are recorded separately.
 [Win98 2001 SE](fixtures/nv40/g5-win98-8198-2001-native-all21.json) also
 completed all 21, with the native project, eight IQ BMPs and normal shutdown.
+The [Win98 03 run](fixtures/nv40/g5-win98-8198-03-full-eleven.json), using
+512 MiB RAM and 128 MiB VRAM, completed all four graphics, two CPU and five
+feature tests, exported its original successful project and shut down normally.
+Its latest nine-frame IQ recapture is still running.
+
 The [XP06 default-six run](fixtures/nv40/g4-xp-9371-06-native-default6.json)
-completed both SM2.0, both CPU and both HDR/SM3.0 tests and exported their
-original successful result. Win98 03, XP06 feature/batch coverage and the
-remaining IQ comparisons are still under investigation. The unmodified
+completed both SM2.0, both CPU and both HDR/SM3.0 tests. The separate
+[seven-feature and six-batch run](fixtures/nv40/g4-xp-9371-06-feature7-batch6.json)
+also exported an original project with every selected test successful.
+[Normal shutdown](fixtures/nv40/g4-xp-9371-06-required-tests-normal-shutdown.json)
+and matching RAM/disk checkpoints were verified after those results and the
+four original GT IQ saves. Earlier native driver timeout failures remain
+recorded; the later completion is not attributed to one isolated change.
+
+Recent [03 point-sprite](fixtures/nv40/g4-03-nine-point-sprite-fixed-frames.json),
+[05 source-precision](fixtures/nv40/g4-05-source-precision-eight-fixed-frames.json)
+and [06 wide-FP16](fixtures/nv40/g4-06-wide-half-four-fixed-frames.json)
+recaptures remove substantial rendering defects. Remaining image residuals,
+including the visible HDR1 color defect, still prevent full image acceptance.
+The 06 feature images and final single-guest release profile remain open.
+The unmodified
 NVIDIA driver advertises SM3.0 capabilities beyond the validated subset;
 known unsupported draw states and instructions produce bounded faults;
 some other register paths still store values. See
@@ -340,7 +357,8 @@ rendering and readback, and overlap the CPU samples. Node process CPU also
 includes worker threads. The 379 display semaphore releases include loading
 pages and are not a benchmark FPS count. The [window and raw-artifact hashes](fixtures/nv40/g6-xp-9371-06-isolated-window.json)
 preserve the actual counter boundaries; [profiling.md](profiling.md) explains
-how to reproduce the report. Later driver teardown remains under investigation.
+how to reproduce the report. This historical profile predates the later successful native suites and normal
+shutdown; it is retained as an initial measurement.
 
 Subsequent concurrent saved-state windows found substantial repeated BC
 texture decoding. A [bounded decoded-cache comparison](fixtures/nv40/g6-native-06-decoded-cache-budget.json)

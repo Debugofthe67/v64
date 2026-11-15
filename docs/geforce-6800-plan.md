@@ -2312,3 +2312,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 05源精度修复后八张原版固定帧及正常关机完成：GT480/897/1630、五项feature1，None/Optimal/VS3_0/PS3_0默认选项。逐图保存成功和GPU静止60秒，7472draws零GPU错误；原图SHA、正常关机冷磁盘对及1197830556字节健康RAM无损压缩校验齐全。GT3黑块恢复，scene MAD11.88→3.71仍有残差；三材质分别匹配自己的原版常量后，700,100处原生VS/PS与API参考均一致，旧误套另一材质常量的差异不作缺陷证据。见 `g4-05-source-precision-eight-fixed-frames.json`；本轮早于FP32修复，最新图像复核继续。
 
 - G6 原生 UI helper 的 IDE 冷启动交付：新增显式 NV_UI_BINARY，有界 MZ 检查且拒绝与 RAM restore 混用。Win98 81.98 以 D:\NVUI.EXE 成功读取原版控件并用真实鼠标完成 Tip/IQ/Run，GT1 frame1038 已有完整原图、原版保存成功和 GPU 静止60秒；其 SHA 与修复后 XP 原图相同。严格 GUI helper 构建及 harness 语法检查通过，见 `g6-native-ide-ui-delivery.json`。其余八图在继续，不据工具交付成功推断先前软盘/黑屏诊断的根因。
+
+- G7 文档状态同步：gpu-devices、驱动安装说明和偏差表已链接已完成的 Win98 03 十一项、XP06 补充十三项及正常关机证据，去掉这些功能覆盖仍未完成的过期表述；明确九图复测、HDR1偏色、06 feature画面和最终独立profile仍开放。历史305秒测量保留并标明早于后续成功，不将此同步当作G7完成。

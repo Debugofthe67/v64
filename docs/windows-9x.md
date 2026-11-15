@@ -150,7 +150,8 @@ The default VGA display driver only supports 640x480x4 video mode, to fix this, 
 #### 3.2.3 GeForce 6800 GT (experimental)
 
 Windows 98 SE has been tested with `graphics_adapter: "geforce_6800"`,
-128/256 MiB VRAM, 256 MiB system RAM, IDE and ACPI disabled. The adapter
+128/256 MiB VRAM, 256 MiB system RAM, IDE and ACPI disabled. The original
+3DMark03 eleven-test run additionally used 512 MiB RAM and 128 MiB VRAM. The adapter
 uses its bundled `bios/vgabios-geforce6800.bin` ROM. Use the original
 ForceWare 81.98 Win9x package, `81.98_forceware_win9x_english.exe`;
 its `NVAGP.INF` includes GeForce 6800 GT (`PCI\VEN_10DE&DEV_0045`).
@@ -181,7 +182,9 @@ For long benchmark runs, select **None** under Display Properties → Screen
 Saver, then open its energy-saving Settings and select **Never** for monitor
 power-off. The tested image originally used a 15-minute monitor timeout;
 [the native setup check](fixtures/nv40/g6-native-memory-status-diagnostic.json)
-records this setting separately from the still-open Win98 03 acceptance.
+records this setting separately from benchmark execution. The later
+[original 03 suite](fixtures/nv40/g5-win98-8198-03-full-eleven.json) completed
+all eleven selected tests and shut down normally; its image gate remains open.
 
 1024×768×32, 640×480×8, 800×600×16 and a DOS mode-13h/text/desktop round trip
 are recorded in the [native display fixture](fixtures/nv40/g1-native-modes-dos.json).

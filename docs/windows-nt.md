@@ -207,8 +207,9 @@ XP screen saver interrupted a native 3DMark05 run with `D3DERR_DEVICELOST`;
 record the incomplete tests.
 
 The driver runs in PCI mode; an AGP bridge is not required for this tested
-configuration. Benchmark image quality and the later 3DMark gates remain
-open. See [GeForce 6800 GT](gpu-devices.md#geforce-6800-gt) for current
+configuration. Original 3DMark99/2000/2001/03/05 suites and the required
+06 default, feature and batch tests have exported successful native projects.
+Image quality and the final isolated performance gate remain open. See [GeForce 6800 GT](gpu-devices.md#geforce-6800-gt) for current
 capabilities, snapshot behavior and known limits. This validation does not
 cover Windows 2000 or NVIDIA WDDM drivers on Vista and newer.
 
