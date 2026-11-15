@@ -1,5 +1,21 @@
 # Infinity Blade 安装与帧率验证
 
+## 反向复测的空间保护与旧 UI 镜像清理（2026-11-15）
+
+AP counter 的第一批 A/B/B/A 完成，但反向批次在预热结束后报告仅余
+2,626,793,472 bytes，低于 3 GiB 门槛，计量前自动失败并关闭浏览器。
+该 `ap-counter-hot-b3` 没有有效 FPS，不纳入对照，不能继续使用它推进后的
+工作 NAND/RAM。随后所有复测从主副本重新克隆。
+
+核对精确大小、11 月 5 日时间、普通文件/单链接及 `lsof` 无打开句柄，删除
+`ui-offline/flash.img`、`ui-migrated-current/flash.img` 两份 IPA 安装前的
+旧 UI 离线/导出探针。分配块合计 3,585,196,032 bytes（约 3.34 GiB），
+不把各自 18.5 GB 稀疏逻辑长度当作回收量；清理后可用约 6.7 GiB。
+保留 `ui-offline/system.hfs`、`data.hfs`、`boot-baseline/flash.img`、factory/
+seeded，以及全部 OPFS NAND 和原/新配对主副本。旧探针须重建后才能重跑。
+本地审计为 `obsolete-ui-flash-cleanup.json`，中止证据为
+`compare-ap-counter-hot-reverse.log` 与 `ap-counter-hot-b3/battle-failure.*`。
+
 ## 正常动态战斗中的 AP PMGR 访问量（2026-11-15）
 
 第一轮 Debugger 条件探针记录 500,000 个 access 入口，IOP 计数器约 49.8%、
