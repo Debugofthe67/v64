@@ -36,6 +36,9 @@ pub enum Kind {
     Nop,
     /// the interpreter's execute (pages::a32_page_helper)
     Helper,
+    /// A known synchronization helper's explicit GPR operands. It still
+    /// commits/reloads every live local around the original interpreter.
+    RegisterHelper { mask: u16 },
     /// FP/SIMD data processing: no GPR reads/writes or PC/context changes. Errors
     /// still retry through the usual interpreter with all GPRs committed.
     FpHelper,
@@ -280,6 +283,7 @@ impl Kind {
         }
         match self {
             Self::Helper => 0x7FFF,
+            Self::RegisterHelper { mask } => mask,
             Self::FpHelper
             | Self::Nop
             | Self::It
@@ -360,6 +364,7 @@ pub fn kind_name(kind: &Kind) -> String {
     match kind {
         Kind::Nop => "nop".into(),
         Kind::Helper => "helper".into(),
+        Kind::RegisterHelper { .. } => "register-helper".into(),
         Kind::FpHelper => "fphelper".into(),
         Kind::Branch { cond, .. } => format!("branch/{}", cond),
         Kind::Interwork { .. } => "blx".into(),
@@ -1081,6 +1086,64 @@ fn pl1_steps(word: u32, length: u8, thumb: bool) -> bool {
 
 fn sign_extend(value: u32, bits: u32) -> i64 {
     ((value << (32 - bits)) as i32 >> (32 - bits)) as i64
+}
+
+/// Registers read or written by validated exclusive accesses and barriers.
+/// Memory, reservations, faults and spin yields remain the helper's work.
+fn synchronization_gprs(word: u32, thumb: bool) -> Option<u16> {
+    let reg = |r: u32| if r < 15 { 1u16 << r } else { 0 };
+    if !thumb {
+        if matches!(word & 0xFFFF_FFF0, 0xF57F_F040 | 0xF57F_F050 | 0xF57F_F060)
+            || word == 0xF57F_F01F {
+            return Some(0);
+        }
+        if word >> 28 == 15 || word & 0x0F80_0FF0 != 0x0180_0F90 {
+            return None;
+        }
+        let load = word & (1 << 20) != 0;
+        let rn = word >> 16 & 15;
+        let status = word >> 12 & 15;
+        let rt = if load { status } else { word & 15 };
+        let pair = word >> 21 & 3 == 1;
+        if rn == 15 || rt == 15 || pair && (rt & 1 != 0 || rt >= 14)
+            || !load && (status == 15 || status == rn || status == rt || pair && status == rt + 1) {
+            return None;
+        }
+        return Some(reg(rn) | reg(rt) | if pair { reg(rt + 1) } else { 0 }
+            | if load { 0 } else { reg(status) });
+    }
+    if matches!(word & 0xFFFF_FFF0,
+        0xF3BF_8F20 | 0xF3BF_8F40 | 0xF3BF_8F50 | 0xF3BF_8F60) {
+        return Some(0);
+    }
+    let hi = word >> 16;
+    let lo = word & 0xFFFF;
+    let rn = hi & 15;
+    let rt = lo >> 12 & 15;
+    let load = hi & 16 != 0;
+    let bad = |r: u32| r == 13 || r == 15;
+    if rn == 15 || bad(rt) { return None; }
+    if hi & 0xFFE0 == 0xE840 {
+        let status = lo >> 8 & 15;
+        if load && status != 15 || !load && (bad(status) || status == rn || status == rt) {
+            return None;
+        }
+        return Some(reg(rn) | reg(rt) | if load { 0 } else { reg(status) });
+    }
+    if hi & 0xFFE0 != 0xE8C0 || !matches!(lo >> 4 & 15, 4 | 5 | 7) {
+        return None;
+    }
+    let pair = lo >> 4 & 15 == 7;
+    let rt2 = lo >> 8 & 15;
+    let status = lo & 15;
+    if pair && (bad(rt2) || load && rt == rt2)
+        || !pair && rt2 != 15
+        || load && status != 15
+        || !load && (bad(status) || status == rn || status == rt || pair && status == rt2) {
+        return None;
+    }
+    Some(reg(rn) | reg(rt) | if pair { reg(rt2) } else { 0 }
+        | if load { 0 } else { reg(status) })
 }
 
 /// A32: the instruction's kind at `offset`; None: a single step
@@ -2567,8 +2630,13 @@ pub(super) fn discover(
                 kind = Some(Kind::FpHelper);
             }
         }
+        if matches!(kind, Some(Kind::Helper)) && !covered.contains(&o) && length == 4 {
+            if let Some(mask) = synchronization_gprs(word, thumb) {
+                kind = Some(Kind::RegisterHelper { mask });
+            }
+        }
         let debug = unsafe { crate::aarch64::jit::pages::AARCH32_DEBUG };
-        let helper = matches!(kind, Some(Kind::Helper | Kind::FpHelper));
+        let helper = matches!(kind, Some(Kind::Helper | Kind::FpHelper | Kind::RegisterHelper { .. }));
         if debug == 2 && !helper || debug == 3 && helper {
             kind = None;
         }
@@ -4541,7 +4609,7 @@ impl Emitter<'_> {
             } => self.when(cond, |e| {
                 e.transfer(op, rt, address, size, signed, q, offset)
             }),
-            Kind::Helper => self.a32_helper(i.word, i.length, offset),
+            Kind::Helper | Kind::RegisterHelper { .. } => self.a32_helper(i.word, i.length, offset),
             Kind::FpHelper => self.a32_fp_helper(i.word, i.length, offset),
             Kind::Branch { target, cond, link } => {
                 if cond != 14 {
