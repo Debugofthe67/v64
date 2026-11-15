@@ -707,7 +707,24 @@ export async function run_geforce_guest(win98)
         {
             const {Session}=await import("node:inspector"),session=new Session();session.connect();
             const post=(method)=>new Promise((resolve,reject)=>session.post(method,(error,result)=>error?reject(error):resolve(result)));
-            const backend=nv.graph.engine3d.backend,pending=new Map();let pending_ms=0,releases=0;
+            const backend=nv.graph.engine3d.backend,pending=new Map();let pending_ms=0,releases=0,started=null;
+            const scene_limit=Number(process.env.NV_PROFILE_SCENES||0),scenes=[];
+            assert(Number.isSafeInteger(scene_limit) && scene_limit>=0 && scene_limit<=2);
+            const retain_scene=(pixels,mode,front,draws,metadata)=>{
+                if(started===null || scenes.length>=scene_limit || draws<[1000,10000][scenes.length]) return;
+                // Ignore alpha: an opaque black clear is not scene evidence.
+                let nonempty=false;
+                for(let y=0;y<mode.height && !nonempty;y++) for(let x=0;x<mode.width;x++)
+                {
+                    const at=front+y*mode.pitch+x*4;
+                    if(pixels[at]|pixels[at+1]|pixels[at+2]) {nonempty=true;break;}
+                }
+                if(!nonempty)return;
+                const bytes=geforce_present_bmp(pixels,mode,front),file="profile-scene-"+(scenes.length+1)+".bmp";
+                fs.writeFileSync(path.join(out,file),bytes);
+                scenes.push({file,sha256:createHash("sha256").update(bytes).digest("hex"),
+                    bytes:bytes.length,release:releases,draws,mode,elapsedWindowMs:performance.now()-started,...metadata});
+            };
             const counters=()=>({gpu:backend?{...backend.stats}:null,
                 texture:backend?{...backend.textures.stats}:null,shader:{...nv.graph.engine3d.translation_stats},
                 graphFaults:nv.graph.faults.length,front:nv.display.front});
@@ -723,13 +740,20 @@ export async function run_geforce_guest(win98)
                 };
                 backend.complete=()=>{
                     const item=backend.pending;
-                    if(item?.done && !item.requests.size && (!item.query || item.query.value!==null))close(item);
-                    return complete();
+                    const ready=item?.done && !item.requests.size && (!item.query || item.query.value!==null);
+                    const draws=backend.stats.draws;
+                    if(ready)close(item);
+                    const result=complete();
+                    if(ready && scenes.length<scene_limit && !backend.stats.failures)
+                        for(const {target,bytes} of item.outputs)
+                            if(target.width===1280 && target.height===1024 && [21,22].includes(target.d3d))
+                                retain_scene(bytes,{width:1280,height:1024,pitch:5120,bytes:4},0,draws,
+                                    {kind:"completed-color-readback",targetFormat:target.d3d,targetOffset:target.offset,
+                                        targetPitch:target.pitch,targetSwizzle:!!target.swizzle,batch:item.sequence});
+                    return result;
                 };
                 backend.fail=reason=>{close(backend.pending);return fail(reason);};
             }
-            const scene_limit=Number(process.env.NV_PROFILE_SCENES||0),scenes=[];
-            assert(Number.isSafeInteger(scene_limit) && scene_limit>=0 && scene_limit<=2);
             const release=nv.display.release_semaphore.bind(nv.display);
             nv.display.release_semaphore=value=>{
                 const result=release(value);releases++;
@@ -738,22 +762,12 @@ export async function run_geforce_guest(win98)
                     backend.stats.draws>=[1000,10000][scenes.length] &&
                     mode?.width===1280 && mode.height===1024 && mode.bytes===4)
                 {
-                    const bytes=geforce_present_bmp(nv.vram(),mode,value);
-                    // Initial mode switches may present black. Keep an actual
-                    // nonempty original scene, bounded to two frames per run.
-                    if(bytes.subarray(54).some(byte=>byte!==0))
-                    {
-                        const file="profile-scene-"+(scenes.length+1)+".bmp";
-                        fs.writeFileSync(path.join(out,file),bytes);
-                        scenes.push({file,sha256:createHash("sha256").update(bytes).digest("hex"),
-                            bytes:bytes.length,release:releases,draws:backend.stats.draws,front:value,
-                            mode,elapsedWindowMs:performance.now()-started});
-                    }
+                    retain_scene(nv.vram(),mode,value,backend.stats.draws,{kind:"primary-present",front:value});
                 }
                 return result;
             };
             await post("Profiler.enable");const start_requested=performance.now();await post("Profiler.start");
-            const started=performance.now(),cpu_start=process.cpuUsage(),before=counters();
+            started=performance.now();const cpu_start=process.cpuUsage(),before=counters();
             pending_ms=0;pending.clear();releases=0;if(backend?.pending)pending.set(backend.pending,started);
             profiler={session,post,window:()=>({guest:win98?"win98":"xp",vramMiB:vram_mb,
                 build:release_build?"release":"debug",state:process.env.NV_STATE_LOAD||null,

@@ -281,11 +281,14 @@ continue to cover decoded sector bytes; original raw files take precedence.
 sampling window when comparing runs. Capture and progress PNG work appears
 separately in the profile; `NV_CAPTURE_SECONDS=0` disables periodic captures.
 With CPU profiling, `NV_PROFILE_SCENES=1` or `2` retains that many nonempty
-1280×1024 BGRA presents after 1,000 and 10,000 draws. It copies already
-completed VRAM without changing scanout or submitting GPU work. The bounded
-copy/export cost remains inside the measured window. Review those original
-images and `sceneCaptures` in `profile-window.json`; a black final buffer or
-a display mode alone does not establish the sampled scene.
+1280×1024 BGRA images after 1,000 and 10,000 draws. `sceneCaptures` records
+whether each comes from a primary present or a completed GPU batch's color
+readback. Batch images can be intermediate surfaces; they do not establish
+a completed frame, presentation or FPS. No GPU work is added and scanout is
+unchanged. The bounded CPU copy/export cost remains inside the measured
+window. Review the original images, their kind and target metadata in
+`profile-window.json`; a black final buffer or display mode alone does not
+establish the sampled workload.
 
 At the end, `cpu-profile.cpuprofile` contains Node's weighted samples and
 `profile-window.json` records the actual counter window, Node CPU usage,

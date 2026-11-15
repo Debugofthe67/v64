@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-// Observe an already completed native BGRA present without changing scanout,
-// submitting GPU work, or applying a display gamma/cursor transformation.
+// Convert native BGRA pixels from a completed present or color readback,
+// without changing scanout, submitting GPU work, or applying gamma/cursor.
 export function geforce_present_bmp(vram, mode, front)
 {
     assert(vram instanceof Uint8Array && mode && mode.bytes === 4);
