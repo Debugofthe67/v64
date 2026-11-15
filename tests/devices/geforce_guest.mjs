@@ -13,7 +13,7 @@ import { make_esp } from "../lib/fat.mjs";
 import { PictureSink, save_png } from "../lib/picture_sink.mjs";
 import { site_directory } from "../lib/site.mjs";
 import { read_fat32_file } from "../lib/fat32_reader.mjs";
-import { verify_geforce_checkpoint_bundle, read_geforce_checkpoint_state } from "../lib/geforce_checkpoint.mjs";
+import { verify_geforce_checkpoint_bundle, read_geforce_checkpoint_state, read_geforce_checkpoint_overlay } from "../lib/geforce_checkpoint.mjs";
 import { read_geforce_guest_stack } from "../lib/geforce_guest_memory.mjs";
 import { watch_geforce_ide_reads } from "../lib/geforce_ide_watch.mjs";
 const release_build = !!+process.env.TEST_RELEASE_BUILD;
@@ -215,12 +215,14 @@ export async function run_geforce_guest(win98)
     tools_bytes[450] = 0x0E; // normal FAT16, visible to Win9x/XP rather than an ESP
     new DataView(tools_bytes.buffer).setUint32(440, 0x4E563430, true);
     const tools = new MemoryDisk(tools_bytes), before = fs.statSync(image), disk = new ReadOnlyOverlayDisk(image);
-    if(process.env.NV_OVERLAY_LOAD) disk.set_state(deserialize(fs.readFileSync(process.env.NV_OVERLAY_LOAD)));
+    const bundle_path=process.env.NV_STATE_LOAD && process.env.NV_STATE_LOAD+".bundle.json";
+    const bundle_hint=bundle_path && fs.existsSync(bundle_path)?JSON.parse(fs.readFileSync(bundle_path,"utf8")):null;
+    let os_overlay_bytes=process.env.NV_OVERLAY_LOAD?read_geforce_checkpoint_overlay(process.env.NV_OVERLAY_LOAD,bundle_hint?.osOverlay?.bytes):null;
     // Keep the existing writable RAM tools disk at primary-slave. Benchmarks
     // use secondary-slave, with the same read-only host backing as the OS.
     const game_path=process.env.NV_HDB && path.resolve(process.env.NV_HDB);
     const game=game_path?new ReadOnlyOverlayDisk(game_path):null,game_before=game_path?fs.statSync(game_path):null;
-    if(game && process.env.NV_GAME_OVERLAY_LOAD)game.set_state(deserialize(fs.readFileSync(process.env.NV_GAME_OVERLAY_LOAD)));
+    let game_overlay_bytes=game && process.env.NV_GAME_OVERLAY_LOAD?read_geforce_checkpoint_overlay(process.env.NV_GAME_OVERLAY_LOAD,bundle_hint?.gameOverlay?.bytes):null;
     const sink = new ProbeSink();
     const vram_mb=Number(process.env.NV_VRAM_MB || 128);assert([128,256].includes(vram_mb));
     const memory_mb=Number(process.env.NV_MEMORY_MB || (win98?256:1024));
@@ -228,7 +230,10 @@ export async function run_geforce_guest(win98)
     let state_bytes=process.env.NV_STATE_LOAD?read_geforce_checkpoint_state(process.env.NV_STATE_LOAD):null;
     const restored_bundle=await verify_geforce_checkpoint_bundle({state:process.env.NV_STATE_LOAD,stateBytes:state_bytes,
         osOverlay:process.env.NV_OVERLAY_LOAD,gameOverlay:process.env.NV_GAME_OVERLAY_LOAD,
+        osOverlayBytes:os_overlay_bytes,gameOverlayBytes:game_overlay_bytes,
         guest:win98?"win98":"xp",vramMiB:vram_mb,memoryMiB:memory_mb,osImage:image,gameImage:game_path});
+    if(os_overlay_bytes){disk.set_state(deserialize(os_overlay_bytes));os_overlay_bytes=null;}
+    if(game_overlay_bytes){game.set_state(deserialize(game_overlay_bytes));game_overlay_bytes=null;}
     if(restored_bundle)console.log("NV40 verified matching checkpoint RAM/disk bundle");
     const host_bc_policy=process.env.NV_HOST_BC || "auto";
     assert(["auto","cpu"].includes(host_bc_policy),"NV_HOST_BC must be auto or cpu");

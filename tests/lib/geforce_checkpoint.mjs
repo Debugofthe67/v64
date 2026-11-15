@@ -22,6 +22,28 @@ export function read_geforce_checkpoint_state(file)
     return bytes;
 }
 
+// Disk companions are losslessly archivable too. Their logical paths and
+// manifest hashes continue to name decoded v8 overlay bytes, never a different
+// set of sectors. Loading does not create another large raw file on disk.
+export function read_geforce_checkpoint_overlay(file,expected=null)
+{
+    const limit=expected??0x7FFFFFFF;
+    assert(Number.isSafeInteger(limit)&&limit>0&&limit<=0x7FFFFFFF,"Invalid NV40 archived overlay size");
+    const archive=file.endsWith(".zst");
+    if(!archive && fs.existsSync(file))
+    {
+        const size=fs.statSync(file).size;
+        assert(size>0 && size<=limit,"NV40 overlay size exceeds decoded bound");
+        if(expected!==null)assert.equal(size,expected,"NV40 archived overlay size mismatch");
+        return fs.readFileSync(file);
+    }
+    assert.equal(typeof zlib.zstdDecompressSync,"function","Archived NV40 overlays require Node zstd support or restored raw overlay files");
+    const bytes=zlib.zstdDecompressSync(fs.readFileSync(archive?file:file+".zst"),{maxOutputLength:limit});
+    assert(bytes.byteLength>0,"NV40 archived overlay is empty or incomplete");
+    if(expected!==null)assert.equal(bytes.byteLength,expected,"NV40 archived overlay size mismatch");
+    return bytes;
+}
+
 export async function verify_geforce_checkpoint_bundle(options)
 {
     if(!options.state) return null;
@@ -39,13 +61,15 @@ export async function verify_geforce_checkpoint_bundle(options)
         if(!expected){assert(!file,"NV40 checkpoint has no "+field);continue;}
         assert(file,"NV40 checkpoint requires matching "+field);
         const hash=createHash("sha256");
-        const supplied=field==="state"&&options.stateBytes;
+        const supplied=options[field+"Bytes"];
         if(supplied)
         {
-            assert(supplied instanceof Uint8Array,"NV40 decoded RAM must be bytes");
-            assert.equal(supplied.byteLength,expected.bytes,"NV40 checkpoint state size mismatch");
+            assert(supplied instanceof Uint8Array,"NV40 decoded "+(field==="state"?"RAM":field)+" must be bytes");
+            assert.equal(supplied.byteLength,expected.bytes,"NV40 checkpoint "+field+" size mismatch");
             hash.update(supplied);
         }
+        else if(field!=="state" && (file.endsWith(".zst") || !fs.existsSync(file)))
+            hash.update(read_geforce_checkpoint_overlay(file,expected.bytes));
         else
         {
             assert.equal(fs.statSync(file).size,expected.bytes,"NV40 checkpoint "+field+" size mismatch");

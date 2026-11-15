@@ -274,7 +274,10 @@ NVIDIA driver and the remote WebGPU renderer. Set `TEST_RELEASE_BUILD=1`,
 `NV_GPU_RENDERER=chrome`, `NV_HOLD=1`, `NV_TRACE=0` and `NV_CPU_PROFILE=1`.
 Restore the same `NV_STATE_LOAD` with its matching `NV_OVERLAY_LOAD` and
 `NV_GAME_OVERLAY_LOAD`; bundle manifests verify RAM and disk hashes before
-the guest runs. `NV_SECONDS` includes harness setup, so use the recorded
+the guest runs. Logical `.state` and overlay `.bin` paths can load verified
+`.zst` companions directly without creating raw files. Disk-companion hashes
+continue to cover decoded sector bytes; original raw files take precedence.
+`NV_SECONDS` includes harness setup, so use the recorded
 sampling window when comparing runs. Capture and progress PNG work appears
 separately in the profile; `NV_CAPTURE_SECONDS=0` disables periodic captures.
 

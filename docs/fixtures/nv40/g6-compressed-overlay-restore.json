@@ -1,0 +1,62 @@
+{
+  "stage": "G6 lossless native disk-overlay archives",
+  "status": "PASS: bounded decompression/hash rejection tests and actual release XP RAM+OS zstd paired restore to original default6 main",
+  "cause": "Host reserve guard safely paused the cold06 guest after all4 original IQs. Retained disk overlays alone occupied18.91GB. No native driver failure or normal shutdown is inferred from this host pause.",
+  "behavior": "Logical overlay.bin uses overlay.bin.zst when raw is absent; explicit .zst also supported. Raw takes precedence. Complete bundle hashes cover decoded original bytes. RAM and both overlays are verified before sector state is applied/guest starts. No decompressed raw files are created.",
+  "bounds": "Positive integer decoded size <=2^31-1, exact manifest length when available; empty/truncated/wrong-sector/wrong-size archives rejected.",
+  "unit": "node tests/devices/geforce_checkpoint.mjs: raw/zstd RAM, both disk companions, explicit archive path, raw precedence, bounds, corruption and identity mismatches pass",
+  "syntax": "node --check tests/devices/geforce_guest.mjs and tests/lib/geforce_checkpoint.mjs; git diff --check pass",
+  "archiveJournal": {
+    "file": "build/nv40-generated-overlay-archives.json",
+    "sha256": "d9ad3b861e373385b7b7a4ebdf06b4e2903f3c550d69265e8237fbef42f452fb",
+    "files": 117,
+    "originalBytes": 18910046616,
+    "archiveBytes": 8573065796,
+    "reclaimedBytes": 10336980820,
+    "verification": "Every original file streamed to SHA256; zstd decoded stream rehashed and compared; raw size/mtime unchanged before deletion. ArchiveSHA also recorded."
+  },
+  "realRestore": {
+    "source": "build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.bundle.json",
+    "run": "build/nv40-xp-mark06-current-feature-resume",
+    "RAM": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state",
+      "bytes": 1518167836,
+      "sha256": "49b8b88e1368008a560b839e3170961487460973a6187f5191b5d22bf8e2daf9"
+    },
+    "OS": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.hda-overlay.bin",
+      "bytes": 222856308,
+      "sha256": "58e2b551b78a08daa2e19a22080887609a492b264d5527fa53a780d27ef9613e"
+    },
+    "game": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.game-overlay.bin",
+      "bytes": 39766,
+      "sha256": "e8b6ccad1afbb18ab4a7a0143f2ed57aa039bc63b994e68cd3d5cf9783855c44"
+    },
+    "RAMandOSarchivesUsed": true,
+    "allDecodedBundleSHAsVerified": true,
+    "sourceMainUI": "build/nv40-xp-mark06-current-feature-resume/compressed-main-restore-0.txt",
+    "defaultGroups": [
+      2,
+      2,
+      2,
+      0,
+      0
+    ],
+    "resolution": "1280x1024",
+    "AA": "None",
+    "filter": "Optimal",
+    "VS_PS": "3_0",
+    "gpuFailures": 0,
+    "rawRAMandOSFilesRecreated": false
+  },
+  "sourceHashes": {
+    "tests/lib/geforce_checkpoint.mjs": "335b123dd75a56e0eb2d179e055caff1f3e9a6a07199747f1f266306139de588",
+    "tests/devices/geforce_guest.mjs": "d154d58bdfda324a72ff175b6b7f8d8c0f3ff3806b145332dd190a6ba6502ec9",
+    "tests/devices/geforce_checkpoint.mjs": "f69034180eba1e7acce1a00a0a149cb6e64b81a54c64c01a188c37c9afb2aaba"
+  },
+  "limits": [
+    "Source tool hashes name this executed revision; later edits can be resolved by Git history.",
+    "Original OS/game images and all decoded evidence bytes are preserved. This storage step does not replace feature-image or final performance gates."
+  ]
+}

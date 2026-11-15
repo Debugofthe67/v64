@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {createHash} from "node:crypto";
 import * as zlib from "node:zlib";
-import {verify_geforce_checkpoint_bundle,read_geforce_checkpoint_state} from "../lib/geforce_checkpoint.mjs";
+import {verify_geforce_checkpoint_bundle,read_geforce_checkpoint_state,read_geforce_checkpoint_overlay} from "../lib/geforce_checkpoint.mjs";
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),"nv40-checkpoint-"));
 try
 {
@@ -42,6 +42,41 @@ try
     fs.writeFileSync(options.state,"RAM xx checkpoint");
     await assert.rejects(verify_geforce_checkpoint_bundle({...options,stateBytes:read_geforce_checkpoint_state(options.state)}),/state SHA-256/);
     fs.writeFileSync(options.state,originalRAM);fs.unlinkSync(archive);
+    const originalOS=fs.readFileSync(options.osOverlay),osArchive=options.osOverlay+".zst";
+    // A zstd single-segment frame containing one final raw block. No encoder
+    // dependency is needed to check the exact original serialized sectors.
+    const frame=bytes=>Buffer.concat([Buffer.from([0x28,0xB5,0x2F,0xFD,0x20,bytes.length,bytes.length<<3|1,0,0]),bytes]);
+    fs.writeFileSync(osArchive,frame(originalOS));fs.unlinkSync(options.osOverlay);
+    if(typeof zlib.zstdDecompressSync==="function")
+    {
+        const decoded=read_geforce_checkpoint_overlay(options.osOverlay,originalOS.length);
+        assert.deepEqual(decoded,originalOS);
+        assert.deepEqual(read_geforce_checkpoint_overlay(osArchive),originalOS,"explicit overlay archive path");
+        assert(!fs.existsSync(options.osOverlay),"overlay restore creates no decompressed disk file");
+        await verify_geforce_checkpoint_bundle(options);
+        await verify_geforce_checkpoint_bundle({...options,osOverlay:osArchive});
+        await verify_geforce_checkpoint_bundle({...options,osOverlayBytes:decoded});
+        const originalGame=fs.readFileSync(options.gameOverlay),gameArchive=options.gameOverlay+".zst";
+        fs.writeFileSync(gameArchive,frame(originalGame));fs.unlinkSync(options.gameOverlay);
+        await verify_geforce_checkpoint_bundle(options); // Both disk companions archived.
+        assert(!fs.existsSync(options.gameOverlay));
+        fs.writeFileSync(gameArchive,frame(Buffer.from("project SECTORS")));
+        await assert.rejects(verify_geforce_checkpoint_bundle(options),/gameOverlay SHA-256/);
+        fs.writeFileSync(options.gameOverlay,originalGame);fs.unlinkSync(gameArchive);
+        await assert.rejects(verify_geforce_checkpoint_bundle({...options,osOverlayBytes:decoded.subarray(1)}),/osOverlay size mismatch/);
+        await assert.rejects(verify_geforce_checkpoint_bundle({...options,osOverlayBytes:"not bytes"}),/must be bytes/);
+        fs.writeFileSync(osArchive,frame(Buffer.from("pagefile SECTORS")));
+        await assert.rejects(verify_geforce_checkpoint_bundle(options),/osOverlay SHA-256/);
+        fs.writeFileSync(osArchive,frame(originalOS).subarray(0,4));
+        assert.throws(()=>read_geforce_checkpoint_overlay(options.osOverlay));
+        fs.writeFileSync(osArchive,frame(originalOS));
+        assert.throws(()=>read_geforce_checkpoint_overlay(options.osOverlay,8),undefined,"declared overlay bytes bound decompression");
+    }
+    else assert.throws(()=>read_geforce_checkpoint_overlay(options.osOverlay),/Node zstd support/);
+    for(const bound of [0,-1,1.5,0x80000000])assert.throws(()=>read_geforce_checkpoint_overlay(osArchive,bound),/Invalid NV40 archived overlay size/);
+    fs.writeFileSync(options.osOverlay,originalOS);fs.writeFileSync(osArchive,Buffer.from([0]));
+    assert.deepEqual(read_geforce_checkpoint_overlay(options.osOverlay),originalOS,"raw overlay takes precedence");
+    fs.unlinkSync(osArchive);
     const moved=path.join(directory,"moved-os");fs.copyFileSync(options.osOverlay,moved);
     await verify_geforce_checkpoint_bundle({...options,osOverlay:moved});
     fs.writeFileSync(moved,"later disk bytes");
@@ -61,6 +96,6 @@ try
     await assert.rejects(verify_geforce_checkpoint_bundle(options),/state size mismatch/);
     bundle.status="writing";save();await assert.rejects(verify_geforce_checkpoint_bundle(options),/incomplete/);
     fs.unlinkSync(manifest);assert.equal(await verify_geforce_checkpoint_bundle(options),null);
-    console.log("PASS: NV40 matching RAM/pagefile/game checkpoint bundles; wrong sectors, missing companions and guest/VRAM/image mismatches rejected");
+    console.log("PASS: NV40 matching raw/zstd RAM and disk bundles; decoded bounds, wrong sectors, missing companions and guest/VRAM/image mismatches rejected");
 }
 finally {fs.rmSync(directory,{recursive:true,force:true});}

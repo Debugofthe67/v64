@@ -390,5 +390,6 @@
     "sha256": "49b8b88e1368008a560b839e3170961487460973a6187f5191b5d22bf8e2daf9",
     "restore": "zstd -d build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.zst -o build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state"
   },
-  "checkpointPurpose": "Healthy all4 IQ complete, original default6 main settings verified. Same source will be restored into two fresh renderer/cache profiling runs."
+  "checkpointPurpose": "Healthy all4 IQ complete, original default6 main settings verified. Same source will be restored into two fresh renderer/cache profiling runs.",
+  "continuation": "Host reserve safely paused after all4 IQs; no normal shutdown claimed for cold process. Healthy default6-ready RAM/OS/game source restored with full decoded SHA in build/nv40-xp-mark06-current-feature-resume for feature images and later normal shutdown."
 }
