@@ -35,5 +35,12 @@
       "bytes": 134,
       "sha256": "ca71472e5f41a7c00a6f2c047e7a311a17675d6ba911d2d6d905a2afb0a8cbbe"
     }
-  ]
+  ],
+  "historicalSourceQualification": {
+    "file": "tests/devices/geforce_ui.c",
+    "commit": "0cc90695a7a1f457556fc6594cd3df914325cbd7",
+    "sha256": "0042425f8eb1176f2c1b6de8622a6e103319e028fcac4537a2d87fce8dc40c85",
+    "gitBlob": "eefbcf10d83d94110b5464ead760e380732662e1",
+    "meaning": "Source SHA records the executed historical source at this Git revision. Later authorized source edits do not mutate the retained run artifacts."
+  }
 }

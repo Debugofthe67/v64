@@ -43,5 +43,12 @@
       "bytes": 932,
       "sha256": "fe86c12bf1ff2c3f2175d6b3ac2e19fb4b112df010a4fd92b21d5bfc985456a3"
     }
-  ]
+  ],
+  "historicalSourceQualification": {
+    "file": "tests/devices/geforce_guest.mjs",
+    "commit": "8504f95d42f37ca238490c570dcca43111c02e6f",
+    "sha256": "4f40e0d61bd689e4d5331eda89704b6e7acd557241cac3064c4bff694d5ec8de",
+    "gitBlob": "06f31b68ecae9c158e82370b3e82be4d6831b396",
+    "meaning": "Source SHA records the executed historical source at this Git revision. Later authorized source edits do not mutate the retained run artifacts."
+  }
 }
