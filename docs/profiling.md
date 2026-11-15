@@ -280,6 +280,12 @@ continue to cover decoded sector bytes; original raw files take precedence.
 `NV_SECONDS` includes harness setup, so use the recorded
 sampling window when comparing runs. Capture and progress PNG work appears
 separately in the profile; `NV_CAPTURE_SECONDS=0` disables periodic captures.
+With CPU profiling, `NV_PROFILE_SCENES=1` or `2` retains that many nonempty
+1280×1024 BGRA presents after 1,000 and 10,000 draws. It copies already
+completed VRAM without changing scanout or submitting GPU work. The bounded
+copy/export cost remains inside the measured window. Review those original
+images and `sceneCaptures` in `profile-window.json`; a black final buffer or
+a display mode alone does not establish the sampled scene.
 
 At the end, `cpu-profile.cpuprofile` contains Node's weighted samples and
 `profile-window.json` records the actual counter window, Node CPU usage,

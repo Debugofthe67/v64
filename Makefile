@@ -811,6 +811,7 @@ devices-test: build/v86-debug.wasm
 	node tests/devices/geforce_6800_vbe.js
 	./tests/devices/geforce_6800_dma.js
 	node tests/devices/geforce_checkpoint.mjs
+	node tests/devices/geforce_present_capture.mjs
 	node tests/devices/geforce_ide_watch.mjs
 	node tests/devices/geforce_6800_fifo.js
 	node tests/devices/geforce_6800_graph.js

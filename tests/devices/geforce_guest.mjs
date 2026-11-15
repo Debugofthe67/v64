@@ -15,6 +15,7 @@ import { site_directory } from "../lib/site.mjs";
 import { read_fat32_file } from "../lib/fat32_reader.mjs";
 import { verify_geforce_checkpoint_bundle, read_geforce_checkpoint_state, read_geforce_checkpoint_overlay } from "../lib/geforce_checkpoint.mjs";
 import { read_geforce_guest_stack } from "../lib/geforce_guest_memory.mjs";
+import { geforce_present_bmp } from "../lib/geforce_present_capture.mjs";
 import { watch_geforce_ide_reads } from "../lib/geforce_ide_watch.mjs";
 const release_build = !!+process.env.TEST_RELEASE_BUILD;
 const { V86 } = await import(release_build ? "../../build/libv86.mjs" : "../../src/main.js");
@@ -727,8 +728,30 @@ export async function run_geforce_guest(win98)
                 };
                 backend.fail=reason=>{close(backend.pending);return fail(reason);};
             }
+            const scene_limit=Number(process.env.NV_PROFILE_SCENES||0),scenes=[];
+            assert(Number.isSafeInteger(scene_limit) && scene_limit>=0 && scene_limit<=2);
             const release=nv.display.release_semaphore.bind(nv.display);
-            nv.display.release_semaphore=value=>{const result=release(value);releases++;return result;};
+            nv.display.release_semaphore=value=>{
+                const result=release(value);releases++;
+                const mode=nv.display.mode();
+                if(scenes.length<scene_limit && backend && !backend.pending && !backend.stats.failures &&
+                    backend.stats.draws>=[1000,10000][scenes.length] &&
+                    mode?.width===1280 && mode.height===1024 && mode.bytes===4)
+                {
+                    const bytes=geforce_present_bmp(nv.vram(),mode,value);
+                    // Initial mode switches may present black. Keep an actual
+                    // nonempty original scene, bounded to two frames per run.
+                    if(bytes.subarray(54).some(byte=>byte!==0))
+                    {
+                        const file="profile-scene-"+(scenes.length+1)+".bmp";
+                        fs.writeFileSync(path.join(out,file),bytes);
+                        scenes.push({file,sha256:createHash("sha256").update(bytes).digest("hex"),
+                            bytes:bytes.length,release:releases,draws:backend.stats.draws,front:value,
+                            mode,elapsedWindowMs:performance.now()-started});
+                    }
+                }
+                return result;
+            };
             await post("Profiler.enable");const start_requested=performance.now();await post("Profiler.start");
             const started=performance.now(),cpu_start=process.cpuUsage(),before=counters();
             pending_ms=0;pending.clear();releases=0;if(backend?.pending)pending.set(backend.pending,started);
@@ -737,7 +760,7 @@ export async function run_geforce_guest(win98)
                 textureCache:backend?{bytes:backend.textures.cache_limit,entries:backend.textures.cache_entries}:null,
                 wallMs:performance.now()-started,startHandshakeMs:started-start_requested,nodeCpuUs:process.cpuUsage(cpu_start),
                 backendPendingMs:pending_ms+[...pending.values()].reduce((sum,at)=>sum+performance.now()-at,0),
-                primarySemaphoreReleases:releases,before,after:counters(),
+                primarySemaphoreReleases:releases,sceneCaptures:scenes,before,after:counters(),
                 note:"Backend pending wall time includes transport, rendering and readback, and overlaps Node CPU time. Semaphore releases are not an FPS measurement."})};
         }
         if(process.env.NV_FIFO_STALL_SECONDS)
@@ -997,6 +1020,9 @@ export async function run_geforce_guest(win98)
             if(process.env.NV_DUMP_PROGRAMS) fs.writeFileSync(path.join(out, "programs.json"),JSON.stringify(nv.graph.engine3d.programs(),null,2)+"\n");
             fs.writeFileSync(path.join(out, "ramin.bin"), nv.vram().subarray(nv.vram_size - (1 << 20)));
         }
+        // Periodic captures may be disabled for profiling. Refresh from the
+        // stopped guest's authoritative VRAM after any pending GPU readback.
+        cpu.devices.display.request_frame(true);
         save_png(sink, out, "final");
         fs.writeFileSync(path.join(out, "screen.txt"), sink.text.join("\n"));
         for(const name of new Set(["MACHINE.INF", "NVDOS.TXT", "DXDIAG.TXT", "DDXP.TXT", "NVLAUNCH.TXT",
