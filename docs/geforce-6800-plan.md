@@ -2229,3 +2229,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G5 原生 XRGB 查询修复：Win98 03 在 199986 draws 首次触发 NOP END 无颜色输出拒绝；原方法为 X8R8G8B8、仅 alpha 写、无 alpha test、只读深度，实际没有有效颜色写入。现按附件真实通道计算 shader 需求、GPU mask 和 dirty 跟踪，保留有意义颜色/alpha test 的严格拒绝。旧源码新真实 GPU 回归先红；可见/遮挡查询、颜色/深度不变、零无效回读，以及同批 XRGB destination-alpha 混合精确像素均绿，完整 GPU/图形单测与 Closure 通过。见 `g5-native-xrgb-nop-occlusion.json`；原版完整十一项和最终图像/性能门禁仍继续。
 
 - G6 小工具盘输出：原生 UI helper 增加编译期 NV_UI_OUTPUT，默认路径不变；真实 XP 原版 05 在 1.44 MiB 内存 FAT12 软盘写出新 REQUEST_TICK、成功窗口和实际控件，经公开 set_fda/get_disk_fda 与 FAT12 读取验证。避免每次 UI 查询导出整张游戏临时 IMG，临时 raw 验证后删除。见 `g6-native-ui-floppy-output.json`。
+
+- G6 原版 BC 同状态对照：同一健康 05 IQ-ready 配套状态分别自动 BC/CPU，均成功保存 GT1 frame480，无 GPU/PGRAPH 故障。自动路径 499 次编码上传 19,847,360 bytes，总上传较 CPU 少 104,671,064 bytes；全图 MAD0.17475/max46。相同 CPU 实例重复图 MAD0.00278/max75，但重复不变的像素仍有 BC max46，不能把差异全归于原版重复性。原全16结果 SHA 不变，临时120 MiB导出验证后删除。见 `g6-native-05-bc-fixed-frame-control.json`；非 FPS、最终图像门禁继续。

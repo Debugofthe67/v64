@@ -1,0 +1,216 @@
+{
+  "stage": "G6 original 3DMark05 native BC same-state comparison",
+  "scope": "Original GT1 frame480, 1024x768, None AA, Optimal, VS/PS3_0. No source image edits, pixel exclusions or native FPS claim.",
+  "source": "Identical healthy full16 IQ-ready RAM/paired overlays and d8035a5b graphics source, before the later XRGB query fix. Both paths ran the same original native benchmark/93.71 driver.",
+  "bcAuto": {
+    "draws": 1550,
+    "failures": 0,
+    "drawFaults": 0,
+    "nativeBCUploads": 499,
+    "nativeBCUploadBytes": 19847360,
+    "uploadBytes": 134933684,
+    "readbacks": 1076
+  },
+  "cpuFallback": {
+    "draws": 1484,
+    "failures": 0,
+    "drawFaults": 0,
+    "nativeBCUploads": 0,
+    "nativeBCUploadBytes": 0,
+    "uploadBytes": 239604748,
+    "readbacks": 998
+  },
+  "comparisonAllPixels": {
+    "native": {
+      "file": "build/nv40-xp-mark05-bc-current-auto-retry-artifacts/NV05IQ_GT1_0480.BMP",
+      "sha256": "de92cbbbd96a277616cfc476e8e97c1dd01e7f6a6159c8ffe578494b28ca4ed9"
+    },
+    "reference": {
+      "file": "build/nv40-xp-mark05-bc-current-cpu-artifacts/NV05IQ_GT1_0480.BMP",
+      "sha256": "2ba67c8f171231784cf98df7be65961af0e04f48a16e8b4ec245263362cd4c3f"
+    },
+    "width": 1024,
+    "height": 768,
+    "roi_y": 0,
+    "pixels": 786432,
+    "different_pixels": 162076,
+    "exact_pixel_percent": 79.39097086588541,
+    "mean_absolute_rgb_error": 0.17474661933051217,
+    "mean_signed_rgb_error": [
+      -0.027520497639973957,
+      -0.026560465494791668,
+      -0.021207173665364582
+    ],
+    "max_channel_error": 46,
+    "pixel_max_channel_error_percentiles": {
+      "50": 0,
+      "90": 1,
+      "95": 2,
+      "99": 3,
+      "99.9": 14
+    },
+    "pixel_max_channel_error_histogram": {
+      "0": 624356,
+      "1": 100525,
+      "2": 49755,
+      "3": 4290,
+      "4": 1560,
+      "5": 1049,
+      "6": 792,
+      "7": 639,
+      "8": 591,
+      "9": 514,
+      "10": 436,
+      "11": 336,
+      "12": 295,
+      "13": 271,
+      "14": 240,
+      "15": 216,
+      "16": 159,
+      "17": 124,
+      "18": 67,
+      "19": 53,
+      "20": 52,
+      "21": 28,
+      "22": 24,
+      "23": 16,
+      "24": 10,
+      "25": 9,
+      "26": 5,
+      "27": 5,
+      "28": 1,
+      "29": 6,
+      "30": 3,
+      "31": 3,
+      "41": 1,
+      "46": 1
+    }
+  },
+  "cpuSameInstanceRepeat": {
+    "native": {
+      "file": "build/nv40-xp-mark05-bc-current-cpu-repeat-artifacts/NV05IQ_CPU1.BMP",
+      "sha256": "2ba67c8f171231784cf98df7be65961af0e04f48a16e8b4ec245263362cd4c3f"
+    },
+    "reference": {
+      "file": "build/nv40-xp-mark05-bc-current-cpu-repeat-artifacts/NV05IQ_GT1_0480.BMP",
+      "sha256": "1df745c2bfa1df00d5382f91941c311b9dca162fe7a66ef9c7507654a7e512c8"
+    },
+    "width": 1024,
+    "height": 768,
+    "roi_y": 0,
+    "pixels": 786432,
+    "different_pixels": 2900,
+    "exact_pixel_percent": 99.63124593098959,
+    "mean_absolute_rgb_error": 0.0027796427408854165,
+    "mean_signed_rgb_error": [
+      0.00055694580078125,
+      0.00052642822265625,
+      8.900960286458333e-05
+    ],
+    "max_channel_error": 75,
+    "pixel_max_channel_error_percentiles": {
+      "50": 0,
+      "90": 0,
+      "95": 0,
+      "99": 0,
+      "99.9": 1
+    },
+    "pixel_max_channel_error_histogram": {
+      "0": 783532,
+      "1": 2453,
+      "2": 286,
+      "3": 37,
+      "4": 12,
+      "5": 17,
+      "6": 11,
+      "7": 8,
+      "8": 8,
+      "9": 16,
+      "10": 10,
+      "11": 10,
+      "12": 6,
+      "13": 2,
+      "14": 3,
+      "15": 2,
+      "16": 3,
+      "17": 2,
+      "18": 3,
+      "19": 1,
+      "21": 3,
+      "22": 1,
+      "23": 2,
+      "25": 1,
+      "28": 1,
+      "31": 1,
+      "75": 1
+    }
+  },
+  "diagnosticStablePixels": {
+    "scope": "Diagnostic only: compare original BC/CPU pixels where the two unchanged CPU captures are identical. No image transformations or acceptance threshold.",
+    "excludedRepeatVariablePixels": 2900,
+    "stablePixels": 783532,
+    "maxError": 46,
+    "histogram": {
+      "0": 623025,
+      "1": 99328,
+      "2": 49488,
+      "3": 4254,
+      "4": 1548,
+      "5": 1042,
+      "6": 785,
+      "7": 635,
+      "8": 584,
+      "9": 502,
+      "10": 431,
+      "11": 333,
+      "12": 294,
+      "13": 270,
+      "14": 239,
+      "15": 215,
+      "16": 157,
+      "17": 124,
+      "18": 66,
+      "19": 53,
+      "20": 51,
+      "21": 27,
+      "22": 24,
+      "23": 15,
+      "24": 10,
+      "25": 9,
+      "26": 5,
+      "27": 5,
+      "29": 6,
+      "30": 3,
+      "31": 3,
+      "46": 1
+    }
+  },
+  "interpretation": [
+    "Native encoded BC reduced measured uploads by104671064 bytes for these same-frame runs; draw/readback counts include GDI/loading and are not equal-work FPS boundaries.",
+    "CPU repetition differs at2900/786432 pixels, mean error0.00277964 and maximum75. Native BC versus CPU has a broader difference, mean0.17474662 and maximum46.",
+    "Pixels identical in both CPU captures still have a BC/CPU maximum46; repetition alone does not explain BC residuals. No final IQ acceptance or hardware precision equivalence is inferred.",
+    "Original NV05N.3DR remains byte-identical to full16 functional evidence. Native save-success prompts and idle60seconds observed on both runs."
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark05-bc-current-auto-retry-artifacts/NV05IQ_GT1_0480.BMP",
+      "bytes": 2359352,
+      "sha256": "de92cbbbd96a277616cfc476e8e97c1dd01e7f6a6159c8ffe578494b28ca4ed9"
+    },
+    {
+      "file": "build/nv40-xp-mark05-bc-current-cpu-artifacts/NV05IQ_GT1_0480.BMP",
+      "bytes": 2359352,
+      "sha256": "2ba67c8f171231784cf98df7be65961af0e04f48a16e8b4ec245263362cd4c3f"
+    },
+    {
+      "file": "build/nv40-xp-mark05-bc-current-cpu-repeat-artifacts/NV05IQ_GT1_0480.BMP",
+      "bytes": 2359352,
+      "sha256": "1df745c2bfa1df00d5382f91941c311b9dca162fe7a66ef9c7507654a7e512c8"
+    },
+    {
+      "file": "build/nv40-xp-mark05-bc-current-cpu/iq-serial-success.json",
+      "bytes": 217,
+      "sha256": "bd6169e59d1f3269fac544bc64764e84b38651f9c4556b1a315fc7ea6e6296f3"
+    }
+  ]
+}
