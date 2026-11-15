@@ -118,6 +118,17 @@ export async function run_geforce_guest(win98)
         Array.from(fs.readFileSync(path.join(source, n), "latin1").matchAll(/^([a-z0-9_]+\.[a-z0-9]{3})\s*=/gim), m => m[1]));
     const sevenzip = process.env.SEVENZIP || (fs.existsSync("/opt/homebrew/opt/sevenzip/bin/7zz") ? "/opt/homebrew/opt/sevenzip/bin/7zz" : "7z");
     const files = {};
+    if(process.env.NV_UI_BINARY)
+    {
+        // Bootstrap the native helper on the IDE tools disk, without changing
+        // removable media during a long run. Restored guests retain their
+        // matching tools-disk state and must not use this cold-boot option.
+        assert(!process.env.NV_STATE_LOAD,"NV_UI_BINARY requires a cold boot");
+        const helper=fs.readFileSync(process.env.NV_UI_BINARY);
+        assert(helper.length>=64 && helper.length<=1048576 && helper[0]===0x4D && helper[1]===0x5A,
+            "NV_UI_BINARY must be a bounded native executable");
+        files["NVUI.EXE"]=helper;
+    }
     if(process.env.NV_DX9) files["DX9.EXE"]=fs.readFileSync(process.env.NV_DX9);
     if(process.env.NV_BENCH_LAUNCH)
     {

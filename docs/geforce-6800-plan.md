@@ -1023,6 +1023,7 @@ CI 运行 `make devices-test` 与 `make test-glbridge`，浏览器与客体测�
   | `NV_HDB` | 3DMark 镜像（第二块盘） |
   | `NV_OVERLAY_SAVE`、`NV_OVERLAY_LOAD` | 保存或加载 overlay |
   | `NV_STATE_SAVE`、`NV_STATE_LOAD` | 保存/恢复 RAM；有 `.bundle.json` 时自动核对 RAM 与 OS/game overlay 的尺寸、SHA、客体、显存及原盘路径 |
+  | `NV_UI_BINARY` | 冷启动时将有界原生 MZ helper 放入 IDE 工具盘根目录 `NVUI.EXE`；不允许与 RAM restore 同用 |
   | `NV_GPU_RENDERER=chrome` | 渲染器放在无头 Chrome 里 |
   | `NV_OUT` | 输出目录 |
   | `NV_TRACE=0` | 关闭方法/程序跟踪，保留故障、GPU 与翻译缓存计数；默认开启 |
@@ -2309,3 +2310,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G3/G4 原生FP32采样修复：扩展官方93.71 HAL探针，R32F原先AAE4红通道为0；format1c的mode4实际是16字节RGBA32F，旧实现误读为4字节。现修正标量通道及宽布局，保留padded scalar区分；六次受支持绘制的Create/Draw/Readback/Lock全成功且像素全正确，原版机器码逐字相同。R16F由CheckDeviceFormat明确NOTAVAILABLE，只记录不称为渲染通过。新单测先红后绿，原版TEX序列及完整NV40真实GPU回归、Closure通过。见 `g3-native-float32-texture-modes.json`；继续重取原版图像，不把探针通过代替G4。
 
 - G4 05源精度修复后八张原版固定帧及正常关机完成：GT480/897/1630、五项feature1，None/Optimal/VS3_0/PS3_0默认选项。逐图保存成功和GPU静止60秒，7472draws零GPU错误；原图SHA、正常关机冷磁盘对及1197830556字节健康RAM无损压缩校验齐全。GT3黑块恢复，scene MAD11.88→3.71仍有残差；三材质分别匹配自己的原版常量后，700,100处原生VS/PS与API参考均一致，旧误套另一材质常量的差异不作缺陷证据。见 `g4-05-source-precision-eight-fixed-frames.json`；本轮早于FP32修复，最新图像复核继续。
+
+- G6 原生 UI helper 的 IDE 冷启动交付：新增显式 NV_UI_BINARY，有界 MZ 检查且拒绝与 RAM restore 混用。Win98 81.98 以 D:\NVUI.EXE 成功读取原版控件并用真实鼠标完成 Tip/IQ/Run，GT1 frame1038 已有完整原图、原版保存成功和 GPU 静止60秒；其 SHA 与修复后 XP 原图相同。严格 GUI helper 构建及 harness 语法检查通过，见 `g6-native-ide-ui-delivery.json`。其余八图在继续，不据工具交付成功推断先前软盘/黑屏诊断的根因。

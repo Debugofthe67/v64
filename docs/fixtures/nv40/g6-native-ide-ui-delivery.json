@@ -1,0 +1,48 @@
+{
+  "stage": "G6 native UI helper delivery through cold-boot IDE tools disk",
+  "status": "Original Win98 03 native helper actions and first IQ save verified; remaining IQ sequence running",
+  "implementation": "NV_UI_BINARY copies a bounded MZ helper into the generated IDE tools disk as NVUI.EXE before cold boot. Paired RAM restore rejects this option, retaining its matching disk state.",
+  "configuration": {
+    "guest": "Win98 SE",
+    "driver": "81.98",
+    "memoryMiB": 512,
+    "vramMiB": 128,
+    "helperCommand": "D:\\NVUI.EXE",
+    "helperSubsystem": "Windows GUI",
+    "removableMediaChangedDuringRun": false
+  },
+  "helper": {
+    "source": "tests/devices/geforce_ui.c",
+    "binary": "build/NVUI-win9x-gui.exe",
+    "bytes": 19595,
+    "sha256": "02c3542535f2518dc78cfce43e9fa8536a84a55baadc8af4135b1f05a88bd3de",
+    "strictBuild": "MinGW -Wall -Wextra -Werror; only KERNEL32/USER32 imports"
+  },
+  "validation": {
+    "syntax": "node --check tests/devices/geforce_guest.mjs",
+    "nativeControls": [
+      "ide-ui-03-main-0.txt",
+      "ide-ui-close-observed-tip-0.txt",
+      "ide-ui-open-iq-0.txt"
+    ],
+    "originalIQSave": {
+      "case": "GT1",
+      "testIndex": 0,
+      "frame": 1038,
+      "draws": 1350,
+      "readbacks": 698,
+      "successUI": "build/nv40-win98-mark03-ide-ui-iq/fixed-GT1-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-win98-mark03-ide-ui-iq/iq-artifacts/NV98I0101038.bmp",
+      "bytes": 2363392,
+      "sha256": "95fb9e85dfd8bf04b88023d0a5a9936bf058f80c759fdce1801d25f6c0f53f16",
+      "hostTime": "2026-11-15T08:05:12.678320+00:00"
+    },
+    "gpuFailures": 0,
+    "pgraphFaults": 0
+  },
+  "limits": [
+    "This validates native tool delivery and an unchanged original IQ save, not all nine frames or normal shutdown.",
+    "Earlier removable-media/helper failures remain retained diagnostics; no FDC or display root cause is inferred."
+  ]
+}
