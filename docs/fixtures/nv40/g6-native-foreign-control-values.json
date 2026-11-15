@@ -1,0 +1,178 @@
+{
+  "date": "2026-11-15",
+  "status": "Actual foreign benchmark Edit/ComboBox/Button values are read with bounded WM_GETTEXT; original06 frame/settings verified.",
+  "change": "GetWindowTextA only retrieves a foreign caption. WM_GETTEXT via SendMessageTimeout200ms reads standard control values; 512-byte buffer remains bounded and password edits are skipped. No benchmark/driver/graphics APIs change.",
+  "primarySources": [
+    "https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowtexta",
+    "https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-gettext"
+  ],
+  "nativeValidation": {
+    "guest": "XP SP3, original06 and NVIDIA93.71",
+    "freshRequestTick": "0x00a3b7b6",
+    "iqControlsOnly": [
+      {
+        "hwnd": "0x001e00e8",
+        "id": "0x00000014",
+        "class": "ComboBox",
+        "text": "1280 x 1024"
+      },
+      {
+        "hwnd": "0x001e0170",
+        "id": "0x00000015",
+        "class": "ComboBox",
+        "text": "None"
+      },
+      {
+        "hwnd": "0x00200168",
+        "id": "0x00000016",
+        "class": "Edit",
+        "text": "0"
+      },
+      {
+        "hwnd": "0x00220192",
+        "id": "0x00000018",
+        "class": "ComboBox",
+        "text": "Optimal"
+      },
+      {
+        "hwnd": "0x00210190",
+        "id": "0x00000019",
+        "class": "Edit",
+        "text": "1"
+      },
+      {
+        "hwnd": "0x002401fc",
+        "id": "0x0000001b",
+        "class": "ComboBox",
+        "text": "3_0"
+      },
+      {
+        "hwnd": "0x001d015a",
+        "id": "0x0000001c",
+        "class": "ComboBox",
+        "text": "3_0"
+      },
+      {
+        "hwnd": "0x000601ac",
+        "id": "0x0000001d",
+        "class": "Button",
+        "text": "Force full precision"
+      },
+      {
+        "hwnd": "0x0025015e",
+        "id": "0x0000001e",
+        "class": "Button",
+        "text": "Disable HW shadow mapping"
+      },
+      {
+        "hwnd": "0x001c0188",
+        "id": "0x0000001f",
+        "class": "Button",
+        "text": "Disable post-processing"
+      },
+      {
+        "hwnd": "0x00190172",
+        "id": "0x00000020",
+        "class": "Button",
+        "text": "Force software vertex shaders"
+      },
+      {
+        "hwnd": "0x001a0164",
+        "id": "0x00000021",
+        "class": "Button",
+        "text": "Color mipmaps"
+      },
+      {
+        "hwnd": "0x00150196",
+        "id": "0x00000022",
+        "class": "Button",
+        "text": "Force software FP filtering"
+      },
+      {
+        "hwnd": "0x00130184",
+        "id": "0x00000023",
+        "class": "ComboBox",
+        "text": "GT1 - Return To Proxycon"
+      },
+      {
+        "hwnd": "0x001a0178",
+        "id": "0x00000024",
+        "class": "Button",
+        "text": "Single frame"
+      },
+      {
+        "hwnd": "0x0017015c",
+        "id": "0x00000025",
+        "class": "Button",
+        "text": "Sequence"
+      },
+      {
+        "hwnd": "0x0012018c",
+        "id": "0x00000026",
+        "class": "Edit",
+        "text": "2,095"
+      },
+      {
+        "hwnd": "0x001301b4",
+        "id": "0x00000028",
+        "class": "Edit",
+        "text": "1"
+      },
+      {
+        "hwnd": "0x001401ae",
+        "id": "0x0000002a",
+        "class": "Edit",
+        "text": "3,110"
+      },
+      {
+        "hwnd": "0x00200186",
+        "id": "0x0000002c",
+        "class": "Edit",
+        "text": "30"
+      },
+      {
+        "hwnd": "0x0040017a",
+        "id": "0x0000002e",
+        "class": "Button",
+        "text": "Reference Rasterizer"
+      },
+      {
+        "hwnd": "0x000401a8",
+        "id": "0x0000002f",
+        "class": "Edit",
+        "text": "E:\\iq"
+      },
+      {
+        "hwnd": "0x000401aa",
+        "id": "0x00000030",
+        "class": "Button",
+        "text": ""
+      },
+      {
+        "hwnd": "0x000401a4",
+        "id": "0x00000001",
+        "class": "Button",
+        "text": ""
+      },
+      {
+        "hwnd": "0x000401a2",
+        "id": "0x00000031",
+        "class": "Button",
+        "text": ""
+      },
+      {
+        "hwnd": "0x000401a0",
+        "id": "0x00000032",
+        "class": "Button",
+        "text": ""
+      }
+    ],
+    "priorField": "Old helper returned blank for frame Edit; new helper reads untouched originalGT1 default2095.",
+    "publicFloppyApi": "set_fda/get_disk_fda; generated 1.44MiB data floppy, no temporary whole game IMG.",
+    "strictMinGWCompile": "passed"
+  },
+  "limits": [
+    "Complete06 main/licensing UI and private XML remain ignored; fixture includes only the IQ dialog controls.",
+    "An accurate UI query does not complete image or performance gates."
+  ]
+}

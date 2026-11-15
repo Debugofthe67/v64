@@ -58,6 +58,16 @@ static void describe(HWND window)
 {
     char type[64],title[512];RECT rectangle;
     GetClassNameA(window,type,sizeof(type));GetWindowTextA(window,title,sizeof(title));
+    /* GetWindowText reads another process's caption, not its control value.
+     * WM_GETTEXT is marshalled by USER32; keep the query bounded and skip
+     * password edits so diagnostics never request their contents. */
+    if((!lstrcmpiA(type,"Edit") && !(GetWindowLongA(window,GWL_STYLE)&ES_PASSWORD)) ||
+        !lstrcmpiA(type,"ComboBox") || !lstrcmpiA(type,"Button"))
+    {
+        char value[512]={0};DWORD_PTR copied=0;
+        if(SendMessageTimeoutA(window,WM_GETTEXT,sizeof(value),(LPARAM)value,SMTO_ABORTIFHUNG,200,&copied))
+        {value[sizeof(value)-1]=0;lstrcpyA(title,value);}
+    }
     for(char *p=title;*p;p++)if(*p=='\r' || *p=='\n' || *p=='\t')*p=' ';
     GetWindowRect(window,&rectangle);
     text("HWND=");hex((DWORD)(ULONG_PTR)window);text(" ID=");hex((DWORD)GetDlgCtrlID(window));
