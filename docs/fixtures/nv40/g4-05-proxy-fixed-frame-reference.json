@@ -1,0 +1,379 @@
+{
+  "stage": "G4 original 3DMark05 proxy reference: eight required fixed frames",
+  "configuration": {
+    "resolution": [
+      1024,
+      768
+    ],
+    "AA": "None",
+    "filter": "Optimal",
+    "vertexShader": "3_0",
+    "pixelShader": "3_0",
+    "originalExecutableUnmodified": true,
+    "guestCPUWorker": false,
+    "performanceClaim": false
+  },
+  "fixedFrames": [
+    {
+      "case": "GT1",
+      "frame": 480,
+      "nativePrompt": "Image quality frame saved to D:\\PX05IQ",
+      "draws": 5705,
+      "readbacks": 1,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy05-fixed-iq-local/ui-gt1-success.txt",
+      "successUISHA256": "7f2ae6c130c9d3a0db4dedd866fda4aef753fba0a3ff53b1f2b31056780c0786",
+      "screenshot": "build/nv40-proxy05-fixed-iq-local/frame-00042.png"
+    },
+    {
+      "case": "GT2",
+      "frame": 897,
+      "readbacks": 2,
+      "draws": 13061,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy05-fixed-iq-local/ui-GT2-success.txt",
+      "screenshot": "build/nv40-proxy05-fixed-iq-local/frame-00119.png",
+      "hostTime": "2026-11-15T01:09:05.168561+00:00"
+    },
+    {
+      "case": "GT3",
+      "frame": 1630,
+      "readbacks": 3,
+      "draws": 19330,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy05-fixed-iq-local/ui-GT3-success.txt",
+      "screenshot": "build/nv40-proxy05-fixed-iq-local/frame-00127.png",
+      "hostTime": "2026-11-15T01:11:41.012015+00:00"
+    },
+    {
+      "case": "fillrate1",
+      "frame": 1,
+      "readbacks": 4,
+      "draws": 19394,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy05-fixed-iq-local/ui-fillrate1-success.txt",
+      "screenshot": "build/nv40-proxy05-fixed-iq-local/frame-00133.png",
+      "hostTime": "2026-11-15T01:13:39.903637+00:00"
+    },
+    {
+      "case": "fillrate2",
+      "frame": 1,
+      "readbacks": 5,
+      "draws": 19402,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy05-fixed-iq-local/ui-fillrate2-success.txt",
+      "screenshot": "build/nv40-proxy05-fixed-iq-local/frame-00139.png",
+      "hostTime": "2026-11-15T01:15:41.796579+00:00"
+    },
+    {
+      "case": "PS",
+      "frame": 1,
+      "readbacks": 6,
+      "draws": 23511,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy05-fixed-iq-local/ui-PS-success.txt",
+      "screenshot": "build/nv40-proxy05-fixed-iq-local/frame-00145.png",
+      "hostTime": "2026-11-15T01:17:42.090521+00:00"
+    },
+    {
+      "case": "vssimple",
+      "frame": 1,
+      "readbacks": 7,
+      "draws": 28957,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy05-fixed-iq-local/ui-vssimple-success.txt",
+      "screenshot": "build/nv40-proxy05-fixed-iq-local/frame-00152.png",
+      "hostTime": "2026-11-15T01:20:01.819753+00:00"
+    },
+    {
+      "case": "vscomplex",
+      "frame": 1,
+      "readbacks": 8,
+      "draws": 33712,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy05-fixed-iq-local/ui-vscomplex-success.txt",
+      "screenshot": "build/nv40-proxy05-fixed-iq-local/frame-00158.png",
+      "hostTime": "2026-11-15T01:22:00.581904+00:00"
+    }
+  ],
+  "images": [
+    {
+      "native": {
+        "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_GT1_0480.BMP",
+        "sha256": "1f66f908550155b4d0ebdf615e69a30a2ad5b3fb816d030674c97a300dc785ad"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_GT1_0480.BMP",
+        "sha256": "f8025c767096a4519237fb2f0cd33f224d6f277f329200ef30e5beaa7e23fc15"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 764037,
+      "exact_pixel_percent": 2.8476715087890625,
+      "mean_absolute_rgb_error": 107.21753904554579,
+      "mean_signed_rgb_error": [
+        106.0537338256836,
+        109.5698636372884,
+        106.02878824869792
+      ],
+      "max_channel_error": 255,
+      "pixel_max_channel_error_percentiles": {
+        "50": 124,
+        "90": 213,
+        "95": 223,
+        "99": 248,
+        "99.9": 253
+      }
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_GT2_0897.BMP",
+        "sha256": "4fc6c3a52e55bb4c4cd88e672066998398301686dab4e78ecf27d27544f8c389"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_GT2_0897.BMP",
+        "sha256": "b8b9550fcdc7b14ca7db044a3f706fb8070d073bc9ccfb0070828d0c77bd8434"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 750226,
+      "exact_pixel_percent": 4.6038309733072875,
+      "mean_absolute_rgb_error": 43.73970497979058,
+      "mean_signed_rgb_error": [
+        26.525245666503906,
+        42.45158386230469,
+        61.16887283325195
+      ],
+      "max_channel_error": 252,
+      "pixel_max_channel_error_percentiles": {
+        "50": 47,
+        "90": 148,
+        "95": 166,
+        "99": 194,
+        "99.9": 228
+      }
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_GT3_1630.BMP",
+        "sha256": "51e2883d3af81c6bd429d8890e7582ba0592b790eec6dd20552760476689bb5c"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_GT3_1630.BMP",
+        "sha256": "705e344e085b00b0d3a1d32c066966608bc16f041b2bbedd77870b25542c99aa"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 757657,
+      "exact_pixel_percent": 3.6589304606119755,
+      "mean_absolute_rgb_error": 74.7777926127116,
+      "mean_signed_rgb_error": [
+        68.3273696899414,
+        56.543643951416016,
+        57.49553426106771
+      ],
+      "max_channel_error": 213,
+      "pixel_max_channel_error_percentiles": {
+        "50": 81,
+        "90": 162,
+        "95": 166,
+        "99": 180,
+        "99.9": 203
+      }
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_PS_0001.BMP",
+        "sha256": "44bdee0c466b22049030c22c3e93ac47fce4d3110ffe01f14526ad9d7dd97c1f"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_PS_0001.BMP",
+        "sha256": "56190dd058289f45605580f8b1f932cda1b158c637714f3e9b9bb399ed7b9c2a"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 563222,
+      "exact_pixel_percent": 28.38261922200521,
+      "mean_absolute_rgb_error": 16.845306820339626,
+      "mean_signed_rgb_error": [
+        21.24371592203776,
+        17.022435506184895,
+        11.574838002522787
+      ],
+      "max_channel_error": 234,
+      "pixel_max_channel_error_percentiles": {
+        "50": 1,
+        "90": 100,
+        "95": 145,
+        "99": 182,
+        "99.9": 212
+      }
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_fillrate1_0001.bmp",
+        "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_fillrate1_0001.bmp",
+        "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 0,
+      "exact_pixel_percent": 100.0,
+      "mean_absolute_rgb_error": 0.0,
+      "mean_signed_rgb_error": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_channel_error": 0,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 0,
+        "95": 0,
+        "99": 0,
+        "99.9": 0
+      }
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_fillrate2_0001.bmp",
+        "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_fillrate2_0001.bmp",
+        "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 0,
+      "exact_pixel_percent": 100.0,
+      "mean_absolute_rgb_error": 0.0,
+      "mean_signed_rgb_error": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_channel_error": 0,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 0,
+        "95": 0,
+        "99": 0,
+        "99.9": 0
+      }
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_vscomplex_0001.bmp",
+        "sha256": "eb4072cb0fd44376aedc6b865dd9493c11d13484122ff18305cb0f6eadafdf88"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_vscomplex_0001.bmp",
+        "sha256": "082b55f91eb593ed7e9beddb3b9365caff57d4f1b8c75cc3bce6308c1acc6303"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 572755,
+      "exact_pixel_percent": 27.170435587565102,
+      "mean_absolute_rgb_error": 1.6557138231065538,
+      "mean_signed_rgb_error": [
+        0.4560343424479167,
+        0.6495552062988281,
+        -0.3205057779947917
+      ],
+      "max_channel_error": 58,
+      "pixel_max_channel_error_percentiles": {
+        "50": 2,
+        "90": 6,
+        "95": 8,
+        "99": 18,
+        "99.9": 30
+      }
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_vssimple_0001.bmp",
+        "sha256": "236aaa8382227db01509202d3ff84a35f92a0f616b2e901da169344097ff81f6"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_vssimple_0001.bmp",
+        "sha256": "8d9d5e360e9ef81c792b55e35058a5d4d02855ba2a76e005bfdd0f675ab24faa"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 4167,
+      "exact_pixel_percent": 99.47013854980469,
+      "mean_absolute_rgb_error": 0.005298614501953125,
+      "mean_signed_rgb_error": [
+        0.000308990478515625,
+        0.000308990478515625,
+        0.000308990478515625
+      ],
+      "max_channel_error": 1,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 0,
+        "95": 0,
+        "99": 0,
+        "99.9": 1
+      }
+    }
+  ],
+  "validation": [
+    "All eight original save-success prompts observed; each capture followed by 60 seconds stable GPU counters.",
+    "All BMPs are original 1024x768 files. Export chunks removed after validation. No GPU errors, failed commands or dropped draws.",
+    "Reference idle policy was explicitly queried and disabled using native XP APIs after GT2; remaining six captures uninterrupted."
+  ],
+  "status": "Reference capture complete. Native captures predate XRGB fix; large GT1/GT2/GT3/PS mismatches remain, so image acceptance is OPEN. Fillrate pair are byte-identical. Re-render native frames on latest graphics build.",
+  "evidence": [
+    {
+      "file": "build/nv40-proxy05-fixed-iq-local/bitmap-validation.json",
+      "bytes": 4035,
+      "sha256": "c627abf4cb0cbc48fb13619a29460c5243ef404436372e8d57e65174a899da2a"
+    },
+    {
+      "file": "build/nv40-proxy05-fixed-iq-local/extracted-artifacts.json",
+      "bytes": 1858,
+      "sha256": "08a92cd4ebfb585575e1bacd1df4dc3bc3deeb85066968d00498928d955e7b04"
+    },
+    {
+      "file": "build/nv40-proxy05-fixed-iq-local/iq-serial-success.json",
+      "bytes": 2667,
+      "sha256": "590607954cc21b3522a5d3f4c549e57ebb06adb06c63f32d89026d9485e7c080"
+    },
+    {
+      "file": "build/nv40-proxy05-fixed-iq-local/MARK05_3DMark05.exe",
+      "bytes": 3097936,
+      "sha256": "434fc2da885bc558247e6ff954a3c964e9477f975952f2bac10b1d6da929df04"
+    },
+    {
+      "file": "build/nv40-proxy05-fixed-iq-local/MARK05_d3d9.dll",
+      "bytes": 172544,
+      "sha256": "8c40a72e08249841c1979f8f9c28a94419fd527053fc4647cc427ea8481edf7d"
+    },
+    {
+      "file": "build/nv40-05-native-proxy-fixed-frame-comparison.json",
+      "bytes": 28266,
+      "sha256": "207368497f76f9b2758d83410c74f36ab7be31089271854448019550173ac524"
+    }
+  ]
+}

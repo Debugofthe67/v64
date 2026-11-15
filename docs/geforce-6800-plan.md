@@ -2241,3 +2241,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 native06 补充13项本轮失败已确认：1323724 draws 后停在 806F3048/HLT1/display=null，但页文件头为 PAGE/DUMP、bugcheck100000EA，参数与只读栈相符，驱动名 nv4_disp。因此此终点不计正常关机或完成；GPU/PGRAPH零错误不足以验收。完整配套失败状态已压缩保存，临时 APFS 合并 IMG 提取事件/页文件头后删除，原盘未变。停滞线程属于原版3DMark06；被中断的对象查找68节点有限，8/1目标存在，单次PC不证明首因。见 `g6-native-06-feature13-watchdog.json`；从开跑前GUI检查空闲策略并继续定位/复跑，不改客体/驱动/时钟/看门狗。
 
 - G6 压缩检查点直接恢复：原始 RAM 缺失时，有界解码同名 `.state.zst` 到内存，按原 bundle 校验解压大小/SHA、磁盘 overlay 和客体配置；原始 RAM 存在仍优先验证原文件。截断、错哈希、错大小、超限和缺少 Node zstd 支持的回归通过。真实 native06 开跑前 GUI 已从 650667581-byte 压缩包恢复 1464808072-byte RAM，驱动 started1/problem0，无临时展开文件；见 `g6-compressed-checkpoint-restore.json`。
+
+- G4 05 参照固定帧：原版程序经 D3D9 proxy 保存全部八张要求的 IQ 图（GT1/2/3 为 480/897/1630，其余五项 frame1），1024×768/None/Optimal/VS3/PS3；逐次原版成功提示及60秒 GPU静止核对通过。全图对比旧 native：fillrate 两张逐字节一致，VS simple max1，但 GT1 MAD107.22、GT2 43.74、GT3 74.78、PS16.85；图像门禁未通过，需用最新 XRGB 修复重测定位。参照导出临时块已删除，见 `g4-05-proxy-fixed-frame-reference.json`。
