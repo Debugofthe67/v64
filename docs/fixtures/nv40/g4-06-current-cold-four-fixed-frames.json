@@ -1,0 +1,394 @@
+{
+  "stage": "G4 original06 latest format cold four IQ",
+  "status": "Four original fixed-frame content comparisons completed; native feature images and final performance remain separate",
+  "coldSource": "build/nv40-xp-mark06-float32-fixed-iq/native-iq-normal-shutdown.cold.json",
+  "coldQualification": "No RAM restore. GPU driver stream starts with current FP16, FP32 and UNORM16 layouts from its first command. Original executable93.71 HAL, release CPU808c5fc9, normal clock, RAM1024/VRAM256.",
+  "settings": {
+    "sourceUI": "build/nv40-xp-mark06-current-cold-iq/current06-initial-3.txt",
+    "resolution": "1280x1024",
+    "AA": "None",
+    "filter": "Optimal",
+    "VS": "3_0",
+    "PS": "3_0",
+    "sixOverrideChecks": 0,
+    "firstTest": "HDR1",
+    "firstFrame": 1225,
+    "output": "D:\\NV06CF"
+  },
+  "originalSaves": [
+    {
+      "case": "hdr1",
+      "testIndex": 2,
+      "frame": 1225,
+      "draws": 2054,
+      "readbacks": 2917,
+      "successUI": "build/nv40-xp-mark06-current-cold-iq/fixed-hdr1-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_hdr1_1225.bmp",
+      "bytes": 3932216,
+      "sha256": "aab92d2c94dac301978432936b771d7a9b669f50b1a0a68669824c34a8ac4816",
+      "hostTime": "2026-11-15T09:56:27.316097+00:00"
+    },
+    {
+      "case": "hdr2",
+      "testIndex": 3,
+      "frame": 1428,
+      "draws": 3395,
+      "readbacks": 4691,
+      "successUI": "build/nv40-xp-mark06-current-cold-iq/fixed-hdr2-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_hdr2_1428.bmp",
+      "bytes": 3932216,
+      "sha256": "1372b18fe1f7e614b176a74b748331b94ad3bfe03e53bbc4b969b0a14c0e5dff",
+      "hostTime": "2026-11-15T09:59:30.831077+00:00"
+    },
+    {
+      "case": "GT1",
+      "testIndex": 0,
+      "frame": 2095,
+      "draws": 5957,
+      "readbacks": 7508,
+      "successUI": "build/nv40-xp-mark06-current-cold-iq/fixed-GT1-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_GT1_2095.BMP",
+      "bytes": 3932216,
+      "sha256": "cb4be366824f4cdc3e03372476573417758c699703d484b13b617b280ce652d1",
+      "hostTime": "2026-11-15T10:03:04.486974+00:00"
+    },
+    {
+      "case": "GT2",
+      "testIndex": 1,
+      "frame": 1139,
+      "draws": 8027,
+      "readbacks": 9242,
+      "successUI": "build/nv40-xp-mark06-current-cold-iq/fixed-GT2-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_GT2_1139.BMP",
+      "bytes": 3932216,
+      "sha256": "0ce8d755607ec012a30fb11a8d219576fa4e2d2b27fdedd14aba93d3c96da3ce",
+      "hostTime": "2026-11-15T10:06:39.197909+00:00"
+    }
+  ],
+  "metrics": [
+    {
+      "case": "hdr1",
+      "frame": 1225,
+      "scene": {
+        "native": {
+          "file": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_hdr1_1225.bmp",
+          "sha256": "aab92d2c94dac301978432936b771d7a9b669f50b1a0a68669824c34a8ac4816"
+        },
+        "reference": {
+          "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_hdr1_1225.bmp",
+          "sha256": "e300a8a89cfb4234b1864f581823c5ddc9084385993da1e74a215ecd53e39676"
+        },
+        "width": 1280,
+        "height": 1024,
+        "roi_y": 0,
+        "roi_height": 960,
+        "pixels": 1228800,
+        "different_pixels": 1200488,
+        "exact_pixel_percent": 2.304036458333336,
+        "mean_absolute_rgb_error": 6.624696994357639,
+        "mean_signed_rgb_error": [
+          1.83544921875,
+          -1.2180224609375,
+          -0.9578312174479167
+        ],
+        "max_channel_error": 149,
+        "pixel_max_channel_error_percentiles": {
+          "50": 6,
+          "90": 30,
+          "95": 37,
+          "99": 75,
+          "99.9": 103
+        }
+      },
+      "full": {
+        "native": {
+          "file": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_hdr1_1225.bmp",
+          "sha256": "aab92d2c94dac301978432936b771d7a9b669f50b1a0a68669824c34a8ac4816"
+        },
+        "reference": {
+          "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_hdr1_1225.bmp",
+          "sha256": "e300a8a89cfb4234b1864f581823c5ddc9084385993da1e74a215ecd53e39676"
+        },
+        "width": 1280,
+        "height": 1024,
+        "roi_y": 0,
+        "roi_height": 1024,
+        "pixels": 1310720,
+        "different_pixels": 1253735,
+        "exact_pixel_percent": 4.3476104736328125,
+        "mean_absolute_rgb_error": 6.9979197184244795,
+        "mean_signed_rgb_error": [
+          2.177501678466797,
+          -1.1052444458007813,
+          -0.9932518005371094
+        ],
+        "max_channel_error": 149,
+        "pixel_max_channel_error_percentiles": {
+          "50": 6,
+          "90": 31,
+          "95": 38,
+          "99": 81,
+          "99.9": 102
+        }
+      }
+    },
+    {
+      "case": "hdr2",
+      "frame": 1428,
+      "scene": {
+        "native": {
+          "file": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_hdr2_1428.bmp",
+          "sha256": "1372b18fe1f7e614b176a74b748331b94ad3bfe03e53bbc4b969b0a14c0e5dff"
+        },
+        "reference": {
+          "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_hdr2_1428.bmp",
+          "sha256": "c29dc6aaa1164e229c15625e4a3345ccec6f0a118bab0c62d1a82915613010a7"
+        },
+        "width": 1280,
+        "height": 1024,
+        "roi_y": 0,
+        "roi_height": 960,
+        "pixels": 1228800,
+        "different_pixels": 1118896,
+        "exact_pixel_percent": 8.94401041666667,
+        "mean_absolute_rgb_error": 3.3261393229166667,
+        "mean_signed_rgb_error": [
+          -7.260576171875,
+          -1.4784879557291666,
+          -0.4474967447916667
+        ],
+        "max_channel_error": 79,
+        "pixel_max_channel_error_percentiles": {
+          "50": 5,
+          "90": 19,
+          "95": 27,
+          "99": 34,
+          "99.9": 51
+        }
+      },
+      "full": {
+        "native": {
+          "file": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_hdr2_1428.bmp",
+          "sha256": "1372b18fe1f7e614b176a74b748331b94ad3bfe03e53bbc4b969b0a14c0e5dff"
+        },
+        "reference": {
+          "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_hdr2_1428.bmp",
+          "sha256": "c29dc6aaa1164e229c15625e4a3345ccec6f0a118bab0c62d1a82915613010a7"
+        },
+        "width": 1280,
+        "height": 1024,
+        "roi_y": 0,
+        "roi_height": 1024,
+        "pixels": 1310720,
+        "different_pixels": 1169013,
+        "exact_pixel_percent": 10.811386108398436,
+        "mean_absolute_rgb_error": 3.345689392089844,
+        "mean_signed_rgb_error": [
+          -7.191108703613281,
+          -1.581945037841797,
+          -0.4727043151855469
+        ],
+        "max_channel_error": 79,
+        "pixel_max_channel_error_percentiles": {
+          "50": 5,
+          "90": 20,
+          "95": 27,
+          "99": 35,
+          "99.9": 53
+        }
+      }
+    },
+    {
+      "case": "GT1",
+      "frame": 2095,
+      "scene": {
+        "native": {
+          "file": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_GT1_2095.BMP",
+          "sha256": "cb4be366824f4cdc3e03372476573417758c699703d484b13b617b280ce652d1"
+        },
+        "reference": {
+          "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_GT1_2095.BMP",
+          "sha256": "8ed87426ef79fc54ee074d564313205e2142a212693610e0634ccbee185ffd0e"
+        },
+        "width": 1280,
+        "height": 1024,
+        "roi_y": 0,
+        "roi_height": 960,
+        "pixels": 1228800,
+        "different_pixels": 1041414,
+        "exact_pixel_percent": 15.249511718749996,
+        "mean_absolute_rgb_error": 0.8005544704861111,
+        "mean_signed_rgb_error": [
+          -0.49513427734375,
+          -0.46575276692708334,
+          -0.3463444010416667
+        ],
+        "max_channel_error": 97,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 3,
+          "95": 3,
+          "99": 6,
+          "99.9": 14
+        }
+      },
+      "full": {
+        "native": {
+          "file": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_GT1_2095.BMP",
+          "sha256": "cb4be366824f4cdc3e03372476573417758c699703d484b13b617b280ce652d1"
+        },
+        "reference": {
+          "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_GT1_2095.BMP",
+          "sha256": "8ed87426ef79fc54ee074d564313205e2142a212693610e0634ccbee185ffd0e"
+        },
+        "width": 1280,
+        "height": 1024,
+        "roi_y": 0,
+        "roi_height": 1024,
+        "pixels": 1310720,
+        "different_pixels": 1090208,
+        "exact_pixel_percent": 16.823730468749996,
+        "mean_absolute_rgb_error": 0.7990114847819011,
+        "mean_signed_rgb_error": [
+          -0.48003158569335935,
+          -0.45121002197265625,
+          -0.33519134521484373
+        ],
+        "max_channel_error": 97,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 3,
+          "95": 3,
+          "99": 6,
+          "99.9": 15
+        }
+      }
+    },
+    {
+      "case": "GT2",
+      "frame": 1139,
+      "scene": {
+        "native": {
+          "file": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_GT2_1139.BMP",
+          "sha256": "0ce8d755607ec012a30fb11a8d219576fa4e2d2b27fdedd14aba93d3c96da3ce"
+        },
+        "reference": {
+          "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_GT2_1139.BMP",
+          "sha256": "0976f12451502e153d99919b4fb0df632e58040d837210ff4531f907ece732fe"
+        },
+        "width": 1280,
+        "height": 1024,
+        "roi_y": 0,
+        "roi_height": 960,
+        "pixels": 1228800,
+        "different_pixels": 1012335,
+        "exact_pixel_percent": 17.615966796875004,
+        "mean_absolute_rgb_error": 1.2741444227430556,
+        "mean_signed_rgb_error": [
+          -0.8904549153645833,
+          -0.8815763346354166,
+          -1.1108740234375
+        ],
+        "max_channel_error": 176,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 3,
+          "95": 5,
+          "99": 27,
+          "99.9": 52
+        }
+      },
+      "full": {
+        "native": {
+          "file": "build/nv40-xp-mark06-current-cold-iq/iq-artifacts/NV06CF_GT2_1139.BMP",
+          "sha256": "0ce8d755607ec012a30fb11a8d219576fa4e2d2b27fdedd14aba93d3c96da3ce"
+        },
+        "reference": {
+          "file": "build/nv40-proxy06-four-gt-iq/PX06IQ_GT2_1139.BMP",
+          "sha256": "0976f12451502e153d99919b4fb0df632e58040d837210ff4531f907ece732fe"
+        },
+        "width": 1280,
+        "height": 1024,
+        "roi_y": 0,
+        "roi_height": 1024,
+        "pixels": 1310720,
+        "different_pixels": 1057116,
+        "exact_pixel_percent": 19.348449707031246,
+        "mean_absolute_rgb_error": 1.2422274271647136,
+        "mean_signed_rgb_error": [
+          -0.8595382690429687,
+          -0.8536705017089844,
+          -1.0794021606445312
+        ],
+        "max_channel_error": 176,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 2,
+          "95": 5,
+          "99": 27,
+          "99.9": 52
+        }
+      }
+    }
+  ],
+  "comparisonReport": "build/nv40-06-current-cold-four-comparison.json",
+  "visualArtifacts": [
+    "build/nv40-06-current-cold-hdr1-reference.png",
+    "build/nv40-06-current-cold-hdr2-reference.png",
+    "build/nv40-06-current-cold-GT1-reference.png",
+    "build/nv40-06-current-cold-GT2-reference.png"
+  ],
+  "review": {
+    "content": "All four scene objects, geometry, textures, lighting and effects correspond in paired images. HDR1 green tint is removed; dragon silhouette/pose corresponds in fresh cold images.",
+    "residuals": "HDR1 water/reflection/highlight differences remain (MAD6.624697/max149). HDR2 snow/highlight tint differs locally (MAD3.326139/max79). GT1/GT2 MAD0.800554/1.274144 with edge/detail outliers97/176. Original full pixels and scene distributions retained.",
+    "controlFinding": "Cold HDR1 matches the earlier post-fix capture within tiny pixel variance, so restoring a pre-fix GPU state is excluded as the remaining residual cause.",
+    "acceptance": "Content gate accepted with documented local arithmetic/raster/detail residuals. No newly invented numeric tolerance, unique causal proof or physical NV40 bit-exact claim."
+  },
+  "gpu": {
+    "totalDraws": 8027,
+    "failures": 0,
+    "scope": "Counter includes initial native UI draw in this cold process, not just a sum of benchmark draws."
+  },
+  "pairedCheckpoint": "build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.bundle.json",
+  "normalShutdown": "Deferred until the image-only feature captures finish in this same cold guest; no normal shutdown is claimed yet.",
+  "limits": [
+    "This is an original IQ comparison, not default benchmark score validation. Earlier successful default6 plus7feature/6batch projects remain the separate full-suite evidence.",
+    "Original06 IQ offers only four game tests. Seven feature images use the documented fixed-frame-rate fallback, with actual original HUD Frame confirmation."
+  ],
+  "checkpointManifest": {
+    "status": "complete",
+    "guest": "xp",
+    "vramMiB": 256,
+    "memoryMiB": 1024,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark06.img",
+    "state": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state",
+      "bytes": 1518167836,
+      "sha256": "49b8b88e1368008a560b839e3170961487460973a6187f5191b5d22bf8e2daf9"
+    },
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.hda-overlay.bin",
+      "bytes": 222856308,
+      "sha256": "58e2b551b78a08daa2e19a22080887609a492b264d5527fa53a780d27ef9613e"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.game-overlay.bin",
+      "bytes": 39766,
+      "sha256": "e8b6ccad1afbb18ab4a7a0143f2ed57aa039bc63b994e68cd3d5cf9783855c44"
+    }
+  },
+  "archive": {
+    "original": "build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state",
+    "archive": "build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.zst",
+    "originalBytes": 1518167836,
+    "archiveBytes": 634414228,
+    "sha256": "49b8b88e1368008a560b839e3170961487460973a6187f5191b5d22bf8e2daf9",
+    "restore": "zstd -d build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.zst -o build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state"
+  },
+  "checkpointPurpose": "Healthy all4 IQ complete, original default6 main settings verified. Same source will be restored into two fresh renderer/cache profiling runs."
+}

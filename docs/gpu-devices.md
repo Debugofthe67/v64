@@ -272,7 +272,9 @@ restore. Driver installation fixtures use overlays and cold reboots;
 long-lived investigation snapshots are not substitutes for a clean guest
 acceptance run.
 
-Full benchmark and reference-image acceptance remain open. Both XP and a
+The original functional suites through06 on XP and through03 on Win98 have
+completed. Reference content reviews retain local pixel residuals;06 feature
+images and the final isolated profile remain open. Both XP and a
 [fresh cold Win98 run](fixtures/nv40/g3-win98-8198-99-cold-full.json) completed
 all 26 3DMark99 tests and exported their native projects and IQ images.
 The [corrected XP run](fixtures/nv40/g3-xp-9371-99-full-corrected.json) and
@@ -318,11 +320,16 @@ four original GT IQ saves. Earlier native driver timeout failures remain
 recorded; the later completion is not attributed to one isolated change.
 
 Recent [03 point-sprite](fixtures/nv40/g4-03-nine-point-sprite-fixed-frames.json),
-[05 source-precision](fixtures/nv40/g4-05-source-precision-eight-fixed-frames.json)
-and [06 wide-FP16](fixtures/nv40/g4-06-wide-half-four-fixed-frames.json)
-recaptures remove substantial rendering defects. Remaining image residuals,
-including the visible HDR1 color defect, still prevent full image acceptance.
-The 06 feature images and final single-guest release profile remain open.
+[latest05](fixtures/nv40/g4-05-current-format-eight-fixed-frames.json)
+and [fresh cold06](fixtures/nv40/g4-06-current-cold-four-fixed-frames.json)
+recaptures remove substantial rendering defects. The cold06 run includes all
+FP16/FP32/UNORM16 texture fixes from its first command. HDR1's green tint is
+removed, and all four game scenes correspond. Water/reflection/highlight and
+raster/detail residuals remain documented in the original full images and
+per-pixel statistics; physical NV40 bit identity is not claimed. The
+[legacy content review](fixtures/nv40/g5-legacy-original-fixed-frame-review.json)
+also covers both drivers'99/2000/2001 images. The06 feature images and final
+single-guest release profile remain open.
 The unmodified
 NVIDIA driver advertises SM3.0 capabilities beyond the validated subset;
 known unsupported draw states and instructions produce bounded faults;
