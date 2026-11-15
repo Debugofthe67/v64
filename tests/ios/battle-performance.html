@@ -9,6 +9,14 @@ const query = new URLSearchParams(location.search), sleep = ms => new Promise(r 
 const sample_ms = Number(query.get("sample") || 200);
 if(!Number.isInteger(sample_ms) || sample_ms < 10 || sample_ms > 1000) throw Error("sample must be 10..1000 ms");
 const log = text => document.getElementById("log").textContent += text + "\n";
+const disk_reserve = Number(query.get("disk_reserve_bytes") || 1024 ** 3);
+function check_disk(host) {
+    if(!Number.isSafeInteger(disk_reserve) || disk_reserve < 1)
+        throw Error("disk_reserve_bytes must be a positive safe integer");
+    if(!Number.isFinite(host.disk_available)) throw Error("Cannot verify available disk space for the checkpoint");
+    if(host.disk_available < disk_reserve)
+        throw Error("Insufficient disk space for battle test: " + host.disk_available + " bytes available; reserve " + disk_reserve);
+}
 const artifact = async (name, body) => {
     const response = await fetch("/__artifact?name=" + name, { method: "POST", body });
     if(!response.ok) throw Error("Could not save " + name);
@@ -39,6 +47,9 @@ async function screenshot(name, frame, emulator) {
 let emulator, input, frame;
 try {
     const vm = query.get("vm");if(!vm) throw Error("vm must identify the checkpoint's disposable VM");
+    // Check before creating the VM or restoring a gigabyte of RAM. Host
+    // swapping can exhaust the volume even when APFS clones share NAND.
+    check_disk(await (await fetch("/__host_metrics")).json());
     frame = document.createElement("iframe");frame.src = "/index.html?vm=" + encodeURIComponent(vm);document.body.append(frame);
     emulator = await until(() => frame.contentWindow.v86_console?.emulator, "console");
     await emulator.stop();
@@ -89,6 +100,7 @@ try {
     const photographed = frames(await sample());await emulator.run();
     await until(async () => { await sleep(sample_ms);return frames(await running_sample()) - photographed >= 2; }, "post-screenshot game frames", 120000);
     const host_before = await (await fetch("/__host_metrics")).json();
+    check_disk(host_before);
     const before = await sample();log("Warmup completed: " + (frames(before) - frames(initial)) + " frames");
     normal_clock(before);
     const duration = Number(query.get("duration") || 60000);
@@ -100,6 +112,7 @@ try {
     normal_clock(after);
     await emulator.stop();clearInterval(input);touch([]);
     const host_after = await (await fetch("/__host_metrics")).json();
+    check_disk(host_after);
     const ms = after.host_time - before.host_time, count = frames(after) - frames(before);
     const result = { label: query.get("label") || "unlabelled", checkpoint: { name: file.name, bytes: file.size, modified: file.lastModified },
         input: input_mode === "checkpoint" ? "preserve checkpoint input; no host gesture during warmup or measurement" :
