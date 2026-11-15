@@ -1,0 +1,99 @@
+{
+  "stage": "G6 original XP06 supplemental feature/batch driver watchdog failure",
+  "scope": "The selected remaining7feature+6batch run is incomplete and not accepted. Original default6 acceptance remains separate.",
+  "terminal": {
+    "draws": 1323724,
+    "gpuFailures": 0,
+    "graphFaults": 0,
+    "eip": "0x806F3048",
+    "halted": 1,
+    "displayMode": null,
+    "meaning": "This HAL terminal is a real guest bugcheck, not evidence of a normal shutdown."
+  },
+  "pagefileHeader": {
+    "signature": "PAGEDUMP",
+    "bytes": 4096,
+    "bugcheck": "0x100000ea",
+    "parameters": [
+      "0x863d3368",
+      "0x863f5320",
+      "0xf7c58cb4",
+      "0x1"
+    ]
+  },
+  "nativeThread": {
+    "driver": "nv4_disp",
+    "thread": "0x863d3368",
+    "process": "3DMark06.exe",
+    "processDTB": "0x3a473000",
+    "interruptedMiniportPC": "0xf71f3a50",
+    "objectSearch": "All68 reachable nodes are finite and key8/id1 matches 0x86690598. A single interrupted lookup does not establish an infinite loop or the first failure cause."
+  },
+  "control": "Owned inspector verifies PID50297, NV_CONTROL unset and independent NV_OUT. No prior shutdown control file existed.",
+  "result": "No new NV06B.3DR was saved. GPU/PGRAPH-zero counters alone do not prove original test completion.",
+  "preservation": {
+    "bundle": {
+      "status": "complete",
+      "guest": "xp",
+      "vramMiB": 256,
+      "memoryMiB": 1024,
+      "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+      "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark06.img",
+      "state": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-feature-batch-vertex-spans/checkpoint-unexpected-native-terminal-shutdown.state",
+        "bytes": 1632628868,
+        "sha256": "db6af9d4797804e06b3006cda4026e4a7d33b5cedef3412021ebf1c4b3999f19"
+      },
+      "osOverlay": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-feature-batch-vertex-spans/checkpoint-unexpected-native-terminal-shutdown.state.hda-overlay.bin",
+        "bytes": 217642128,
+        "sha256": "a6c885db0c59a213194ec780be2802cc67402e5246fba36a9982ecf8c2d842cb"
+      },
+      "gameOverlay": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-feature-batch-vertex-spans/checkpoint-unexpected-native-terminal-shutdown.state.game-overlay.bin",
+        "bytes": 39766,
+        "sha256": "7500b18104bae88f1b43906f3ee606a3a69846fe6e50def045845a4e16874e9d"
+      }
+    },
+    "archive": "build/nv40-xp-mark06-feature-batch-vertex-spans/checkpoint-unexpected-native-terminal-shutdown.state.zst",
+    "temporaryDisk": "APFS clone of readonly source plus terminal overlay; extracted bounded system/event/header files, then deleted cloned IMG. Source size/mtime unchanged."
+  },
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/bug-check-0x100000ea--thread-stuck-in-device-driver-m",
+    "https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/bug-check-0xea--thread-stuck-in-device-driver",
+    "https://github.com/volatilityfoundation/volatility/blob/master/volatility/plugins/overlays/windows/xp_sp3_x86_vtypes.py"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark06-terminal-artifacts/pagefile-header.bin",
+      "bytes": 4096,
+      "sha256": "a9a42fb50f3cfd07193c621968bf0b5f64226eba53b7e48609d782eb20fcd416"
+    },
+    {
+      "file": "build/nv40-xp-mark06-terminal-artifacts/driver-ebp-chain.json",
+      "bytes": 1086,
+      "sha256": "b3cf6c227be6bd4b8dbaea583df99e84b5f55a076b76150b723087b943836a08"
+    },
+    {
+      "file": "build/nv40-xp-mark06-terminal-artifacts/interrupted-trapframe.json",
+      "bytes": 194,
+      "sha256": "57337d4a3fdb25105bec48a4c4bc835ec1f74533cefd9c2c0df4670f4e22e05d"
+    },
+    {
+      "file": "build/nv40-xp-mark06-feature-batch-vertex-spans/host-control-environment.json",
+      "bytes": 299,
+      "sha256": "7e4338f94107bb5b6c24edbb71dc79de65332b3b1106a4fb642559cbc7de75b5"
+    },
+    {
+      "file": "build/nv40-xp-mark06-feature-batch-vertex-spans/host-terminal-stack.json",
+      "bytes": 1340,
+      "sha256": "f5694be694c74ba68c301214308c03618df2effb61913d0bae4e210699006d27"
+    },
+    {
+      "file": "build/nv40-xp-mark06-feature-batch-vertex-spans/progress-trace.json",
+      "bytes": 3094103,
+      "sha256": "a6b55e14f0d117562d8939e01390453b002a93aef82e678568ce570c08bce4ff"
+    }
+  ],
+  "next": "Verify idle policy at a pre-Run original UI state; investigate first blocked condition and rerun. Do not patch guest/driver, alter clocks or extend the guest watchdog."
+}
