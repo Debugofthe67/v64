@@ -1,5 +1,31 @@
 # Infinity Blade 安装与帧率验证
 
+## CPSIE 原生候选：长预热两对回退，撤回（2026-11-15）
+
+仅 ARM/Thumb16 的无模式切换 CPSIE A/I/F 生成为 PSTATE 清位，并在下一条
+指令前调用既有 pending-interrupt 边界；Thumb 下一 PC 使用两字节宽度。
+没有放宽模式切换、用户权限或 IT 限制。新增 `tests/a32/cps_enable.*`，包含
+32 组热 ARM/Thumb 掩码组合、NZCVQ/GE/GPR，以及两种 ISA 下 IRQ 必须观察
+marker 1、随后才写 marker 2 的独立 QEMU 对照。IRQ 保存的 T、A/F、NZCVQ/GE
+也必须一致。主版、fallback、控制核心均通过；候选组件 steps 57,812→29,166。
+
+完整 30 组 page、fallback 八组、系统 48/MMU 58/GIC 12 行，以及 seed 5542
+的 40×100×32 随机程序均通过。使用 Never 配对主副本、每轮预热 362/计量
+180 帧，A/B/B/A 的结果如下；计量时未并行运行构建、测试或 profiler。
+
+| 轮次 | 核心 | FPS | Renderer CPU 秒/帧 | 预热 host 秒 |
+| --- | --- | ---: | ---: | ---: |
+| A1 | CPSID 控制 | 7.737 | 0.173021 | 55.994 |
+| B1 | CPSIE 候选 | 7.272 | 0.179261 | 65.664 |
+| B2 | CPSIE 候选 | 6.898 | 0.185415 | 63.593 |
+| A2 | CPSID 控制 | 7.605 | 0.172070 | 58.731 |
+
+四轮开始/结束仍为同一攻击阶段、HP 360/敌人 115、结束盾 2，无教学暂停；
+倍率 1、无锁屏事件。宿主负载上升，但两对 FPS 和 CPU 秒/帧均不支持候选。
+不把组件单步减少等同于游戏改善。撤回两份运行时文件，默认保留 CPSID；
+保留独立测试和 Makefile 入口。本地证据为 `cpsie-hot-*`、`cpsie-*.log`、
+`cpsie-unproven.patch`，未将游戏私有数据或核心二进制纳入 Git。60 FPS 未达成。
+
 ## 原生 Never 配对副本与长预热基线（2026-11-15）
 
 从关闭的 Guardian 主副本克隆一次性工作副本，经 Home → Settings → General
