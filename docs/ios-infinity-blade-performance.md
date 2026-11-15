@@ -1,5 +1,29 @@
 # Infinity Blade 安装与帧率验证
 
+## 完整音频战斗的剩余热点（2026-11-15）
+
+从新的 `amc-battle-master-profile` 克隆同一配对状态，保留盾牌手指，不在计量期
+发送主机手势；预热 12 个完整帧后计量 60 帧。控制轮耗时 21,053.3 ms，
+2.850 FPS；该窗口的游戏 IOSurface 回读累计 1,332.7 ms，JIT 编译增量
+423.8 ms。宿主仍有较重并发负载（1 分钟 load 约 26.6），不能与前一次不同长度
+窗口的 4.490 FPS 直接比较。后续候选统一使用本轮固定工作量并交替复跑。
+
+计量结束后独立采样 CPU Worker 八秒：`run_machine_core` 包含约 86.8% 样本，
+ARM `a64_run_slice` 包含约 73.8%，解释器包含约 13.1%；这些包含时间有嵌套，
+不能相加。`pages::run` 自身约 5.6%，CLCD `render` 包含约 5.0%，
+`surface_words` 自身约 2.0%，`performance.now` 自身约 3.5%。GPU 回读延迟包含
+线程调度，不等同于 GPU 运算；现阶段优先减少 CPU 执行与调度/访存成本。
+
+另一份关闭副本中启用指令计数，热点仍包含音频 SIMD 的精确回退、IT 条件块，
+也包含大量 ARM/Thumb LDREX/STREX（含双字）及系统库同步路径。三个实际用户
+代码页与机主 dyld cache 的完整 64 字节匹配，得到一致 slide `0x1f1f000`：
+`0x3b135000/0x3b136000` 属于 libsystem_c，`0x33c31000` 属于 IOKit。
+没有按地址猜测库名。独立六秒 MMIO 中 PMGR 时基 high/low 占约 70%；
+原 AMC 初始化忙等已经消失，MP3 继续交付、错误数 0。
+
+采样、计数窗口均与 FPS 分开，临时包装已移除，浏览器关闭。原始证据位于
+本地忽略目录 `build/ios/infinity-perf-next/`；本步未改变运行时，也没有新增 `.img`。
+
 ## 冷启动 MP3 重启验收与新战斗基线（2026-11-15）
 
 重新构建正式 CPU Worker/模块后，从持久 NAND 冷启动，通过实际 Install IPA →
