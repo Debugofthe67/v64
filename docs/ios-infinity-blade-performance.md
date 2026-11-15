@@ -2,6 +2,15 @@
 
 ## 反向复测的空间保护与旧 UI 镜像清理（2026-11-15）
 
+清理后重跑仍被拦下：预热后仅余 1,743,560,704 bytes，未开始计量。
+`ap-counter-safe-b3` 也不是 FPS 结果。只读检查宿主 swap 已用约 21 GiB。
+再次确认无句柄/普通单链接/11 月 5 日时间，清理 `s5-arm/flash.img`、
+`ui-latest/flash.img`、`ui-native-nvram-probe/flash.img`，均为旧 ARM/EAGL、
+UI/传感器或 NVRAM 探针。其分配块合计 4,935,892,992 bytes（约 4.60 GiB）；
+审计为 `obsolete-graphics-flash-cleanup.json`。原输入/源码/日志仍保留，
+但旧探针及其 RAM 状态须重建匹配 NAND 后才能恢复。全部当前主副本保留。
+清理后可用约 6.6 GiB；不将两次中止数据混入复测结果。
+
 AP counter 的第一批 A/B/B/A 完成，但反向批次在预热结束后报告仅余
 2,626,793,472 bytes，低于 3 GiB 门槛，计量前自动失败并关闭浏览器。
 该 `ap-counter-hot-b3` 没有有效 FPS，不纳入对照，不能继续使用它推进后的
