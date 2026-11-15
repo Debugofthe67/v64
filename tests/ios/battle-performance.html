@@ -118,6 +118,10 @@ try {
         input: input_mode === "checkpoint" ? "preserve checkpoint input; no host gesture during warmup or measurement" :
             input_mode === "hold" ? "release checkpoint finger while running for 2000 ms; hold shield at (45,480) through warmup and measurement" :
             "release checkpoint finger while running for 2000 ms; shield at (45/46,480), move every 2000 ms, release 100 ms every 16 s", warmup_frames: frames(before) - frames(initial),
+        warmup: { requested_frames: warmup, completed_frames: frames(before) - frames(initial),
+            elapsed_host_ms: before.host_time - initial.host_time,
+            elapsed_clock_ms: before.clock.now_ms - initial.clock.now_ms,
+            includes_start_screenshot: true, initial_page_tier: initial.page_tier },
         frame_limit, sample_ms, measurement: frame_limit ? "fixed completed-frame workload" : "fixed duration",
         screen_states,
         duration_ms: ms, game_frames: count, game_fps: count * 1000 / ms,
