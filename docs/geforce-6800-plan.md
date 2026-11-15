@@ -2249,3 +2249,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 附件前向比较热点：原版06 Batch8实际24索引绘制的40秒Node诊断中，精确字节比较占11.921秒self。前向扫描每组8DWORD，再细定位首差异字节；尾部及新鲜客体读取不变。独立oracle、4096随机及32/64边界、完整真实GPU/别名/快照与Closure通过。交错CPU微测unchanged49.219→43.650ms、last-byte50.594→36.458ms，middle34.102→36.127ms有回退，完整记录不宣称整体或原生FPS收益。见 `g6-forward-attachment-byte-scan.json`；06完整结果与最终独立性能门禁继续。
 
 - G6 附件读取复制：只对 packed/非swizzle/对齐线性VRAM提供同步checked视图，每次仍校验完整权限/范围并精确比较新鲜字节。相同图像保留旧独立副本，变化的VRAM先复制再缓存；默认读取与其他布局仍复制，CPU后写不能污染比较基线。权限/边界/CPU修改回归、完整真实GPU混合/别名/深度查询/快照、state/render/texture/DMA及Closure通过。同进程交错微测32次1280×1024绑定的读取复制167772160→0bytes，CPU中位62.547→42.444ms；非原生FPS。见 `g6-checked-attachment-views.json`，从配套Batch8状态继续原版06。
+
+- G4 A16光照查找别名修正：原版93.71的05 PS帧用纹理11/格式14/remapA9EE/TEX h2.x读取标量；先前据相关RSX把B/R补1的推断不适用于此原生消费者。现标量在所有storage lane保留原16位值，常数仍由显式crossbar ZERO/ONE控制。旧源码新回归先红，0/1/32768/65535、padding/DMA/常数及真实GPU双线性与完整回归、Closure均绿。同一健康RAM的原版PS帧全图MAD16.8453→0.43593、max234→34；新参照BMP与旧参照SHA完全一致。见 `g4-native-a16-scalar-aliases.json`；仍保留残差，继续GT1及其余固定帧，未宣布整套图像门禁通过。

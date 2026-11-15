@@ -32,5 +32,11 @@
       "bytes": 3020,
       "sha256": "4e71c7bd7e46947fd2fca3badcb191779db51a5ab1a42b3f9b9f963ce8c05b81"
     }
+  },
+  "a16Correction": {
+    "date": "2026-11-15",
+    "supersedes": "Historical A16 B/R constant-one interpretation and the corresponding synthetic expectation. A8L8/A16L16 evidence remains unchanged.",
+    "behavior": "Native original93.71 scalar lookup needs all A16 storage lane aliases; explicit crossbarZERO/ONE still apply.",
+    "fixture": "g4-native-a16-scalar-aliases.json"
   }
 }

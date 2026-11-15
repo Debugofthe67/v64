@@ -32,12 +32,15 @@ const scalar16={methods:new Map([[0x184,0x10],[0x1A00,0x9000],[0x1A04,0x13429],[
 new Uint16Array(vram.buffer,0x9000,5).set([0,1,0xDEAD,32768,65535]);
 const a16=texture.describe(scalar16,0);assert.equal(a16.bpp,2);assert.equal(a16.d3d,36);assert.equal(a16.upload_bpp,8);
 assert.deepEqual([...new Uint16Array(texture.read(a16).buffer)],
-    [65535,0,65535,65535,65535,1,65535,65535,65535,32768,65535,65535,65535,65535,65535,65535],"native A16 crossbar retains every UNORM16 bit, constant lanes and row padding");
+    [0,0,0,65535,1,1,1,65535,32768,32768,32768,65535,65535,65535,65535,65535],"native A16 lookup exposes its scalar through RGB aliases, retaining every UNORM16 bit and row padding");
+scalar16.methods.set(0x1A10,0x85EE);
+assert.deepEqual([...new Uint16Array(texture.read(texture.describe(scalar16,0)).buffer)],
+    [65535,0,0,65535,65535,0,1,65535,65535,0,32768,65535,65535,0,65535,65535],"explicit ZERO/ONE selectors remain independent of scalar aliases");
 scalar16.methods.set(0x1A10,0xAAAA);
 assert.deepEqual([...new Uint16Array(texture.read(texture.describe(scalar16,0)).buffer)],
     [0,0,0,0,1,1,1,1,32768,32768,32768,32768,65535,65535,65535,65535],"A16 scalar can feed all four crossbar outputs");
 assert.throws(()=>texture.read({...a16,dma:{...a16.dma,limit:0x9008}}),/limit/,"last A16 row remains DMA checked");
-console.log("PASS: native A16 UNORM16 scalar, G storage component, crossbar replication, padding and DMA bounds");
+console.log("PASS: native A16 UNORM16 scalar aliases, explicit crossbar constants, padding and DMA bounds");
 const pair16={methods:new Map(scalar16.methods)};
 for(const [at,value] of [[0x1A04,0x13529],[0x1A10,0x694E],[0x1840,12]])pair16.methods.set(at,value);
 new Uint16Array(vram.buffer,0x9000,10).set([1,65535,32768,2,0xDEAD,0xBEEF,65534,0,3,16384]);

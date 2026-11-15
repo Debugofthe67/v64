@@ -270,12 +270,13 @@ export class NV40Texture
             {
                 const shift=CROSSBAR_SHIFT[channel],select=texture.crossbar>>>(shift+8)&3,component=3-(texture.crossbar>>>shift&3);
                 if(select===3) throw new RangeError("NV40 invalid texture component selection");
-                // Mesa nv30_format routes the A16 scalar through storage
-                // component 1 (G), before the ordinary A/R/G/B crossbar.
-                // A16 exposes its scalar in G/A and one in B/R. A8L8,
+                // Native 93.71 reads its A16 lighting lookup through R;
+                // Mesa's G route is another alias, not the only scalar lane.
+                // ZERO/ONE still come from the explicit crossbar selectors.
+                // A8L8,
                 // A16L16 and RG16F repeat low X in B/R and high Y in G/A.
                 // Expand UNORM16 RGBA without quantizing either lane to 8 bits.
-                const value=texture.code===20?(component&1?source.getUint16(pixel*2,true):65535):
+                const value=texture.code===20?source.getUint16(pixel*2,true):
                     texture.code===21 || texture.code===31?source.getUint16(pixel*4+(component&1?2:0),true):
                         source.getUint16(pixel*8+component*2,true);
                 output.setUint16(pixel*8+channel*2,select===0?0:select===1?(floating?0x3C00:65535):value,true);
