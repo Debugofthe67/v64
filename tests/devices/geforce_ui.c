@@ -193,7 +193,16 @@ void __attribute__((stdcall)) entry(void)
         ancestor=GetParent(ancestor);
     }
     GetClassNameA(window,type,sizeof(type));describe(window);
-    if(!lstrcmpiA(arguments[0],"/point") &&
+    if(!lstrcmpiA(arguments[0],"/close") && !(GetWindowLongA(window,GWL_STYLE)&WS_CHILD))
+    {
+        // Address the observed application window rather than whichever
+        // console or desktop happened to retain keyboard focus after restore.
+        // WM_CLOSE is the normal window-manager request; application prompts
+        // and cancellation still run through the original handler.
+        SetForegroundWindow(window);
+        result=!SendMessageTimeoutA(window,WM_CLOSE,0,0,SMTO_ABORTIFHUNG,2000,&response);
+    }
+    else if(!lstrcmpiA(arguments[0],"/point") &&
         (!lstrcmpiA(type,"SysTreeView32") || !lstrcmpiA(type,"Button")))
     {
         DWORD coords[2]={0,0};const char *p=arguments[2];

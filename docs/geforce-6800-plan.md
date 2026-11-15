@@ -2337,3 +2337,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 最新格式下06全新冷启动四张原版IQ已保存并逐图复核：1280×1024、None/Optimal、VS/PS3_0，HDR1/2与GT1/2均有完整BMP、原版成功提示及静止60秒，累计8027draw、GPU0故障。HDR1绿色偏色消失，龙体轮廓/姿态对应；scene MAD为6.624697/3.326139/0.800554/1.274144，水面/反射/高光及边缘残差完整保留；冷跑排除了旧GPU状态恢复污染。接受内容一致性而不宣称位精确，见 `g4-06-current-cold-four-fixed-frames.json`。已返回并核对默认六项主界面以保存同源采样配套状态；七feature截图、该冷客体最终正常关机和G6报告继续。
 
 - G6 配套overlay无损归档及直接恢复完成：宿主保护在06四图完成后实际安全暂停；新增逻辑.bin→.bin.zst（含显式.zst）加载，按原始解压字节及manifest精确校验，RAM/OS/game都验证后才应用扇区/启动客体，不生成raw副本。边界、损坏、错扇区、双磁盘归档及raw优先测试通过；真实XP从RAM+OS双zstd恢复到默认六项主界面且GPU0故障。117份overlay的18,910,046,616原字节逐份解压SHA核对后保留为8,573,065,796归档字节，释放10,336,980,820字节；原盘/数据未删，见 `g6-compressed-overlay-restore.json`。
+
+- G6 原生窗口关闭工具补齐：恢复后键盘退出未能证明主窗口关闭；新增只接受真实可见/启用/本benchmark进程顶层窗口的 `/close`，走正常WM_CLOSE并保留原应用确认处理，子窗口和禁用父链保护保持。严格C构建通过；XP06实际返回ACTION_RESULT0，原版launcher记录EXIT_CODE0，未强制终止进程；Run就绪等待设15秒，见 `g6-native-benchmark-window-close.json`。
