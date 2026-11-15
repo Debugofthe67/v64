@@ -2,6 +2,7 @@
 // Export the current hdb RAM overlay, extract named FAT32 benchmark artifacts,
 // then remove only this export's chunks after every requested file was found.
 // Wait for XP to flush saved files before running; a missing file is a failure.
+// D3D_ARTIFACT_DIRECT=1 reads just the requested files in a main-thread guest.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -12,6 +13,53 @@ const output = path.resolve(directory), prefix = "artifact-" + crypto.randomUUID
 const control = JSON.parse(fs.readFileSync(path.join(output, "control.json")));
 const ws = new WebSocket(control.webSocketDebuggerUrl);
 await new Promise((resolve, reject) => {ws.onopen=resolve;ws.onerror=reject;});
+if(process.env.D3D_ARTIFACT_DIRECT === "1") {
+    try {
+        const evidence = await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error("Direct artifact read timed out")), 120000);
+            ws.onmessage = ({data}) => {
+                const message = JSON.parse(data);if(message.id !== 1) return;
+                clearTimeout(timeout);
+                if(message.error || message.result.exceptionDetails) reject(new Error(JSON.stringify(message)));
+                else resolve(message.result.result.value);
+            };
+            const expression = `(async()=>{
+                const {read_fat32_file,list_fat32_directory}=await import('/tests/lib/fat32_reader.mjs');
+                const disk=vm.disk_buffer('hdb'),files=[],names=new Set(),evidence=[];
+                for(const request of ${JSON.stringify(requested)}) {
+                    if(request.endsWith('/*')) {
+                        const directory=request.slice(0,-2),entries=await list_fat32_directory(disk,directory);
+                        if(!entries?.length)throw Error('Missing artifact directory: '+directory);
+                        for(const entry of entries)if(!entry.directory)files.push(directory+'/'+entry.name);
+                    } else files.push(request);
+                    if(files.length>256)throw Error('Artifact file count exceeds bound');
+                }
+                for(const file of files) {
+                    const bytes=await read_fat32_file(disk,file);
+                    if(!bytes)throw Error('Missing artifact: '+file);
+                    const name=file.replaceAll(/[^a-zA-Z0-9._-]/g,'_');
+                    if(name==='.'||name==='..'||names.has(name))throw Error('Ambiguous artifact name: '+file);
+                    names.add(name);
+                    const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+                    const sha256=Array.from(digest,x=>x.toString(16).padStart(2,'0')).join('');
+                    const response=await fetch('/__test_file?name='+encodeURIComponent(name),{method:'POST',body:bytes});
+                    if(!response.ok)throw Error('Artifact upload failed');
+                    evidence.push({file,name,bytes:bytes.length,sha256});
+                }
+                return evidence;
+            })()`;
+            ws.send(JSON.stringify({id:1,method:"Runtime.evaluate",params:{expression,awaitPromise:true,returnByValue:true}}));
+        });
+        for(const entry of evidence) {
+            if(path.basename(entry.name) !== entry.name) throw new Error("Invalid artifact filename");
+            const bytes = fs.readFileSync(path.join(output, entry.name));
+            if(bytes.length !== entry.bytes || crypto.createHash("sha256").update(bytes).digest("hex") !== entry.sha256)
+                throw new Error("Artifact size or hash mismatch: " + entry.name);
+        }
+        fs.writeFileSync(path.join(output,"extracted-artifacts.json"),JSON.stringify(evidence,null,2)+"\n");
+        console.log(JSON.stringify(evidence,null,2));
+    } finally {ws.close();}
+} else {
 let manifest;
 try {
     manifest = await new Promise((resolve, reject) => {
@@ -76,3 +124,4 @@ fs.writeFileSync(path.join(output,"extracted-artifacts.json"),JSON.stringify(evi
 if(evidence.some(entry=>entry.missing)) throw new Error("Missing artifacts; export chunks retained for inspection");
 for(const chunk of manifest.chunks)fs.unlinkSync(path.join(output,chunk.name));
 console.log(JSON.stringify(evidence,null,2));
+}

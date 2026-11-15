@@ -2285,3 +2285,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 原版03九张代理参照收齐：GT1=1038、GT2/3/4=1000，fill1/fill2/VS/Ragtroll采用原版默认可见帧60，PS默认660；1024×768/None/Optimal且特性开关默认关闭。逐项原版保存提示和60秒GPU静止记录齐全，九张BMP数据与SHA验证通过。导出期间过早关闭客体造成finally恢复报错，但1024个1MiB连续块已完整写出；从完整1GiB块组恢复全部九图、校验后删除临时块，未重建或改动图像。见 `g4-03-proxy-nine-fixed-frames.json`；原生四项frame60补取及图像审查继续。
 
 - G4 原生03可见特性帧补齐：从正常关机磁盘对冷启动，原版fill1/fill2/VS/Ragtroll各保存frame60、原版成功提示和GPU静止60秒后直接导出，替代先前淡入frame1；PS实际默认660沿用已保存图。四图与九张参照均已验证；GT1仍明显缺少白色尾迹，不能把整套图像标为通过。见 `g4-03-native-visible-feature-frames.json`；继续定位GT1和05 GT3差异。
+
+- G6 参照小文件直接读取：artifact工具增加显式D3D_ARTIFACT_DIRECT=1，对main-thread客体通过公开disk_buffer只读解析有界FAT32并仅传输请求文件，浏览器/宿主逐项SHA一致；保留原stream模式。实际05原生UI输出7907bytes成功导出，无临时盘块，缺失文件明确失败；语法检查通过。见 `g6-bounded-proxy-artifact-reads.json`。当前05以公开set_cdrom_files加载工具光盘、UI输出写入游戏盘RAM overlay，绕过软盘可用性问题但不宣称已定位其根因。
