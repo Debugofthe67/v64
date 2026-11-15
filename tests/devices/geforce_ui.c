@@ -193,14 +193,15 @@ void __attribute__((stdcall)) entry(void)
         ancestor=GetParent(ancestor);
     }
     GetClassNameA(window,type,sizeof(type));describe(window);
-    if(!lstrcmpiA(arguments[0],"/point") && !lstrcmpiA(type,"SysTreeView32"))
+    if(!lstrcmpiA(arguments[0],"/point") &&
+        (!lstrcmpiA(type,"SysTreeView32") || !lstrcmpiA(type,"Button")))
     {
         DWORD coords[2]={0,0};const char *p=arguments[2];
         for(unsigned int axis=0;axis<2;axis++)
         {
             unsigned int digits=0;
             while(*p>='0' && *p<='9')
-            {if(digits++>=4){text("ERROR bounded tree point\r\n");goto done;}coords[axis]=coords[axis]*10+*p++-'0';}
+            {if(digits++>=4){text("ERROR bounded control point\r\n");goto done;}coords[axis]=coords[axis]*10+*p++-'0';}
             if(!digits || (axis==0?*p++!=',':*p!=0)){text("ERROR expected tree point x,y\r\n");goto done;}
         }
         RECT client;POINT point={(LONG)coords[0],(LONG)coords[1]};
@@ -208,12 +209,13 @@ void __attribute__((stdcall)) entry(void)
         const int width=GetSystemMetrics(SM_CXSCREEN),height=GetSystemMetrics(SM_CYSCREEN);
         if(coords[0]>=(DWORD)client.right || coords[1]>=(DWORD)client.bottom ||
             width<2 || height<2 || point.x<0 || point.y<0 || point.x>=width || point.y>=height)
-        {text("ERROR tree point outside visible client\r\n");goto done;}
+        {text("ERROR point outside visible control client\r\n");goto done;}
         HWND root=window;
         while(GetWindowLongA(root,GWL_STYLE)&WS_CHILD){HWND parent=GetParent(root);if(!parent)break;root=parent;}
         SetForegroundWindow(root);
-        // Stock absolute mouse input keeps MFC's GetMessagePos hit testing
-        // and the tree's checkbox notifications on their original UI path.
+        // Stock absolute mouse input keeps MFC's GetMessagePos hit testing,
+        // tree notifications and Win9x skinned buttons on their UI path.
+        // /click still rejects foreign-thread BM_CLICK on Win9x BS_OWNERDRAW.
         mouse_event(MOUSEEVENTF_MOVE|MOUSEEVENTF_ABSOLUTE,(DWORD)point.x*65535/(width-1),(DWORD)point.y*65535/(height-1),0,0);
         Sleep(100);mouse_event(MOUSEEVENTF_LEFTDOWN,0,0,0,0);Sleep(50);mouse_event(MOUSEEVENTF_LEFTUP,0,0,0,0);
         result=0;

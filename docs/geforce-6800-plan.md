@@ -2295,3 +2295,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 06 四个原版代理固定帧参考已直接导出并完成 browser/host SHA 校验，默认1280×1024、None AA、Optimal、VS/PS3.0，GT1/GT2/HDR1/HDR2 为2095/1139/1225/1428，零命令/GPU错误。与原生同帧比较后，HDR1/HDR2 的绿色竖纹及光照错误构成实质画面缺陷，不能以功能跑完代替IQ验收；保留原始图及误差，继续定位。见 `g4-06-four-gt-proxy-references.json`。
 
 - G4 05 GT3 冷启动纯解释器对照完成：原版1630帧与JIT原图逐字节相同（SHA cc4392ae…bb、完整图MAD0），排除JIT独有问题。新增独立原生D3D9饱和运算探针；四条合法shader的API/回读全部成功，其中常量MOV_sat的两项像素失败，DP3合并饱和和MUL_sat两项正确，保留原生机器码及失败配套检查点。此步骤是缩小根因范围，不是修复或G4验收；未强行改原生SAT位。见 `g4-05-native-interpreter-saturation-control.json`。
+
+- G6 Win9x 自绘按钮输入工具：复用既有 `/point` 的有界 client 坐标和 stock `mouse_event` 路径支持 Button，仍拒绝跨线程 BM_CLICK。原生98 Tip、IQ和Run均已通过鼠标输入，GT1完整原图及原版保存成功控件已导出；其场景误差与修复后XP相同。此项只修工具输入，IQ后98无头桌面黑屏另记，不将其当显示验收通过。见 `g6-win9x-native-button-point-input.json`。
