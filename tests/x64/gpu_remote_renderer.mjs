@@ -35,6 +35,25 @@ function frame(payload)
     return Buffer.concat([header, payload]);
 }
 
+// XOR complete aligned words with the rotated wire mask. The prefix/tail
+// retain byte semantics, including unaligned Buffer views and tiny messages.
+export function unmask_frame(payload, mask)
+{
+    let at=0;
+    if(payload.length<16)
+    {
+        for(;at<payload.length;at++)payload[at]^=mask[at&3];
+        return;
+    }
+    while((payload.byteOffset+at)&3) {payload[at]^=mask[at&3];at++;}
+    const rotated=Uint8Array.of(mask[at&3],mask[(at+1)&3],mask[(at+2)&3],mask[(at+3)&3]);
+    const key=new Uint32Array(rotated.buffer)[0];
+    const words=new Uint32Array(payload.buffer,payload.byteOffset+at,Math.floor((payload.length-at)/4));
+    for(let i=0;i<words.length;i++)words[i]^=key;
+    at+=words.length*4;
+    for(;at<payload.length;at++)payload[at]^=mask[at&3];
+}
+
 /**
  * The messages in what the client sent so far (masked frames, maybe
  * fragmented); keeps what is incomplete
@@ -69,7 +88,7 @@ export function frame_reader(on_message)
             if(masked) at += 4;
             if(end < at + length) return;
             const payload = Buffer.from(pending.subarray(at, at + length));
-            if(mask) for(let i = 0; i < payload.length; i++) payload[i] ^= mask[i & 3];
+            if(mask) unmask_frame(payload,mask);
             start=at+length;
             if(start===end)start=end=0;
             if(opcode === 8) { on_message(null); return; }

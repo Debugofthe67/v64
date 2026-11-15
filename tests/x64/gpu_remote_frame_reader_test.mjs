@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import {frame_reader} from "./gpu_remote_renderer.mjs";
+import {frame_reader,unmask_frame} from "./gpu_remote_renderer.mjs";
+
+for(let offset=0;offset<8;offset++)for(let length=0;length<80;length++)
+    for(const mask of [[0,0,0,0],[255,128,1,254],[0x19,0xA3,0x57,0xD1]])
+    {
+        const storage=Uint8Array.from({length:offset+length+8},(_,i)=>(i*73+length)&255);
+        const expected=storage.slice();
+        for(let i=0;i<length;i++)expected[offset+i]^=mask[i&3];
+        unmask_frame(storage.subarray(offset,offset+length),mask);
+        assert.deepEqual(storage,expected,"wire mask phase, unaligned prefix, short tail and surrounding bytes");
+    }
 
 function wire(bytes,{fin=true,opcode=2,masked=true}={})
 {

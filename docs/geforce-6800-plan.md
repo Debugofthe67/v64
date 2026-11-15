@@ -2267,3 +2267,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 VP表读取热点：decoder增加可选有界指令provider，沿原可达控制流每次新读当前指令，native绘制不再先复制整个544槽VP表；公开全表API保留。跨越不可达存储、入口544、缺END最多544次和短指令拒绝回归先红后绿；104个原版05/06程序与旧全表/原decode数据完全一致，完整GPU/graph/着色器WGSL/Closure通过。Batch8六指令读取2176→24DWORD，10000次七轮交错CPU中位310.458→33.313ms。见 `g6-reachable-vertex-program-fetch.json`，不据此验收原生FPS或看门狗。
 
 - G6 精确着色器键：用VP入口/可达PC/原始四DWORD及FP normalized原始词替代重复序列化扩展decoder对象，所有lowering选项保留，不以hash或DMA地址替代源码。104原版程序的键等价关系双向一致；VP/FP改码失效、恢复复用、inline常量、LRU/字节预算及完整真实GPU/Closure通过。独立10000次键序列化七轮CPU中位251.953→16.206ms，示例4878→468字符，非绘制/FPS测量；见 `g6-exact-raw-shader-keys.json`。
+
+- G6 测试回读掩码热点：40秒native06采样的WebSocket接收回调自身5.433秒；掩码改为按实际mask字节组成的对齐DWORD异或，非对齐前缀/尾部及小消息仍逐字节。1920个独立oracle边界组合、所有包头拆分/fragment/控制/4MiB+7/readback归属及完整真实GPU回归通过。相同parser、16个4MiB+7分块消息七轮CPU中位72.198→26.366ms，数据全同；见 `g6-word-gpu-test-unmask.json`，仅测试传输且不作FPS/看门狗修复声明。
