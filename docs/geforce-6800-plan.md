@@ -2263,3 +2263,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 绘制诊断快照热点：新的40秒Batch8采样中program自身4.768秒，发现shaders每次都Array.from/filter完整method Map。正常绘制改用不收集state的program，公开program诊断默认仍保留完整状态，逐次VP/FP/DMA/inline常量校验不变。迭代器陷阱旧实现先红，新实现及原有变更失效/LRU、完整真实GPU/Closure通过；4352附加method、3000次的七轮交错CPU中位372.656→123.075ms，非FPS。见 `g6-draw-without-diagnostic-state.json`。
 
 - G6 顶点常量热点：翻译结果记录程序可读的native常量连续范围；每draw仍新读当前值，相对寻址保守读取全部544，生成的viewport/texture常量顺序保持。真实Batch8六指令VP的native常量载荷8704→64bytes；10000次新鲜读取的七轮交错CPU中位282.274→4.952ms，位值与全量快照选择结果一致。空/稀疏/相邻/543/相对范围、真实GPU同代码c543两次修改191→64像素及完整回归/Closure通过，见 `g6-referenced-vertex-constant-ranges.json`，不作原生FPS或看门狗修复声明。
+
+- G6 VP表读取热点：decoder增加可选有界指令provider，沿原可达控制流每次新读当前指令，native绘制不再先复制整个544槽VP表；公开全表API保留。跨越不可达存储、入口544、缺END最多544次和短指令拒绝回归先红后绿；104个原版05/06程序与旧全表/原decode数据完全一致，完整GPU/graph/着色器WGSL/Closure通过。Batch8六指令读取2176→24DWORD，10000次七轮交错CPU中位310.458→33.313ms。见 `g6-reachable-vertex-program-fetch.json`，不据此验收原生FPS或看门狗。

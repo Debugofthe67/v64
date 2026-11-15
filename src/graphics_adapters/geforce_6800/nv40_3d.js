@@ -213,7 +213,7 @@ export class NV40_3D
     {
         const result={channel:o.channel,instance:o.instance,vertex:null,fragment:null,
             state:include_state?Array.from(o.methods).filter(([at])=>at<0x2000):[],errors:[]};
-        try { result.vertex=decode_vertex_program(this.vertex_program(o,0),0,get(o,0x1EA0)); }
+        try { result.vertex=decode_vertex_program([],0,get(o,0x1EA0),pc=>this.vertex_program(o,pc,1)); }
         catch(error) { result.errors.push(String(error)); }
         try
         {

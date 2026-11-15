@@ -38,6 +38,16 @@ assert.throws(()=>decode_vertex_program(Uint32Array.of(0,0,0)),/size/);
 const jump=Uint32Array.of(7<<10,9<<27,0,2<<29);
 const jumped=decode_vertex_program(Uint32Array.from([...jump,0,0,0,0,...mov]));
 assert.deepEqual(jumped.instructions.map(i=>i.pc),[0,2],"decoder follows branches over unreachable storage");
+const sparseWords=Uint32Array.from([...jump,0,0,0,0,...mov]),fetched=[];
+assert.deepEqual(decode_vertex_program([],0,0,pc=>{
+    fetched.push(pc);return sparseWords.slice(pc*4,pc*4+4);
+}),jumped,"bounded instruction fetch matches the full-table decoder exactly");
+assert.deepEqual(fetched,[0,2],"unreachable instruction storage is not fetched");
+assert.throws(()=>decode_vertex_program([],0,544,()=>{throw Error("out-of-range fetch");}),/branch outside program/);
+let fetchedCount=0;
+assert.throws(()=>decode_vertex_program([],0,0,()=>{fetchedCount++;return Uint32Array.of(0,0,0,0);}),/no end/);
+assert.equal(fetchedCount,544,"a missing END cannot read past the physical VP table");
+assert.throws(()=>decode_vertex_program([],0,0,()=>Uint32Array.of(1,2)),/four DWORDs/);
 const call=Uint32Array.of(7<<10,11<<27,0,3<<29),ret=Uint32Array.of(7<<10,12<<27,0,0);
 const called=decode_vertex_program(Uint32Array.from([...call,...mov,0,0,0,0,...ret]));
 assert.deepEqual(called.instructions.map(i=>i.pc),[0,1,3],"call targets after the main END remain reachable");

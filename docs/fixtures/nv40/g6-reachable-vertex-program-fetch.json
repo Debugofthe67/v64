@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-15",
+  "status": "VP decoder fetches only reachable native instructions; physical table bounds and control-flow semantics remain exact.",
+  "change": "An optional bounded instruction provider keeps the existing decoder traversal. Native program() reads each visited instruction fresh from its current object; the full-table vertex_program() API remains unchanged.",
+  "validation": {
+    "red": "Provider branch-over-unreachable regression fails with the old decoder.",
+    "green": [
+      "Exact branch-over-unreachable result and fetch order",
+      "Entry544 rejects before fetch",
+      "Missing END stops after544 instructions",
+      "Malformed fetched instruction refuses",
+      "104 original05/06 decoded VPs match provider/full-table/original data exactly",
+      "Full graph/VP/FP/shader WGSL cases, real GPU pixels/branch/relative addressing/query/alias/snapshot and Closure pass"
+    ]
+  },
+  "cpuMicrobenchmark": {
+    "iterations": 10000,
+    "rounds": 7,
+    "unit": "Node CPU milliseconds",
+    "nativeInstructions": 6,
+    "readDwordsBefore": 2176,
+    "readDwordsAfter": 24,
+    "samples": {
+      "full": [
+        342.615,
+        308.56,
+        313.998,
+        310.978,
+        303.402,
+        305.312,
+        310.458
+      ],
+      "reachable": [
+        38.125,
+        29.789,
+        42.331,
+        35.763,
+        31.786,
+        33.313,
+        32.463
+      ]
+    },
+    "medians": {
+      "full": 310.458,
+      "reachable": 33.313
+    }
+  },
+  "limits": [
+    "No decoded-program cache, DMA-check bypass or guest shader change.",
+    "No native FPS or watchdog-fix claim."
+  ]
+}

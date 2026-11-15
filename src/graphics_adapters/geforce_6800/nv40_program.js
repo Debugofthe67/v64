@@ -34,7 +34,7 @@ export function decode_vertex_instruction(words, pc = 0)
         target: (c & 63) << 3 | d >>> 29, texture:c>>>8&3, saturate: !!(a & 0x04000000), end: !!(d & 1)};
 }
 
-export function decode_vertex_program(words, first = 0, entry = first)
+export function decode_vertex_program(words, first = 0, entry = first, read = null)
 {
     if(words.length % 4 || words.length > 544*4) throw new RangeError("NV40 vertex program size");
     const decoded=new Map(),pending=[entry];let ended=false,last=0;
@@ -42,8 +42,9 @@ export function decode_vertex_program(words, first = 0, entry = first)
     {
         const pc=pending.pop();if(decoded.has(pc)) continue;
         const at=(pc-first)*4;
-        if(at<0 || at+4>words.length) throw new RangeError("NV40 vertex program has no end or branch outside program");
-        const i=decode_vertex_instruction(words.slice(at,at+4),pc);decoded.set(pc,i);last=Math.max(last,at+4);
+        if(at<0 || (read ? !Number.isInteger(pc) || pc>=544 : at+4>words.length))
+            throw new RangeError("NV40 vertex program has no end or branch outside program");
+        const i=decode_vertex_instruction(read?read(pc):words.slice(at,at+4),pc);decoded.set(pc,i);last=Math.max(last,at+4);
         if(i.end){ended=true;continue;}
         const flow=i.scalar.name,condition=i.predicate.condition;
         if(flow==="RET" && condition===7)ended=true;
