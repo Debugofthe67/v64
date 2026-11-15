@@ -1,6 +1,22 @@
 # Infinity Blade 安装与帧率验证
 
+## 清理被替代的旧诊断 RAM（2026-11-15）
+
+新的完整音频战斗源已通过恢复验收，删除旧 `battle-master-profile`（空闲提示）、
+`progress-master-profile`（菜单）和 `sleep-debug-profile`（休眠）中的诊断 RAM。
+逐一在原 origin 的关闭 profile 中核对文件名及精确长度，通过 OPFS 删除，页面
+不启动虚机。三份合计逻辑长度 3,320,777,041 bytes；清理后 `df` 可用约 11 GiB。
+所有 NAND、游戏存档、原故障 `active-master-profile`、AAC 检查点及新战斗主副本
+均保留。不把 APFS 共享文件的逻辑长度当作精确回收量；本轮没有新增临时 `.img`。
+盘点及删除记录位于本地 `infinity-perf-next/removed-obsolete-*/state-cleanup.json`。
+
 ## 完整音频战斗的剩余热点（2026-11-15）
+
+后续检查起止 PNG 发现：下述 60 帧窗口跨入 `Swipe to Strike` 教学暂停页，
+因此 **2.850 FPS 不作为动态战斗基线**；其后的八秒 CPU profile 也处于该提示页，
+不能据此精确归因动态战斗。原始文件保留为诊断，改回已确认动态的预热 8/计量
+30 帧协议，并在新的独立副本内按完整游戏帧数限定 CPU profile。另一副本从
+检查点起运行六秒的指令计数未经过该暂停页，仍可用于选择待验证候选。
 
 从新的 `amc-battle-master-profile` 克隆同一配对状态，保留盾牌手指，不在计量期
 发送主机手势；预热 12 个完整帧后计量 60 帧。控制轮耗时 21,053.3 ms，
