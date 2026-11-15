@@ -8,8 +8,12 @@ import {NVDMA} from "../../src/graphics_adapters/geforce_6800/nv_dma.js";
 import {NVTrace} from "../../src/graphics_adapters/geforce_6800/nv_trace.js";
 import {d9wg_commands} from "../../src/graphics_adapters/vmware_svga/svga3d_d9wg.js";
 import {OP,FIELD_LAYOUT,NV_RS} from "../../src/graphics_adapters/vmware_svga/d9wg_constants.js";
-import {expand_primitives,nv40_blend_state,nv40_depth_state,nv40_cull_state} from "../../src/graphics_adapters/geforce_6800/nv40_render.js";
+import {expand_primitives,nv40_blend_state,nv40_depth_state,nv40_cull_state,nv40_color_masks} from "../../src/graphics_adapters/geforce_6800/nv40_render.js";
 const offset=(name,field)=>FIELD_LAYOUT[name].fields.find(item=>item[0]===field)[1];
+const channelMasks={methods:new Map([[0x324,0x01000000],[0x370,0x1110]])};
+assert.deepEqual(nv40_color_masks(channelMasks,[{d3d:22},{d3d:21},{d3d:114},{d3d:24}]),[0,8,0,0],"only real format channels can be written");
+channelMasks.methods.set(0x370,0x2220);
+assert.deepEqual(nv40_color_masks(channelMasks,[{d3d:23},{d3d:21},{d3d:114},null]),[0,1,1,0],"MRT channel routing and inactive slots stay independent");
 const input={bytes:Uint8Array.of(0,1,2,3,4),count:5,stride:1};
 assert.deepEqual([...expand_primitives(input,6).bytes],[0,1,2,2,1,3,2,3,4]);
 assert.deepEqual([...expand_primitives(input,8).bytes],[0,1,2,0,2,3]);
@@ -406,6 +410,46 @@ try
         assert.deepEqual(vram.slice(0x10000,0x10100),maskedColor,"zero color mask preserves all guest color bits");
         assert.equal(engine.backend.stats.readbacks,maskedDownloads,"masked bound color needs no attachment download");
         method(0x324,0x01010101);method(0x17CC,0);
+        // Native 81.98 uses a NOP-only FP for an XRGB alpha-only occlusion
+        // draw. X has no alpha channel: color and read-only depth stay intact.
+        const nopWords=Array.from(new Uint32Array(vram.buffer,0x9000,4));
+        new Uint32Array(vram.buffer,0x9000,4).set([1,0,0,0]);
+        for(const [at,value] of [[0x208,0x144],[0x324,0x01000000],[0xA74,1],[0xA70,0],[0xA6C,8],[0x17C8,1],[0x17CC,1]])method(at,value);
+        const nopColor=vram.slice(0x10000,0x10100),nopDepth=vram.slice(0x24000,0x24100),nopDownloads=engine.backend.stats.readbacks;
+        await depthDraw(.5,[1,0,1,1]);method(0x1800,0x01000810);
+        assert.equal(view.getUint32(0x818,true),64,"NOP-only XRGB alpha mask still rasterizes visible occlusion samples");
+        method(0xA6C,1);await depthDraw(.5,[1,0,1,1]);method(0x1800,0x01000810);
+        assert.equal(view.getUint32(0x818,true),64,"NOP-only XRGB query still applies depth rejection");
+        assert.equal(engine.backend.stats.readbacks,nopDownloads,"unused XRGB alpha and read-only depth cause no downloads");
+        assert.deepEqual(vram.slice(0x10000,0x10100),nopColor);assert.deepEqual(vram.slice(0x24000,0x24100),nopDepth);
+        method(0x208,0x148);
+        assert.throws(()=>engine.backend.draw(colorlessObject,5,[],null,0),/color output/,"a real alpha channel still requires fragment color");
+        method(0x208,0x144);method(0x304,1);
+        assert.throws(()=>engine.backend.draw(colorlessObject,5,[],null,0),/color output/,"alpha test still requires fragment color even on XRGB");
+        new Uint32Array(vram.buffer,0x9000,4).set(nopWords);
+        for(const [at,value] of [[0x208,0x148],[0x324,0x01010101],[0x304,0],[0xA74,0],[0xA70,0],[0xA6C,8],[0x17CC,0]])method(at,value);
+        console.log("PASS: native NOP-only XRGB alpha mask, real occlusion/depth tests and alpha-bearing/test rejection");
+        const savedXrgbColor=vram.slice(0x10000,0x10100),beforeXrgbBatches=engine.backend.stats.batches;
+        method(0x208,0x144);method(0x310,0);
+        const emitXrgb=color=>{
+            new Float32Array(vram.buffer,0x4000,12).set([0,0,.5,1,0,16,.5,1,16,0,.5,1]);
+            new Float32Array(vram.buffer,0x9010,4).set(color);
+            method(0x1808,5);method(0x1814,2<<24);method(0x1808,0);
+        };
+        device.fifo.running=true;
+        try
+        {
+            emitXrgb([1,0,0,.25]);
+            for(const [at,value] of [[0x310,1],[0x314,0x00010304],[0x318,0],[0x320,0x80068006]])method(at,value);
+            emitXrgb([0,1,0,1]);
+        }
+        finally {device.fifo.running=false;}
+        await engine.backend.wait();
+        assert.equal(engine.backend.stats.batches-beforeXrgbBatches,1,"XRGB blending is checked before an intervening readback/upload");
+        assert.deepEqual([...vram.subarray(0x10000,0x10003)],[0,255,0],"XRGB destination alpha stays opaque across GPU draws");
+        vram.set(savedXrgbColor,0x10000);
+        for(const [at,value] of [[0x208,0x148],[0x310,0],[0x314,0x00010001],[0x318,0]])method(at,value);
+        console.log("PASS: XRGB destination alpha remains one across two batched draws");
         method(0x183C,1);method(0x1830,0x405);method(0x1834,0x900);
         await depthDraw(.5,[1,0,0,1]);assert.deepEqual([...vram.subarray(0x10000,0x10004)],[0,255,0,255],"CW front faces cull the CCW window-space triangle");
         method(0x1834,0x901);await depthDraw(.5,[1,0,0,1]);

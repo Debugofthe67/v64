@@ -127,6 +127,21 @@ export function nv40_blend_state(o,active=15)
     return result;
 }
 
+export function nv40_color_masks(o,colors)
+{
+    const mask=get(o,0x324,0x01010101),mrt=get(o,0x370);
+    return Array.from({length:4},(_,index)=>{
+        if(!colors[index]) return 0;
+        const bits=mrt>>>(index*4)&15;
+        const enabled=index?(bits&2?1:0)|(bits&4?2:0)|(bits&8?4:0)|(bits&1?8:0):
+            (mask&0x10000?1:0)|(mask&0x100?2:0)|(mask&1?4:0)|(mask&0x1000000?8:0);
+        // XRGB/RGB565 have no alpha channel; R32F stores only R. Their
+        // padding/absent lanes cannot turn a read-only query into a color write.
+        const channels=colors[index].d3d===114?1:[22,23,24].includes(colors[index].d3d)?7:15;
+        return enabled&channels;
+    });
+}
+
 export function expand_primitives(vertices,mode)
 {
     const n=vertices.count,indices=[];let type=4,divisor=3;
@@ -410,6 +425,7 @@ export class NV40Render
         if(target.d3d===116 && [0,1,2,3].filter(index=>active&1<<index).length>2)
             throw new RangeError("NV40 FP32 MRT exceeds the guaranteed host attachment byte budget");
         const colors=Array.from({length:4},(_,index)=>active&1<<index?this.engine.state.target(o,index):null);
+        const colorMasks=nv40_color_masks(o,colors);
         const viewport=this.engine.state.viewport(o,target);
         const x=get(o,0x8C0),y=get(o,0x8C4),clip=viewport.clip;
         const scissor={left:Math.max(x&65535,clip?clip.left:0),top:Math.max(y&65535,clip?clip.top:0),
@@ -443,7 +459,11 @@ export class NV40Render
         const sprite=mode===1?get(o,0x1EE8):0,pointSize=mode===1?float_value(get(o,0x1EE0,0x3F800000)):1;
         if(mode===1 && (!Number.isFinite(pointSize) || pointSize<0 || sprite!==0 && sprite!==0x101))
             throw new RangeError("NV40 unsupported point size/sprite control");
-        const shaders=this.engine.shaders(o,{viewport,targets:active?(enable&16?4:1):0,depth:!!(control&14),fp32_outputs:!!(control&64),
+        // Alpha test consumes the fragment color even when all target writes
+        // are disabled. Otherwise a fully masked draw needs only depth/query
+        // effects, including an alpha-only mask on an XRGB attachment.
+        const colorRequired=colorMasks.some(mask=>mask!==0)||!!get(o,0x304);
+        const shaders=this.engine.shaders(o,{viewport,targets:colorRequired?(active&&enable&16?4:1):0,depth:!!(control&14),fp32_outputs:!!(control&64),
             samplers,sampler_1d,texture_sizes,vertex_textures,depth_samplers,texture_expand});
         if(sprite && shaders.fragment.samplers.some(([unit])=>unit!==0))
             throw new RangeError("NV40 point sprite only replaces TEX0 coordinates");
@@ -513,14 +533,9 @@ export class NV40Render
         for(const [index,values] of shaders.fragment.texture_constants) this.constants(OP.SET_PIXEL_SHADER_CONSTANT_F,index,values);
         this.render_state(22,cull.state);for(const [state,value] of zsa.states) this.render_state(state,value);
         for(const [state,value] of blend) this.render_state(state,value);
-        const mask=get(o,0x324,0x01010101);
-        const colorMasks=[active?((mask&0x10000?1:0)|(mask&0x100?2:0)|(mask&1?4:0)|(mask&0x1000000?8:0)):0];
         this.render_state(168,colorMasks[0]);
-        const mrtMask=get(o,0x370);
         for(let index=1;index<4;index++)
         {
-            const bits=mrtMask>>>(index*4)&15;
-            colorMasks[index]=(bits&2?1:0)|(bits&4?2:0)|(bits&8?4:0)|(bits&1?8:0);
             this.render_state(189+index,colorMasks[index]);
         }
         this.render_state(154,mode===1?get(o,0x1EE0,0x3F800000):0x3F800000);this.render_state(155,0x3F800000);this.render_state(166,0x42800000);

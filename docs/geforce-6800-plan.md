@@ -2225,3 +2225,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 有界浮点顶点读取：仅对密集、线性 VRAM 的 FLOAT1–4 合并一次 checked DMA，跨度至多 4 MiB 且不超过索引属性载荷四倍；保留原始 DWORD 位、缺省分量和每次 draw 的新读取。分页/系统内存、零 stride 与稀疏索引保留逐顶点路径。旧实现新回归先红；48 组布局/基顶点、NaN/负零、限长/权限、可跳过中间未映射页的回归全绿，完整真实 GPU 和 Closure 通过。显式测前 GC 的 7 轮交错微测 indexed CPU 中位 54.29→32.19 ms；未改动的控制用例波动不解释为收益。见 `g6-bounded-float-vertex-spans.json`；最终原生性能验收继续。
 
 - G4 XP 05 原版固定帧已收取：3GT 的 480/897/1630 帧，以及单/多填充、Pixel Shader、简单/复杂 Vertex Shader 第 1 帧，共八张原始 1024×768 BMP；保持 None AA、Optimal、VS/PS3_0 和默认特性选项。八图头/行数据完整，原生 NV05N.3DR 的 SHA 与已验收全 16 项导出相同。最初 GT2 的 UI 干扰从打断前健康状态重跑；额外 Batch8 IQ 的未完成尝试不计入取图验收。原图、预览、原生成功日志和哈希见 `g4-xp-9371-05-native-iq.json`；精确代理参照、BC 同状态对照和正常关机继续。
+
+- G5 原生 XRGB 查询修复：Win98 03 在 199986 draws 首次触发 NOP END 无颜色输出拒绝；原方法为 X8R8G8B8、仅 alpha 写、无 alpha test、只读深度，实际没有有效颜色写入。现按附件真实通道计算 shader 需求、GPU mask 和 dirty 跟踪，保留有意义颜色/alpha test 的严格拒绝。旧源码新真实 GPU 回归先红；可见/遮挡查询、颜色/深度不变、零无效回读，以及同批 XRGB destination-alpha 混合精确像素均绿，完整 GPU/图形单测与 Closure 通过。见 `g5-native-xrgb-nop-occlusion.json`；原版完整十一项和最终图像/性能门禁仍继续。
