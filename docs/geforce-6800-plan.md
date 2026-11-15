@@ -2281,3 +2281,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 XP06 原版四张 GT IQ 收齐：原版工具自身默认帧 GT1=2095、GT2=1139、HDR1=1225、HDR2=1428，1280×1024/None/Optimal/VS3/PS3；每次原版保存成功提示和 GPU 静止60秒后直接导出 BMP，四图头/像素数据和 SHA 已验证。原 default6 与补充13项项目 SHA 不变；见 `g4-xp-9371-06-four-gt-iq.json`。这里只记录四张真实菜单项，不把它等同七项 feature 的画面覆盖；代理参照、feature 固定时点和正常关机继续。
 
 - G4 XP06 本轮正常关机补齐：default6、补充feature7+batch6和四张GT IQ均导出后，关闭原版保存提示/IQ窗口，通过stock shutdown.exe正常关机至806F3048/HLT1/display=null，505705续跑draw且GPU失败0。RAM/OS/game配套bundle已逐项SHA验证；1428504528-byte RAM无损压缩校验为659955285bytes后删除raw，再停止客体。见 `g4-xp-9371-06-required-tests-normal-shutdown.json`；保留此前真实100000EA失败记录，图像与最终单客体性能门禁仍开放。
+
+- G4 原版03九张代理参照收齐：GT1=1038、GT2/3/4=1000，fill1/fill2/VS/Ragtroll采用原版默认可见帧60，PS默认660；1024×768/None/Optimal且特性开关默认关闭。逐项原版保存提示和60秒GPU静止记录齐全，九张BMP数据与SHA验证通过。导出期间过早关闭客体造成finally恢复报错，但1024个1MiB连续块已完整写出；从完整1GiB块组恢复全部九图、校验后删除临时块，未重建或改动图像。见 `g4-03-proxy-nine-fixed-frames.json`；原生四项frame60补取及图像审查继续。
