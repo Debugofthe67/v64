@@ -2239,3 +2239,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 原生空闲策略读回：新增只读默认的 XP 环境 helper，可显式 /disable-idle 调用正式 SPI/电源方案 API。参照 XP 的 Windows 标志确为屏保，Shift 唤醒后返回 GT2 原版保存成功；API确认屏保 active1/600秒、显示AC1200秒。显式设置后独立读回 active0，以及 AC/DC 显示、待机、S4 空闲超时全0；其余电源方案字段保留。严格 C 构建及真实 XP 验证通过，见 `g6-native-xp-idle-policy.json`。这不证明另一次 native06 0x100000EA 的原因，继续查停滞线程。
 
 - G6 native06 补充13项本轮失败已确认：1323724 draws 后停在 806F3048/HLT1/display=null，但页文件头为 PAGE/DUMP、bugcheck100000EA，参数与只读栈相符，驱动名 nv4_disp。因此此终点不计正常关机或完成；GPU/PGRAPH零错误不足以验收。完整配套失败状态已压缩保存，临时 APFS 合并 IMG 提取事件/页文件头后删除，原盘未变。停滞线程属于原版3DMark06；被中断的对象查找68节点有限，8/1目标存在，单次PC不证明首因。见 `g6-native-06-feature13-watchdog.json`；从开跑前GUI检查空闲策略并继续定位/复跑，不改客体/驱动/时钟/看门狗。
+
+- G6 压缩检查点直接恢复：原始 RAM 缺失时，有界解码同名 `.state.zst` 到内存，按原 bundle 校验解压大小/SHA、磁盘 overlay 和客体配置；原始 RAM 存在仍优先验证原文件。截断、错哈希、错大小、超限和缺少 Node zstd 支持的回归通过。真实 native06 开跑前 GUI 已从 650667581-byte 压缩包恢复 1464808072-byte RAM，驱动 started1/problem0，无临时展开文件；见 `g6-compressed-checkpoint-restore.json`。

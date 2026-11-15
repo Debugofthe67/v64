@@ -4,7 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {createHash} from "node:crypto";
-import {verify_geforce_checkpoint_bundle} from "../lib/geforce_checkpoint.mjs";
+import * as zlib from "node:zlib";
+import {verify_geforce_checkpoint_bundle,read_geforce_checkpoint_state} from "../lib/geforce_checkpoint.mjs";
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),"nv40-checkpoint-"));
 try
 {
@@ -16,6 +17,31 @@ try
     }
     const manifest=options.state+".bundle.json",save=()=>fs.writeFileSync(manifest,JSON.stringify(bundle));save();
     assert.deepEqual(await verify_geforce_checkpoint_bundle(options),bundle);
+    const originalRAM=fs.readFileSync(options.state),archive=options.state+".zst";
+    // A complete zstd frame with the original seventeen RAM fixture bytes.
+    const encoded=Buffer.from("28b52ffd201189000052414d20617420636865636b706f696e74","hex");
+    fs.writeFileSync(archive,encoded);
+    assert.deepEqual(read_geforce_checkpoint_state(options.state),originalRAM,"raw RAM takes precedence");
+    fs.unlinkSync(options.state);
+    if(typeof zlib.zstdDecompressSync==="function")
+    {
+        const decoded=read_geforce_checkpoint_state(options.state);
+        assert.deepEqual(decoded,originalRAM);
+        assert(!fs.existsSync(options.state),"archived restore creates no decompressed state file");
+        await verify_geforce_checkpoint_bundle({...options,stateBytes:decoded});
+        await assert.rejects(verify_geforce_checkpoint_bundle({...options,stateBytes:decoded.subarray(1)}),/state size mismatch/);
+        await assert.rejects(verify_geforce_checkpoint_bundle({...options,stateBytes:"not bytes"}),/must be bytes/);
+        const altered=Buffer.from(encoded);altered[altered.length-1]^=1;fs.writeFileSync(archive,altered);
+        await assert.rejects(verify_geforce_checkpoint_bundle({...options,stateBytes:read_geforce_checkpoint_state(options.state)}),/state SHA-256/);
+        fs.writeFileSync(archive,encoded.subarray(0,4));assert.throws(()=>read_geforce_checkpoint_state(options.state));
+        fs.writeFileSync(archive,encoded);bundle.state.bytes=8;save();
+        assert.throws(()=>read_geforce_checkpoint_state(options.state),undefined,"declared RAM bytes bound decompression");
+        bundle.state.bytes=originalRAM.length;save();
+    }
+    else assert.throws(()=>read_geforce_checkpoint_state(options.state),/Node zstd support/);
+    fs.writeFileSync(options.state,"RAM xx checkpoint");
+    await assert.rejects(verify_geforce_checkpoint_bundle({...options,stateBytes:read_geforce_checkpoint_state(options.state)}),/state SHA-256/);
+    fs.writeFileSync(options.state,originalRAM);fs.unlinkSync(archive);
     const moved=path.join(directory,"moved-os");fs.copyFileSync(options.osOverlay,moved);
     await verify_geforce_checkpoint_bundle({...options,osOverlay:moved});
     fs.writeFileSync(moved,"later disk bytes");

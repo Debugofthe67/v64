@@ -13,7 +13,7 @@ import { make_esp } from "../lib/fat.mjs";
 import { PictureSink, save_png } from "../lib/picture_sink.mjs";
 import { site_directory } from "../lib/site.mjs";
 import { read_fat32_file } from "../lib/fat32_reader.mjs";
-import { verify_geforce_checkpoint_bundle } from "../lib/geforce_checkpoint.mjs";
+import { verify_geforce_checkpoint_bundle, read_geforce_checkpoint_state } from "../lib/geforce_checkpoint.mjs";
 import { read_geforce_guest_stack } from "../lib/geforce_guest_memory.mjs";
 import { watch_geforce_ide_reads } from "../lib/geforce_ide_watch.mjs";
 const release_build = !!+process.env.TEST_RELEASE_BUILD;
@@ -219,7 +219,8 @@ export async function run_geforce_guest(win98)
     const vram_mb=Number(process.env.NV_VRAM_MB || 128);assert([128,256].includes(vram_mb));
     const memory_mb=Number(process.env.NV_MEMORY_MB || (win98?256:1024));
     assert((win98?[256,384,512]:[1024,2048]).includes(memory_mb),"invalid native guest memory size");
-    const restored_bundle=await verify_geforce_checkpoint_bundle({state:process.env.NV_STATE_LOAD,
+    let state_bytes=process.env.NV_STATE_LOAD?read_geforce_checkpoint_state(process.env.NV_STATE_LOAD):null;
+    const restored_bundle=await verify_geforce_checkpoint_bundle({state:process.env.NV_STATE_LOAD,stateBytes:state_bytes,
         osOverlay:process.env.NV_OVERLAY_LOAD,gameOverlay:process.env.NV_GAME_OVERLAY_LOAD,
         guest:win98?"win98":"xp",vramMiB:vram_mb,memoryMiB:memory_mb,osImage:image,gameImage:game_path});
     if(restored_bundle)console.log("NV40 verified matching checkpoint RAM/disk bundle");
@@ -306,7 +307,8 @@ export async function run_geforce_guest(win98)
         }
         if(process.env.NV_STATE_LOAD)
         {
-            await vm.restore_state(fs.readFileSync(process.env.NV_STATE_LOAD));
+            await vm.restore_state(state_bytes);
+            state_bytes=null;
             assert.equal(vm.v86.cpu.memory_size[0],memory_mb<<20,"restored native guest memory size mismatch");
             if(process.env.NV_PROBE_REPLACE) replace_probe(tools.bytes, probe);
             if(process.env.NV_DISABLE_JIT) vm.v86.cpu.configure_jit_backend({disable_jit:true});

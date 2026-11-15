@@ -3,6 +3,24 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {createHash} from "node:crypto";
+import * as zlib from "node:zlib";
+
+// Keep NV_STATE_LOAD and its paired manifest at their logical .state path.
+// Inactive investigation RAM may be archived without creating another large
+// decompressed file just to restore it. The verifier hashes decoded RAM.
+export function read_geforce_checkpoint_state(file)
+{
+    if(fs.existsSync(file)) return fs.readFileSync(file);
+    assert.equal(typeof zlib.zstdDecompressSync,"function","Archived NV40 RAM requires Node zstd support or a restored raw state file");
+    const manifest=file+".bundle.json";
+    const expected=fs.existsSync(manifest)?JSON.parse(fs.readFileSync(manifest,"utf8")).state.bytes:null;
+    const limit=expected??0x7FFFFFFF;
+    assert(Number.isSafeInteger(limit)&&limit>0&&limit<=0x7FFFFFFF,"Invalid NV40 archived RAM size");
+    const bytes=zlib.zstdDecompressSync(fs.readFileSync(file+".zst"),{maxOutputLength:limit});
+    assert(bytes.byteLength>0,"NV40 archived RAM is empty or incomplete");
+    if(expected!==null)assert.equal(bytes.byteLength,expected,"NV40 archived RAM size mismatch");
+    return bytes;
+}
 
 export async function verify_geforce_checkpoint_bundle(options)
 {
@@ -20,9 +38,19 @@ export async function verify_geforce_checkpoint_bundle(options)
         const expected=bundle[field],file=options[field];
         if(!expected){assert(!file,"NV40 checkpoint has no "+field);continue;}
         assert(file,"NV40 checkpoint requires matching "+field);
-        assert.equal(fs.statSync(file).size,expected.bytes,"NV40 checkpoint "+field+" size mismatch");
         const hash=createHash("sha256");
-        for await (const bytes of fs.createReadStream(file,{highWaterMark:4<<20}))hash.update(bytes);
+        const supplied=field==="state"&&options.stateBytes;
+        if(supplied)
+        {
+            assert(supplied instanceof Uint8Array,"NV40 decoded RAM must be bytes");
+            assert.equal(supplied.byteLength,expected.bytes,"NV40 checkpoint state size mismatch");
+            hash.update(supplied);
+        }
+        else
+        {
+            assert.equal(fs.statSync(file).size,expected.bytes,"NV40 checkpoint "+field+" size mismatch");
+            for await (const bytes of fs.createReadStream(file,{highWaterMark:4<<20}))hash.update(bytes);
+        }
         assert.equal(hash.digest("hex"),expected.sha256,"NV40 checkpoint "+field+" SHA-256 mismatch");
     }
     return bundle;
