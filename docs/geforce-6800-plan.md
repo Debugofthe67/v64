@@ -2253,3 +2253,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 A16光照查找别名修正：原版93.71的05 PS帧用纹理11/格式14/remapA9EE/TEX h2.x读取标量；先前据相关RSX把B/R补1的推断不适用于此原生消费者。现标量在所有storage lane保留原16位值，常数仍由显式crossbar ZERO/ONE控制。旧源码新回归先红，0/1/32768/65535、padding/DMA/常数及真实GPU双线性与完整回归、Closure均绿。同一健康RAM的原版PS帧全图MAD16.8453→0.43593、max234→34；新参照BMP与旧参照SHA完全一致。见 `g4-native-a16-scalar-aliases.json`；仍保留残差，继续GT1及其余固定帧，未宣布整套图像门禁通过。
 
 - G6 同步FIFO附件复用：每次NVFIFO.run有独立临时scope，返回客体前清除；同scope且同GPU批次内，CPU不会执行，别名FIFO写仍按原屏障退役批次，因此可复用已校验的独立packed线性VRAM图像。每draw完整读写权限/范围检查不变，新scope/布局/描述符/批次重读；scope与图像不进快照。实际双draw混合只读附件一次，像素/单次回读/REF顺序不变；CPU后写、权限、完整GPU别名/保护/快照与单测、Closure通过。32绑定微测CPU38.407→2.369ms、读取32→1而64次校验全保留。见 `g6-fifo-scope-attachment-reuse.json`；非原生FPS，继续06配套状态。
+
+- G4 05 A16 修复后八图复测：原版逐项保存并核对成功提示、GPU 静止60秒；全16结果SHA保持不变。两张fillrate与参照完全一致，VS simple最大1；GT1/GT2/GT3/PS全图MAD分别0.8293/1.1084/9.6631/0.4310（含原版64行元数据排除）。GT3气球材质过暗、水面波形明显不符，图像门禁继续开放；CPU BC对照也保留，未把小PS残差直接归因于partial precision。见 `g4-05-native-a16-fixed-frames.json`。诊断客体已停止并清理不用的FDA副本与展开驱动缓存，原图/配套来源保留。
