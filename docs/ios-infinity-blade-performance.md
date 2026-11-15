@@ -1,5 +1,35 @@
 # Infinity Blade 安装与帧率验证
 
+## PL1 线程 ID 直访：实际战斗退步，撤回（2026-11-15）
+
+针对高频 MCR p15,c13，尝试只在 PL1 将 TPIDRURW/TPIDRURO/TPIDRPRW 的
+低 32 位读写直接生成访存；保留高半部，不涉及 CONTEXTIDR、翻译、Rt=PC、
+MCR2/MRC2 或 EL0 权限处理。新增独立 `tests/a32/thread_id.mjs` 在恒等映射 RAM
+中预热 ARM/Thumb 六轮、读写三寄存器及真假条件，全部输出与 QEMU 一致，另
+核对高 32 位保持。加入 `a32-system-tests`；原控制核心也通过此 oracle。
+系统 48 行、MMU 58 行 QEMU 对照、完整 27 组 page、fallback 八组及 thread-ID
+oracle、seed 5535 的 40×100×32 随机程序通过。组件 steps 4088→1032。
+
+同一战斗，预热 8/计量 30 帧的 A/B/B/A 为 5.496 / 4.452 / 4.514 / 4.823 FPS；
+renderer CPU 秒/帧为 0.4446 / 0.4950 / 0.5040 / 0.4789。候选没有实际收益，
+撤回运行时改动，仅保留独立测试和本地 `infinity-perf-next/thread-id-*` 证据。
+起图一致，一张候选结束图为相邻动画帧，其余终图一致，亮屏且 rate 1。
+默认源码和二进制继续保留已接受的 IT FP helper 优化。
+
+## 长窗口准备与过期 RAM 隔离（2026-11-15）
+
+剧情副本预热 8 帧后暂停虚机 10 秒，三个 renderer 合计仅增加约 0.26 CPU 秒
+（`warm-idle-cpu.json`），不支持该窗口仍被大量后台 Wasm 编译占用的假设。
+这不是所有场景的编译时间或持续战斗 FPS 测量。
+
+长导航曾触发 iOS 1 分钟自动锁屏；该段未计入 FPS。通过 Home、滑动解锁、
+原生 Settings → General → Auto-Lock 选择 Never，并截图确认。随后导航 runner
+触发 15 分钟上限，NAND 已更新而 RAM 未重存：在关闭 profile 的原 origin 中核对
+并删除其过期 1,110,040,515-byte RAM，保留所有 NAND，克隆为仅供冷启动的
+`settings-never-cold-profile`。不能将任何旧 RAM 恢复到该 NAND。
+原配对 `amc-battle-master-profile` 和 `prologue-progress-master-profile` 均未改变；
+后续剧情导航从配对副本重来，采用原生触摸保活与分段截图，避免状态错配。
+
 ## 已接受 FP 优化后的剩余瓶颈（2026-11-15）
 
 对 `df2a575c0` 核心重新克隆同一音频战斗，预热 8 帧后同时采样 CPU Worker
