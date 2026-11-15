@@ -673,6 +673,7 @@ export async function run_geforce_guest(win98)
                 if(pending && pending.done && !pending.requests.size && (!pending.query || pending.query.value!==null))
                 {
                     const item=metadata.get(pending);
+                    const prior_events=events.length;
                     if(events.length<256 && item) for(const {target,bytes} of pending.outputs)
                     {
                         if(events.length>=256) break;
@@ -684,7 +685,8 @@ export async function run_geforce_guest(win98)
                             draw:item?.ordinal,mode:item?.mode,fragment:item?.methods.find(([at])=>at===0x8E4)?.[1],
                             ...(process.env.NV_DIAGNOSTIC_DRAW_CAUSE_ALL || depth || after.slice(0,3).every(value=>value===0)&&before.slice(0,3).some(Boolean)?{cause:item}:{})});
                     }
-                    metadata.delete(pending);fs.writeFileSync(file,JSON.stringify(events,null,2));
+                    metadata.delete(pending);
+                    if(events.length!==prior_events)fs.writeFileSync(file,JSON.stringify(events,null,2));
                 }
                 return complete();
             };

@@ -2269,3 +2269,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 精确着色器键：用VP入口/可达PC/原始四DWORD及FP normalized原始词替代重复序列化扩展decoder对象，所有lowering选项保留，不以hash或DMA地址替代源码。104原版程序的键等价关系双向一致；VP/FP改码失效、恢复复用、inline常量、LRU/字节预算及完整真实GPU/Closure通过。独立10000次键序列化七轮CPU中位251.953→16.206ms，示例4878→468字符，非绘制/FPS测量；见 `g6-exact-raw-shader-keys.json`。
 
 - G6 测试回读掩码热点：40秒native06采样的WebSocket接收回调自身5.433秒；掩码改为按实际mask字节组成的对齐DWORD异或，非对齐前缀/尾部及小消息仍逐字节。1920个独立oracle边界组合、所有包头拆分/fragment/控制/4MiB+7/readback归属及完整真实GPU回归通过。相同parser、16个4MiB+7分块消息七轮CPU中位72.198→26.366ms，数据全同；见 `g6-word-gpu-test-unmask.json`，仅测试传输且不作FPS/看门狗修复声明。
+
+- G6 诊断磁盘写入：GT3像素历史已有约72MB，旧helper在没有新事件的后续每批完成仍整文件重写。现仅事件追加后写出，最终JSON内容/有界事件及GPU完成语义不变，语法检查通过；见 `g6-pixel-diagnostic-changed-writes.json`。现场只读观察器同时改为有界追加，释放先前大对象；过期中间状态/关闭安装缓存已按清单清理，2000旧基线706076700bytes无损压缩校验为183330573bytes，原盘不变。
