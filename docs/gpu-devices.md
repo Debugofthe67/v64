@@ -274,7 +274,8 @@ acceptance run.
 
 The original functional suites through06 on XP and through03 on Win98 have
 completed. Reference content reviews retain local pixel residuals and a
-Shader Particles position deviation; the final isolated profile remains open. Both XP and a
+Shader Particles position deviation. Two final isolated GT1 work-distribution
+windows are recorded below. Both XP and a
 [fresh cold Win98 run](fixtures/nv40/g3-win98-8198-99-cold-full.json) completed
 all 26 3DMark99 tests and exported their native projects and IQ images.
 The [corrected XP run](fixtures/nv40/g3-xp-9371-99-full-corrected.json) and
@@ -336,7 +337,8 @@ but substantial individual-position differences. Three native six-frame sequence
 are identical outside the HUD, so changing random seeds are not asserted as the
 cause. Per-particle trajectory equivalence remains unvalidated. Native desktop,
 driver and normal shutdown checks are [retained separately](fixtures/nv40/g4-06-native-seven-feature-frames.json).
-The final single-guest release profile remains open.
+The [final repeated GT1 work windows](fixtures/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
+record the current release implementation separately from whole-suite results.
 The unmodified
 NVIDIA driver advertises SM3.0 capabilities beyond the validated subset;
 known unsupported draw states and instructions produce bounded faults;
@@ -346,36 +348,54 @@ some other register paths still store values. See
 
 ### Performance
 
-The first single-native-guest release sampling window for XP 93.71 and
-3DMark06 covered 305.30 seconds of the original default loading and initial
-graphics workload. Other GeForce harness guests were saved and exited;
-this does not imply an otherwise idle host. It completed 5,904 draws,
-2,340 batches and 6,404 readbacks without GPU, PGRAPH or non-software FIFO
-faults. This window stopped before benchmark completion and provides no
-SM2/HDR score or image/performance acceptance.
+The [final repeated release windows](fixtures/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
+continue the same active original 3DMark06 GT1 state under XP93.71, with
+1024 MiB RAM, 256 MiB VRAM and a normal clock. Each starts a fresh renderer
+and empty host decode/translation caches; the decoded cache limit is512 MiB.
+One GeForce guest executes at a time, with no guest input during sampling.
+Other host processes and OS/Metal caches are not claimed idle or cold.
+Both windows preserve the original OS/game images and have zero GPU or
+non-software PGRAPH faults.
 
-| Node sampling category | Time share |
-| --- | ---: |
-| Guest WASM and JIT | 29.70% |
-| NV upload and attachment preparation | 16.53% |
-| Node and harness | 12.60% |
-| Other NV device CPU | 10.00% |
-| Texture preparation | 9.94% |
-| Vertex fetch | 8.10% |
-| Scanout | 3.80% |
-| Garbage collection | 3.35% |
-| Node idle | 2.35% |
-| PNG and capture | 1.91% |
-| Guest runtime helpers | 1.08% |
-| Program decode and translation | 0.66% |
+| Recorded work | Window1 | Window2 |
+| --- | ---: | ---: |
+| Counter window, seconds | 357.73 | 357.90 |
+| Draws | 36,085 | 36,259 |
+| Batches | 4,658 | 4,685 |
+| Readbacks | 13,995 | 14,090 |
+| Backend pending, seconds | 200.33 | 199.48 |
+| Primary-head semaphore releases | 22 | 22 |
 
-The 109.23 seconds with a backend submission pending include transport,
-rendering and readback, and overlap the CPU samples. Node process CPU also
-includes worker threads. The 379 display semaphore releases include loading
-pages and are not a benchmark FPS count. The [window and raw-artifact hashes](fixtures/nv40/g6-xp-9371-06-isolated-window.json)
-preserve the actual counter boundaries; [profiling.md](profiling.md) explains
-how to reproduce the report. This historical profile predates the later successful native suites and normal
-shutdown; it is retained as an initial measurement.
+| Weighted Node sampling category | Window1 | Window2 |
+| --- | ---: | ---: |
+| Guest WASM and JIT | 41.39% | 41.35% |
+| NV texture preparation | 13.69% | 13.64% |
+| Other NV device CPU | 10.02% | 10.12% |
+| NV vertex fetch | 9.81% | 9.80% |
+| Node and harness | 8.34% | 8.24% |
+| Garbage collection | 4.60% | 4.89% |
+| NV upload and attachment preparation | 4.53% | 4.64% |
+| Node idle | 3.21% | 3.31% |
+| NV scanout | 1.64% | 1.27% |
+| Guest runtime helpers | 1.26% | 1.28% |
+| NV program decode and translation | 0.97% | 0.93% |
+| PNG and capture | 0.53% | 0.54% |
+
+Two bounded 1280×1024 color readbacks per window show original GT1 geometry
+and intermediate passes. They come from completed GPU batches and do not
+establish final presentation, frame counts or FPS. CPU copy/export cost is
+included in the window. Profiling stops before RAM/overlay saving; each
+lossless archive is fully decoded and SHA-verified before the next run.
+Backend pending time includes transport/render/readback and overlaps CPU
+sampling. Node process CPU includes worker threads; these are not GPU
+hardware timings or total default-suite elapsed time. The two runs use the
+current implementation, so their agreement is not a before/after speedup.
+See [profiling.md](profiling.md#native-nv40-guests) for the method and raw hashes.
+
+The [first305-second loading window](fixtures/nv40/g6-xp-9371-06-isolated-window.json)
+and later unsuccessful scene-capture attempts remain historical diagnostics,
+with different source states or observation limits. They are not the final
+repeat comparison or a baseline for a claimed native FPS improvement.
 
 Subsequent concurrent saved-state windows found substantial repeated BC
 texture decoding. A [bounded decoded-cache comparison](fixtures/nv40/g6-native-06-decoded-cache-budget.json)

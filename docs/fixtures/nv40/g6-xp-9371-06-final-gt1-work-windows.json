@@ -1,0 +1,911 @@
+{
+  "stage": "G6 final isolated native06 rendering-work distribution",
+  "status": "Two same-source release windows completed with original GT1 color-batch correlation, normal clock, no guest input and no GPU/non-software PGRAPH faults",
+  "workload": "Continuation of the original standalone -gt1 process. Captured images are completed GPU-batch color surfaces and may show intermediate rendering. These are not completed presentation counts.",
+  "sourceBundle": {
+    "status": "complete",
+    "guest": "xp",
+    "vramMiB": 256,
+    "memoryMiB": 1024,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark06.img",
+    "state": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-gt1-completed-color-resume/checkpoint-observed-gt1-work.state",
+      "bytes": 1683673128,
+      "sha256": "b90d119be0dfdaa736c9e29ca56f4bb44684df70fd3bd564af02273fa4ae35ab"
+    },
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-gt1-completed-color-resume/checkpoint-observed-gt1-work.state.hda-overlay.bin",
+      "bytes": 223204092,
+      "sha256": "901bb47bcaf07fd29828b865fd18fadffdb83e8aaf483a12df80d3995d0f5e85"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-gt1-completed-color-resume/checkpoint-observed-gt1-work.state.game-overlay.bin",
+      "bytes": 67630,
+      "sha256": "dd7b0f75afaa13145f25c7e1dad73c649535e316d9006549cf445f87a9cbfbb6"
+    }
+  },
+  "sourceArchive": {
+    "original": "build/nv40-xp-mark06-gt1-completed-color-resume/checkpoint-observed-gt1-work.state",
+    "archive": "build/nv40-xp-mark06-gt1-completed-color-resume/checkpoint-observed-gt1-work.state.zst",
+    "originalBytes": 1683673128,
+    "archiveBytes": 733167888,
+    "sha256": "b90d119be0dfdaa736c9e29ca56f4bb44684df70fd3bd564af02273fa4ae35ab",
+    "restore": "zstd -d build/nv40-xp-mark06-gt1-completed-color-resume/checkpoint-observed-gt1-work.state.zst -o build/nv40-xp-mark06-gt1-completed-color-resume/checkpoint-observed-gt1-work.state"
+  },
+  "sourceObservedColor": [
+    {
+      "file": "profile-scene-1.bmp",
+      "sha256": "514e67e18fcf0dda1b63e04b7d35f1bfa284f31ca3bc9fcc93de5f79bff28e3f",
+      "bytes": 3932214,
+      "release": 1,
+      "draws": 1162,
+      "mode": {
+        "width": 1280,
+        "height": 1024,
+        "pitch": 5120,
+        "bytes": 4
+      },
+      "elapsedWindowMs": 12421.470333000001,
+      "kind": "completed-color-readback",
+      "targetFormat": 22,
+      "targetOffset": 199360512,
+      "targetPitch": 5120,
+      "targetSwizzle": false,
+      "batch": 157
+    }
+  ],
+  "originalCommand": "D:\\NVLAUNCH.EXE E:\\3DMark06.exe -gt1 -nosplash -nosysteminfo -noscreens perfgt1.3dr",
+  "settings": {
+    "memoryMiB": 1024,
+    "vramMiB": 256,
+    "driver": "Original XP ForceWare93.71",
+    "clock": "normal",
+    "fixedFPS": false,
+    "trace": false,
+    "periodicPNGSeconds": 0,
+    "boundedColorImagesPerWindow": 2,
+    "inputDuringWindow": false
+  },
+  "isolation": {
+    "oneExecutingGeForceGuestAtATime": true,
+    "idleHostClaimed": false,
+    "cacheStart": "Identical paired RAM/OS/game state; fresh renderer and empty host decode/translation caches. OS and Metal caches not guaranteed cold.",
+    "archiveWorkCompletedBeforeNextWindow": true
+  },
+  "softwareIdentities": {
+    "files": [
+      {
+        "file": "build/nv40-wp-fixed.wasm",
+        "bytes": 3035311,
+        "sha256": "808c5fc9f0858ea23baf6a13d53f6c876e970f0de0427a4f3d48d57d820c2ff8"
+      },
+      {
+        "file": "build/v86-geforce-6800.js",
+        "bytes": 218508,
+        "sha256": "1394da304b893d4146ae033a8427c127abaf7592f61dc48ce59134b280c8f053"
+      },
+      {
+        "file": "build/glbridge/libv86-webgpu.js",
+        "bytes": 4380621,
+        "sha256": "e47632868507d7c5181e7b21755d867ac3f2e7285db40b55b4e13567a3003478"
+      },
+      {
+        "file": "build/libv86.mjs",
+        "bytes": 887071,
+        "sha256": "1eb1b1fb488e084a45c5c188fbfd2ab694963cd10284a7ff7cddd068fa59890f"
+      },
+      {
+        "file": "tests/devices/geforce_guest.mjs",
+        "bytes": 74844,
+        "sha256": "ed61fbde6865c2770c3070f86de986a2fe7df1edc0177bbb06b651c00d618559"
+      },
+      {
+        "file": "tools/nv40_profile_report.mjs",
+        "bytes": 5686,
+        "sha256": "b44a9167aaaa6f5598d46c0982c9eae014fcacc5cb2e8948a50e2580d36eb4e6"
+      }
+    ]
+  },
+  "windows": [
+    {
+      "index": 1,
+      "report": {
+        "directory": "build/nv40-xp-mark06-final-gt1-work-profile-1",
+        "build": "release",
+        "state": "build/nv40-xp-mark06-gt1-completed-color-resume/checkpoint-observed-gt1-work.state",
+        "guest": "xp",
+        "vramMiB": 256,
+        "textureCache": {
+          "bytes": 536870912,
+          "entries": 1024
+        },
+        "samplingWallMs": 357777.675,
+        "counterWindowMs": 357731.965625,
+        "startHandshakeMs": 45.40216699999837,
+        "stopHandshakeMs": 47.990332999965176,
+        "nodeCpuMs": {
+          "user": 686191.317,
+          "system": 23878.669
+        },
+        "backendPendingMs": 200328.73228000072,
+        "primarySemaphoreReleases": 22,
+        "gpu": {
+          "batches": 4658,
+          "draws": 36085,
+          "bytes": 19392455208,
+          "readbacks": 13995,
+          "failures": 0,
+          "uploads": 2450,
+          "uploadBytes": 10604667576,
+          "resourceHits": 153808,
+          "resourceMisses": 173,
+          "resourceEvictions": 0,
+          "coldUploadBytes": 207926200,
+          "resourceBytes": 255112120,
+          "peakResourceBytes": 255112120,
+          "nativeBCUploads": 1372,
+          "nativeBCUploadBytes": 75521592
+        },
+        "texture": {
+          "hits": 644819,
+          "misses": 5186,
+          "evictions": 3777,
+          "bytes": 117398958
+        },
+        "shader": {
+          "hits": 35301,
+          "misses": 784,
+          "evictions": 657
+        },
+        "graphFaults": 4,
+        "categories": [
+          {
+            "name": "Guest WASM and JIT",
+            "ms": 148088.319,
+            "percent": 41.39115695242863
+          },
+          {
+            "name": "NV texture preparation",
+            "ms": 48996.673,
+            "percent": 13.694726201124762
+          },
+          {
+            "name": "Other NV device CPU",
+            "ms": 35860.436,
+            "percent": 10.023106109122097
+          },
+          {
+            "name": "NV vertex fetch",
+            "ms": 35101.041,
+            "percent": 9.810852787279138
+          },
+          {
+            "name": "Node and harness",
+            "ms": 29854.488,
+            "percent": 8.344424508879712
+          },
+          {
+            "name": "Garbage collection",
+            "ms": 16467.143,
+            "percent": 4.602618930876556
+          },
+          {
+            "name": "NV upload and attachment preparation",
+            "ms": 16202.028,
+            "percent": 4.528518443751416
+          },
+          {
+            "name": "Node idle",
+            "ms": 11495.522,
+            "percent": 3.2130350223780733
+          },
+          {
+            "name": "NV scanout",
+            "ms": 5856.348,
+            "percent": 1.636867923634419
+          },
+          {
+            "name": "Guest runtime helpers",
+            "ms": 4502.003,
+            "percent": 1.2583241813508905
+          },
+          {
+            "name": "NV program decode and translation",
+            "ms": 3472.393,
+            "percent": 0.9705449061347945
+          },
+          {
+            "name": "PNG and capture",
+            "ms": 1881.231,
+            "percent": 0.5258100578802185
+          },
+          {
+            "name": "Unsampled tail",
+            "ms": 0.05,
+            "percent": 1.3975159294106318e-05
+          }
+        ],
+        "topSelfFunctions": [
+          {
+            "name": "rb \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:184",
+            "ms": 36353.227,
+            "percent": 10.160842763596136
+          },
+          {
+            "name": "read \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:78",
+            "ms": 21786.318,
+            "percent": 6.089345289641116
+          },
+          {
+            "name": "_ZN3v863x645pages11step_result17hbd6245f0f32857fbE \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 20062.879,
+            "percent": 5.607638598467609
+          },
+          {
+            "name": "array_vertices \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:180",
+            "ms": 18889.586,
+            "percent": 5.279699466994412
+          },
+          {
+            "name": "_ZN3v863cpu3cpu22run_compat_instruction17hbea534ce7ecc02d0E \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 17658.79,
+            "percent": 4.935688063823434
+          },
+          {
+            "name": "x64_page_step \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 16546.364,
+            "percent": 4.624761452765324
+          },
+          {
+            "name": "(garbage collector) \u2014 :0",
+            "ms": 16467.143,
+            "percent": 4.602618930876556
+          },
+          {
+            "name": "ub \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:208",
+            "ms": 15231.262,
+            "percent": 4.257186254005368
+          },
+          {
+            "name": "x64_pagel32_bfaf1000 \u2014 wasm://wasm/0006a3d2:1",
+            "ms": 11641.309,
+            "percent": 3.2537829533382707
+          },
+          {
+            "name": "(idle) \u2014 :0",
+            "ms": 11495.522,
+            "percent": 3.2130350223780733
+          },
+          {
+            "name": "unmask_frame \u2014 file:///Users/renruisi/Desktop/Code/v86/tests/x64/gpu_remote_renderer.mjs:40",
+            "ms": 10506.049,
+            "percent": 2.936474166533728
+          },
+          {
+            "name": "_ZN3v863gen11interpreter3run17h660101cb5936e44eE \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 10444.619,
+            "percent": 2.919304285824989
+          },
+          {
+            "name": "_ZN3v863cpu3cpu12get_phys_eip17hb1841c75cdecd01aE \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 9279.475,
+            "percent": 2.5936428258135447
+          },
+          {
+            "name": "_ZN3v863x647execute3alu17h5e4646241676b21aE \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 6747.019,
+            "percent": 1.8858133057072384
+          },
+          {
+            "name": "(anonymous) \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:218",
+            "ms": 6389.661,
+            "percent": 1.7859306062067735
+          },
+          {
+            "name": "x64_pagel32_bfa6b000 \u2014 wasm://wasm/00073a72:1",
+            "ms": 6058.363,
+            "percent": 1.6933317597303967
+          },
+          {
+            "name": "get_eflags \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 5598.793,
+            "percent": 1.564880480594548
+          },
+          {
+            "name": "_ZN3v863cpu12instructions8instr_F317hed7f1a72095a6950E \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 5158.296,
+            "percent": 1.441760165723029
+          },
+          {
+            "name": "(program) \u2014 :0",
+            "ms": 4274.575,
+            "percent": 1.1947573307920905
+          },
+          {
+            "name": "writeBuffer \u2014 :0",
+            "ms": 4215.222,
+            "percent": 1.1781679782004286
+          },
+          {
+            "name": "x64_page_flags \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 4208.082,
+            "percent": 1.1761723254532301
+          },
+          {
+            "name": "render \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:70",
+            "ms": 4065.178,
+            "percent": 1.1362302021779307
+          },
+          {
+            "name": "clear \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:170",
+            "ms": 3548.706,
+            "percent": 0.9918746327590172
+          },
+          {
+            "name": "_copyActual \u2014 node:buffer:270",
+            "ms": 3360.551,
+            "percent": 0.9392847108193657
+          },
+          {
+            "name": "_ZN3v863x645pages8miss_run17h4ba8c9eb72091933E \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 3267.254,
+            "percent": 0.9132079020861209
+          }
+        ],
+        "scope": "Weighted Node event-loop sampling, including idle; not Chrome/GPU hardware timings. Node process CPU includes worker threads and may exceed elapsed wall time. Pending wall time overlaps CPU samples. Isolation and scene correctness must be checked separately. No FPS or whole-suite acceptance is inferred.",
+        "nonMonotonicSamples": 19,
+        "backwardUs": 27,
+        "sampleDurationExcessUs": 0
+      },
+      "clock": {
+        "mode": "normal",
+        "elapsedMs": 357835.410728747,
+        "hostElapsedMs": 365363.215667,
+        "host_pause_count": 3,
+        "discarded_host_ms": 2559.312750999932,
+        "host_backwards_count": 0,
+        "committed_instructions": 0,
+        "idle_ms": 0
+      },
+      "nonSoftwarePGRAPHFaults": 0,
+      "originalImagesUnchanged": true,
+      "originalProcessExitedBeforeStop": false,
+      "sceneCaptures": [
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/profile-scene-1.bmp",
+          "sha256": "16f441f5a3a2539e13b1757a050635a2e243313c597d6b4a965152d5633c1255",
+          "bytes": 3932214,
+          "release": 0,
+          "draws": 1002,
+          "mode": {
+            "width": 1280,
+            "height": 1024,
+            "pitch": 5120,
+            "bytes": 4
+          },
+          "elapsedWindowMs": 13010.009333000002,
+          "kind": "completed-color-readback",
+          "targetFormat": 22,
+          "targetOffset": 199360512,
+          "targetPitch": 5120,
+          "targetSwizzle": false,
+          "batch": 145
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/profile-scene-2.bmp",
+          "sha256": "8ad239fcfb0323edc3c2152ef5e631ed7a7e842b0f8adecb70dab72b94221f1d",
+          "bytes": 3932214,
+          "release": 8,
+          "draws": 10195,
+          "mode": {
+            "width": 1280,
+            "height": 1024,
+            "pitch": 5120,
+            "bytes": 4
+          },
+          "elapsedWindowMs": 101697.16529199999,
+          "kind": "completed-color-readback",
+          "targetFormat": 22,
+          "targetOffset": 199360512,
+          "targetPitch": 5120,
+          "targetSwizzle": false,
+          "batch": 1312
+        }
+      ],
+      "visualReview": {
+        "viewedActualImages": 2,
+        "preview": "build/nv40-xp-mark06-final-gt1-work-profile-1/completed-batch-colors.png",
+        "observation": "Original GT1 industrial environment and armored characters in first batch surface; second surface is a partial character pass against black. Completed color batches establish the sampled rendering work, not final presentation or image-quality equivalence."
+      },
+      "artifacts": [
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/cpu-profile.cpuprofile",
+          "sha256": "5ae9ace85bd00487ec8068e26259c1eb202b156f916c13b729f4ce45e4e2aa54",
+          "bytes": 3666456
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/profile-window.json",
+          "sha256": "a37d8d68b94bfb2d4c0c3cdcf2e6ba03d22109f8f3797d5100ce59fa066a1763",
+          "bytes": 3125
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/profile-report.json",
+          "sha256": "f3d2d2c978bbaf5be6a04d2584bfef3f83ad21ff25df7b65381fccea45ca2788",
+          "bytes": 6897
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/trace.json",
+          "sha256": "6bb09601aaaa025368dd2adf05b30e193d580ad32bcfaf90adbc27b7f3c318a1",
+          "bytes": 558178
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/result.json",
+          "sha256": "d6962f7d3488a6d503a430caa3ad8d258020db1afb5df0051f27efe2acd265d5",
+          "bytes": 1615
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/NVLAUNCH.TXT",
+          "sha256": "48056b129aaa96a2ecc0eec3d4c50bd06489edd5593827d735c86439c2ab7fb6",
+          "bytes": 157
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/source-workload.json",
+          "sha256": "f2b7a0d189cd053479a2af98638ed77af50eba9e57827d6adae25ffe5d1da100",
+          "bytes": 380
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/isolation-before.json",
+          "sha256": "6c5d222f2a6f5a24deca51a632858017684bce069fec6b3ec53a75fda3b31e7b",
+          "bytes": 304
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-1/visual-review.json",
+          "sha256": "5c630d9fa3c39ea7062282de8b3fef99db014ce664c38697652e2438d1120099",
+          "bytes": 395
+        }
+      ],
+      "endBundle": {
+        "status": "complete",
+        "guest": "xp",
+        "vramMiB": 256,
+        "memoryMiB": 1024,
+        "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+        "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark06.img",
+        "state": {
+          "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-final-gt1-work-profile-1/checkpoint-final-profile-window.state",
+          "bytes": 1683873032,
+          "sha256": "f9a2f0393ec9aeea525e229c58364a5428a4429fc09e5b30114912ab3b919bae"
+        },
+        "osOverlay": {
+          "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-final-gt1-work-profile-1/checkpoint-final-profile-window.state.hda-overlay.bin",
+          "bytes": 223204092,
+          "sha256": "901bb47bcaf07fd29828b865fd18fadffdb83e8aaf483a12df80d3995d0f5e85"
+        },
+        "gameOverlay": {
+          "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-final-gt1-work-profile-1/checkpoint-final-profile-window.state.game-overlay.bin",
+          "bytes": 67630,
+          "sha256": "dd7b0f75afaa13145f25c7e1dad73c649535e316d9006549cf445f87a9cbfbb6"
+        }
+      },
+      "endArchive": {
+        "original": "build/nv40-xp-mark06-final-gt1-work-profile-1/checkpoint-final-profile-window.state",
+        "archive": "build/nv40-xp-mark06-final-gt1-work-profile-1/checkpoint-final-profile-window.state.zst",
+        "originalBytes": 1683873032,
+        "archiveBytes": 720428799,
+        "sha256": "f9a2f0393ec9aeea525e229c58364a5428a4429fc09e5b30114912ab3b919bae",
+        "restore": "zstd -d build/nv40-xp-mark06-final-gt1-work-profile-1/checkpoint-final-profile-window.state.zst -o build/nv40-xp-mark06-final-gt1-work-profile-1/checkpoint-final-profile-window.state"
+      }
+    },
+    {
+      "index": 2,
+      "report": {
+        "directory": "build/nv40-xp-mark06-final-gt1-work-profile-2",
+        "build": "release",
+        "state": "build/nv40-xp-mark06-gt1-completed-color-resume/checkpoint-observed-gt1-work.state",
+        "guest": "xp",
+        "vramMiB": 256,
+        "textureCache": {
+          "bytes": 536870912,
+          "entries": 1024
+        },
+        "samplingWallMs": 357940.551,
+        "counterWindowMs": 357895.00566699996,
+        "startHandshakeMs": 45.198457999998936,
+        "stopHandshakeMs": 49.302708000002895,
+        "nodeCpuMs": {
+          "user": 683433.389,
+          "system": 23889.634
+        },
+        "backendPendingMs": 199484.88267199817,
+        "primarySemaphoreReleases": 22,
+        "gpu": {
+          "batches": 4685,
+          "draws": 36259,
+          "bytes": 19272708496,
+          "readbacks": 14090,
+          "failures": 0,
+          "uploads": 2453,
+          "uploadBytes": 10496657420,
+          "resourceHits": 154437,
+          "resourceMisses": 174,
+          "resourceEvictions": 0,
+          "coldUploadBytes": 207948044,
+          "resourceBytes": 255133964,
+          "peakResourceBytes": 255133964,
+          "nativeBCUploads": 1372,
+          "nativeBCUploadBytes": 75521592
+        },
+        "texture": {
+          "hits": 648489,
+          "misses": 5408,
+          "evictions": 4003,
+          "bytes": 114646462
+        },
+        "shader": {
+          "hits": 35489,
+          "misses": 770,
+          "evictions": 643
+        },
+        "graphFaults": 4,
+        "categories": [
+          {
+            "name": "Guest WASM and JIT",
+            "ms": 148003.288,
+            "percent": 41.348566846230284
+          },
+          {
+            "name": "NV texture preparation",
+            "ms": 48829.267,
+            "percent": 13.641725382492357
+          },
+          {
+            "name": "Other NV device CPU",
+            "ms": 36216.548,
+            "percent": 10.118034377166726
+          },
+          {
+            "name": "NV vertex fetch",
+            "ms": 35068.387,
+            "percent": 9.797265747629694
+          },
+          {
+            "name": "Node and harness",
+            "ms": 29495.031,
+            "percent": 8.240203832060368
+          },
+          {
+            "name": "Garbage collection",
+            "ms": 17491.244,
+            "percent": 4.886633814227994
+          },
+          {
+            "name": "NV upload and attachment preparation",
+            "ms": 16596.428,
+            "percent": 4.636643697852496
+          },
+          {
+            "name": "Node idle",
+            "ms": 11830.789,
+            "percent": 3.3052385282828713
+          },
+          {
+            "name": "Guest runtime helpers",
+            "ms": 4590.495,
+            "percent": 1.2824741391203816
+          },
+          {
+            "name": "NV scanout",
+            "ms": 4544.224,
+            "percent": 1.2695471321437397
+          },
+          {
+            "name": "NV program decode and translation",
+            "ms": 3343.199,
+            "percent": 0.9340095696505759
+          },
+          {
+            "name": "PNG and capture",
+            "ms": 1931.571,
+            "percent": 0.53963458306237
+          },
+          {
+            "name": "Unsampled tail",
+            "ms": 0.08,
+            "percent": 2.2350080139425164e-05
+          }
+        ],
+        "topSelfFunctions": [
+          {
+            "name": "rb \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:184",
+            "ms": 36099.859,
+            "percent": 10.08543427089936
+          },
+          {
+            "name": "read \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:78",
+            "ms": 21800.621,
+            "percent": 6.090570330490439
+          },
+          {
+            "name": "_ZN3v863x645pages11step_result17hbd6245f0f32857fbE \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 20138.601,
+            "percent": 5.626241828073847
+          },
+          {
+            "name": "array_vertices \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:180",
+            "ms": 19340.718,
+            "percent": 5.403332465675285
+          },
+          {
+            "name": "_ZN3v863cpu3cpu22run_compat_instruction17hbea534ce7ecc02d0E \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 17971.49,
+            "percent": 5.020803021560974
+          },
+          {
+            "name": "(garbage collector) \u2014 :0",
+            "ms": 17491.244,
+            "percent": 4.886633814227994
+          },
+          {
+            "name": "x64_page_step \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 15911.841,
+            "percent": 4.445386518947388
+          },
+          {
+            "name": "ub \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:208",
+            "ms": 15624.229,
+            "percent": 4.365034628334134
+          },
+          {
+            "name": "(idle) \u2014 :0",
+            "ms": 11830.789,
+            "percent": 3.3052385282828713
+          },
+          {
+            "name": "x64_pagel32_bfaf1000 \u2014 wasm://wasm/0006a34e:1",
+            "ms": 11775.799,
+            "percent": 3.2898756419470336
+          },
+          {
+            "name": "_ZN3v863gen11interpreter3run17h660101cb5936e44eE \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 10826.161,
+            "percent": 3.024569574403991
+          },
+          {
+            "name": "unmask_frame \u2014 file:///Users/renruisi/Desktop/Code/v86/tests/x64/gpu_remote_renderer.mjs:40",
+            "ms": 10500.323,
+            "percent": 2.9335382567481156
+          },
+          {
+            "name": "_ZN3v863cpu3cpu12get_phys_eip17hb1841c75cdecd01aE \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 9265.685,
+            "percent": 2.5886100287083704
+          },
+          {
+            "name": "_ZN3v863x647execute3alu17h5e4646241676b21aE \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 6746.375,
+            "percent": 1.8847752737576806
+          },
+          {
+            "name": "(anonymous) \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:218",
+            "ms": 6288.162,
+            "percent": 1.7567615578711002
+          },
+          {
+            "name": "x64_pagel32_bfa6b000 \u2014 wasm://wasm/0007399a:1",
+            "ms": 5969.337,
+            "percent": 1.6676895041154474
+          },
+          {
+            "name": "get_eflags \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 5702.837,
+            "percent": 1.5932357996509874
+          },
+          {
+            "name": "_ZN3v863cpu12instructions8instr_F317hed7f1a72095a6950E \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 4969.314,
+            "percent": 1.3883070767245926
+          },
+          {
+            "name": "x64_page_flags \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 4358.575,
+            "percent": 1.2176812567961879
+          },
+          {
+            "name": "writeBuffer \u2014 :0",
+            "ms": 4162.687,
+            "percent": 1.1629548505667915
+          },
+          {
+            "name": "(program) \u2014 :0",
+            "ms": 3815.141,
+            "percent": 1.0658588386650834
+          },
+          {
+            "name": "clear \u2014 file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js:170",
+            "ms": 3798.807,
+            "percent": 1.061295511052616
+          },
+          {
+            "name": "_ZN3v863x645pages8miss_run17h4ba8c9eb72091933E \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 3514.028,
+            "percent": 0.9817350926522991
+          },
+          {
+            "name": "_copyActual \u2014 node:buffer:270",
+            "ms": 3369.106,
+            "percent": 0.941247363727727
+          },
+          {
+            "name": "routed_pic_pending \u2014 wasm://wasm/v86.wasm-00b942be:1",
+            "ms": 3331.453,
+            "percent": 0.9307280191341047
+          }
+        ],
+        "scope": "Weighted Node event-loop sampling, including idle; not Chrome/GPU hardware timings. Node process CPU includes worker threads and may exceed elapsed wall time. Pending wall time overlaps CPU samples. Isolation and scene correctness must be checked separately. No FPS or whole-suite acceptance is inferred.",
+        "nonMonotonicSamples": 10,
+        "backwardUs": 10,
+        "sampleDurationExcessUs": 0
+      },
+      "clock": {
+        "mode": "normal",
+        "elapsedMs": 358004.1231345786,
+        "hostElapsedMs": 366254.317125,
+        "host_pause_count": 3,
+        "discarded_host_ms": 2559.312750999932,
+        "host_backwards_count": 0,
+        "committed_instructions": 0,
+        "idle_ms": 0
+      },
+      "nonSoftwarePGRAPHFaults": 0,
+      "originalImagesUnchanged": true,
+      "originalProcessExitedBeforeStop": false,
+      "sceneCaptures": [
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/profile-scene-1.bmp",
+          "sha256": "dbebadae04599e651c1c79ec8715e5cc17a780e057fa1bbd9ac9f3edb93ae2b0",
+          "bytes": 3932214,
+          "release": 0,
+          "draws": 1002,
+          "mode": {
+            "width": 1280,
+            "height": 1024,
+            "pitch": 5120,
+            "bytes": 4
+          },
+          "elapsedWindowMs": 12832.471000000001,
+          "kind": "completed-color-readback",
+          "targetFormat": 22,
+          "targetOffset": 199360512,
+          "targetPitch": 5120,
+          "targetSwizzle": false,
+          "batch": 145
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/profile-scene-2.bmp",
+          "sha256": "3b61ac3e99dac0b867c0d95e1e85a9f8a6198ed0bdf65a7cd9867b593603f0d0",
+          "bytes": 3932214,
+          "release": 8,
+          "draws": 10204,
+          "mode": {
+            "width": 1280,
+            "height": 1024,
+            "pitch": 5120,
+            "bytes": 4
+          },
+          "elapsedWindowMs": 102588.0785,
+          "kind": "completed-color-readback",
+          "targetFormat": 22,
+          "targetOffset": 199360512,
+          "targetPitch": 5120,
+          "targetSwizzle": false,
+          "batch": 1313
+        }
+      ],
+      "visualReview": {
+        "viewedActualImages": 2,
+        "preview": "build/nv40-xp-mark06-final-gt1-work-profile-2/completed-batch-colors.png",
+        "observation": "Original GT1 industrial environment and armored characters in first batch surface; second surface is an intermediate partial-character pass against black. Both confirm GT1 draw processing; neither is used to infer final-frame or FPS acceptance."
+      },
+      "artifacts": [
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/cpu-profile.cpuprofile",
+          "sha256": "9d815c6e260be3b8bd9ca6cb73888188b2977f8dbed8490f69187f1d200e6559",
+          "bytes": 3428590
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/profile-window.json",
+          "sha256": "b909d287ad43f9dee2cbb6a7bbb3508777c7b2bfd65e8492363cc1ab94940dce",
+          "bytes": 3124
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/profile-report.json",
+          "sha256": "f3d1e0354e755c18beaa48cbf164014bffae30029a0d8e5a87c548636b65e8d7",
+          "bytes": 6878
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/trace.json",
+          "sha256": "d4d1d21198a4db30b0d30de9cc851369cc4ae1ee1256516478f3d0ac4e7a372a",
+          "bytes": 559582
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/result.json",
+          "sha256": "cb650a23e92ede736cb7b0d57d215f93e8664a9709b99f031df3270c20701b27",
+          "bytes": 1615
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/NVLAUNCH.TXT",
+          "sha256": "48056b129aaa96a2ecc0eec3d4c50bd06489edd5593827d735c86439c2ab7fb6",
+          "bytes": 157
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/source-workload.json",
+          "sha256": "f2b7a0d189cd053479a2af98638ed77af50eba9e57827d6adae25ffe5d1da100",
+          "bytes": 380
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/isolation-before.json",
+          "sha256": "e04d7e5897544c99cbacf8334d5926420f184f23ba698c65557dbbf7f258742a",
+          "bytes": 304
+        },
+        {
+          "file": "build/nv40-xp-mark06-final-gt1-work-profile-2/visual-review.json",
+          "sha256": "77161b0ce32da26da6ba32144f02b0b85cfeff3b4a6911422587d20cf634695d",
+          "bytes": 384
+        }
+      ],
+      "endBundle": {
+        "status": "complete",
+        "guest": "xp",
+        "vramMiB": 256,
+        "memoryMiB": 1024,
+        "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+        "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark06.img",
+        "state": {
+          "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-final-gt1-work-profile-2/checkpoint-final-profile-window.state",
+          "bytes": 1683875708,
+          "sha256": "e0fceeee2754a7d8de8c0253f2070270ea7b004c72d88cfb291b458693e9aeec"
+        },
+        "osOverlay": {
+          "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-final-gt1-work-profile-2/checkpoint-final-profile-window.state.hda-overlay.bin",
+          "bytes": 223204092,
+          "sha256": "901bb47bcaf07fd29828b865fd18fadffdb83e8aaf483a12df80d3995d0f5e85"
+        },
+        "gameOverlay": {
+          "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-final-gt1-work-profile-2/checkpoint-final-profile-window.state.game-overlay.bin",
+          "bytes": 67630,
+          "sha256": "dd7b0f75afaa13145f25c7e1dad73c649535e316d9006549cf445f87a9cbfbb6"
+        }
+      },
+      "endArchive": {
+        "original": "build/nv40-xp-mark06-final-gt1-work-profile-2/checkpoint-final-profile-window.state",
+        "archive": "build/nv40-xp-mark06-final-gt1-work-profile-2/checkpoint-final-profile-window.state.zst",
+        "originalBytes": 1683875708,
+        "archiveBytes": 720133741,
+        "sha256": "e0fceeee2754a7d8de8c0253f2070270ea7b004c72d88cfb291b458693e9aeec",
+        "restore": "zstd -d build/nv40-xp-mark06-final-gt1-work-profile-2/checkpoint-final-profile-window.state.zst -o build/nv40-xp-mark06-final-gt1-work-profile-2/checkpoint-final-profile-window.state"
+      }
+    }
+  ],
+  "diagnosticsNotUsedForFinalAcceptance": [
+    {
+      "directory": "build/nv40-xp-mark06-final-isolated-profile-1",
+      "reason": "Original default-suite startup window had no retained nonempty frame; final front/back buffers were black. Counter data is historical, not the final workload correlation."
+    },
+    {
+      "directory": "build/nv40-xp-mark06-final-scene-profile-1",
+      "reason": "A SIGUSR1 diagnostic request during CPU profiling was followed by host exit before Inspector opened. No final result/profile/checkpoint; not counted."
+    },
+    {
+      "directory": "build/nv40-xp-mark06-final-gt1-profile-1",
+      "reason": "Standalone GT1 startup had no nonempty primary-present capture within the window. Corrected host teardown and original image invariance verified. Its paired state was continued until actual completed color work was observed."
+    }
+  ],
+  "limits": [
+    "This reports host work distribution in the recorded GT1 rendering phase, not total default-suite elapsed time, SM2/HDR scores, physical GPU timing or physical-NV40 FPS.",
+    "The original default6 and supplementary feature7/batch6 successful projects remain separate functional evidence.",
+    "Weighted Node samples exclude Chrome hardware execution. Backend pending time includes transport/render/readback and overlaps CPU samples; Node process CPU includes worker threads.",
+    "Primary-head semaphore releases and completed batch surfaces are not benchmark FPS. The bounded CPU color-copy/export cost is included in the measured windows.",
+    "The repeated windows use the current implementation. They are not an isolated before/after speedup comparison with older code, sources or loading windows."
+  ]
+}
