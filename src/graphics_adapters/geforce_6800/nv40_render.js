@@ -607,7 +607,9 @@ export class NV40Render
             .set(depthHandle,{target:depth,handle:depthHandle});
         this.batch.query=query;this.batch.draws++;this.stats.draws++;
         this.draw_resources=null;this.trim_resources();
-        if(query || this.batch.draws>=32 || this.writer.size()>=(8<<20) || !this.device.fifo?.running) this.flush();
+        // Amortize full attachment readback for small draws. The command-byte
+        // bound and every query/alias/CPU visibility barrier still yield early.
+        if(query || this.batch.draws>=256 || this.writer.size()>=(8<<20) || !this.device.fifo?.running) this.flush();
     }
     flush()
     {

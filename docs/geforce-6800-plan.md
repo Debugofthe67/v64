@@ -2257,3 +2257,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 05 A16 修复后八图复测：原版逐项保存并核对成功提示、GPU 静止60秒；全16结果SHA保持不变。两张fillrate与参照完全一致，VS simple最大1；GT1/GT2/GT3/PS全图MAD分别0.8293/1.1084/9.6631/0.4310（含原版64行元数据排除）。GT3气球材质过暗、水面波形明显不符，图像门禁继续开放；CPU BC对照也保留，未把小PS残差直接归因于partial precision。见 `g4-05-native-a16-fixed-frames.json`。诊断客体已停止并清理不用的FDA副本与展开驱动缓存，原图/配套来源保留。
 
 - G6 数据软盘冷启动：NV_FDA 的 FAT12 工具模板不应先于已安装硬盘引导；harness 在提供数据软盘时改为 HDD-first，其他启动顺序保留。相同 XP03 正常关机磁盘 overlay 冷启动已进入1024×768桌面，原生93.71探针problem0/started1，并打开原版Image Quality；见 `g6-data-floppy-cold-boot.json`。原盘只读，未据桌面完成图像验收。
+
+- G6 小绘制有界批次：原生06 Batch8原路径每32draw下载整张目标，现将draw上限改256，保留8MiB命令上限及query/别名/CPU可见性/FIFO退出/快照屏障。真实FIFO257draw回归旧实现先红32≠256，新实现两批/两次颜色下载、混合像素255和REF顺序正确；完整真实GPU、FIFO/render单测、Closure通过，见 `g6-bounded-small-draw-batches.json`。先前scope续跑250410新draw后仍为PAGE/DUMP 100000EA，已成套保存并压缩749670143bytes，取证IMG删除；不把批次改进等同看门狗根因修复，继续健康起点复跑。

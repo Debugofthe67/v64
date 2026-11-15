@@ -1694,6 +1694,32 @@ try
         assert.equal(device.registers.get(0x3248),0x76543210,"REF follows the combined readback");
         assert.deepEqual([...vram.subarray(0x10000,0x10004)],[128,128,128,128],"second draw blends against the first draw's GPU pixels");
         console.log("PASS: real FIFO batches two draws, preserves GPU blend history and orders REF after one download");
+        // Small draws should amortize a full-surface download, while the
+        // fixed draw limit still yields and keeps later fences behind pixels.
+        queued.length=0;
+        for(let i=0;i<257;i++)queuedDraw();
+        queue(0x50,0xAB256257);
+        const pushAt=0x60000;
+        queued.forEach(([at,value],i)=>{
+            view.setUint32(pushAt+i*8,(1<<18)|at,true);
+            view.setUint32(pushAt+i*8+4,value,true);
+        });
+        for(const [at,value] of [[0x3244,pushAt],[0x3240,pushAt+queued.length*8],
+            [0x3248,0],[0x3228,0],[0x2504,1],[0x2508,1]])device.registers.set(at,value);
+        const beforeBoundedBatch={...engine.backend.stats};
+        device.fifo.run();
+        assert.equal(engine.backend.stats.draws-beforeBoundedBatch.draws,256,"bounded small-draw batch yields after 256 draws");
+        assert.equal(device.registers.get(0x3248),0,"REF waits behind both bounded batches");
+        await engine.backend.wait();
+        assert.equal(engine.backend.stats.draws-beforeBoundedBatch.draws,257);
+        assert.equal(engine.backend.stats.batches-beforeBoundedBatch.batches,2);
+        assert.equal(engine.backend.stats.readbacks-beforeBoundedBatch.readbacks,2);
+        assert.equal(device.registers.get(0x3248),0xAB256257);
+        assert.deepEqual([...vram.subarray(0x10000,0x10004)],[255,255,255,255],"all ordered blends reach the authoritative target");
+        assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
+        device.registers.set(0x3240,0);device.registers.set(0x3244,0);
+        device.registers.set(0x3248,0x76543210);
+        console.log("PASS: 257 FIFO draws use two bounded batches and preserve readback/fence ordering");
         // Snapshot preparation commits the in-flight batch but leaves later
         // FIFO commands and their fences to the resumed machine.
         queued.length=0;queuedDraw();queuedDraw();queue(0x50,0x12344321);
