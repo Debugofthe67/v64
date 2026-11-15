@@ -9,7 +9,11 @@ DAC format and VGA/VBE save/restore. No Bochs DISPI interface is used.
 `node tests/devices/geforce_6800_vbe.js` assembles a boot sector and exercises
 real INT 10h calls, including 1024×768×32, banked writes, framebuffer clearing
 and a save/restore round trip through DOS text mode. It requires NASM.
-PLL limit tables and complete XP/Win98 driver acceptance are still in progress.
+The ROM includes NV PLL limit tables. Original XP 93.71 and Win98 81.98
+drivers initialize in PCI mode; native mode changes and DOS/snapshot round
+trips are recorded in the [display fixture](../../docs/fixtures/nv40/g1-native-modes-dos.json).
+The current benchmark scope and retained limitations are in the
+[implementation plan](../../docs/geforce-6800-plan.md).
 
 Run `bios/fetch-and-build-seabios.sh` to obtain the pinned SeaBIOS checkout,
 then `python3 bios/nv40/build.py --cross-prefix x86_64-elf-`. An existing

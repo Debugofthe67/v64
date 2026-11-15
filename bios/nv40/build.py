@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the G0 NV40 probe ROM from a pinned, unmodified SeaBIOS checkout.
+"""Build the NV40 VGA/VBE ROM from a pinned, unmodified SeaBIOS checkout.
 
 Requires an ELF x86 GCC/binutils toolchain, make and a host C compiler.
 Example: python3 bios/nv40/build.py --seabios /path/to/seabios --cross-prefix x86_64-elf-

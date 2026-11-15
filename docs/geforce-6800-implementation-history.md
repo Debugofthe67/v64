@@ -1,0 +1,2350 @@
+# GeForce 6800 GT 实施历史
+
+本页保存 G7 整理前的原始实施计划与逐次记录，其中“未完成”“待验证”等表示当时状态。
+当前验收、保留偏差与可选阶段以 [实施计划](geforce-6800-plan.md) 和链接 fixture 为准。
+
+<!-- Original plan begins below; SHA256: 9dd9f4e342add533246d0d009e2098ddb0fbf613f9f467e73a39074804c0544c -->
+
+# GeForce 6800 GT（NV40）显示适配器实施计划
+
+状态：实施中；XP/Win98 原生驱动、显示、DirectDraw 和 DxDiag 已验证，完整 3DMark 图像与性能门禁未完成。2026-10-26 初稿；2026-11-13 开始实现。所有者决定模拟 AGP 版 GeForce 6800 GT，当前在 i440FX 上以 PCI 模式运行。
+
+### 实施记录（2026-11-13）
+
+- G0.1：增加可加载的 `geforce_6800` 插件、PCI/PM 身份、三个 BAR、PBUS 配置镜像、末端
+  1 MiB RAMIN 别名、PMC 中断、PTIMER 基础、快照和有界访问跟踪。未知寄存器只保存值，
+  跟踪中标为未实现。`nvlog(true/false)` 和 `nvtrace()` 在插件设备对象上提供给测试工具。
+- 已验证：SeaBIOS 启动到文本、PCI BAR 探测与重定位、内存解码、PBUS 写入的 PCI 语义、
+  RAMIN/VRAM 别名、W1C 字节写、快照往返。运行 `node tests/devices/geforce_6800.js`。
+- G0 尚未验收：XP/98 驱动初始化仍未完成；PCI 模式兼容性尚无结论。
+  `BOOT_0=0x040500A1`、子系统 `10DE:0045`、strap 和 PTIMER 时钟比率是待驱动跟踪复核的值。
+- 本地 `geforce.iso` 只包含 56.64（NV40 之前）。已获所有者授权下载所需 ROM 和驱动；测试素材
+  放在忽略目录 `build/nv40-fixtures`，不随源代码分发。
+- G0.2：独立探路 ROM 从 SeaVGABIOS rel-1.16.2 构建（`bios/nv40/build.py`、`tables.S`），
+  预留 `0x36` 的 DCB 指针，带 BIT/i/I、终止初始化脚本、单 CRT DCB 与 CRTC DDC 表。
+  描述符的 `vga_bios` 提供默认路径，显式 `vga_bios` 可以覆盖；专属 ROM 不再经过 PCI ID 修补。
+  CPU Worker 保留页面的 ROM 路径基准，PCI 核心保留 ROM BAR 使能位。
+- 已验证 G0.2：ROM/PCIR/BIT 校验和及表指针、默认 ROM 的文本启动、PROM 使能、设备快照；
+  `node tests/devices/geforce_6800_bios.js`、`node tests/devices/geforce_6800.js`，
+  `node tests/devices/graphics_adapter.js`；插件 Closure 构建 0 errors/warnings。
+- 官方驱动已下载并解包：XP 93.71 的 INF 与 Win98 81.98 的 NVAGP.INF 均包含 `DEV_0045`。
+  XP 安装包 SHA-256 `1fdf456054bfa91e307b052324aebcc4210c9ec23e5d50aea11e943ec7408092`；
+  Win98 安装包 SHA-256 `e05b92b1322f8d01549995ddd00a9dca93d83358ee78e868acedca9dc6c7c910`。
+- G0.3：`tests/devices/geforce_xp.mjs` / `geforce_win98.mjs` 使用真实官方 INF、只读原盘、
+  内存 FAT16 工具盘、原生 SetupAPI 探针，输出截图、设备问题码和有界跟踪；
+  `NV_OVERLAY_SAVE/LOAD` 保存/加载 Node v8 序列化的扇区 overlay，仅用于此 harness。
+  `NV_SECONDS` 控制调查时限，`NV_LAUNCH_SECONDS` 控制桌面后启动时机，`NV_ROM` 可覆盖 ROM。
+  驱动可传安装包或解包目录；SZDD 文件名按原版 INF 恢复。尚不自动关机/重启，
+  overlay 是暂停时的扇区副本，不把它当作干净关机的已安装驱动 fixture。
+- XP 93.71 的第一轮硬件跟踪见 `docs/fixtures/nv40/g0-xp-9371.json`：设备识别正确，
+  原盘未变，但未完成安装。驱动大量轮询 `0x3304`、`0x3250` 和 PTIMER；
+  `0x3304` 应是只读的 3，空壳返回 0；VGA MMIO 镜像仍是存值。对策是补齐这两项再复测。
+  这证明驱动走到了硬件访问，**不能**证明 PCI 模式最终可用，也不能据此启动 A1。
+- Win98 81.98 的第一次原生探针能运行，但其 26 个 SetupAPI 设备没有匹配到 NV40 的硬件 ID；
+  未执行驱动安装，尚需检查 PCI 枚举及 Win9x 的设备发现路径。不是驱动加载成功的证据。
+  后续原生注册表检查确认 `HKLM\Enum\PCI` 不存在（错误 2），枚举只有 PNP/ISA 设备。
+  需先在该镜像的 overlay 中安装微软 PCI bus，再进行 NVIDIA 驱动验收。
+- G1.1（显示前置工作，G1 未验收）：VGA 端口与 NV MMIO 镜像、扩展 CRTC 解锁、
+  8/15/16/32 bpp 线性扫描、CRTC 起始地址在 vblank 生效、单级 VPLL 时序、vblank 中断、
+  单 CRT 的 GPIO I2C EDID（重复 START、ACK/NACK）与显示状态快照已实现。
+  同时修正 G0 跟踪发现的只读 `CACHE1 UNK104=3`。小块真实 VRAM 的逐字节像素结果、
+  完整 128-byte EDID、端口/MMIO 别名、页翻转及锁寄存器已通过设备测试。
+  硬件光标、gamma、多级 PLL、NV VBE 后端、驱动加载和客体验收仍待实施。
+- 管理器前置集成：GeForce 标为 experimental，选择时将不兼容的显存改为 256 MiB，
+  只提供 128/256 MiB；配置校验、摘要和默认专属 ROM 一致，显式自定义 ROM 保留。
+  `tests/app/vm_config.mjs`（138 条校验规则）和 `tests/app/presets.mjs`（780 种组合、
+  5000 次随机更改）通过。源码及构建插件的 NV40 设备测试均通过。
+  完整 `make app-tests` 的 iOS 控制器类型阻塞已用一个字符串类型标注修正，`make app-check`
+  通过；浏览器的存储、x86 页面与 FreeDOS/Linux 向导通过，arm64 向导等待 shell 超时，
+  完整应用套件仍未通过。NV40 插件本身 Closure 构建通过。
+- G1.2（PFIFO 前置）：根据 XP 下一处等待点，增加 DMA 实例装载与 CACHE1 的
+  `DMA_CTL/VALID`、LIMIT、PTE 缓存；非法实例触发 DMA_PUSHER 中断。DMA 访问实现
+  显存/PCI RAM、线性/分页映射、页内调整、包含末字节的 limit、方向/页权限、PCI bus master
+  检查；跨页写先验证完整范围，失败不留下半个通知器。
+  `tests/devices/geforce_6800_dma.js` 与设备寄存器集成测试通过。完整 FIFO pusher/puller、
+  RAMHT、RAMFC、PGRAPH 与 2D 类仍未实现，G2 尚未开始验收。
+- G1.3：PTIMER 按硬件保存 56-bit counter（timestamp bits 5–60），高/低位写入生效，
+  超过 JS Number 精确范围的时间戳与快照保持精确；计数、闹钟和比例寄存器保留硬件位宽。
+  VRAM BAR 随 PCI memory decode 与上游转发开关映射；PM capability 的只读字段受保护。
+  设备测试覆盖高时间戳往返、低 5 位清零、显存解码关闭/恢复及 PMCSR 掩码。
+- 最新客体验证：`docs/fixtures/nv40/g1-xp-9371.json` 与
+  `g1-xp-9371-registers.json` 保存复测结论和 469 项 MMIO 地址/读写方向清单，标明访问时走的是
+  实现路径还是存值/默认值。`g0-win98-8198.json` 保存 Win98 原生设备和 PCI 注册表证据。
+  使用 `node tools/nv40_trace_report.mjs <trace.json> <report.json>` 可重新生成清单。
+  原始 RAMIN、跟踪、驱动包及截图留在 `build/nv40-*`，不分发 NVIDIA 固件或微码。
+- **G1 门禁仍未通过**：XP 93.71 已完成设备初始化（下列续修记录），Win98 已枚举 NV40；
+  两者的 NVIDIA 桌面显示与加速尚未验收。不能把单元测试通过称作完整驱动可用。
+  下一步实现引擎启停/复位、通道/上下文语义和 NV VBE/BIOS 表；
+  G2 的 2D、G3/G4 的 D9WG/着色器与 G5/G6/G7 最终验收均未完成。
+- PFIFO 调查续修：93.71 miniport 的初始化路径清除 `DMA_CTL.VALID` 后轮询该位变为 1。
+  现实现清除后的实例缓存重新装载（包括 PUSH 停止时）；VALID 表示取回实例完成，
+  DMA 类/页权限在实际访问时检查，不能把尚未填入对象的零实例误判为装载失败。
+  寄存器测试覆盖停推时失效/重取、内容更新、零实例与越界实例；DMA 测试及插件构建通过。
+- PROM 续修：BAR0 的 PROM 窗口独立于 expansion-ROM BAR；按 Nouveau 的
+  [shadowrom 实现](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/nouveau/nvkm/subdev/bios/shadowrom.c)
+  由 PBUS `0x1850` bit 0 控制读取。此前错误的 ROM BAR 门控使 XP 读到首字节 0，跳过 ROM 表。
+  已修正并覆盖 ROM BAR 关闭时读取、PBUS 禁用/恢复的设备测试；插件构建通过。
+- Win98 PCI 枚举已修复并有客体证据：在只读原盘的 overlay 中用配置管理器创建实际
+  `ROOT\*PNP0A03\0000` 节点，安装原版 MACHINE.INF 的微软 PCI bus。Win9x 的
+  SetupAPI phantom 节点无法按 NT 路径注册；CM 的 `DO_NOT_INSTALL` 标志也不受支持。
+  `pci.vxd/pcimp.pci` 从所有者安装 ISO 提取，不进仓库。探针兼容尚无 HardwareID 属性的
+  新节点，通过设备实例 ID 识别 PCI 身份。客体已枚举 NV40、i440FX、PIIX 与 IDE，见
+  `docs/fixtures/nv40/g0-win98-pci-bus.json`。NVIDIA 驱动选择/加载仍待验证。
+  harness 的 `NV_WIN98_ISO` 可指定安装 ISO；`NV_STATE_SAVE/LOAD`、可选
+  `NV_STATE_SAVE_AT` 保存/恢复调查快照，`NV_CONTROL` 接受 Run 命令或 JSON `keys` 扫描码。
+  定期输出 progress-trace，XP 禁用 overlay 内的自动崩溃重启，便于保留故障证据。
+- XP 设备初始化已通过：PFIFO 续修后产生的 `0x7f / divide error` 转储定位到 miniport
+  RVA `0x151581` 的 tiled-pitch 计算；PFB 的零 column 配置导致除零。增加一致的启动后
+  显存几何配置（四个 64-bit 分区、GDDR3、8 column bits、12/13 row bits，128/256 MiB），
+  快照 v4 向旧快照补齐此前缺失的字段。93.71 安装返回成功、无需重启；原生设备报告
+  `problem=0 cm=0 started=1 service=nv`，见 `g1-xp-9371-initialized.json`。
+  当前屏幕仍是 640×480；下一步验证显示驱动接管、1024×768×32 与 FIFO 命令。
+- PFIFO 通道前置实现：`nv_fifo.js` 增加 128-byte NV40 RAMFC 保存/恢复、32 通道 USER
+  新旧窗口、DMA pusher 的递增/不递增方法与 JUMP/CALL/RETURN、缓存背压、预算让出、
+  RAMHT、REF 与 DMA 信号量 acquire/release、错误中断和快照 v5。
+  测试覆盖跨通道 REF、控制流、散列失败、缓存满/恢复、非法命令、DMA 越界、
+  自跳转预算及 acquire 挂起后的快照恢复。XP 重启跟踪已解码第一批方法：
+  子通道 6 绑定 clip 类 `0x19` 后提交 `0x300`；此前只写 PUT、GET 不动的问题已推进。
+  PGRAPH/2D 类仍待实现，当前会报告未实现方法而非伪造完成；G1/G2 尚未验收。
+
+- PGRAPH 上下文前置：增加按通道/实例隔离的对象状态、clip/ROP/pattern/beta/surface
+  上下文方法、精确 PTIMER 通知器、DMA 全范围检查、非法方法陷阱、中断确认、上下文程序
+  存取与快照 v6。NV40 中断使能修正为 `0x40013c`，NOTIFY 使用 `0x104`。
+  `geforce_6800_graph.js`、寄存器/扫描输出/快照测试和插件构建通过。XP 已继续提交
+  GDI、blit、IFC、SIFM 与 line 等类；其绘制尚未实现，仍按非法方法报告，G2 未验收。
+
+- PFIFO 软件对象续修：XP 用 RAMHT engine 0 的软件 DAC 对象设置显示时序；这类对象的
+  后续方法必须继续触发 PFIFO DEVICE_SOFTWARE，由 miniport 执行，不能当作 PGRAPH
+  的零类对象解释。已补上按子通道 engine 路由和回归测试。
+
+- CPU 2D 第一部分：实现线性 surface 的 8/16/32-bit GDI 矩形、ROP3、图案取样、
+  clip/色键与重叠安全 blit、PCI RAM/VRAM 间的 M2MF 逐行复制和完成通知器。
+  全部目标行与通知器先验证再写入；测试覆盖 256 种 ROP3 的所有输入组合、
+  重叠和裁剪、像素宽度、M2MF 非连续 pitch 与末行故障不留下部分写入。
+  插件构建通过。IFC/单色文字、缩放/YUV、混合与 swizzle 仍待后续步骤，G2 未验收。
+
+- CPU 2D 第二部分：增加 IFC/INDEX 的逐行上传、DWORD 行填充、输出裁剪、色键和
+  LUT 取色，GDI 透明/不透明单色展开与 CGA6/LE 位序；上传进度进入现有对象快照。
+  测试覆盖 RGB565 非整 DWORD 行、半行保存/恢复、裁剪后的像素位置和两种单色位序；
+  2D 测试与插件构建通过。SIFM/SIFC、线/三角形、混合和字体 DMA 尚未完成。
+
+- CPU 2D 第三部分：增加 SIFM 最近点/双线性取样、12:20 步长与 12:4 起点、
+  RGB/AY8/Y8 和两种打包 YUV 的颜色转换，矩形 Morton surface、beta/预乘混合。
+  测试比较 2×2 到 4×4 的像素中心取样、YUV 黑白端点、非方形 Morton 字节布局和
+  预乘 source-over；全部 2D 测试和插件构建通过。XP 的真实命令已生成登录画面；
+  尚需桌面/模式切换与完整 G2 客体验收。
+
+- XP 文字流续修：GDI 各 primitive 共用 clip/color/image 状态；驱动可通过 E 的参数
+  方法配置 C 的透明单色数据。单色流按输入宽度连续推进，一个 DWORD 可跨多行，
+  不能在每行重新对齐到 32 bits。增加这两项语义及跨两行的数据用例；2D 测试和构建通过。
+  XP 已进入 800×600 桌面且原生设备仍为 `problem=0 / service=nv`；模式探针只扫描前
+  512 项，未找到 1024×768×32，需要扩大枚举并实际切换，尚不能算 G1 验收。
+
+- 显示续修：增加按 PRAMDAC BPC 选择的 6/8-bit DAC 端口/MMIO 读写、直接色 gamma、
+  32/64-pixel ARGB 预乘/非预乘光标、1555 透明/XOR 光标、负坐标裁剪与双扫描，
+  VPLL 第二级和 VPLL2 选择。gamma 随显示状态保存，旧快照缺失时恢复恒等映射。
+  设备测试覆盖 gamma 分量、8-bit DAC 别名、光标 alpha/XOR/负位置和 PLL 周期变化；
+  完整设备/快照测试及插件构建通过。
+
+- NV VBE 前置：增加 PRMA 签名/地址/数据寄存器和 CRTC `0x38` 选择的实模式
+  `0x3d0–0x3d3` 窗口，支持 8/16/32-bit 地址与部分数据提交、BAR0/VRAM 访问及
+  越界保护；快照升级 v7。设备测试覆盖 16-bit 地址拆分、部分写到高字节后提交、
+  显存读回和越界不回绕；完整设备测试及插件构建通过。专属 VBE 后端仍待接入。
+
+- INDEX 续修：根据 hwtest 的合法值补齐 `INDEX_FORMAT` 的两种合法值（具体编码经后续原生流校正，见续修），
+  LUT 按源颜色格式使用 16/32-bit 条目。增加索引上传、RGB565 LUT 和裁剪测试；
+  2D 测试与插件构建通过，XP 复测已能绘制桌面图标。
+
+- NV VBE 后端：SeaVGABIOS 通过自己的 NV 寄存器后端提供 640×480 至 1280×1024 的
+  8/15/16/32 bpp、banked/LFB、pitch、display start、DAC 与扩展状态保存/恢复。
+  增加 CRTC 1D/1E 的独立读/写 bank；XP 使用的 `PCRTC_CURSOR` 直接地址生效。
+  `geforce_6800_vbe.js` 从自编引导扇区调用真实 INT 10h，验证模式查询、1024×768×32、
+  banked 显存写、800×600×16 清屏和经文本模式的 VBE 状态往返；ROM 表检查、
+  完整设备测试通过。固件源码与生成 ROM 同时更新；PLL 限制表及 Win98 驱动门禁仍待完成。
+
+- 固件 PLL 表：增加 BIT/C v1 指向的 v0x20 PLL 限制记录，覆盖 NV40 core、memory
+  与两路 VPLL，提供 13.5 MHz 参考频率及一致的 VCO/N/M/P 范围；VBE 求解器遵守 VCO
+  范围。ROM 指针/字段测试和真实 INT 10h 模式、清屏及文本往返测试通过。
+
+- CPU 2D 第四部分：增加 SIFC 的逐行输入、20-bit 小数缩放、12:4 起点和输出裁剪，
+  IFC/INDEX 保留源 alpha 到混合阶段。测试覆盖 2×2 RGB565 输入水平放大与 ARGB
+  预乘上传混合到 RGB565；2D 测试和插件构建通过。
+
+- PGRAPH 通知确认续修：普通通知和 M2MF buffer 通知的 NSOURCE 位按各自的 INTR
+  确认位清除，不能确认一类时丢失另一类；增加同时挂起两类通知的回归用例。
+  DMA/状态故障另保留最多 64 条诊断原因，不进入设备快照。图形上下文测试及构建通过。
+
+- 客体安装路径续修：Win98 为新 PCI 节点补齐真实 HardwareID，匹配官方 81.98 INF，
+  使用原生文件队列复制文件；缺少驱动链接时在原生 class key 下分配未占用 slot。
+  原生安装返回成功，PCI/驱动注册表经正常重启保留。补装 i440FX、PIIX ISA 与 IRQ
+  steering 的微软驱动；当前 NVIDIA 节点仍报告 code 12，资源转储显示旧 `*PNP0900`
+  还占有 VGA I/O/内存范围，必须继续处理，不能算 Win98 驱动加载成功。
+  harness 增加只读安装 CD、`NV_REBOOT` 两阶段安装/复核、`NV_SKIP_INSTALL`、
+  `NV_MODE_TEST`（枚举最多 8192 个模式）、屏幕重绘宽限和 PGRAPH/显示/FIFO 诊断。
+  XP 93.71 原生模式测试/切换到 1024×768×32 成功且设备保持 started/problem=0，
+  证据见 `g1-xp-9371-desktop.json`；Win98 重启后的问题码见 `g0-win98-8198-installed.json`。
+
+- CPU 2D 第五部分：增加 NV40 LIN 的整数线段、32-bit 坐标、折线与逐顶点颜色，
+  NV4 TRI 的独立/mesh 三角形、32-bit 坐标和实色方法。使用 Bresenham 与像素中心
+  top-left 覆盖规则；测试验证线段终点排除、两个 XOR 三角形的公共边只覆盖一次。
+  全部 2D 测试及插件构建通过。字体 DMA/完整客体验收与 3D 仍未完成。
+
+- XP GDI 原生读回验收：新增可选 `NV_GDI_TEST`，在真实主表面填充、DSTINVERT 和
+  透明文字绘制，再通过安装的显示驱动 GetPixel 读回并恢复原桌面。93.71 + 新固件
+  冷启动、1024×768×32 下 `GDI_TEST failures=0`，设备仍为 started/problem=0，见
+  `g2-xp-9371-gdi.json`。DirectDraw/DxDiag、字体 DMA 和 Win98 门禁仍未完成。
+
+- VBE/DOS DAC 续修：返回传统模式时恢复 6-bit DAC 并关闭硬件光标；恢复 VBE 状态时，
+  先恢复 DAC 精度再写标准 VGA 调色板。真实 INT 10h 测试覆盖非平凡的 8-bit 调色板、
+  mode 3 的 6-bit 读回及 VBE 往返，`geforce_6800_vbe.js` 通过。
+
+- PCI ROM BAR 续修：地址按 ROM 大小对齐，字节/字写保留其余字段；通用 VGA ROM 的
+  映射随 BAR 地址、使能、PCI memory decode、上游窗口及快照恢复变化，PROM 仍独立。
+  原先只改配置地址会使 Bochs 的 ROM 留在旧地址，现已一并修正。
+  源码/release 的 NV40 与通用显示适配器测试、26 项 PCIe 测试及 Closure 构建均通过。
+
+- IFC/INDEX 游标续修：POINT 方法开始一幅新图像，允许驱动复用原有的 SIZE_IN。
+  先前仅在写尺寸时重置会把下一幅图的数据误报为 excess data；新增复用尺寸的
+  INDEX 像素检查和 IFC 部分行状态检查，全部 2D 测试与插件构建通过。
+
+- 原生诊断续修：Win98 探针输出各节点逻辑配置及 CM_Detect_Resource_Conflict，旧 VGA
+  不可停用时走原生设备移除；工具盘预留 64 KiB 探针，`NV_PROBE_REPLACE` / `NV_PROBE_ID`
+  支持在首次打开探针前的调查快照中替换代码，已用不同编号的真实探针验证。
+  `NV_HOLD` 暂停自动启动探针/END 退出以便调查界面；跟踪包含 PCI 配置。
+  可选 `NV_DDRAW_TEST` 使用原生 DirectDraw7 测试显存表面的填充、复制、ROP 和 Lock 读回，
+  每个阶段记录标记；目前不能据此宣布 DirectDraw 通过。
+
+- Win98 2D 初始化续修：接纳 GDI 字体 F/G 的字体/clip/color 参数别名。原生冷启动
+  已到 81.98 的真实 GDI/INDEX 命令，首先在 0xFF4 被误报非法方法；修复后继续到
+  INDEX 上传，确认编码应为 0=I8、1=I4。此前实现反了，32×32 的 I8 在 128 DWORD
+  后便错误耗尽。已修正像素宽度、LUT 项数及索引提取；I4/I8（含第 128 项 LUT）
+  与 GDI clip 别名测试、插件构建通过，客体复测进行中。
+
+- NV40_3D 控制面前置：增加已知状态方法、544 个位置的顶点指令/常量上传与逐分量
+  提交游标，部分指令随对象快照恢复。DMA fence 精确写一个 DWORD，校验 limit、
+  权限、页对齐；不把 fence 当成 16-byte 通知器。PGRAPH、FIFO、DMA、设备测试和
+  插件构建通过。draw/query/clear 尚未接入执行器，仍明确报未实现，G3 未验收。
+
+- GDI 单色上下文续修：NV40 对象 word 1 的 bits 24…25 预置单色位序，驱动不必再发
+  SET_MONOCHROME_FORMAT。XP/98 原生对象都预置 CGA6；此前缺省按 LE 导致未显式设置
+  格式的文字错位。读取此上下文字段，并覆盖直接 RAMIN 初始化的像素测试；2D 测试与
+  插件构建通过。
+
+- 跟踪续修：PGRAPH 方法额外按通道保留最多 4096 项，记录对象实例、类、子通道、
+  方法和值，避免桌面 MMIO 轮询淹没短暂的 DirectDraw 通道。历史使用环形缓冲，
+  不进快照，关闭跟踪时不记录；边界/清空测试、设备测试与插件构建通过。
+
+- I4 像素顺序续修：每个字节先取高 nibble，再取低 nibble，符合原生 4-bit DIB 流。
+  先前相邻两个像素交换，导致 XP 的 I4 抗锯齿文字破碎；已更正提取与像素用例，
+  全部 2D 测试和插件构建通过，客体图像继续复核。
+
+- CACHE1 容量续修：NV40 有 512 个物理 cache entries，GET/PUT 的 wrap bit 位于 bit 11；
+  此前误用 256 项和上半区别名，软件 DAC 陷阱恢复时会读错 cache 数据，令模式切换停住。
+  扩展物理数组和指针位宽，并为 v1 FIFO 快照按队列顺序搬迁未完成方法。
+  测试覆盖上半区、512 项背压、0xFFC wrap 和旧队列跨界迁移；设备/快照/构建通过。
+  恢复此前卡住的 XP，27 秒内原生模式切换与 GDI 读回通过；DirectDraw 仍有像素/ROP 失败。
+
+- Win98 原生初始化/模式/GDI 已通过：补齐 7010 的 MSHDC.INF 安装，测试探针可选
+  `NV_AUTOSTART` 登记到 overlay 的 RunServices，在 `/auto` 启动时等待 60 秒并跳过重装，
+  避免安装向导抢走 Run 的焦点。冷启动 81.98 报 problem=0 / started=1，59 个模式中
+  找到 1024×768×32；模式测试与切换成功、GDI 读回 failures=0，原盘未变，见
+  `g1-win98-8198-native.json`。完整桌面、8 bpp、DOS 和快照门禁继续验证。
+  DirectDraw 探针改用自己的 IID 常量，避免链接整份 dxguid 使诊断 EXE 超出工具盘预留；
+  返回值与阶段日志分开输出，并记录像素/位宽/pitch 和 ROP HRESULT。XP 已测到
+  32-bit 表面黑像素与 DDERR_NORASTEROPHW，不能称作 G2 通过。
+
+- 程序解码前置：`nv40_program.js` 解码 VP 的双发射/掩码/源寄存器与 swizzle、
+  FP 的寄存器/条件/分支字段和指令后的内联常量；归一化代码排除常量内容。
+  调试 `nvprograms()` 在 draw 开始时保留语料，防止驱动释放程序 BO 后只读到零。
+  手写编码、常量边界、控制数据与常量的区分、BO 释放后语料保持测试和插件构建通过；
+  `nv40_program_test.js` 自动纳入 glbridge 测试扫描。D3D9 字节码翻译和实际渲染尚待接入。
+
+- IFC 即时上传续修：每个输入 DWORD 立即提交新像素，不能等完整行到齐。93.71 用
+  1024-pixel 宽的 Y32 surface 上传少量 FP 微码；此前微码一直留在行缓冲，实际 VRAM 为零。
+  提交字节游标随已有对象状态保存，后续 DWORD 不重放已执行的 ROP；覆盖部分行快照、
+  XOR 不重放和宽 Y32 shader 字上传。2D、FIFO、PGRAPH 单元测试及 Closure 构建通过。
+
+- 级联中断续修：Win98 8 bpp 等待时主 PIC ISR2 挂起、从 PIC ISR=0，后续 PFIFO IRQ10
+  无法交付。级联请求在 INTA 前撤回或被屏蔽时，应交付从 PIC 的伪 IRQ15，让客体确认
+  主 PIC；旧实现直接返回无中断，遗留 ISR2。按
+  [8259 级联语义的 QEMU 实现](https://github.com/qemu/qemu/blob/master/hw/intc/i8259.c)
+  核对后补齐此路径。真实客体 INTA/IRET 回归覆盖撤回、屏蔽、ISR 位及后续 IRQ10，
+  debug/release 均通过，加入 devices-test；Win98 冷启动复测继续进行。
+
+- 程序翻译前置：新增 VP/FP 直线代码到 SM3 字节码翻译，输入/输出语义、ALU、纹理
+  采样、内联常量独立绑定；VP 双发射先计算两个结果再提交，避免后一个 slot 读到新值。
+  分支/谓词、相对地址、需打包的半/全寄存器别名及超出预算明确拒绝，保留后续 G4 工作。
+  PGRAPH 可从真实对象生成 shader pair；31 个模块（含 XP 原生捕获）经现有 D3D9 管线
+  转 WGSL 并通过 naga，PGRAPH 集成测试和插件 Closure 构建通过。绘制后端仍待接入。
+
+- G1 原生显示/模式/DOS/快照门禁复核：XP 93.71 与 Win98 81.98 均在无问题码下
+  显示 1024×768×32；98 实测 640×480×8、800×600×16、1024×768×32，CDS_TEST、
+  实际切换和 GetDeviceCaps 一致。DOS COM 进入 mode 13h，写/读 VGA 像素，等待两个秒钟
+  捕获完整 320×200 scanout，再回文本并返回桌面，退出码 0、标记 NV40DOS0。
+  debug/release 冷启动通过，两个系统快照恢复后显示与 FIFO 保持正常。证据见
+  `g1-native-modes-dos.json`。一次早先的 release 冷启动在 VBIOS shadow 中遇到文字字节
+  并停住，之后复测未重现；失败快照保留到 G6 排查稳定性，不据此掩盖未决问题。
+  探针还核对 GDI 桌面备份与恢复，均为 failures=0；DirectDraw 仅在驱动宣告支持时测 XOR，
+  实际填充读回仍失败，G2 未验收。G3-G7 尚未完成。
+
+- 3D 取数前置：新增 render target 的颜色/深度格式、四目标 DMA/offset/pitch、线性与
+  矩形 Morton 布局；主机读回前验证所有目标行，末行 DMA 故障不留下部分更新。
+  顶点取数先支持 float 数组、索引/基址和内联数据，未启用属性使用当前 float4；
+  未实现的压缩格式明确拒绝。表面填充字节、Morton 顺序、原生 X8R8G8B8 编码、
+  行填充保持、原子故障及顶点数据测试通过，加入 devices-test，插件构建通过。
+
+- 首条主机 GPU 绘制路径：NV40_3D BEGIN/内联顶点/END 翻译成带原生 VP/FP 的 D9WG，
+  展开 strip/fan/quads/lines，独立 NV40 session；窗口坐标在 VS 尾部重建，viewport 变化
+  只更新常量。当前 D9WG 已由公共执行器演进到 1.9，沿用现有线协议，不降回计划中的 1.8。
+  GPU 目标读回完成后才提交 VRAM 并放行 FIFO/fence；快照先等待读回，恢复时重建主机缓存。
+  不支持的纹理、深度/模板、clip-space 视口和光栅状态明确报错。END 即使绘制报错也关闭
+  primitive，避免下一次 BEGIN 陷入错误。浏览器创建 renderer 的适配器列表已加入 NV40。
+  真实 Chrome WebGPU 的 8×8 像素全匹配 #336699，部分 primitive 快照、primitive 展开、
+  回写/完成/fence 顺序、错误恢复通过；34 个 WGSL 模块（含 XP 有效语料）通过 naga。
+  公共 writer 默认 SVGA session 保持一致，SVGA 3D/图形适配器测试与两个插件构建通过。
+  XP 93.71 原生 GDI 和 DirectDraw 显存填充/复制/Lock 读回均 failures=0，像素 ff336699，
+  原盘未变，见 `g2-xp-9371-ddraw.json`。前一条纹理复制仍报未实现，DxDiag 与 G2/G3
+  完整门禁尚未验收。
+
+- Curie 输出路由续修：VP 的 TBUF 槽与颜色/纹理语义分开。按硬件测试中的 1FC4、
+  1FC8/1FCC 和 1FF4 读取颜色、标量与纹理坐标路由/使能；标准编译器的寄存器约定不能
+  替代这些状态。XP 原生复制程序用槽 5 输出 TEX0，旧翻译却将其声明为 fog。
+  改为先保存原始输出，再按路由写 D3D9 语义。测试覆盖槽 5→TEX0、颜色/标量选择、
+  路由后的 WGSL；state/PGRAPH/绘制测试与 Closure 构建通过。额外插值器和双面颜色
+  尚未接入执行器时明确拒绝，避免使用错误的语义。
+
+- 基础纹理接入：checked DMA 读取线性/Morton 的 2D 单级纹理，支持 L8、1555、4444、
+  RGB565、32-bit 存储与 A8L8，按组件交叉开关转换取色；绑定 wrap、边框与最近点/线性
+  过滤。16 个 texture size 状态地址均可保存；未接入的 mip/cube/volume/比较/sRGB/signed/
+  anisotropy/unnormalized 状态明确拒绝。单元测试比较字节顺序、Morton 和组件常量；
+  真实 WebGPU 棋盘格的最近点、双线性像素以及 TBUF5→TEX0 路由均正确。
+  XP 93.71 的前一条纹理复制现在也执行到 GPU，两个 draw、三个分块读回完成，PGRAPH
+  faults=[]，GDI 与 DirectDraw 微探针均 failures=0，见 `g2-xp-9371-ddraw-textures.json`。
+  设备/着色器测试和插件构建通过，完整 DxDiag 与 G3 门禁仍待后续实现。
+
+本计划为 v86 增加第四种显示适配器 `graphics_adapter: "geforce_6800"`。它是一张 Windows 98 和
+Windows XP 都能用、支持 DirectX 9.0c 与 Shader Model 3.0 的复古显卡。客体装 NVIDIA 官方驱动：
+98 用 ForceWare 81.98（Win9x 版），XP 用 ForceWare 的 XP 版。设备在寄存器和命令层面模拟真实的
+NV40，2D 在 CPU 侧完成，3D 翻译成现有的 D9WG 批次，由页面上的 D3D9 执行器在 WebGPU 上运行
+（[gpu-devices.md](gpu-devices.md) 的 “Architecture”）。
+
+与已有的三种适配器的关系：Bochs VGA 不变；VMware SVGA II 与 virtio-gpu 面向现代客体，给客体的是
+高层的 3D 命令（SVGA3D、VGPU10、virgl、Venus）；NV40 给客体的是真实硬件接口，客体驱动是闭源的
+NVIDIA 驱动，设备必须从硬件层面的方法流重建 D3D9 级的状态。
+
+- G3 顶点提交续修（2026-11-14）：实现 VB_ELEMENT_U16/U32、VB_VERTEX_BATCH、
+  VB_INDEX_BATCH，索引 DMA0/1、16/32-bit 读取与有符号 VB_ELEMENT_BASE。BEGIN 内的
+  索引流和类型随对象快照恢复；混合内联属性与索引、越界 DMA、过长批次明确报错。
+  状态/渲染测试、Closure 构建通过，真实 WebGPU 的 DMA 索引三角形像素读回正确。
+  此项不替代原生 DxDiag/3DMark 的 G3 验收。
+
+
+- G3 顶点格式续修（2026-11-14）：数组读取支持 packed BGRA、U8 normalized/scaled、
+  S16 normalized/scaled、FP16 与 FP32，保留 DMA 边界检查。启用的短向量补齐
+  (0,0,0,1)，仅未启用属性使用 current attribute。测试覆盖通道顺序、SNORM 端点、
+  FP16 非正规数/无穷、整数缩放与默认分量，状态/渲染测试和 Closure 构建通过。
+
+
+- G3 原生顶点编码续修（2026-11-14）：93.71 的 DrawPrimitiveUP 提交
+  VTXFMT=0x114BB/0x114CC，bit 16 选择 DirectX 声明编码，不能按普通 TYPE/SIZE
+  解码。补齐已核对的 FLOAT1–4、D3DCOLOR、UBYTE4 与 SHORT2 编码；内联路径也
+  转换 packed/FP16 输入，并按每个属性的 DWORD 长度推进。新增真实格式与字节
+  消耗测试，状态/渲染测试和 Closure 构建通过；原生三角形正在复测。
+
+
+- G3 清除续修（2026-11-14）：CLEAR_BUFFERS 写入真实显存，支持 1555/565/32-bit
+  颜色通道、D16/D24S8 深度、模板写掩码、scissor 和多颜色目标；全部目标先校验
+  DMA，越界不会留下部分清除。此时显存是权威副本，后续 GPU 绘制重新上传。
+  测试覆盖裁剪、行 padding、分量保留、深度/模板互不破坏和晚发生的 DMA 故障；
+  状态、PGRAPH 测试与 Closure 构建通过。浮点颜色清除仍明确报错。
+
+
+- 原生验收工具与运行库（2026-11-14）：增加 NV_DX9/NV_DX9_INSTALL，在只读原盘
+  overlay 中运行未经修改的微软 December 2006 自解压包和 DXSETUP /silent；SHA-1
+  9143e8a08ba454ac2c35d179f8f180db271af0dd。安装后冷启动，Win98 81.98 的
+  GDI 与 DirectDraw7 显存填充/复制/Lock 读回均为 0 失败，GPU 1 draw、PGRAPH 无故障。
+  见 g2-win98-8198-ddraw-dx9.json。此前 CreateEx 8007007f 是旧运行库缺少入口。
+- 增加 NV_D3D_TEST 原生 D3D9 HAL 探针：查询真实 caps、创建设备、固定功能顶点/颜色、
+  DrawPrimitiveUP 与 GetRenderTargetData，未注入 API 代理。XP 93.71 的硬件顶点
+  处理设备成功，读回 ff336699；GDI/DirectDraw/D3D9 均为 0 失败，3 GPU draws、
+  PGRAPH 无故障，见 g3-xp-9371-hal-triangle.json。Win98 的 D3D9 设备创建仍返回
+  8876017c（OUTOFVIDEOMEMORY），继续调查。两种客体的 DxDiag 和基准门禁仍未通过。
+
+
+- G3 alpha/blend 续修（2026-11-14）：连接 alpha 比较、8-bit reference、颜色与 alpha
+  独立 blend factor/equation、常量颜色，复用 D9WG 的实际光栅管线。真实 WebGPU
+  读回验证 source-over 的四个分量，以及 alpha 比较失败保留原目标、成功写入源色；
+  状态枚举测试、完整渲染测试和 Closure 构建通过。RGB 的 constant-alpha factor
+  尚需额外降低，目前明确报错。
+
+
+- G3 视口续修（2026-11-14）：正常 VP 保留齐次 XY 到 host 裁剪阶段，再由对应的
+  WebGPU viewport 施加 NV 的缩放/平移，支持非零起点的小视口和 Y 方向。此前
+  将坐标直接归一化到整个 target 会在裁剪后错误扩展到视口外。真实 GPU 测试逐
+  像素核对 8×8 target 内 (2,1) 起的 4×4 视口，外侧显存保持不变；渲染测试和
+  Closure 构建通过。超出 target 或非有限的视口继续明确报错。
+
+
+- G3 深度/模板续修（2026-11-14）：D16/D24S8 目标接入真实 GPU 深度比较与写入、
+  单面模板 compare/fail/zfail/pass 和读写掩码。颜色与深度目标全部读回后才一起提交
+  显存并恢复 FIFO，fence 与快照不会先于深度结果。共享执行器同时补齐 stencil
+  上传：全表面复制模板平面，局部矩形用逐位掩码 pass 保留周边和深度。
+  真实 GPU 测试覆盖远/近片元、跨批次重传、模板 fail increment/replace、写掩码
+  和深度保持；七种标准深度格式的浏览器测试通过 56,152 项检查，包含完整/局部
+  上传、非连续 pitch、模板字节和真实绘制。Closure 构建、设备渲染测试通过。
+  双面模板、depth bounds 与 polygon offset 仍明确报未连接。
+
+
+- 客体调查工具续修（2026-11-14）：NV_CAPTURE_SECONDS/NV_CAPTURE_LIMIT 提供有界
+  高频截图，NV_CONTROL 的 {"stop":true} 经过正常 finally 保存现场并退出，供 DxDiag
+  短暂测试画面和中途状态使用。DirectDraw 探针补充显存/caps、3D heap 与 render
+  surface 分配结果；D3D9 探针区分 HWVP、HAL+SWVP 与 Win98 全屏创建结果。
+  原生 C 构建通过。Win98 报告约 118 MiB 空闲显存，但 HWVP/SWVP 仍返回
+  OUTOFVIDEOMEMORY；全屏复测受到可复现的 VBIOS shadow 停顿阻塞，尚未下结论。
+
+
+- G3 面剔除续修（2026-11-14）：连接 CW/CCW 前面约定与 FRONT/BACK/
+  FRONT_AND_BACK，全部剔除时不提交三角形，但点和线保持原行为。真实 GPU
+  测试验证更换前面方向、正面剔除、全部剔除不产生绘制、反转数组索引改变
+  面分类；渲染测试与 Closure 构建通过。
+
+
+- G2 XP DxDiag 门禁（2026-11-14）：在 93.71 下实际运行微软 DxDiag 的三段
+  DirectDraw 测试。高频截图核对主表面黑白矩形、屏幕外表面的窗口内跳动白块、
+  640×480 全屏跳动白块；报告 DDXP.TXT 明确写出“All tests were successful.”
+  测试后的 PGRAPH 无故障，原盘未改变。报告与选定帧的哈希、GPU 统计见
+  g2-xp-9371-dxdiag-ddraw.json。Direct3D 7/8/9 此时尚未运行，Win98 DxDiag
+  仍待验证，不能将 G2 整体标为完成。harness 导出诊断文本并记录 ROM shadow
+  和段基址，方便继续 Win98 冷启动调查。
+
+
+- i440FX PAM 续修（2026-11-14）：Win98 VDD 的 C025CDF6 页清除循环把虚拟
+  C25C0000 映射到物理 C0000，写入 20/07 文本空格；当时 PAM1=0x11，硬件应
+  丢弃写入。原核心忽略 PAM 写使能，破坏 VBIOS 后停在 C2000。现按 PAM0–6
+  的 16 KiB 写使能保护 shadow，更新/恢复时清理 JIT/TLB 缓存，不向客体伪造
+  page fault；读取保留既有 shadow RAM 路径。覆盖普通/SIMD/锁/字符串写入、
+  跨块字节使能、生成代码重新解锁/锁定、分页和快照。debug/release 回归、
+  NV VBE、通用显示适配器、26 项 PCIe 与 26 项 SMM 测试通过。
+  Win98 冷启动首次复测 129 秒进入 1024×768×32，ROM 保持 55 AA；GDI、
+  DirectDraw 与全屏 D3D9 HAL 的 ff336699 像素读回均为 0 失败、PGRAPH 无故障，
+  见 g6-win98-pam-write-protection.json。窗口化 D3D9 仍报显存不足，继续调查。
+
+
+## 选型结论
+
+2026-10-26 的选型过程（证据见“规范与实现参考”）：
+
+1. **只有 NVIDIA 的 NV40 家族同时满足 98、XP 与 SM3.0。** Radeon X1000（R5xx）没有 Win9x 驱动：
+   Win9x 的最后一版 Catalyst 6.2 不含 R5xx；Intel GMA X3000 也没有 98 驱动。GeForce 6/7 系列
+   （NV40 家族：NV40–NV4E、G70–G73）都是 SM3.0。
+2. **6800 GT AGP（`10DE:0045`）是 98 支持最稳的型号。** ForceWare 81.98 的 Win98/ME 版只列出 AGP 的
+   GeForce 6 系列（6200、6600、6600 GT、6800 Ultra/GT/LE 等）；PCIe 型号和 7 系列在 98 上要改 INF
+   或用 82.69，社区报告有妥协。7 系列与 6 系列是同一套 3D 类和着色器指令集，对 DX9.0c/SM3.0 没有
+   额外能力。6800 GT AGP 是原生 AGP 的 NV40，不经过 HSI 桥（6600 GT AGP 是 PCIe 的 NV43 加桥），
+   也不是 TurboCache（6200 TC、7300 借用系统内存，显存管理更复杂）。
+3. **XP 也要装驱动。** XP SP3 自带的 `nv4_disp.inf`（5.6.7.3，即 ForceWare 56.73）只到 GeForce FX 5700
+   （NV36），没有 NV40（2026-10-26 从安装盘核对）。98 SE 更没有。这只影响首次准备镜像：网站的
+   XP/98 镜像由所有者装一次驱动。
+4. **有现成的参考实现。** Bochs 的实验性 GeForce 模拟有 `geforce6800` 型号（Leadtek 6800GT AGP 的
+   VGA BIOS），2D 大部分可用，据报 Windows 到 7 可以启动，3D 是 PGRAPH 方法的软件解释，未完成。
+   Bochs 是 LGPL，xemu 的 NV2A（同一谱系的 PFIFO/PGRAPH，GPL）也只作参考；nouveau、Mesa 的 nv30
+   驱动与 envytools 是 MIT 许可，可以移植并注明来源。
+5. **代价是 98 老游戏的部分兼容性。** GeForce 6 起取消了调色板纹理（P8），部分 DX5/6 游戏的贴图会
+   出错。这是真卡的行为，不是模拟的缺陷，写进 [gpu-deviations.md](gpu-deviations.md) 的客体说明。
+
+## 关键决定
+
+1. **身份。** PCI `10DE:0045`，修订号与 `PMC_BOOT_0` 取 NV40 的 A1 步进（G0 依 envytools 与驱动行为
+   核对；Bochs 只返回 `0x04000000`），类代码 `030000`，INTA。子系统 ID 取一个公版值（G0 决定；
+   驱动 INF 按 `PCI\VEN_10DE&DEV_0045` 匹配，与子系统无关）。显存 256 MiB（`vram_size` 可选
+   128 MiB），正好是 `MAX_VRAM_SIZE`。显存是 wasm 堆里的设备内存（与其他适配器相同），XP 门禁配置的
+   2048 MB 内存加 256 MiB 显存仍在 32 位堆的 4 GiB 之内。
+2. **BAR。** 与真卡和 Bochs 一致：BAR0 16 MiB 寄存器（不可预取），BAR1 显存（可预取，大小等于
+   `vram_size`），BAR2 16 MiB 的 RAMIN 窗口，另有扩展 ROM BAR（VGA BIOS）。
+3. **总线：先用 PCI 模式。** v86 的 i440FX 没有 AGP（Bochs 为此改用 i440BX）。NVIDIA 的 DMA 对象本来
+   就能用页表访问系统内存，不依赖 AGP 的 GART；AGP 芯片跑在 PCI 总线上有真实先例（GeForce 6200
+   PCI 是 AGP 的 NV44A 跑在 PCI 上）。所以设备先不声明 AGP capability，PEXTDEV 的总线 strap 报
+   PCI。模拟中 AGP 内存与系统内存都是客体 RAM，PCI 模式不损失能力。G0 验证 81.98（98、XP）与
+   XP 主驱动接受 PCI 模式的 NV40；不接受时再做可选阶段 A1（i440BX 与 AGP GART）。
+4. **3D 后端复用 D9WG。** NV40 的 3D 状态是 D3D9 级的（NV40 正是为 D3D9 SM3.0 设计的），D9WG
+   执行器已经按设备保存完整的 D3D9 状态，并在 VMware SVGA 的 `vgpu9` 上把 3DMark06 跑完。设备把
+   `NV40_3D`（类 `0x4097`）的方法翻译成 D9WG 命令（`svga3d_d9wg.js` 的 `D9WGWriter`，会话
+   `"NV40"`），把 NV40 的顶点和片段程序微码翻译成 D3D9 SM3.0 的字节码，由
+   `d3d9_shader_pipeline.js` 转成 WGSL。D3D9 字节码表达不了的少数 NV 指令（打包/解包、条件码的
+   某些用法）用私有操作码扩展字节码，协议升到 1.8，就像 GX 的前端接受 VMware 的私有 VGPU10
+   操作码。不选 GX：它是 D3D10/11 级的状态模型，NV40 的语义要先降成 D3D9 再升回去。
+5. **显存的权威副本。** 显存字节（设备内存，BAR1 直接映射）是权威副本，除非某个表面被 GPU 写过。
+   上传靠显存页的脏位图与 DMA 写入记录，下载发生在同步点（见“显存一致性”）。tile 区域和 Z 压缩
+   由显存控制器处理、对访问者透明，模拟中显存始终按线性地址保存，只记录寄存器值；swizzle 纹理
+   是驱动选择的数据布局，上传时按 Morton 顺序还原。
+6. **自己的 VGA BIOS。** NVIDIA 驱动会读 ROM 里的 BIT 表、DCB、I2C 表、PLL 限制与初始化脚本。
+   真卡 ROM 的 dump 不能随 v86 分发，也不作为测试的前提。v86 构建自己的 ROM：基于 SeaVGABIOS，
+   加一个用 NV 的 CRTC/RAMDAC 寄存器设置模式的驱动（像 `vgasrc/` 现有的 cirrus、ati、bochs 驱动），
+   以及按 envytools/nouveau 文档写的最小 NVIDIA 表格。这是第一个需要专属 ROM 的适配器：插件的描述符
+   新增 `vga_bios` 字段，`graphics_adapter.js` 用它代替共用的 `bios/vgabios.bin`，不再走 ID 修补。
+7. **驱动版本固定。** 98：ForceWare 81.98（Win9x）。XP：93.71（2006-11 WHQL，复古社区最常用）为主，
+   81.98（XP 版）对照，307.83（应是 GeForce 6/7 在 XP 上的最后一版，G0 确认）作回归。安装包从
+   NVIDIA 官方存档下载（所有者下载，不进仓库），测试按环境变量取路径。
+8. **测试素材**：所有者的 XP 镜像，3DMark03/05/06 与 legacy 镜像（3DMark99 MAX、2000、2001 SE），见
+   “测试镜像”。3DMark03/05/06 的注册码取自 UL 官方的 legacy benchmarks 页面。
+9. **许可。** nouveau、Mesa nv30、envytools（MIT）的表格、编码与公式可以移植，在文件头记录来源与
+   修改；Bochs（LGPL-2.1）与 xemu（GPL-2.0）只读、不复制代码。
+
+## 范围
+
+**目标**（v1）：
+
+- Windows 98 SE + ForceWare 81.98，Windows XP SP3 + ForceWare XP 版：驱动加载，设备管理器无问题代码；
+- VGA 兼容、VBE、文本模式，98 的 DOS 全屏切换；
+- 8/16/32 bpp 桌面，模式切换，硬件光标，DDC/EDID；
+- GDI 与 DirectDraw 加速，翻页；
+- Direct3D 5 到 9.0c：固定功能（驱动把它编译成 NV40 程序）、VS/PS 1.x–3.0、多渲染目标、FP16 混合与
+  过滤、顶点纹理、硬件阴影图、遮挡查询；
+- 3DMark99 MAX、2000、2001 SE、03、05、06 跑完；
+- 快照，CPU Worker 模式。
+
+**非目标**（v1 之后再定）：
+
+- Vista/7 的 WDDM 驱动（同一硬件，但多出 GPU 调度与显存管理的要求）；
+- SLI、电视输出、DVI/TMDS 的细节（报一个 CRT 输出），第二个显示头（报未连接）；
+- PureVideo/MPEG 解码；PVIDEO 视频覆盖层在可选阶段 V1；
+- 降频、温度与风扇：接受写入，读回固定的合理值；
+- AGP（可选阶段 A1）。
+
+**OpenGL**：NVIDIA 驱动的 OpenGL ICD 走同一个 `NV40_3D` 类，硬件模拟完整时它自然可用。v1 不专门
+验收，可选阶段 O1 用 OpenGL 游戏验收。
+
+## 架构
+
+```text
+=== guest ======================================================================
+ XP: nv4_mini.sys + nv4_disp.dll (GDI, DirectDraw, D3D) + nvoglnt.dll (OpenGL)
+ 98: ForceWare 81.98 (VxD 驱动, DirectDraw/D3D HAL, OpenGL ICD)
+        │ BAR0 寄存器, BAR1 显存, BAR2 RAMIN, PCI DMA (系统内存)
+=== CPU thread (or CPU worker) =================================================
+ v86-geforce-6800.js
+  PMC/PBUS/PTIMER/PFB/PEXTDEV, IRQ           PCRTC/PRAMDAC + vga_core.js, 光标, DDC/EDID
+  PFIFO: 通道, DMA pusher, RAMHT/RAMFC, USER  PGRAPH: 对象, 通知器, 上下文, 错误中断
+  2D 类 (surf2d, blit, gdi, ifc, sifm, m2mf) → 显存字节 (CPU 上)
+  NV40_3D (0x4097) 状态 → 表面/纹理/顶点缓存 → D9WG 命令
+  VP/FP 微码 → D3D9 SM3 字节码 (+私有操作码)
+        │ renderer channel: submit (d9wg), reset ↓   write, done, lost ↑
+=== page (WebGPU) ==============================================================
+ svga_renderer.js 的 D9WG 执行器 (d3d9_executor.js, d3d9_shader_pipeline.js)
+```
+
+- **CPU 侧**（插件）做所有涉及客体内存的事：寄存器语义、FIFO 解析、DMA 对象与页表、2D 运算、
+  表面与纹理的缓存及其失效。3D 方法流被归并成 D3D9 级的状态，在绘制时写成 D9WG 命令，所引用的
+  显存或系统内存数据随批次一起走（批次自包含，与 SVGA 相同）。没有渲染器时只提供 2D：3D 类的
+  方法照常接受，绘制不出画面，通知器照常完成，客体不挂。
+- **渲染器**不变，复用 `svga_renderer.js` 与远程渲染器（`tests/x64/gpu_remote_renderer.mjs`）。
+  D9WG 协议的扩展（私有操作码、视口约定，见下）放在协议 1.8，执行器同时接受 1.7。
+- **线程**：与其他适配器相同，插件在机器线程（单线程或 CPU Worker），并行模式下 vCPU Worker 不加载它。
+
+### 模块划分
+
+| 文件 | 内容 |
+| --- | --- |
+| `src/graphics_adapters/geforce_6800/plugin.js` | 描述符（`name`、`pci_vendor`、`pci_device`、`vga_bios`、`create`） |
+| `nv_device.js` | PCI 与 BAR、BAR0 分发、PMC（ID、使能、中断汇总）、PBUS（配置空间镜像）、PTIMER、PFB、PEXTDEV、PROM、RAMIN 窗口、快照 |
+| `nv_display.js` | PCRTC/PRMCIO/PRMVIO（VGA 寄存器的 NV 扩展）、PRAMDAC/PRMDIO、VPLL、硬件光标、翻页与 vblank 中断、DDC/EDID；VGA 部分用 `vga_core.js` |
+| `nv_fifo.js` | PFIFO：通道、RAMFC、RAMHT、RAMRO、CACHE1、DMA pusher、puller 方法（对象绑定、REF_CNT、信号量）、USER 区 |
+| `nv_graph.js` | PGRAPH：对象实例、子通道、方法分发、通知器、按通道的上下文、错误中断 |
+| `nv_2d.js` | 2D 类：surf2d、swizzled surface、image blit、GDI rect/text、IFC、SIFM、M2MF、ROP、pattern、clip、beta |
+| `nv40_3d.js` | `NV40_3D` 的方法状态、绘制、清除、查询、坐标约定 |
+| `nv40_program.js` | VP/FP 微码解码、结构化、翻译成 D3D9 字节码；翻译缓存 |
+| `nv_surfaces.js` | 表面/纹理/顶点区间的缓存、显存一致性、swizzle 与格式转换 |
+| `nv_formats.js` | NV 表面与纹理格式 → D3DFORMAT 与转换函数（移植自 Mesa nv30 的格式表） |
+| `bios/` | `vgabios-geforce6800.bin`，由 `bios/fetch-and-build-seabios.sh` 加补丁构建；补丁与表格源在 `bios/nv40/` |
+
+## 设备契约
+
+寄存器的确切位与偏移以 envytools 的 rnndb 为准，下面只写区块和行为。G0 用驱动跟踪（见 G0）补齐
+“驱动实际访问”的清单，每个被访问的寄存器要么实现、要么在跟踪表中注明为“只存值”。
+
+### PCI 配置空间
+
+- `10DE:0045`，类代码 `030000`，修订号见关键决定 1。命令/状态寄存器、Capabilities 链：电源管理；
+  不声明 AGP（关键决定 3）。
+- BAR 见关键决定 2；扩展 ROM BAR 指向 VGA BIOS。用现有的 `register_pci`（`on_move` 重定位）与
+  `mmap_register_range`。
+- BAR0 的 PBUS 区（0x1800 起）镜像配置空间，驱动通过它读写配置。
+
+### BAR0 区块
+
+| 区块 | 偏移 | v1 的行为 |
+| --- | --- | --- |
+| PMC | 0x000000 | `BOOT_0`（芯片 ID）、`INTR_0`/`INTR_EN_0`（汇总 PFIFO、PGRAPH、PTIMER、PCRTC、PBUS 与软件中断）、`ENABLE`（各引擎使能与复位） |
+| PBUS | 0x001000 | 配置空间镜像、PBUS 中断 |
+| PFIFO | 0x002000 | 见下 |
+| PVIDEO | 0x008000 | v1 只存值（覆盖层在 V1） |
+| PTIMER | 0x009000 | 纳秒计数（分子/分母由驱动设置）、闹钟中断；由 `MachineClock` 推导，`pause()` 时冻结 |
+| PFB | 0x100000 | 显存大小与配置、tile 区域与 Z 压缩寄存器（只存值） |
+| PEXTDEV | 0x101000 | strap：晶振频率、总线类型（PCI）、显存类型 |
+| PROM | 0x300000 | VGA BIOS 的读窗口（按配置空间中的 ROM 使能位） |
+| PGRAPH | 0x400000 | 见下 |
+| PCRTC、PRMCIO | 0x600000、0x601000（头 2：0x602000、0x603000） | 见“显示” |
+| PRAMDAC、PRMDIO | 0x680000、0x681000（头 2：0x682000、0x683000） | 见“显示” |
+| PRMVIO | 0x0C0000 | VGA 序列器/图形寄存器的镜像 |
+| PRAMIN | 0x700000 | RAMIN 窗口，映射到显存末端（规则以 envytools 为准，可对照 Bochs）；BAR2 是同一内容 |
+| USER | 0xC00000 | 每通道 4 KiB 的 FIFO 控制区（DMA_PUT/GET、REF）；32 个通道 |
+
+PLL（NVPLL、MPLL、VPLL）接受写入并按系数计算频率；只有 VPLL 影响客体可见的行为（像素时钟 →
+扫描时序与 vblank 周期）。
+
+### 中断
+
+- 设备汇总各引擎的状态到 `PMC_INTR_0`，经 INTA 走 i440FX 的 PIRQ 路由。中断只在客体能看到写回的
+  结果之后提升（写回的通知器、REF_CNT 先于中断可见）。
+- 需要的中断源：PFIFO（DMA 错误、缓存错误、非法方法）、PGRAPH（通知、错误、上下文切换请求）、
+  PCRTC vblank（翻页与驱动的帧节拍）、PTIMER 闹钟、软件中断。
+
+### PFIFO
+
+- **通道**：32 个；每个通道的 RAMFC 记录（DMA_PUT/GET、DMA 实例、子通道绑定等）在 RAMIN 中。
+  驱动写 USER 区的 DMA_PUT 后，设备从 GET 处取命令直到 PUT。
+- **DMA pusher**：递增与不递增的方法头、旧式与新式 JUMP、CALL/RETURN，以及错误处理（RAMRO 与中断）。
+  push buffer 位于显存或系统内存，通过通道的 DMA 对象访问（线性或页表，Bochs 的 `0x00002000`/
+  `0x00020000` 位可对照）。
+- **puller**：子通道绑定（RAMHT 查找对象句柄，得到引擎与实例）、REF_CNT、信号量 acquire/release
+  （驱动用它们做跨通道与 CPU 同步）、非法方法。
+- **预算**：每次 PUT 写入处理到预算为止，余下的放到定时器里接着处理，不能一次占满 Worker。
+  同步点（REF_CNT 回写、信号量释放、带通知的方法）要等它之前的 3D 批次 `done`、需要下载的表面
+  写回显存之后才完成（见“显存一致性”）。
+
+### PGRAPH
+
+- **对象**：RAMIN 中的对象实例（类号、格式、DMA 对象句柄、通知器）。v1 的类以 nouveau 的 NV40
+  列表为起点：`0x0012`（beta1）、`0x0019`（clip）、`0x0030`（null）、`0x0039`（M2MF）、`0x0043`
+  （ROP）、`0x0044`（pattern）、`0x004A`（GDI rect/text）、`0x0062`（surf2d）、`0x0072`（beta4）、
+  `0x0089`（SIFM）、`0x008A`（IFC）、`0x009F`（image blit）、`0x3062`、`0x3089`、`0x309E`（NV40 的
+  surf2d、SIFM、swizzled surface）、`0x4097`（NV40_3D）。DMA 对象类 `0x0002`、`0x0003`、`0x003D`。
+  NVIDIA 驱动实际用到的类以 G0 的跟踪为准。
+- **通知器**：方法完成时写通知结构（时间戳、返回值、状态），可选中断。
+- **上下文**：驱动会上传自己的上下文切换微码（ctxprog）与初始上下文。设备不执行 ctxprog，而是按
+  通道保存 PGRAPH 的状态，切换通道时换入换出。ctxprog 的字节只存不解释；G0 检查驱动是否通过上下文
+  映像读写状态，若是，按跟踪实现那些字段。
+- **错误**：非法方法、非法类、DMA 越界产生 PGRAPH 中断并报告给驱动，不静默忽略（驱动可能依赖
+  这些中断来实现软件方法）。
+
+### 显示
+
+- **VGA 兼容**用 `vga_core.js`。NV 扩展 CRTC 寄存器（解锁寄存器、扩展起始地址与偏移、像素深度、
+  VGA/扩展模式选择、光标地址、DDC 的 GPIO）在其上实现。标准 VGA 模式设置要清掉扩展模式（98 的
+  DOS 全屏切换依赖这一点）。
+- **扩展模式**：起始地址、行距、像素深度（8/15/16/32 bpp）、调色板与 gamma（PRAMDAC 通用控制）、
+  VPLL；图像从显存按模式送到显示中枢（`display.set_mode`、`update_buffer`），与现有适配器相同。
+- **翻页**：起始地址在 vblank 生效；vblank 中断按 VPLL 推导的刷新率触发。
+- **硬件光标**：显存中的 32×32/64×64 光标图像（ARGB 或 A1R5G5B5）与位置寄存器，叠加在画面上。
+- **DDC/EDID**：CRTC 的 GPIO 寄存器（Bochs 用 CR3E/CR3F）上实现 I2C，EDID 来自
+  `virtio_gpu/edid.js`。报一个 CRT，首选 1280×1024（3DMark06 的默认分辨率），最高 2048×1536。
+- **第二个显示头**：寄存器可读写，报未连接。
+
+### VGA BIOS
+
+- SeaVGABIOS 的 NV 驱动：VBE 2.0/3.0 线性帧缓冲模式（8/16/32 bpp，到 1600×1200 以上），模式设置写
+  NV 扩展 CRTC 与 PRAMDAC。
+- NVIDIA 表格：PCI 数据结构、BIT 表（BIOS 版本、初始化表、PLL 限制、显存、显示）、DCB 3.0（一个 CRT
+  在 DAC A，I2C 端口 0）、I2C 端口表、最小的初始化脚本（只有结束指令）、校验和。确切版本与字段以
+  envytools/nouveau 的解析代码为准，测试中用移植的解析器检查 ROM。
+- G0 确定驱动依赖哪些表、哪些 int 10h 调用（98 的驱动可能通过 BIOS 切换模式），G1 补齐。
+
+## 3D 翻译
+
+设备看不到客体用的是哪个 API。D3D5–7（经 DirectDraw 与 `d3dim700.dll`）、D3D8、D3D9 与 OpenGL ICD
+都由 NVIDIA 驱动降成同一种东西：`NV40_3D` 的方法流加 VP/FP 微码。固定功能的变换、光照与纹理阶段
+由驱动编译成 NV40 程序（NV40 没有固定功能的流水线），所以设备只需要一个翻译器，D9WG 执行器的
+固定功能路径不会用到：每次绘制都带着顶点与像素着色器。
+
+### 状态映射
+
+| NV40_3D 方法组 | 对应的 D9WG | 说明 |
+| --- | --- | --- |
+| 渲染表面（格式、行距、偏移、DMA；最多 4 个颜色目标）、深度/模板表面 | `SET_RENDER_TARGET`、深度表面 | 由表面缓存按显存区间找到或创建；swizzled 渲染表面（立方图、RTT）单独标记 |
+| 视口、裁剪、窗口偏移、裁剪平面 | `SET_VIEWPORT`、`SET_SCISSOR_RECT`、`SET_RENDER_STATE` | 见“坐标约定” |
+| 混合、alpha 测试、深度、模板（含双面）、剔除、填充模式、多边形偏移、点精灵、颜色写掩码、sRGB | `SET_RENDER_STATE` | |
+| 雾（模式、方程系数、颜色）、平面/平滑着色 | `SET_RENDER_STATE`，或在片段着色器的尾部计算 | NV40 的雾在片段程序之后由固定单元应用；D3D7/8 游戏的表雾与顶点雾都走这里，G3 验收 |
+| 纹理单元（偏移、DMA、格式、尺寸、mip、wrap、过滤、各向异性、边框、立方与体纹理、深度比较） | `CREATE_TEXTURE_*`、`UPDATE_TEXTURE`、`SET_TEXTURE`、`SET_SAMPLER_STATE` | 纹理缓存；比较模式用于硬件阴影图 |
+| 顶点数组（每个属性的格式、步长、偏移、DMA 选择）、索引数组 | `CREATE_VERTEX_DECLARATION`、`CREATE_BUFFER`/`UPDATE_BUFFER`、`SET_STREAM_SOURCE`、`SET_INDICES` | 按区间缓存；内联顶点与内联索引另行拼成缓冲 |
+| 顶点程序上传、常量上传、起始位置、属性/输出使能 | `CREATE_VERTEX_SHADER`、`SET_VERTEX_SHADER_CONSTANT_F` | 见“着色器” |
+| 片段程序地址与控制 | `CREATE_PIXEL_SHADER`、`SET_PIXEL_SHADER_CONSTANT_F` | 内联常量见“着色器” |
+| BEGIN/END、顶点批、索引批 | 绘制 | 四边形、四边形带与多边形在设备里转成三角形列表（D3D9 没有） |
+| 清除（颜色与深度/模板的清除值） | `CLEAR` | |
+| 查询（遮挡计数、报告写回内存） | `CREATE_QUERY` 与读回 | 结果写入客体内存后，相关的通知器/信号量才完成 |
+| ZCULL、Z 压缩、tile 区域 | 无 | 只存值；对结果透明（关键决定 5） |
+
+### 坐标约定
+
+NVIDIA 驱动自己计算视口变换（`VIEWPORT_SCALE`/`TRANSLATE`、窗口偏移、像素中心），而 D9WG 按 D3D9
+的约定接收视口。设备从 NV 的变换反推等价的 D3D9 视口；反推不了的情形（非标准的像素中心或子像素
+偏移、超出目标的视口）用协议 1.8 的私有视口命令把 NV 的变换直接交给执行器，由顶点着色器的尾部
+应用。G3 用参考图（见“测试”）校准。
+
+### 着色器
+
+- **顶点程序**：NV40 VP 的微码（每条 128 位，经方法上传到片上程序存储），翻译成 vs_3_0 字节码。
+  - 寄存器映射：输入 v0–v15 按顶点声明合成语义；常量 c；输出位置、两种颜色与两种背面颜色、雾、
+    点大小、8 组纹理坐标、裁剪距离。
+  - 背面颜色在 D3D9 里没有，用两组颜色加片段着色器中的 `vFace` 选择。
+  - 地址寄存器与条件码用 D3D9 的地址寄存器、谓词寄存器 p0 与临时寄存器模拟。
+  - 分支（BRA/CAL/RET 加条件）先结构化成 if/loop/call：NVIDIA 编译器从 D3D 的结构化着色器生成代码，
+    控制流应当是可约的。不能结构化的程序记日志并跳过绘制（不画，而不是画错）。
+  - 顶点纹理（`TXL`）用 vs_3_0 的 `texldl`。
+- **片段程序**：NV40 FP 的微码（每条 128 位，程序在显存中，常量内联在指令之后），翻译成 ps_3_0。
+  - 输入：WPOS → `vPos`，COL0/1、FOGC、TEX0–9，FACING → `vFace`。
+  - 输出：最多 4 个颜色目标，深度输出。
+  - 精度：半精度与定点按 fp32 计算（偏差记入 [gpu-deviations.md](gpu-deviations.md)）。
+  - 条件码、KIL、各种纹理指令（TEX/TXP/TXB/TXL/TXD 与深度比较）、DDX/DDY、LIT/DST 等。
+  - 打包/解包指令（PK2H/UP2H、PK4B/UP4B 等）D3D9 没有，用私有操作码，WGSL 侧用 `pack2x16float` 等实现。
+  - 结构化的控制流指令（IF/ELSE/ENDIF、LOOP、REP、BRK、CAL/RET）直接对应 D3D9。
+- **内联常量**：驱动改常量时会改写程序里的常量槽。翻译缓存的键是“去掉常量槽的指令字”，常量作为
+  `c` 寄存器在每次绘制前送出，避免每个常量变化都编译一个新着色器。
+- **编码来源**：Mesa nv30 驱动的 `nvfx_shader.h`、`nv30_vertprog.h`、`nv40_vertprog.h`、`nvfx_fragprog.c`
+  （MIT）与 envytools 的指令集文档。
+- **语料**：客体运行中出现的每个程序写入 `<out>/nv40-programs/`，挑选后存入
+  `tests/gpu/shaders/nv40/`，作为单元测试的语料（与 TGSI 语料相同的做法）。
+
+### 显存一致性
+
+这是与 SVGA 最大的不同：SVGA 的客体用 DMA 命令显式搬运数据，NV40 的客体直接读写显存，而 3D 结果
+在 WebGPU 上。
+
+- **记录**：表面缓存为每个 GPU 侧对象（渲染目标、深度、纹理、顶点/索引区间、着色器）记下显存或
+  系统内存区间、格式、布局，以及哪一方是权威（CPU 或 GPU）。
+- **上传**：CPU 对 BAR1 的写入由设备内存的脏位图（`mmio_ram_mark_dirty`/`take_dirty`）记录；DMA、
+  M2MF、2D 引擎与 PCI DMA 写入由设备自己标记；系统内存中的顶点与纹理在绘制时按需读取，并按区间与
+  代数缓存。下一次使用一个脏了的对象时重新上传。
+- **GPU 直接复用**：纹理的区间与一个 GPU 权威的渲染表面相同（偏移、尺寸与格式兼容）时，直接绑定
+  那个 GPU 纹理，不经过显存（渲染到纹理、阴影图、HDR 与后处理都靠这一点）。格式重解释在 GPU 上
+  复制。
+- **下载**：GPU 写过的表面在以下时机读回显存：
+  1. 扫描输出：可见画面所在区间是 GPU 权威时，每次翻页或 vblank 读回。这就是 SVGA 的“每次 present
+     一次读回”（G-31），可选阶段 P1 改为不读回的合成器层。
+  2. 驱动的同步点：REF_CNT、信号量释放、带通知的方法完成之前。v1 采用保守策略，读回所有自上次
+     同步以来被 GPU 写过、且被标为“可能被 CPU 读”的表面。起初所有表面都标为可能，G6 按测量结果
+     收紧（例如只读回之后被 CPU 访问过的区间所属的表面）。
+  3. 2D 引擎或 M2MF 读到 GPU 权威的区间：能在 GPU 上做的（blit 到另一个 GPU 表面）用 `STRETCH_RECT`；
+     否则先读回。
+  4. 快照的 `prepare_save`：全部读回。
+- **违约**：客体在没有同步的情况下读 GPU 权威的显存，读到旧字节。这种情况记日志，作为偏差记录。
+  真实驱动在锁定表面前总会等待 GPU。
+
+## 2D 与 DirectDraw
+
+为什么 2D 在 CPU 上做，而不交给 WebGPU：
+
+- **数据在显存字节里。** GDI 与 DirectDraw 的表面、主表面、客体 CPU 直接写的位图都在显存中，
+  客体随时通过 BAR1 读写它们，扫描输出也从这里取画面。放到 GPU 上，几乎每个操作前都要上传、
+  之后都要读回。
+- **操作小而多。** GDI 的文字、小块填充、滚动每次只涉及几十到几千个像素。每次经渲染器通道往返
+  （异步，可能跨线程）的延迟远大于 CPU 原地运算的微秒级开销，而驱动在 CPU 访问表面之前常会等
+  2D 引擎空闲。
+- **WebGPU 表达不了这些语义。** WebGPU 没有逻辑运算（ROP3 要在着色器里读目标，而 WebGPU 不能在
+  渲染中读自己的目标），没有 565、555、4444 这类 16 位打包格式和 24 位打包格式，8 bpp 调色板模式
+  本来就要在 CPU 上查表。
+- **已有的适配器也这样做**：VMware SVGA 的 2D 在显存里，virtio-gpu 的 2D 资源在 CPU 侧。
+
+例外：操作数在 GPU 上时（例如把 3D 后台缓冲 blit 到主表面的 present，或两个渲染目标之间的
+StretchRect），在 GPU 上执行（`STRETCH_RECT`），见“显存一致性”第 3 条。G6 若测出大块 2D blit
+（例如 DirectDraw 游戏每帧的全屏缩放）是热点，再把两个操作数都已在 GPU 上的情形移过去。
+
+- 2D 类在 CPU 侧直接对显存字节运算：实色与图案填充、ROP3、色键 blit、GDI 文本（单色位图扩展）、
+  IFC（CPU 推送的图像）、SIFM（缩放、YUV 转换）、M2MF（线性复制，含系统内存与显存之间）、
+  swizzled surface。参考 Bochs 的 2D 实现（只读）与 nouveau 的 EXA/DDX 用法。
+- 操作数是 GPU 权威的表面时按“显存一致性”的规则处理。
+- DirectDraw 的翻页用 CRTC 起始地址；覆盖层（PVIDEO）在 V1。
+
+## 快照
+
+- `state[52]`：`["graphics_adapter", 1, "geforce_6800", 设备状态]`。设备状态包括 PCI 配置、各区块的
+  寄存器、PFIFO 的通道与缓存、PGRAPH 的对象绑定与按通道的上下文、显示与 DDC 状态，以及显存
+  （256 MiB，大部分是零页；大于 200 MB 的机器本来就走 `save_state_stream`）。
+- `has_host_state` 为真；`prepare_save` 先等批次完成，再把 GPU 权威的表面读回显存。表面缓存与翻译
+  缓存不进快照：恢复后渲染器 `reset`，对象在下一次使用时由显存重建。
+- 恢复要求同一个适配器名与 `vram_size`；VGA BIOS 不同（ROM 的哈希不同）时给出警告。
+
+## 界面
+
+- [machine_options.js](../src/machine_options.js) 的 `GRAPHICS_ADAPTERS` 增加 `"geforce_6800"`，只用于 x86（i440FX，Q35 上不保证）；
+  `vram_size` 只允许 128 与 256 MiB。
+- VM 管理器的显示适配器下拉框、摘要（[describe.js](../src/app/ui/describe.js)）、配置校验与迁移随之更新；`make app-tests` 增加用例。
+- 预设：XP 与 98 的 3D 预设是否默认用它，在 G7 由所有者决定（见“待所有者决定”）；
+  在此之前它只是可选项。
+- `v86.d.ts`、starter、CPU Worker、构建入口（`make graphics-adapters`、`tools/pages_dist.mjs` 的插件列表）
+  照其他适配器处理。
+
+- G3 视口续修：XP DxDiag D3D8 的原生状态使用 640×480 目标、scale `(320,-240)` 与
+  translate `(320.5,240.5)`。改为在顶点程序保留原始仿射变换，用整目标 host viewport 和
+  像素中心裁剪表达小数、负起点及超出 attachment 的 NV 视口；完全不可见时不提交绘制。
+  Chrome WebGPU 对整数偏移、原生半像素偏移、两侧越界的逐像素结果，以及深度/模板、
+  混合和纹理回归均通过；插件 Closure 构建通过。原生 D3D8/9 验收继续进行。
+
+- G3/G4 纹理续修：补齐线性固定 pitch 与 Morton 紧密 mip 链、逐级 DMA 检查及 D9WG
+  逐级上传；接通最近 mip/三线性过滤、8.8 格式正负 LOD bias 与整数 LOD 范围。
+  XP DxDiag 原生流确认使用 256×256、9 级 RGB565；不再因 mipmap 抛错。
+  Chrome WebGPU 的不同纯色 mip 验证导数选级、正负 bias、最小级和三线性插值，
+  纹理边界测试与 Closure 构建通过。小数 LOD clamp 仍显式报未实现。
+
+- G4 压缩纹理第一部分：支持 NV40 DXT1/3/5（BC1/2/3）线性块、紧密 mip 尾部、
+  非整块边界裁剪和组件 crossbar。BC1 透明分支、BC2 4-bit alpha、BC3 两种端点
+  插值及跨字节 3-bit selector 均有参考字节测试，DMA 越界仍报错。Chrome WebGPU
+  实际采样三种格式并读回颜色/alpha 正确；设备纹理测试和插件 Closure 构建通过。
+
+- G2/G3 SIFM 续修：XP DxDiag D3D8 使用 RGB565、16-pixel clamp 与 8-byte pitch
+  更新小 mip。SIZE 限制取样坐标，不限制独立的 DMA pitch；允许源行重叠和零 pitch
+  重复行，继续在目标改写前检查完整 DMA 范围。新增逐行像素、零 pitch 和源越界
+  原子性回归；2D 测试与插件 Closure 构建通过。
+
+- G4 ALU 续修：补齐 DPH、DP2A、SEQ/SNE/SLE/SGT、SSG、SFL/STR 与 vector/scalar DIV
+  的 SM3 降低，内部 DEF 常量避开全部客体常量及视口常量。DIV 语义参考 NVIDIA
+  [CineFX 3.0 规范](https://developer.download.nvidia.com/opengl/specs/nv40specs.pdf)，
+  当前使用 RCP/MUL，保留原生除法可能存在的末位舍入偏差。42 个 WGSL 模块通过 Naga；
+  真实 NV 指令编码的比较、常量、DIV、DP2A 结果通过 GPU 逐分量读回，Closure 构建通过。
+
+- G3/G5 benchmark harness：`NV_HDB` 将只读游戏盘连接到 secondary-slave，保留
+  primary-slave 的 RAM 工具盘；`NV_GAME_OVERLAY_LOAD/SAVE` 独立保存扇区写入，
+  `NV_GAME_ARTIFACTS` 按分号分隔读取有界 FAT32 结果文件，结束检查游戏原盘大小/mtime。
+  已用 XP 冷启动读到 legacy 镜像的原版 3DMark99 EXE，进入其 DirectX 版本检查；
+  99 在 XP 的兼容启动仍待解决。已有游戏盘的快照须用同一游戏盘恢复。
+
+- G2 Win98 DxDiag DirectDraw 客体验收通过：81.98 + 已安装的 DX9.0c 上，主表面的
+  黑白矩形、窗口白方块和 640×480 全屏弹跳白方块均正确；保存的原版报告明确返回
+  `DDraw Test Result: All tests were successful.`。8374 次 GPU 提交/读回、0 GPU failure、
+  0 PGRAPH fault，原系统盘未修改。证据见 `g2-win98-8198-dxdiag-ddraw.json`；
+  字体 DMA 尚未完成，不能将其等同于全部 G2 类已实现。
+
+- G4 MRT 第一部分：接通四个颜色目标及各自 DMA/offset/pitch、MRT enable 和独立
+  color-write mask，所有附件验证后才提交，全部读回后才恢复 FIFO。修正颜色输出映射为
+  R0/R2/R3/R4（H0/H4/H6/H8），R1 留给深度；0x36c 在 NV40 上为 MRT blend enable，
+  不再误作 NV30 的 fog enable。Chrome WebGPU 验证四种颜色、每目标掩码、RT3 越界
+  原子性及退回单目标；44 个 WGSL 模块和 Closure 构建通过。混合使能不同的 MRT 组合
+  及不含 COLOR0 的 enable mask 仍显式拒绝，尚不是完整 G4 验收。
+
+- G3 XP DxDiag Direct3D 客体验收通过：93.71 的 D3D7/8/9 均显示正确纹理的旋转
+  立方体，保存的原版报告三项均为 `All tests were successful.`。修复视口、mip 和
+  SIFM 后重新完整运行，1365 次绘制、1369 次读回、0 GPU failure、0 PGRAPH fault，
+  原盘未修改。证据见 `g3-xp-9371-dxdiag-d3d.json`；Win98 D3D 与 99/2000 benchmark
+  仍在验收，整个 G3 尚未完成。
+
+- G4 FP16/HDR 第一部分：接通 A16B16G16R16F 渲染目标与 RGBA16F 纹理上传，
+  组件 crossbar 保留原始 half bits，采样资源与颜色附件独立缓存。Chrome WebGPU
+  读回精确验证负值、超过 1 的 HDR 值、跨提交的加法混合，以及浮点纹理双线性平均；
+  纹理 DMA/half bits 测试和插件 Closure 构建通过。完整 HDR/SM3 benchmark 仍待验收。
+
+- G3 benchmark 启动续修：3DMark99 的 E2 引擎在 `DllMain` 内调用 DirectDrawEnumerate，
+  XP 随后在 WINTRUST 的 RegisterWaitForSingleObject 初始化中与 loader lock 相互等待，
+  已由客体自带 NTSD 的所有线程栈确认。新增仅用于 XP 的 `NV_BENCH_LAUNCH=1` 原生
+  启动器：在原 EXE 入口前预热并释放 CryptCATAdmin context，再恢复原寄存器继续入口；
+  临时入口断点先恢复，磁盘 EXE/DLL 及图形 API 保持原版。Win98 兼容层绕过 99 的旧 DX
+  版本检测；已进入原版 99 Max Pro 的 Welcome 界面，尚未跑分。调试事件循环保留到退出。
+  `NV_PROBE_BINARY` 可替换尚未首次打开的 64 KiB 预留探针，用于暖快照中的测试工具。
+- Win98 分配诊断：`NV_D3D_TEXTURE_TEST=1` 按格式、大小、mip、pool、usage 输出真实
+  CheckDeviceFormat/CreateTexture 返回值。128 MiB 下 16 个 DEFAULT 静态纹理均返回
+  8876017c，MANAGED/SYSTEMMEM/SCRATCH 的各 16 项均成功；原生 GDI/DirectDraw 和
+  全屏 D3D9 三角形读回通过且无 PGRAPH/GPU fault。`NV_VRAM_MB=128/256` 支持独立
+  冷启动对照；这只是分配问题定位，不是 Win98 D3D8/9 通过。
+
+- G3 原生 DirectX 枚举续修：3DMark99 的首批绘制使用 DEPTH_FUNC=4（LEQUAL）。
+  envytools 的 Curie 硬件测试确认比较的 1..8、blend 的 0x1001..0x100f、方程 1..5
+  与 stencil op 的 1..8 均为合法别名，现与 GL 编码统一转换；关闭的比较状态不再验证
+  未使用枚举。GPU 回归改用原生别名验证深度/模板、alpha 和独立 alpha 混合，全部通过；
+  插件 Closure 构建通过。99 已开始 benchmark，完整结果仍待验收。
+
+- G4 查询基础：实现 Curie `QUERY_RESET/ENABLE/GET`，开启时用共享 D9WG 的真实 GPU
+  遮挡查询逐 draw 累加，报告按 16-byte 硬件布局写入绑定 DMA。时间戳保持 64-bit 精度，
+  完成字随整段 DMA 原子发布，后续 FIFO/fence 等待查询和目标读回。计数进入对象快照。
+  PGRAPH 测试覆盖报告布局、旧数据保护和快照；真实 WebGPU 的 8×8 覆盖计数为 64，
+  FIFO 顺序及完整渲染回归通过。XP benchmark 仍需从干净起点复测。
+
+- G3 翻页同步续修：实现 BLIT/Curie 独立的 3-bit READ/WRITE/MODULO、WRITE 递增和
+  FLIP_WAIT。等待期间 FIFO 不执行后续方法，显示 ISR 写 PGRAPH `0x40071c` 后推进
+  READ 并唤醒。计数与挂起等待进入 PGRAPH v2 快照，旧快照默认无等待。
+  测试覆盖 modulo/零 modulo 回绕、类隔离、非法值、等待快照恢复与后续 fence 顺序；
+  PGRAPH/FIFO/渲染回归和插件构建通过。原生 XP 复测继续进行。
+
+- ZCULL 报告续修：RSX/NV4097 寄存器定义核对了原生驱动写入的 `0x1ea8/0x1eac`
+  为 ZCULL/SCULL 控制，GET_REPORT 的 2–5 号选择器为层次剔除统计。后端不维护
+  层次深度缓存，这些统计真实为零，普通逐片元深度/模板测试照常执行；不把它们冒充
+  遮挡计数。RESET=2 只清该组，RESET=1 才清 ZPASS。PGRAPH/真实 GPU 回归覆盖
+  两组独立与完整报告发布。事实参考：
+  [RPCS3 的硬件枚举](https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Emu/RSX/gcm_enums.h)
+  （仅核对数值与名称，未复制实现）。
+
+- Win98 DxDiag 原生视觉/报告验收：81.98 下 D3D7、D3D8（640×480）和 D3D9
+  （800×600）的纹理立方体均正确旋转，人工确认后保存的原生报告全部成功。
+  本轮 6917 draws/readbacks、GPU 失败 0、原盘未变，证据见
+  `g3-win98-8198-dxdiag-d3d.json`。本轮仍包含旧的 QUERY/FLIP 未实现陷阱，不能称为
+  无 PGRAPH 故障验收；相应实现已补齐，干净复测和 99/2000 完整基准继续进行。
+  先前 D3D9 黑屏判断是只检查了 640×480 捕获，遗漏实际 800×600 阶段，现据完整
+  捕获与报告更正，保留原始现场，不把瞬时切换画面当作测试失败。
+
+- PGRAPH 翻页上下文续修：SURF_TYPE 按硬件字段读写两组翻页计数，PFIFO GRCTX
+  实例成为有效的当前图形上下文。软件保存/恢复按上传 REG 传输描述解出计数在 RAMIN
+  中的位置，不硬编码驱动版本偏移，也不执行上传程序的分支或复位指令。暂停上下文时
+  驱动对 RAMIN READ 的修改能解除原有 FLIP_WAIT；完成后确认保存/恢复请求位。
+  测试覆盖上下文隔离、快照、非固定 RAMIN 偏移、等待唤醒及请求确认，PGRAPH/FIFO/
+  渲染回归通过。原生复测进行中；此前合法 DVD 对象的三个 DMA 绑定也已补齐。
+
+- G4 顶点条件码：支持两个 CREG、全部 8 种比较、分量 swizzle、掩码谓词写入与
+  饱和后的条件更新；同一 VLIW 的两个结果先计算，再提交和更新条件码。按 XF ISA
+  区分 CDST 写使能与 CDST_IS_VEC 的结果选择，后者单独置位不触发条件写入。
+  解码回归、73 个 WGSL/Naga 模块和真实 GPU 的 16 组谓词/NaN 像素及 vector/scalar
+  结果选择通过；完整 GPU 渲染回归和插件构建通过。相对寻址和控制流仍待后续实现。
+
+- G4 地址寄存器基础：ARL 向下取整、ARR 就近取整、两个向量 AREG 与分量选择、
+  常量/属性相对读取已接入。每个相对操作数先取值，保留 VLIW 旧地址读语义；16 个
+  属性保留硬件编号，完整 544-vector 客体常量与内部字面量/viewport 常量分库。
+  D9WG 内部设备使用已有扩展常量存储，仍由 WebGPU 执行。解码/78 个 Naga 模块和
+  真实 GPU 正负舍入、相对属性、客体 c500 与完整渲染回归通过，插件构建通过。
+  ARA、相对输出、地址栈和控制流仍待实现，未支持的相对输出明确报错。
+
+- D16/模板状态续修：没有模板位的 Z16 表面忽略模板测试，仍执行真实深度比较与写入。
+  先前对该组合报错会误伤 XP 驱动的初始化探测。真实 GPU 以启用 NEVER stencil 的
+  Z16 表面验证绘制成功且 16-bit 深度正确，完整 GPU 回归通过。
+
+- G4 顶点控制流：解码从入口追踪可达分支和 END 之后的 CAL 目标；BRA、CAL/RET
+  用带指令预算的共享 WGSL 控制流执行，含 8 层返回栈、条件码任意分量判断、向前/
+  向后跳转、空栈返回及溢出终止。一个调度迭代只执行一条 NV 指令，避免向前跳转
+  多执行；VLIW 分支读取更新前条件码。解码回归、87 个 Naga 模块、真实 GPU 的
+  条件跳过、子程序返回与回跳计数像素及完整渲染回归通过。地址栈、FP 控制流等仍待完成。
+
+## 阶段
+
+每个阶段都写明交付物、验收条件和测试。客体验收见“测试”。
+
+### G0 探路：驱动跟踪与可行性
+
+1. 一个空壳设备：PCI 身份、BAR、ROM（先用最小的 SeaVGABIOS 加 BIT/DCB 表），每次寄存器、ROM、
+   RAMIN 访问都记日志，未实现的寄存器读回 0 或已知默认值。
+2. XP + 93.71 与 98 + 81.98 各装一次驱动，记录：驱动是否接受 PCI 模式；读了 ROM 的哪些表、
+   哪些 int 10h；初始化序列；用到的对象类；上下文映像是否被驱动读写；崩溃或停住的位置。
+3. 产出：`docs/geforce-6800-plan.md` 的复核结论一节，列出驱动访问的寄存器清单（实现或只存值）、
+   PCI/AGP 的结论（需要 AGP 时启动 A1）、对 G1–G4 的修正。
+
+验收：两种驱动都走到“设备已初始化，开始建立 FIFO 通道”，或者有明确的阻塞原因与对策。
+
+### G1 VBIOS、显示与驱动加载
+
+- 完整的 VGA BIOS（VBE、NVIDIA 表格）、显示（扩展模式、VPLL、光标、DDC/EDID、vblank）、PMC/PTIMER/PFB。
+- PFIFO 与 PGRAPH 先实现到驱动不报错的程度（通道建立、对象绑定、通知器）。
+
+验收：
+
+- XP 与 98 的桌面在 NVIDIA 驱动下以 1024×768×32 显示，设备管理器无问题代码；
+- 显示属性能切换分辨率与色深（含 98 的 8 bpp）；
+- 98 的 DOS 全屏切换来回正常；
+- 快照往返。
+
+### G2 PFIFO 与 2D 加速
+
+- 完整的 DMA pusher 与 puller、信号量、REF_CNT、错误中断；全部 2D 类。
+
+验收：
+
+- XP 的 GDI 加速开到最高无绘制错误（窗口拖动、文本、滚动）；
+- DxDiag 的 DirectDraw 测试通过（XP；98 装好 DirectX 9.0c 后）；
+- 2D 单元测试的参考结果一致。
+
+### G3 3D 基础
+
+- `NV40_3D` 的状态、表面与纹理缓存、绘制、清除、坐标约定；VP/FP 的直线代码（无分支），覆盖驱动为
+  固定功能生成的程序；共享 D9WG 协议的 NV40 私有扩展。
+
+验收：
+
+- DxDiag 的 Direct3D 7/8/9 测试画面正确；
+- XP 与 98 上 3DMark99 MAX 与 3DMark2000 跑完，画面与参考一致。
+
+### G4 着色器与 SM3.0
+
+- VS/PS 1.x–3.0 全部指令、结构化、条件码、顶点纹理、多渲染目标、FP16 混合与过滤、深度比较、遮挡查询。
+
+验收：
+
+- 3DMark2001 SE（PS 1.1/1.4）、3DMark03（PS 2.0）、3DMark05 跑完；
+- 3DMark06 跑完：SM2.0 测试与 HDR/SM3.0 测试都有分数；
+- 特性测试（填充率、像素着色器、顶点着色器、Shader Particles、Perlin Noise）结果合理，参考图一致。
+
+### G5 Windows 98 完整验收
+
+- 81.98 下 3DMark99 MAX、2000、2001 SE、03；16/8 bpp 模式下的 DirectDraw 游戏抽查；DOS 全屏；
+  调色板纹理缺失按真卡记为客体说明。
+
+### G6 一致性与性能
+
+- 从保存的状态测量（[profiling.md](profiling.md) 的方法，release 构建），按热点优化：上传缓存、
+  下载收紧、FIFO 解析、翻译缓存命中率。
+- 3DMark06 在 XP 上的时间分布报告，写进 [gpu-devices.md](gpu-devices.md) 的 Performance。
+
+### G7 集成与文档
+
+- 界面与预设、[gpu-devices.md](gpu-devices.md) 新增 “GeForce 6800 GT” 一节（设备、驱动、测试）、
+  [gpu-deviations.md](gpu-deviations.md) 的偏差条目、[windows-9x.md](windows-9x.md) 与 [windows-nt.md](windows-nt.md) 的驱动安装说明；
+  本计划改为“已完成”并精简。
+
+### 可选阶段
+
+- **A1 i440BX 与 AGP**：只在 G0 证明驱动必须有 AGP 时做。i440BX 主桥与 AGP GART（APBASE、APSIZE、
+  GART 表），98 与 XP 自带的 440BX AGP 驱动；设备声明 AGP capability（Bochs 用 `0x1F000007` 的
+  AGP 状态）。
+- **V1 PVIDEO 覆盖层**：XP/98 的视频播放（YUV 覆盖、缩放、色键）。
+- **P1 扫描输出不读回**：3D 扫描输出直接进合成器层（virtio-gpu 已有的做法）。
+- **O1 OpenGL 验收**：用所有者提供的 OpenGL 游戏镜像（例如 Quake III）验收 ICD 路径。
+- **W1 Vista/7**：NVIDIA 的 WDDM 驱动（GeForce 6/7 有 Vista/7 版）在同一硬件上，需要额外的显存管理语义。
+
+## 测试
+
+| 层 | 位置 | 运行方式 |
+| --- | --- | --- |
+| PCI、BAR、BAR0 分发、PMC 中断、PTIMER、RAMIN 映射、DDC/EDID、快照 | `tests/devices/geforce_6800.js` | `make devices-test` |
+| DMA pusher（各种方法头、JUMP/CALL、错误）、RAMHT、通道切换、信号量 | `tests/devices/geforce_6800_fifo.js` | `make devices-test` |
+| 2D 类：对小块显存执行操作，与手算的参考字节比较 | `tests/devices/geforce_6800_2d.js` | `make devices-test` |
+| VGA BIOS：用移植的 nouveau 解析器检查 BIT/DCB/I2C/PLL 表；VBE 模式表 | `tests/devices/geforce_6800_bios.js` | `make devices-test` |
+| VP/FP 翻译：手写编码与语料，经 D3D9 管线得到 WGSL，用 naga 校验（与 `dxbc_wgsl_test.js` 相同的规则） | `tests/glbridge/nv40_program_test.js` | `make test-glbridge` |
+| 3D 层在真 GPU 上：录下的 push buffer 与显存快照，经设备与渲染器，比较读回的像素 | `tests/glbridge/nv40_*_browser_test.html` | `make display-browser-tests` |
+| XP 客体 | `tests/devices/geforce_xp.mjs` | 手动 |
+| 98 客体 | `tests/devices/geforce_win98.mjs` | 手动 |
+
+CI 运行 `make devices-test` 与 `make test-glbridge`，浏览器与客体测试手动运行（与现有 GPU 测试相同）。
+
+### 客体测试
+
+- **写法**照 [usb_windows_xp.mjs](../tests/devices/usb_windows_xp.mjs)：
+  - 镜像只读打开（`ReadOnlyOverlayDisk`），结束时检查修改时间未变；
+  - 工具盘是内存中的 FAT16；
+  - 截图写到 `<out>`；
+  - 3D 用远程渲染器（`tests/x64/gpu_remote_renderer.mjs`，无头 Chrome 的 WebGPU）。
+- **驱动安装 fixture**：
+  - 首次运行时把驱动安装包解开放进工具盘，由启动器运行静默安装（NVIDIA 安装程序的 `-s`；
+    不行时用 INF 安装）并重启；
+  - 关机后保存 overlay（Windows 8.1 harness 的 `WIN_OVERLAY_SAVE`/`LOAD` 做法），之后的运行从 overlay 开始；
+  - 3DMark 的注册也保存在 overlay 里。
+- **环境变量**：
+
+  | 变量 | 含义 |
+  | --- | --- |
+  | `XP_IMAGE` | XP 镜像，默认为所有者的 XP 镜像 |
+  | `W98_IMAGE` | 98 镜像 |
+  | `NV_DRIVER` | 驱动安装包 |
+  | `NV_MEMORY_MB` | 原生调查 RAM：Win98 256/384/512（默认 256），XP 1024/2048（默认 1024）；新配套快照校验内存容量 |
+  | `NV_HDB` | 3DMark 镜像（第二块盘） |
+  | `NV_OVERLAY_SAVE`、`NV_OVERLAY_LOAD` | 保存或加载 overlay |
+  | `NV_STATE_SAVE`、`NV_STATE_LOAD` | 保存/恢复 RAM；有 `.bundle.json` 时自动核对 RAM 与 OS/game overlay 的尺寸、SHA、客体、显存及原盘路径 |
+  | `NV_DISK_RESERVE_MB` | 宿主余量低于阈值时保存配套状态并退出，默认8192 MiB；0显式关闭；不足检查点预算时不追加大文件 |
+  | `NV_UI_BINARY` | 冷启动时将有界原生 MZ helper 放入 IDE 工具盘根目录 `NVUI.EXE`；不允许与 RAM restore 同用 |
+  | `NV_GPU_RENDERER=chrome` | 渲染器放在无头 Chrome 里 |
+  | `NV_OUT` | 输出目录 |
+  | `NV_TRACE=0` | 关闭方法/程序跟踪，保留故障、GPU 与翻译缓存计数；默认开启 |
+  | `NV_GRAPH_FAULTS=1` | 默认关闭；保存首 16 种 PGRAPH 错误与有界前序命令/对象/原始 pushbuffer |
+  | `NV_BATCH_BARRIERS=1` | 默认关闭；按 class/method 统计触发回读的屏障，最多 256 项 |
+  | `TEST_RELEASE_BUILD` | 用 release 构建 |
+
+  XP 的配置与 XP 性能门禁相同：i440FX、IDE、无 ACPI，内存 1024–2048 MB。
+- **3DMark**：
+  - 注册后运行默认测试与特性测试；
+  - 若 UL 公布的密钥解锁的版本带 Image Quality 工具（渲染指定帧到文件），用它取固定帧，
+    否则在固定时间点截屏。
+- **参考图**：同一镜像用现有的 D3D9 代理（[glbridge.md](glbridge.md)）渲染同样的帧作为 D3D9 级的参考，
+  比较时允许按像素的小误差。两条路径的差异指向 NV40 翻译的错误。
+- **驱动跟踪**：`nvlog on|off` 命令把 FIFO 方法、PGRAPH 错误与未实现寄存器的访问作为事件输出（与
+  SVGA 的 `svgalog` 相同的做法）；`nvprograms` 导出 VP/FP 语料。
+
+## 测试镜像
+
+| 客体或素材 | 本地是否有 | 用于 |
+| --- | --- | --- |
+| Windows XP SP3 | 有：`retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img`（XP 性能门禁所用）与安装 ISO | G0–G4、G6 |
+| Windows 98 SE | 有：`retro-gaming-site/windows98/windows98hdd.img` 与安装 ISO；需装 DirectX 9.0c 运行库（微软官方的最后一版支持 98 的再发行包） | G0–G2、G5 |
+| 3DMark03、05、06 | 有：`retro-gaming-site/game/3dmark03.img`、`3dmark05.img`、`3dmark06.img`（已核对不含 D3D9 代理的 DLL） | G4 |
+| 3DMark99 MAX、2000、2001 SE（与 Everest） | 有：`retro-gaming-site/game/3dmarklegacy.img` | G3–G5 |
+| 3DMark 注册码 | UL 官方 [legacy benchmarks](https://benchmarks.ul.com/legacy-benchmarks) 页面公布 | G4 |
+| ForceWare 81.98（Win9x）、93.71（XP） | 已下载并在原生客体中验证；安装包留在忽略目录 | G0–G5 |
+| OpenGL 游戏 | 没有：所有者提供 | O1 |
+
+各版 3DMark 的系统要求不同：98 上测 99 MAX、2000、2001 SE、03；05 与 06 只在 XP 上测。
+
+## 风险
+
+| 风险 | 影响 | 对策 |
+| --- | --- | --- |
+| 闭源驱动依赖未文档化的寄存器或时序 | 驱动初始化失败或停住 | G0 的跟踪；Bochs 的实现可对照（它让驱动走到了桌面） |
+| 驱动拒绝 PCI 模式的 NV40 | 要做 AGP | A1 |
+| 驱动依赖 ctxprog 的执行结果或上下文映像 | 通道切换后状态错 | G0 检查；按跟踪实现上下文映像的字段 |
+| 自己的 VBIOS 缺少驱动需要的表 | 无输出、模式错或 PLL 错 | 用 nouveau 解析器检查；G0 记录驱动读取的偏移 |
+| VP 中不可结构化的控制流 | 个别绘制缺失 | 记日志、跳过；必要时在执行器中加分派循环的私有形式 |
+| NV 与 D3D9 的坐标约定差异 | 画面偏半个像素、边缘错误 | 私有视口命令；参考图校准 |
+| 显存一致性的保守下载太慢 | 帧率低 | G6 按测量收紧；GPU 直接复用渲染表面 |
+| 性能：FIFO 解析与翻译在 JS 中进行 | CPU 侧开销 | 翻译缓存（内联常量去除后的键）、按区间的上传缓存、批量提交；G6 测量 |
+| 98 的老游戏缺调色板纹理 | 部分 DX5/6 游戏贴图错 | 真卡行为，记入客体说明；需要时 98 预设继续用其他适配器 |
+
+## 初稿配置项的实施复核
+
+1. 已采用适配器名 `"geforce_6800"`。
+2. 默认显存 256 MiB，可选 128 MiB。
+3. 已验证 XP 93.71 与 Win98 81.98，其他驱动版本未计作验收。
+4. 两种驱动都接受当前 PCI 模式，G0 未触发 A1 的 AGP 前置条件。
+5. XP 与 98 的现有预设继续使用原适配器；NV40 保持 experimental，完整门禁后再评估默认选择。
+6. 已接入共享 D9WG 执行器及 NV40 私有操作码、视口和采样状态。
+7. O1、V1、W1 保留为可选阶段，不计入当前 G0–G7 门禁。
+
+## 建议的首批提交
+
+1. G0 的空壳设备与跟踪工具、最小 VGA BIOS 与表格构建脚本；在 XP 与 98 上的跟踪报告与本计划的复核。
+2. G1：显示、VGA BIOS、驱动加载；`graphics_adapter: "geforce_6800"` 的选项、`v86.d.ts`、插件构建。
+3. G2：PFIFO 与 2D；设备单元测试。
+4. G3：3D 状态、表面缓存、直线代码的程序翻译、D9WG 1.8；浏览器测试。
+5. G4：完整着色器与 SM3.0；3DMark 全部验收。
+6. G5、G6、G7。
+
+G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测试，只依赖语料）可以并行。
+
+## 规范与实现参考
+
+- [envytools 文档](https://envytools.readthedocs.io/)与 [rnndb](https://github.com/envytools/envytools/tree/master/rnndb)：寄存器、FIFO、PGRAPH、VBIOS 表格（MIT）
+- [nouveau](https://gitlab.freedesktop.org/drm/nouveau)：`nvkm/engine/fifo/nv40.c`、`nvkm/engine/gr/nv40.c` 与 `ctxnv40.c`、`nvkm/subdev/bios/`（BIT、DCB、PLL、init）（MIT）
+- [Mesa nv30 驱动](https://gitlab.freedesktop.org/mesa/mesa/-/tree/main/src/gallium/drivers/nouveau/nv30)：`nv30-40_3d.xml.h`、`nvfx_shader.h`、`nv40_vertprog.h`、`nvfx_fragprog.c`、格式表（MIT）
+- [Bochs GeForce 模拟](https://github.com/bochs-emu/Bochs/blob/master/bochs/iodev/display/geforce.cc)与[使用说明](https://bochs.sourceforge.io/doc/docbook/user/geforce-notes.html)（LGPL，只读参考）
+- [xemu NV2A](https://github.com/xemu-project/xemu/tree/master/hw/xbox/nv2a)：表面缓存与着色器翻译的做法（GPL，只读参考）
+- [pci-ids：10de:0045 = NV40 GeForce 6800 GT](https://admin.pci-ids.ucw.cz/read/PC/10de/0045)
+- ForceWare 81.98 的 Win98/ME 支持列表（[TechSpot](https://www.techspot.com/drivers/driver/file/information/6808/)）、[NVIDIA 81.98 XP 版](https://www.nvidia.com/en-us/drivers/winxp-2k-8198/)、[Vogons：7 系列在 9x 下与 81.98 INF](https://www.vogons.org/viewtopic.php?p=471265)
+- [Vogons：Catalyst 6.2 Win9x 不含 R5xx](https://www.vogons.org/viewtopic.php?p=1360576)
+- [UL legacy benchmarks](https://benchmarks.ul.com/legacy-benchmarks)：3DMark03/05/06 的下载与注册码
+- v86 内部：[gpu-devices.md](gpu-devices.md)（插件、渲染器通道、D9WG、测试与远程渲染器）、[gpu-deviations.md](gpu-deviations.md)、[glbridge.md](glbridge.md)（D3D9 代理与协议）、[display-design.md](display-design.md)、[profiling.md](profiling.md)
+
+- G1/G3 PFB 能力续修：实现只读 `PFB_ZCOMP_SIZE=0x2e3ff`，其值为 NV40 的末个片上
+  压缩标签索引，容量按 Nouveau `nv20_fb_tags` 的规则为寄存器值加一，与 128/256 MiB
+  VRAM 无关。快照升至 v8，旧状态中的未知寄存器存值迁移为硬件容量。DWORD/byte
+  只读语义、旧状态迁移及快照往返通过。Win98 冷启动确认读到正确值，但 DEFAULT
+  纹理分配仍失败；该寄存器缺失不是本轮分配失败的充分原因，继续定位。
+
+- G3 雾系数续修：3DMark99 的原生 FP 使用 `FOGC.y` 混合纹理与雾色；此前只传递
+  标量 FOG varying，使这些表面全为灰色。现在在片元插值后生成 `(coordinate, factor, 0, 0)`，
+  支持线性及绝对距离线性模式和饱和边界。GPU 读回覆盖系数、正负坐标及跨顶点的
+  插值后 clamp；46 个 WGSL 模块与 Closure 构建通过。指数雾暂仍显式拒绝。
+
+- Win98 分配诊断续修：原生 DirectDraw7 分别创建并锁定 32×32 的 XRGB32、RGB565、
+  XRGB1555 纹理。普通 VIDEO、本地 VIDEO 和 SYSTEMMEM 三组全部成功；NONLOCAL
+  三组均返回 `88760276`。因此本地纹理 DMA/显存分配可用，不能把 D3D8/9 的
+  `8876017c` 直接归因于本地显存容量或据此断言必须 AGP。探针位于
+  `NV_D3D_TEXTURE_TEST` 诊断开关下，继续检查不同接口请求的分配条件。
+
+- G4 片元条件码第一部分：按 NVIDIA `NV_fragment_program` 的条件码语义降低八种
+  比较、swizzle、逐分量条件写入、条件码更新及只写条件码的指令；原生 KIL 改为
+  测试条件码，保留未写分量。条件计算与提交分离，更新使用饱和后的结果。GPU 读回
+  覆盖 NaN/UN、条件掩码、条件码部分更新、饱和与丢弃；3DMark99 捕获的 15 对
+  原生 VP/FP 全部编译，共 83 个 WGSL 模块通过 Naga，Closure 构建通过。
+  半精度运算的精确舍入/下溢、half/full alias 与结构化控制流仍待完成。
+
+- G3/G6 表面缓存续修：3DMark99 在持续装入纹理后出现颜色/深度目标不可读回；
+  原因是缓存命中没有更新顺序，活跃附件仍按最早插入资源被释放。纹理和 shader
+  缓存现按最近使用更新；真实 GPU 回归连续切换 70 张纹理，保留当前颜色/深度
+  附件并检查每次像素，资源数保持 64，0 failure；Closure 构建通过。
+
+- G1/G3 strap 修复解决 Win98 D3D9 分配：`PSTRAPS0_PRIMARY` 原先全零，
+  其中 BAR1_SIZE 实际宣告 64 MiB，与 PCI 的 128/256 MiB 窗口不一致。按 envytools
+  `io/pstraps.xml` 对齐 aperture、DEVID nibble 和 PCI AD wiring，保持 PCI bus 与
+  13.5 MHz crystal；快照 v9 迁移旧零值。Win98 81.98 冷启动后窗口 D3D9 HAL
+  CreateDevice 成功，DEFAULT 静态 16/16、动态 16/16、支持格式的 RT 12/12、
+  MANAGED/SYSTEMMEM/SCRATCH 各 16/16 均成功，真实像素 `ff336699`，0 GPU/PGRAPH
+  fault。另 4 项为驱动未声明支持的 A1R5G5B5 RT（CheckDeviceFormat=8876086a），
+  不能计作适配器渲染失败。原盘未修改；原版 DxDiag 验收继续进行。设备源码版与构建版
+  测试覆盖 128/256 MiB strap、只读、v7 迁移和快照往返，Closure 构建通过。
+
+- G4 雾模式续修：补齐 EXP、EXP2 及各自绝对距离模式，在片元插值后的原生
+  affine 参数上执行指数和饱和；与已有两种线性模式一共六种。GPU 验证指数、
+  平方指数、负坐标绝对值及超过 1 的饱和，57 个 WGSL 模块和 Closure 构建通过。
+
+- Win98 原生分配验收：探针按真实 CheckDeviceFormat 能力统计，未声明支持的格式
+  单独记录；重新冷启动后 GDI/DirectDraw/D3D9 均为 0 failure，全部已声明支持的
+  纹理创建成功，0 GPU/PGRAPH fault。证据见 `g3-win98-8198-texture-allocation.json`。
+
+- G4 cubemap：接通六面纹理与 sampler cube 声明、完整 mip 链和每面上传。
+  packed/Morton 面按 128-byte 对齐，uniform-pitch 面紧接全部 mip；LOD clamp
+  不改变后续面起点。CPU 字节测试覆盖线性/packed 面、末面越界和 clamp；GPU
+  逐面验证六方向、+X 四角坐标及显式 mip，缓存区分 2D/cube 并使用正确资源类型
+  释放。纹理测试、真实 WebGPU 回归与 Closure 构建通过。volume 尚待实施。
+
+- G0/G3 诊断续修：PGRAPH 的普通 illegal-method/invalid-notify 陷阱现在与 DMA
+  异常一起进入有界 fault 历史；PFIFO 分别记录 DMA fault 与 cache trap 的通道、
+  GET/PUT、方法、参数和 trace sequence。软件 DAC 的 cache trap 仍是驱动处理路径，
+  不能全部计作 DMA 失败。harness 导出 `fifoFaults`，避免长跑 reset/ack 后丢失起因；
+  PGRAPH/FIFO 和渲染顺序测试、Closure 构建通过。
+
+- G4 volume：接通三维纹理与 sampler 3D、三轴 Morton 和固定 row/slice pitch、
+  随 mip 缩小的深度，以及 3D 纹理资源上传/释放。支持普通/FP16 存储格式，最大
+  512³，源数据和展开上传均受当前 VRAM 大小预算约束；压缩 volume 仍显式拒绝。
+  CPU 测试覆盖非等长三轴、mip/slice 偏移、末级 DMA 越界与分配预算；GPU 验证
+  两个切片、空间线性混合和显式 mip。纹理/渲染测试及 Closure 构建通过。
+
+- G6 上传复用第一部分：3DMark99 的旧保守路径在 4754 次绘制中上传约 9.75 GB。
+  现逐级精确比较 CPU 权威字节与 GPU 最后上传/读回内容，只有变化的 mip 才上传；
+  无 hash 碰撞近似，不减少绘制后的下载。失败时清除复用记录，快照仍只保存 VRAM。
+  GPU 回归验证重复绘制不再上传、单 mip 修改只上传一级、客体修改颜色目标后
+  scissor 外的像素保留；统计增加 uploads/uploadBytes，Closure 构建通过。
+  完整 benchmark 时间分布仍待 G6 验收。
+
+- G3/G6 harness 检查点：control 的 checkpoint 标签在当前输出目录保存暂停后的
+  状态并继续运行；NV_STATE_SAVE_DRAWS 可在指定绘制数保存一次。已在正确 strap
+  冷启动的 XP 3DMark99 Benchmark 界面保存 before-benchmark 状态并继续原程序，
+  用于重现长跑陷阱及后续性能对照；原盘和游戏盘均只读。
+
+- G6 连续绘制批量提交：FIFO 内最多合并 32 次绘制或 8 MiB 命令，颜色/深度目标
+  每批只下载一次，后续混合直接使用 GPU 上的前次结果。REF、信号量、2D、通知、
+  查询和目标切换先完成前批；取样与待下载目标的 DMA 物理范围重叠时也先同步，
+  保留尚未消费的 END 流。快照等待涵盖同步后继续提交的批次。真实 WebGPU 回归
+  验证两次加法混合合为一次下载、REF 顺序及不同资源句柄的纹理反馈；全部 GPU
+  渲染回归、PGRAPH/FIFO 测试和 Closure 构建通过。XP 长跑超时是否消失仍需复测。
+
+- Win98 翻页等待续修：`FLIP_WAIT` 暂停 FIFO 前端，不将已空闲的光栅引擎报为忙。
+  原先 `PGRAPH_STATUS` 随翻页等待返回忙，使 81.98 在显示处理路径等待引擎空闲，
+  无法进入保存上下文及推进 READ 的后续步骤。复现检查点恢复后已能退出该等待并
+  完成 D3D7 流程；完整旋转/报告及后续版本仍继续验收。保留 FIFO 的等待与 fence
+  顺序，PGRAPH 回归和 Closure 构建通过。
+
+- G4 片元结构化控制流第一部分：按硬件 DWORD 边界降低 IF/ELSE/ENDIF、REP 与
+  条件 BRK，条件测试任意 swizzle 分量，支持零次及 255 次循环、独立嵌套计数。
+  块边界和作用域先验证，执行预算限制嵌套循环的 GPU 成本。真实 GPU 验证分支、
+  循环次数、break、嵌套及预算终止；98 个 WGSL/Naga 模块、完整 GPU 回归和
+  Closure 构建通过。LOOP 的相对输入、CAL/RET 及 half/full alias 仍待实现。
+- 像素单位纹理坐标：3DMark99 的后续测试触发 UNNORMALIZED 格式，现对实际取样
+  的二维/三维坐标及显式梯度按基础尺寸缩放，保留 projective W、bias/LOD。
+  尺寸作为独立 uniform 上传，改变尺寸不生成新 shader；GPU 全图比较像素坐标和
+  归一化坐标的双线性 texel center 与插值，CPU 存储字节也一致。XP 此前只产生一次
+  该未实现陷阱，后续检查点将使用新实现复测；不能据旧长跑宣称完整基准已验收。
+  语义参考：NVIDIA 的 [NV_fragment_program2](https://registry.khronos.org/OpenGL/extensions/NV/NV_fragment_program2.txt)
+  与 Mesa nv30 的硬件编码定义。
+
+- G4 片元 LOOP：接通立即数次数、初始索引与步进，使用独立嵌套索引保存/恢复；
+  相对输入索引 TEX0..TEX9，不受颜色/雾声明顺序影响。BRK 可退出两种循环，
+  共用四层嵌套及执行预算保护，块外相对读取明确报错。99 个 Naga 模块与真实 GPU
+  验证三个索引/偏移组合及退出内层后重新读取外层属性，完整渲染回归和 Closure
+  构建通过。CAL/RET、half/full alias、顶点纹理等后续 G4 内容继续实现。
+
+- PGRAPH 陷阱续修：TRAPPED_ADDR 按硬件把子通道放在 bits 16–18、通道放在
+  bits 20–24，修复此前误用 USER 窗口字段。Curie 非零 NOP 在 DEBUG_D 的数据错误
+  使能下产生 DATA_ERROR/BAD_ARGUMENT，并等待先前 GPU 批次；关闭该使能时不陷阱。
+  原生 81.98 已执行并确认此类陷阱，但每帧约 10 秒的等待仍存在，尚未解决。
+  单元测试与 Closure 构建通过。`NV_WATCH_FLIP` 可有界记录计数、RAMIN、MMIO 和
+  CPU 位置，便于继续定位；查询报告布局已与 Mesa nv30 的完成字读取路径复核一致。
+
+- G4 片元条件码银行：解出 SRC0 的独立条件读取/更新选择位，两个 CREG 均初始化
+  为 EQ；谓词读取旧值，条件不满足的分量保留目标条件码银行原值。IF、BRK、KIL
+  和普通条件写入共用选择器。真实 GPU 覆盖两个银行的全部比较、NaN/swizzle 与
+  跨银行条件更新，103 个 Naga 模块、完整 GPU 渲染回归及 Closure 构建通过。
+
+- G4 调用取指前置：片元解码追踪可达控制流和主 END 之后的 CAL 目标，DMA 按需
+  读取，常量仍按 PC 排序并从缓存键中去值；非法目标、常量槽目标和越界明确拒绝。
+  VP/FP 的空栈 RET 都可作为正常终点。解码测试验证跨 END 调用及恰好停止的 DMA
+  取指，完整真实 GPU 回归和 Closure 构建通过；FP CAL/RET 执行降低继续实现。
+
+- G4 片元 CAL/RET：条件调用、条件/空栈返回及子程序 END 已接通。为满足 WGSL
+  无递归的要求，按四层调用深度生成有限函数变体，寄存器与 CREG 仍共享；递归
+  溢出终止整个程序。调用恢复循环索引及作用域深度，跨调用共用四层 LOOP/REP、
+  48 层 IF 与执行预算，RET 可直接退出子程序内循环。真实 GPU 验证跨主 END 的
+  调用、返回条件、共享条件码、callee END、递归/循环深度溢出与提前返回；110 个
+  Naga 模块、完整 GPU 回归及 Closure 构建通过。未写结果寄存器属未定义值，选择零。
+
+- G2 字体 DMA：按 NVIDIA `cl004a.h` 的记录结构实现 F/G 字形读取，8–512 byte
+  幂次步长、尺寸头、连续单色 DWORD、F 的有符号 12-bit 坐标、G 的 16-bit 索引
+  与共享 origin/clip/color/font 状态。支持两种位序、透明零位和现有 ROP/混合路径，
+  状态随对象快照保存。测试覆盖负 origin、跨别名/快照的 G 字形、CGA6、ROP 及
+  截断记录、畸形尺寸、末行 DMA 故障的全字形原子性；完整 2D/PGRAPH 回归及
+  Closure 构建通过。3DMark99 总分窗口的字体异常尚未定位，不能将此项称为其修复。
+
+- G1/G3 扫描状态续修：按 CRTC 总行数、retrace 起止和 VPLL 周期实现 PCRTC
+  `0x600808` 的扫描行/blank/retrace，以及 `0x600868/0x60086C` 计数器。
+  NV 像素模式的 VGA 状态端口/MMIO 共用 retrace 与属性索引复位；粗粒度调度保留
+  一次待读取 retrace，逐字节读取只在访问对应状态字节时消费，状态可快照恢复。
+  XP 3DMark2000 从此前在 `0x600808` 的无限轮询检查点恢复后已进入直升机场景；
+  完整基准尚在运行。源码/release 寄存器与旧快照回归、PGRAPH 测试和 Closure 构建通过。
+  同时把翻页等待正确报告为 PGRAPH_STATUS 的 SYNC_STALL bit 14；Win98 仍只绘制
+  少量帧，不能把该状态位修正称为完整翻页修复。
+
+- G2 原生字体像素对照：`NV_GDI_FONT_TEST` 比较真实主表面与客体 GDI 软件 DIB，
+  五组 Arial/Tahoma/Times 字号、粗体斜体的 `12345 3DMarks` 均为 0 个不同像素，
+  GDI_TEST=0，设备保持 started/problem=0，原盘未变。证据为
+  `g2-xp-9371-font-reference.json`。失败时导出参考/实际 BMP，
+  `NV_TOOLS_ARTIFACTS` 可选择工具盘根目录诊断文件。比较区避开探针控制台的闪烁光标；
+  这未复现 3DMark99 的总分字体问题，该问题仍需单独定位。
+
+- G3 XP 3DMark99 MAX 已跑完全部 26 项并保存原生 `.3DP` 项目。单个原生 benchmark
+  经检查点连续恢复，末段 35512 次绘制、7733 批、0 GPU failure、0 PGRAPH/DMA fault；
+  证据见 `g3-xp-9371-3dmark99-completed.json`。它不是完整冷启动性能结果；总分字体
+  异常和参考帧一致性仍未解决，G3 门禁仍未完成。原盘及游戏盘只读检查通过。
+
+- Curie NOP 校正：前项非零 NOP 陷阱误套用了 envytools 的早期 Kelvin/Rankine
+  class 验证；该表未描述 NV40 Curie。撤除这条无 NV40 依据的限制，保留有序 GPU
+  barrier 和正确陷阱地址。原生 81.98/93.71 的 NOP=1 可继续执行，不再人为产生
+  DATA_ERROR；非法 NOTIFY 仍有完整陷阱回归。PGRAPH 与 Closure 构建通过。
+  Win98 每帧约 10 秒等待仍可复现，故不能把 NOP 校正称为其根因修复。
+
+- G3 纹理读取信号量：接通原生 93.71 在 3DMark2000 使用的 `0x1D74`，复用
+  `DMA_FENCE/FENCE_OFFSET` 的四字节 checked DMA 写入，先同步待完成 GPU 工作。
+  当前保守实现等待整批完成，满足纹理读取完成的顺序要求；不伪造 DMA 通知器。
+  PGRAPH 测试覆盖数据、相邻字节和越界原子性，真实 GPU 验证 fence 晚于读回，
+  完整渲染回归及 Closure 构建通过。编码复核 PSL1GHT 的
+  `SEMAPHORE_TEXTUREREAD_RELEASE` 和原生驱动跟踪；完整长跑仍在复测。
+
+- G4 顶点源向量修复：标量发射槽中的 MOV/LIT 保留完整 swizzle，Curie ARL 逐分量
+  加载地址，避免原先把所有分量复制为 X。112 个 Naga 模块与完整真实 GPU 回归
+  通过，像素用例区分 MOV 的四分量、LIT 的 diffuse/specular/power 及 swizzle，
+  并从不同的 A1.y 读取相对常量；Closure 构建通过。
+
+- G2/G3 对象绑定缓存：PFIFO SET_OBJECT 装载 PGRAPH 子通道的已解码对象；后续
+  RAMIN 回收/重用不会让已装载类号随每条方法改变。不同子通道可以保留同一实例的
+  不同代对象，重新绑定才装载新内容。PGRAPH 快照 v4 保存共享对象引用和旧代绑定；
+  旧快照从已存对象及 FIFO 绑定迁移。PGRAPH/FIFO/2D/设备、完整真实 GPU 回归与
+  Closure 构建通过。XP 新复测仍遇到 fence 高位选择器，客体门禁尚未通过。
+
+- G4 顶点标量算术：增加 D9WG shader bytecode 的私有 `NV_ALU=0x1000`，
+  instruction control 0..6 分别为 RCC/EXP/LOG/LIT/RCP/RSQ/LG2，仅供 NV40 顶点
+  前端使用，不修改现有 D3D 指令。EXP/LOG 保留四分量旧式结果；LOG 以原始
+  exponent/mantissa 拆分，避免 2 的幂附近的 log 舍入误判。RCC 有符号上下限、
+  RCP 的 signed zero、RSQ/LG2 负数 unordered 和 LIT 零底数负指数由 NV 路径处理。
+  特殊值使用运行时位转换，兼容 Tint 对常量 Inf/NaN 的限制。118 个 Naga 模块、
+  完整真实 GPU 像素/条件码回归、通用 D3D 的 57 项与 199 个 Naga 验证、
+  Closure/WebGPU bundle 构建通过。语义参考 NVIDIA NV_vertex_program2；
+  Mesa nvfx_vertprog 的 RSQ 显式 ABS 也验证硬件源与 D3D abs-helper 的差别。
+
+- G4 ARA：从指令 ASRC 选择的地址寄存器读取无 swizzle 向量，计算 X+Z、Y+W
+  并复制到 Z/W，遵守地址目标掩码、谓词及既有 VLIW 同时读取语义。
+  ARA/ARL/ARR 的结果按 NVIDIA 指令规范饱和至 [-512,511] 后提交及更新条件码。
+  119 个 Naga 模块、完整真实 GPU 回归和 Closure 构建通过；像素测试覆盖独立
+  Y 分量、部分目标写入与正溢出后从 c[511] 读取。
+
+- G4 地址栈：PUSHA/POPA 与 CAL/RET 共用八层带类型栈，保存完整地址向量；
+  POPA 要求无条件四分量写入，RET 只接受返回地址。空栈、类型错误和溢出终止
+  程序；双发射 PUSHA 先读取旧地址，再提交同槽的地址加载。
+  120 个 Naga 模块、完整真实 GPU 回归与 Closure 构建通过，像素用例覆盖四分量
+  恢复、子程序两侧的 push/pop、双发射读取、空栈/错误类型与两种满栈溢出。
+
+- G4 相对输出：OUT_INDEXED 按旧地址寄存器分量与共享 OUT_ADDR 选择 TBUF，
+  两个 VLIW 槽在地址加载提交前计算目标。保留目标掩码、逐分量谓词和条件码；
+  仅生成显示结果路由能观察的写入，越出物理 TBUF 的未定义写入选择忽略。
+  122 个 Naga 模块、完整真实 GPU 回归、程序/PGRAPH/FIFO 测试及 Closure 构建
+  通过，像素测试覆盖有效/负/溢出目标、掩码、false 条件及双发射地址加载。
+
+- G4 片元 R/H 别名：以共享 u32 寄存器保存物理位，H[2n].xy/zw 对应 R[n].x/y，
+  H[2n+1].xy/zw 对应 R[n].z/w。逐分量谓词、半字掩码写和同精度 MOV 保留相邻
+  位及 NaN payload；FP16 按 ties-to-even 舍入，支持次正规数、signed zero、Inf/NaN，
+  条件码读取舍入后的结果。私有 D9WG LOAD/STORE/HALF/COPY 指令只用于片元前端。
+  125 个 Naga 模块、完整真实 GPU 回归、通用 D3D 57 项/199 个 Naga 验证、
+  PGRAPH/FIFO/解码测试及 Closure/WebGPU bundle 构建通过。指令 precision 字段的
+  低精度算术模式与 pack/unpack 尚待后续步骤，不能据此宣称全部精度语义完成。
+
+- G4 打包指令：实现 PK2H/PK2US/PK4B/PK4UB 与四种对应 UP 指令，pack 直接将
+  原始 u32 复制到所有启用结果分量，unpack 从指定源分量读取原始位。PK4B 使用
+  NVIDIA 的偏置字节编码；两元素 unpack 在 XY/ZW 重复。保留掩码、谓词、源 swizzle
+  与正负/绝对值位操作，H 目标 pack 和 H 源 unpack 明确拒绝。141 个 Naga 模块、
+  完整真实 GPU 回归、通用 D3D 57 项/199 个 Naga 验证与 Closure/WebGPU bundle
+  构建通过；像素用例覆盖八种格式、越界 clamp、复制、跨 MOV 的 NaN payload 和条件写。
+
+- G4 LITEX2：接通 Curie 光照末段，Y 为 diffuse，Y>0 时 Z=exp2(W)，X/W=1；
+  普通目标掩码、谓词、缩放、饱和和条件码继续共用提交路径。编码与输入布局复核
+  Mesa nvfx 的 LIT 降低过程。142 个 Naga 模块、完整真实 GPU 回归和 Closure 构建
+  通过，像素用例区分 Y/W 与 X/Z，覆盖正数、零及负 diffuse。
+
+- G4 顶点纹理：TXL 解码四个纹理单元，经 vs_3_0 texldl 和独立 D9WG 顶点 sampler
+  取样。实现 Curie 的线性 R32F/RGBA32F、1D/2D、最近点 mip、基础 pitch 的完整
+  mip 链，以及显式 W LOD、4:8 bias 和分数 min/max clamp；LOD 参数使用 uniform。
+  NV R32F 展开为 (R,0,0,1)，修正 D3D R32F 的 (R,1,1,1) 差别。纹理反馈继续走
+  物理 DMA 重叠 barrier，未知格式及 wrap 模式明确拒绝。150 个 Naga 模块、完整
+  真实 GPU 回归、纹理/解码/PGRAPH/FIFO 测试与 Closure 构建通过。硬件限制复核
+  envytools 的 MthdCurieXfTex*，像素覆盖四个单元、两种格式、1D 和 LOD 参数。
+
+- G4 深度纹理第一部分：接通单级 Z16/Z24 的硬件比较，保留原始深度/模板字节。
+  私有 sampler 声明把八种 RCOMP 函数送至 WebGPU comparison sampler，D3D 普通
+  shadow sampler 的默认 LEQUAL 保持不变；NV 分量 crossbar 在比较后应用。
+  166 个 Naga 模块、完整真实 GPU 回归、通用 D3D 57 项/199 个 Naga 验证与
+  Closure/WebGPU bundle 构建通过。像素覆盖小于/相等/大于边界、八种函数、Z16/Z24、
+  TXP 投影参考、常量分量和四点 PCF。多级深度纹理仍明确拒绝，继续后续实施。
+
+- G3 Win98 原生 DxDiag 复验通过：从已安装 81.98 的 overlay 重新启动，再在同一个
+  DxDiag 会话中经检查点继续 D3D7/8/9。三段旋转画面均正确，原生报告全部成功，
+  累计 17986 次绘制、0 GPU failure、0 PGRAPH/DMA fault，原盘未变。证据见
+  `g3-win98-8198-dxdiag-clean.json`；未启用任何 query/flip 诊断覆盖。旧 permission
+  快照在独立禁用 FLIP_WAIT、查询陷阱及翻页陷阱的对照中仍只有少量帧，不能再作为
+  干净验收起点；这不能证明所有旧快照迁移问题均已解决。harness control 增加相对
+  `pointer:[dx,dy]` 和 `click:true`，已用于原版测试按钮及报告保存。G3 的 XP/98
+  3DMark2000 和参考帧门禁仍未完成。
+
+- G4 片元特殊值：RCP/LG2 使用 NV 算术路径，保留负零倒数的符号、精确 Inf 位与
+  负数对数的 unordered 条件码；DIV 逐分量除以第二源的 X，显式处理零、Inf/NaN。
+  不再经过 D3D 的 finite-zero/abs-log 辅助函数。166 个 Naga 模块、完整真实 GPU
+  回归、通用 D3D 57 项/199 个 Naga 验证与 Closure/WebGPU bundle 构建通过；
+  像素用例包含通过 R/H alias 检查倒数的原始 Inf 位、0/0、signed zero 与条件码。
+
+- G4 片元 SAT：缩放后先把 NaN 变为零，再饱和至 [0,1]，随后进行 H 写入舍入及
+  条件码更新；普通 D3D saturation 不受此私有指令影响。166 个 Naga 模块、完整
+  真实 GPU 回归、通用 D3D 57 项/199 个 Naga 验证与 Closure/WebGPU bundle 构建
+  通过；条件码像素用例检查了此前未断言的 NaN 分量。
+
+- G6 CPU 翻译缓存：在 NV40 前端复用精确代码及降低选项相同的 VP/FP 字节码，
+  FP 内联常量每次仍从当前程序读取；代码变化立即失效。LRU 限制为 128 组及
+  8 MiB 的键/字节码预算，GPU reset 清除缓存，缓存不进快照。harness 导出
+  shaderTranslation 的命中、miss、淘汰及大小。PGRAPH 回归验证常量更新、代码
+  改写与淘汰，完整真实 GPU 回归、FIFO 测试及 Closure 构建通过。含 DMA 解码和
+  精确键构造的 48 条片元指令 CPU 微基准，1000 次从 179.9 ms 降至 113.5 ms；
+  这不是客体帧率或 3DMark06 的性能门禁，完整 G6 报告继续后续实施。
+
+- G4 FP32 输出：把原生 FP_CONTROL bit 6 接入翻译选项，四个颜色目标分别读取
+  R0/R2/R3/R4；关闭时仍读取 H0/H4/H6/H8，深度仍使用 R1.z。此前翻译器支持
+  此选项但真实绘制没有传入，会把全精度输出误读为 packed half。控制位与输出
+  映射核对 RPCS3 的 gcm_enums.h / GLFragmentProgram.cpp，NV40 合法位范围核对
+  envytools 的 MthdRankinePsControl。完整真实 WebGPU 回归验证 FP16/FP32 两种
+  四目标输出、独立颜色掩码与单目标复用；插件 Closure 构建通过。
+
+- G4 FP32 片元纹理：RGBA32F/R32F 的线性/Morton 存储通过 checked DMA 读取，
+  R32F 在分量交叉选择前扩展为 (R,0,0,1)，原始 NaN payload 与负零按 u32 保留。
+  使用共享执行器的 RGBA32F 资源及 nearest/nearest-mip 取样；FP32 线性过滤仍
+  显式拒绝。CPU 回归检查原始位、扩展、交叉选择及 DMA 末字节；完整真实 GPU
+  回归验证 HDR、负值和标量扩展至 FP16 渲染目标，Closure 构建通过。
+
+- G4 双面模板第一部分：把正反面的比较、stencil-fail、depth-fail、pass 操作映射
+  到共享执行器的 CW/CCW 状态组，随 NV 的 FRONT_FACE 交换；关闭双面模式恢复
+  两个绕向使用同一状态。两面的 reference/read/write mask 相同时已接通，不同
+  时仍明确拒绝。完整真实 WebGPU 回归验证正面递增、背面递减、独立 NEVER 比较、
+  前面绕向切换与关闭后恢复；CPU 状态回归及 Closure 构建通过。
+
+- G4 多边形深度偏移：接通填充三角形的 factor/units，按 Mesa nv30 的两倍单位
+  编码换算。共享执行器在片元阶段加归一化常量，因此 D16 与 D24 分别按客体
+  的 16/24-bit 精度换算，不能按宿主深度存储统一处理。真实 GPU 回归检查两种
+  格式的已知常量偏移、窗口空间斜率以及关闭后恢复；完整 GPU 回归、CPU 状态
+  测试及 Closure 构建通过。点/线模式的多边形偏移仍随其 raster mode 保留未实现。
+
+- G4 sRGB 纹理第一部分：接通 TEX_WRAP 的 RGB gamma-decrease mask（7），使用
+  共享执行器的 sRGB 视图，在取样过滤前解码 RGB，保留 alpha。其他逐分量 mask
+  及浮点/深度纹理 gamma 仍显式拒绝。真实 GPU 回归验证已知中灰转换、alpha
+  保留和黑白 texel 在线性空间中的双线性平均；完整 GPU/CPU 回归及 Closure
+  构建通过。
+
+- G4 纹理分数 LOD：保留 NV40 的独立 f32 最小/最大 LOD，在共享执行器 sampler
+  的私有状态 62/63 传递，进入 sampler 缓存键；D3D 客体不写这两个槽，仍使用
+  原有 MAXMIPLEVEL/SetLOD 规则。按向上取整的最大层上传三线性过滤需要的相邻
+  mip，最小值高于最大值时以最小值为准。真实 GPU 回归检查 1.25 最小值、0.5
+  最大值的已知颜色混合；完整 GPU 回归、190 项执行器测试、CPU 纹理测试以及
+  Closure/WebGPU bundle 构建通过。深度纹理仍保持单级限制。
+
+- G4 片元 1D 纹理：线性/Morton 存储忽略矩形 height，作为单行资源上传；程序
+  降低忽略 Y 寻址及 Y 梯度，TXP 在 W 除法后仍落在唯一一行的中心，rectangle
+  模式只按 X 尺寸归一化。真实 GPU 回归验证越界 Y 不触发 T 边框、投影 X 与
+  像素单位 X，完整 GPU 回归、166 个 Naga 模块、CPU 纹理测试与 Closure 构建
+  通过。
+
+- G4 TEX8/TEX9：接通 XF_OUT_MAP_TXC_B 的两个寄存器选择与 VP_RESULT_EN bit
+  12/13，通过共享执行器的语义链接传递到片元 TEX8/TEX9 输入。默认不额外启用
+  两路输出，现有程序的输出预算不变。真实 GPU 回归检查两路映射的非零颜色；
+  CPU 路由测试、168 个 Naga 模块、完整 GPU 回归和 Closure 构建通过。
+
+- G3 RGB565 通道回归：真实 GPU 用已知片元常量验证 NV 16-bit 目标的 R 高/B 低
+  存储；原生 D3D9 探针再用 D3DCOLOR 顶点绘制到 lockable RGB565 目标，检查
+  GetRenderTargetData、GetDC 和 BitBlt 至 24-bit DIB。XP 93.71 冷启动读回
+  `0x3333` / RGB `0x31659C`，全部通过，无 GPU/PGRAPH/DMA 故障，原盘未变，
+  见 `g3-xp-9371-rgb565.json`。这排除所覆盖的顶点/目标/GDI 转换路径；独立的
+  3DMark99 固定帧红蓝差异仍未解决，不能据此接受完整 G3。
+
+- G4 常量 alpha 混合：RGB 的 CONSTANT_ALPHA / ONE_MINUS_CONSTANT_ALPHA
+  通过把 blend constant 的 alpha 复制到 RGB 接入宿主混合，独立 alpha 因子仍
+  使用原始 alpha。同一绘制还需要不同 RGB 常量颜色时，继续明确拒绝；常量
+  四分量本就相同则可以共用。CPU 状态回归覆盖兼容/冲突组合，真实 GPU
+  检查非灰色常量下两种因子及独立 alpha，完整渲染回归与 Closure 构建通过。
+
+- G2 INDEX 连续图像流续修：真实 93.71 抗锯齿字体上传 12×20 I4 时只发
+  30 DWORD，不能像 IFC 那样逐行补齐为 40 DWORD。INDEX 改为跨行推进一个
+  DWORD，仅图像末端忽略填充；I4/I8 都支持，旧快照的行内已提交游标可续读。
+  回归覆盖跨行立即生效、输出裁剪、末尾填充、快照与跨行 DMA 故障不留下
+  部分写入。原生冷启动复验消除大字号斜条纹，5 个非抗锯齿用例 RGB 完全一致，
+  5 个抗锯齿用例逐像素的明暗等级顺序完全一致。后者仍有软件 DIB 色调曲线
+  差异，原始 RGB 差异继续记录，不计作颜色精度验收。见
+  `g2-xp-9371-aa-packed-index.json`；完整设备/2D/DMA/FIFO/PGRAPH、真实 GPU
+  渲染回归及 Closure 构建通过，原盘未变。
+
+- G7 文档前置更新：设备文档改为当前已验证的 XP/98 驱动、显示与 3D 范围，
+  补充 Win98 PCI 总线/资源冲突与 XP 原生驱动安装路径、专属 ROM 部署说明及
+  NV40 偏差清单。初稿配置项按实际实现复核，阶段状态仍为实施中；完整
+  3DMark 参考图、Win98 游戏抽查及 3DMark06 性能门禁通过后才可完成 G7。
+
+- G4 FP32 渲染目标第一部分：接通 R32F/RGBA32F 的绘制与原始浮点读回，
+  保留负值和 HDR；通过 FP_CONTROL 的 FP32 输出路由避免半精度舍入。允许
+  四个 R32F 或两个 RGBA32F 目标，按 WebGPU 默认保证的 32-byte attachment
+  预算限制 RGBA32F MRT。FP32 blending 与浮点 clear 仍明确拒绝，未假设其
+  硬件清除编码。完整真实 GPU 回归验证单目标、两种 MRT、预算/混合故障不
+  提交部分绘制及切回普通目标；CPU 状态测试与 Closure 构建通过。宿主约束
+  核对 [WebGPU 规范](https://www.w3.org/TR/webgpu/#limits)；原生 HDR benchmark
+  的完整验收继续后续实施。
+
+- G6 调查计量：客体 harness 输出机器时钟、宿主经过时间及 PIT 状态，新增
+  `NV_TRACE=0` 关闭记录路径以便与生产默认状态对照。Win98 同一纹理过滤检查点（旧名 bump）
+  两组配对各运行约 90 秒：10 倍刷新频率分别为 13/13 次绘制；另一组关闭/
+  开启跟踪分别为 8/8 次。后组机器时间约 87 秒、宿主约 91 秒，不能解释
+  数秒一帧的等待。两组负载不同，不比较跨组帧率；均无 GPU/PGRAPH/DMA
+  故障，原盘及游戏盘未变。见 `g6-win98-99-timing-investigation.json`；同步等待
+  根因和最终 3DMark06 性能报告仍未完成。
+
+- G3 纹理红蓝通道续修：原生 D3D9 用四种已知颜色纹理，均复现了 R/B
+  交换。Mesa 的 sampler-view 编码表明 TEX_SWIZZLE 从低位到高位是
+  A/R/G/B，R 的输出选择位在 2–3、常量选择位在 10–11；此前错误地按
+  R/G/B/A 读取。修正普通/BC/浮点纹理及深度比较后 crossbar，并把手写
+  GPU 回归的寄存器值改为对应的真实编码，像素期望保持不变。XP 93.71
+  冷启动的 ARGB8888、RGB565、ARGB1555、ARGB4444 原生取样全部精确通过，
+  无 GPU/PGRAPH 故障，原盘未变，见 `g3-xp-9371-texture-routing.json`。
+  CPU 纹理、168 个 Naga 模块、完整真实 GPU 回归与 Closure 构建通过。
+  旧 99 IQ 文件仍是修复前证据，固定帧的完整复验继续进行。
+
+- G3 主显示头信号量：93.71 的 producer 从 head 表取索引，发送高位选择器
+  `1+2*head`，随后以 `TEXTURE_READ_RELEASE` 发送 framebuffer 字节地址。
+  接通精确的 `0x01000000` 主头/零偏移，等前序 GPU 读回完成后排队扫描地址，
+  在 vblank 切换 front；普通 DMA fence 不变，其他选择器继续拒绝。真实设备
+  快照、越界原子性、GPU 完成顺序与完整渲染回归通过，Closure 0 错误/警告。
+  XP 03 从冷启动已正常显示 GT1 加载图、无 PGRAPH/GPU 故障；客体长跑继续，
+  尚未接受完整 benchmark。语义依据是原版 producer 与显示证据的推断，
+  不把 hwtest 的合法位掩码当作语义说明，见 `g3-xp-9371-display-semaphore.json`。
+
+- G3 视口旁路 W 续修：93.71 的 XYZRHW VP 已对输入 W 执行 RCP，
+  `c194=(1,1,1,1)`、`c195=(0.5,0.5,0,0)` 保留输出的齐次 W。
+  边界转换此前再次取倒数，反转了透视插值；改为将窗口 XYZ 转成 clip
+  时乘以该 W，并保留 W 输出。独立的 1/W 重心插值检查 64 个棋盘
+  像素，旧代码失败、修复后精确通过；完整 GPU 回归、168 个 Naga
+  模块、CPU 状态测试和 Closure 构建通过。原生 IQ02 横条与赛道路面
+  拉伸的证据及 producer 常量见 `g3-xp-9371-bypass-perspective.json`；
+  修复后的完整原生 IQ 文件正在重新生成，尚未据此接受整个 G3。
+
+- G6 局部上传：逐字节比较缓存图像后，只通过原有 UPDATE_TEXTURE 传输
+  首个至末个变更行；保留完整行的原生字节布局、face/mip 定位与全部
+  DMA 预验证，volume 继续完整上传。真实 GPU 回归验证未修改区域和
+  邻近 face/mip 保持不变：8×8 RGBA 改一行传 32/256 bytes，RGBA32F
+  128/1024、R32F 32/256、D16 16/128；2×2 cube face 改一行只传
+  8/16。无变化仍零上传，首次上传仍完整。完整 GPU 回归和 Closure
+  构建通过；这些是传输预算验证，不代替原生 06 的最终性能报告。
+
+- G6 CPU profile 前置：harness 的 `NV_CPU_PROFILE=1` 在恢复/初始化后
+  采样，退出时写出标准 `.cpuprofile`，默认关闭。Win98 纹理过滤检查点（旧名 bump）
+  90 秒复现 8 次绘制、无 GPU/PGRAPH 故障；宿主样本约 63% 为 idle，
+  扫描/纹理复制不是单一主导热点。调试构建仍有栈追踪成本；此调查
+  不代替 release 构建的 06 性能门禁，等待根因继续调查。见
+  `g6-win98-bump-cpu-profile.json`。
+
+- G4 各向异性过滤第一部分：按 Mesa/Envy 的原生枚举映射 2/4/6/8/10/12/16×，
+  通过既有 MAXANISOTROPY sampler 状态接通三线性、可过滤的 1D/2D/cube
+  纹理；不强改客体的 min/mag/mip 过滤，其他组合及深度/volume 继续明确
+  拒绝。CPU 回归检查全部枚举与不兼容组合，真实 GPU 验证每个倍率传入
+  sampler、sRGB/alpha 过滤值和恢复普通状态。完整 GPU 回归与 Closure
+  构建通过；宿主采样核仍是硬件精度偏差，完整参考帧门禁继续后续验证。
+
+- G3 benchmark 工具续修：原生 XP 启动器保留尾随命令行参数，已用于
+  03 的原版命令行自动测试；可选 `/iq` 通过可见、可用的原生控件
+  逐项切换 99 测试列表、点击实际确定按钮，检查摘要只剩两项 IQ
+  后才开始 benchmark。失败/超时不启动测试；Welcome 仍按正常
+  Enter 进入新项目。严格 MinGW 编译和实际客体的“0 of 2 / Image
+  Quality 1”通过，详见 `g3-xp-native-benchmark-launcher.json`；18 个
+  原始 BMP 的完整比较继续进行。
+
+- G3 原生 99 IQ 复验：纹理 crossbar 与旁路 W 修复后，原版两项 IQ
+  完成 4,034 次绘制并保存 `.3DP` 与 18 个未经修改的 BMP，GPU/PGRAPH
+  零故障，系统和游戏原盘未变。IQ02 只差一个像素且最大通道差 4；
+  IQ03–07 的平均通道误差均小于 0.023，最大为一个 16-bit 颜色台阶。
+  两张游戏图 MAD 从约 29/18 降至 1.8248/1.306789，主要几何与通道
+  已一致；更大残差及 IQ01 单像素覆盖差异保留，未用容差抹去。
+  全部 SHA/数值见 `g3-xp-9371-99-iq-corrected.json`；仍需修复后的
+  26 项完整复跑、2000 和剩余精度审查，尚未宣告整个 G3 通过。
+
+- G4 MRT 独立混合：把 RT0 的 `0x310` 和 RT1–3 的 `0x36c` 使能位
+  通过协议 1.12 私有 render state 传到各 attachment，因子和方程仍共享。
+  普通 D3D 未提供该状态时保持全部目标的原有混合行为；mask 进入 pipeline
+  缓存键。完整真实 GPU 回归逐像素检查全部 16 种组合及退回普通状态，
+  包括 RT0 关闭而 RT1/3 开启；FP32 任一活动目标请求混合仍原子拒绝。
+  协议布局、执行器、pipeline 缓存、CPU 状态及 Closure 构建通过。
+
+- G6 原生时钟复验：增加无窗口的 `geforce_clock.c`，在正常进入 800×600
+  后延迟十秒，连续测量三次 Sleep/QPC/GetTickCount/TSC；harness 支持
+  `NV_FDA` 正常插入只读源软盘，写入留在内存并导出最终镜像。Win98
+  早期全屏阶段三次 tick 为 5001/5001/5097 ms，QPC 同步推进约五秒，
+  benchmark 已进入第 2 项加载；没有修改图形 API、GPU/驱动状态或原盘。
+  这还不能证明后续 bump 阶段的时钟正常，细节保留在 timing fixture。
+
+- G0/G6 PTIMER 时钟续修：按 Envytools 的 NV40 HCLK tick 和时间戳左移
+  五位的编码修正换算；模拟板固定采用 66.67 MHz，驱动实际写入的
+  `CLOCK_MUL/DIV=3125/6667` 每毫秒恰好推进 1,000,000 时间戳单位。
+  此频率是模拟板的明确契约，不宣称已测得实体卡时钟树。回归覆盖比率
+  改写连续性、闹钟、停止计数及高位快照，设备、2D/PGRAPH/FIFO 和
+  Closure 构建通过。相同 Win98 纹理过滤检查点（旧名 bump）的 90 秒诊断完成 13 次绘制、
+  无 GPU/PGRAPH 故障，长等待仍在，未宣称性能改善。硬件编码依据见
+  [PTIMER](https://envytools.readthedocs.io/en/latest/hw/bus/ptimer.html)，
+  实测数据追加到 `g6-win98-99-timing-investigation.json`。
+
+- G6 release harness：修正此前固定导入源码的客体工具，实际响应
+  `TEST_RELEASE_BUILD=1`，同时选择 release JS/WASM 并记录构建路径。
+  游戏盘使用当前核心自带的 IDE 类，不混入源码/debug 设备实现。
+  release 寄存器/快照回归及真实 Win98 检查点恢复、GPU 绘制、profile、
+  退出和原盘只读检查通过；90 秒仍只有 8 次绘制、约 72% idle，
+  长等待尚未解决，也未据并行负载下的结果宣称帧率改善。构建与 profile
+  SHA 见 `g6-release-guest-harness.json`，最终 06 报告仍需独立测量。
+
+- G6 阶段标注复核：逐张核对原生加载截图，`continue2/capture-0273.png`
+  明确显示 Texture Filtering Speed；旧名 `checkpoint-bump-timing` 实际
+  位于此阶段。保留文件路径，修正各计量 fixture 的解释，未把新的 Emboss
+  3-pass 时钟样本混作纹理过滤证据。独立 3-pass 运行的 33 组 tick 为
+  5000–5100 ms、QPC 为 4.996–5.094 s，原始日志及正常 UI 选择记录已保存；
+  真正纹理过滤阶段的持续时钟诊断继续进行。
+
+- 原生控制输入续修：Win98 高负载下 Run 未就绪便开始模拟字符，曾丢失
+  命令前半段。改为先等待、显式全选，再按既有手动控制的延时逐个发送
+  make/break 与 Shift 扫描码，发送前验证 US ASCII。真实 Win98 的完整
+  rename、DIR 与另一次 A:→D: copy 已验证，见 `g6-native-run-input.json`。
+  游戏包装 DLL 只在 overlay 中改名，游戏/基准验收继续进行。
+
+- G6 纹理过滤原生时钟复验：正常 UI 只选 Texture Filtering Speed，
+  后台探针在实际过滤负载中得到 12 组完整样本：tick 5000–5004 ms、
+  QPC 4.994571–5.003309 s；无 GPU/PGRAPH 故障，原盘及游戏盘未变。
+  这些区间未显示全局 API 时钟大幅停走，帧提交间隔的根因仍未定位。
+  原始日志、计量与工具盘运行说明见 timing fixture，不以此冒充性能修复。
+
+- G3 XP 99 修复后完整复验：同一次原生运行完成全部 26 项，55,234 次
+  绘制、GPU/PGRAPH 零故障，原版结果窗口清晰显示 44 / 14372 分；
+  保存并实际导出 `NVFULL.3DP` 与 18 个原始 IQ BMP，系统/游戏原盘未变。
+  9 张画面的逐像素比较数值与独立 IQ 复验完全一致，之前记录的残差保留。
+  初次离线读取未见尚未刷新的 FAT 项，恢复后正常请求客体关机再导出，
+  文件与 SHA 已核实，见 `g3-xp-9371-99-full-corrected.json`。此分数来自
+  并行负载和诊断构建，不作为 G6 性能报告；Win98 和 2000 门禁仍继续。
+
+- G4 无颜色目标续修：原生 XP 03 的下一阶段使用 `RT_ENABLE=0`、
+  深度测试开启/写入关闭，且片元程序不导出颜色。现在只解析有效的光栅区域，
+  不访问禁用的颜色 DMA；共享执行器绑定写掩码为零的宿主临时颜色附件，
+  只把真实深度/模板结果读回 VRAM。翻译器按实际颜色目标决定是否需要颜色导出。
+  真实 GPU 的 D16/D24 写入、模板递增、无深度附件的遮挡查询、坏 DMA
+  原子失败及禁用颜色内存不变均通过，169 个 WGSL 模块校验和插件构建通过。
+  纯查询批次的真实查询回传可能晚于 submit 标记，FIFO 等待两者后才提交结果。
+
+- G4 Curie 过滤提示续修：按 Envytools hwtest 的 Curie 方法表补齐
+  `0xB00–0xB3C` 的 16 组合法字，校验保留位与 bits 15–17 范围；
+  原生 03 的 `0xB10/0xB14=0x7DC0` 不再误报非法方法。
+  全部 16 组状态和快照、非法值不改旧状态的回归通过；这些提示保留在
+  客体状态中，宿主过滤核仍不复刻硬件采样优化器。原生 03 完整复测继续。
+
+- G5 8bpp 游戏抽查：Win98 81.98 原生 StarCraft 1.08 已进入 Terran
+  教程，640×480、pitch 768 的 8bpp 地图/单位/HUD 与调色板显示正确，
+  提示框按键、单位动画和正常退出可见，返回 1024×768×32 桌面。
+  游戏本地 cnc-ddraw DLL 仅在 overlay 中正常改名，目录确认无 DDRAW.DLL；
+  Chrome renderer 保持连接以处理驱动的空辅助 3D 批次，三轮 GPU/PGRAPH
+  故障均为零，系统与游戏原盘未变。地图平移尝试未能确认，不计入结论；
+  见 `g5-win98-8198-starcraft-8bpp.json`。16bpp 游戏与余下 Win98 基准继续。
+
+- G2/G4 SIFM 采样范围续修：原生 XP 03 的 256×256 上传声明了
+  1024×1023 钳位、1024-byte pitch。旧实现预读整个钳位而误访未映射尾页；
+  现按裁剪后输出预读实际采样像素，含双线性四点和完整 YUV pair，跳过
+  稀疏步进未使用的行列。全部源读取先于目标写入，保留重叠和失败原子性。
+  同一客体状态旧代码稳定报 DMA page access fault，新代码重放成功且
+  首像素与真实源字节一致；2D 回归覆盖大钳位、稀疏/负步进及后续行越界，
+  构建通过。见 `g4-xp-9371-sifm-sampling-footprint.json`；完整 GT2 继续复测。
+
+- G6 纹理 DMA 批量传输：03 检查点等待期间的真实调用栈位于 FIFO
+  完成回调内的纹理读取，5 秒 CPU profile 主要消耗在 BC 解码和逐像素
+  Morton 地址/DMA。完整幂二 Morton 与紧密线性表面现在一次校验/传输，
+  用小型轴索引表重排；非完整表面保留原有精确路径，BC 数据按实际块行
+  批量读取。256×256 合成样本的 Morton 读取从 65,536 次降至 1 次，
+  BC1 从 4,096 次降至 1 次，前后 SHA 完全一致。不同宽高/像素宽度、
+  原子越界、纹理和完整真实 GPU 回归与构建通过；见
+  `g6-bulk-morton-bc-dma.json`。此为宿主测量，尚不等于客体帧率或 06 报告。
+
+- G6 精确字节解码缓存：纹理每次使用仍从 checked DMA 取回实际客体
+  字节，只在逐字节完全相同时复用 Morton/BC/分量转换结果，避免反复
+  展开相同纹理。LRU 限制为 64 MiB / 256 项，设备 reset 清空；
+  CPU 修改、旧上传内容不变、PTE/权限校验和淘汰测试通过。
+  256×256 RGBA/BC1 的冷/热宿主样本及相同 SHA 记录在
+  `g6-exact-texture-decode-cache.json`，完整真实 GPU 回归和构建通过；
+  harness 增加命中/未命中/字节数，原生帧率与 06 整体报告仍待计量。
+
+- G3/G5 Win98 99 完跑记录：同一次原生 benchmark 经六个快照续跑段
+  完成全部 26 项，原版窗口显示 32 / 9399 分；累计 37,856 次绘制、
+  GPU/PGRAPH 零故障，系统与游戏原盘均未变。保存 IQ 选项勾选后正常
+  请求关机，离线导出实际 `NV98FULL.3DP`（3881 bytes）与 18 个原始 BMP。
+  与既有代理参考直接比较后，第 6 项有明显图像错误，其他残差也保留；
+  期间更新过实现，不能把它称作单一构建的新鲜图像或性能验收。
+  原始文件 SHA、九组差异和各段证据见 `g3-win98-8198-99-full.json`，
+  当前继续用仅 IQ 的原生复测定位差异，G3/G5 图像门禁仍未通过。
+
+- G5 16bpp 游戏抽查：Win98 81.98 原生红警 2 v1.006 的菜单、
+  加载和 Isle of War 遭遇战以 1024×768 RGB565 / pitch 2048 显示，
+  车辆、步兵、地形/雾和 HUD 可见；经游戏自己的 Abort Mission / Quit
+  与 Exit Game 确认正常返回 1024×768×32 桌面。目录无 DDRAW/D3D
+  包装 DLL，所有轮次 GPU/PGRAPH 零故障、系统及游戏原盘未变，见
+  `g5-win98-8198-ra2-16bpp.json`。与 StarCraft 的 8bpp 抽查一起
+  完成两种色深的游戏往返；Win98 99 IQ 与 2000/2001/03 门禁仍继续。
+
+- G3 XP 2000 完跑记录：原版结果窗口显示 23 3DMarks，全部 22 项
+  均已选择且完整返回结果；保存并导出 `NV2000.3DP`（4809 bytes）与
+  18 张原始 IQ BMP。前两组与参考逐像素一致，第 3–7 组误差很小，
+  第 8–9 组残差较大。完整过程所在的两个续跑段中 GPU 执行失败为零，
+  后一段还记录了两个未知片元指令陷阱；其发生时刻未保留，随后出现
+  XP 屏保，故尚不能称为无故障验收。原盘/游戏盘未变，见
+  `g3-xp-9371-2000-full.json`。当前从所有 22 项尚未开始的检查点
+  用最新构建和故障指令捕获复跑，继续区分 benchmark 与后续桌面路径。
+
+- G6 IFC 同步收紧：CPU 上传与屏障共用下一 DWORD 的实际裁剪范围；
+  只有 checked DMA 的线性 source-copy 写入与全部待完成颜色/深度目标
+  物理范围均不重叠时保留批次，IFC 纯状态方法也不再强制下载。
+  分页、swizzle、其他操作、权限错误和真正别名保持同步。真实 GPU
+  验证两次绘制间的 IFC 常量更新即时可见、一次批次/颜色读回、
+  最终 RGBA=191；同地址及不同 DMA 描述符别名都等待下载，分页与
+  权限错误维持屏障。完整 GPU、CPU 2D 回归及 Closure 构建通过，见
+  `g6-disjoint-ifc-batching.json`；原生 06 性能门禁仍待计量。
+
+- G6 CPU 2D 上下文预取：原版 06 启动的 124 秒 profile 尚无 3D
+  绘制，自耗时约 17% 在逐像素 PGRAPH 对象查找、13.5% 在取得 VRAM
+  视图、8.8% 在图案取色。现于同一次同步 primitive 的首个非透明
+  sample 解析图案/beta/beta4，预解 64 项图案；下一 primitive 重新
+  读取上下文，DMA 校验和字节布局保留。与修改前实现比较 144 种色深/
+  形状/位序/ROP/混合组合（含两次操作间改上下文），全部逐字节一致；
+  512×512 三次混合的上下文查找从 2359299 次降为 12 次，单次宿主
+  样本约 285→158 ms。CPU 2D 和 Closure 通过，见
+  `g6-cpu-2d-context-hoist.json`。原版 06 已继续，最终性能门禁未完成。
+
+- G4 原生 DP2：XP 2000 当前构建复跑完成 22 项并显示 92 分，但在
+  1687.8 秒的理论 IQ（20 of 22）捕获到 opcode `0x38`，排除了此前
+  的“可能来自后续屏保”解释。Mesa NV40 编码与 NVIDIA CineFX 3.0
+  规范确认这是 XY 两分量点积。现经 DP2A+零标量降低，保留普通
+  掩码/谓词/缩放/半寄存器路径，不读取 Z/W；原生 8 条 FP 的两条
+  DP2 已重新解码并成功降低。真实 GPU 的 swizzle 和未用分量
+  NaN/Infinity、完整回归、170 个 WGSL 模块和 Closure 通过，见
+  `g4-native-fragment-dp2.json`。无故障 IQ 与图像比较继续复跑；
+  92 分仍来自并行环境，不能替代 G6 独立性能计量。
+
+- G2/G3 Win98 IQ06 根因：81.98 以 SIFM CORNER、POINT=(8,8)
+  上传 32×32 ARGB 图像。旧坐标转换又取整了已居中的半像素，两轴
+  各前移一个 texel，丢失红/蓝点并把末行无关源字节拷入纹理。现在
+  两种 ORIGIN 都把源 corner 坐标减去半像素后插值；CENTER 原有
+  的目标中心变换保留。对同一原生快照重放，旧首行黑/绿/黑变为
+  源中的红/黑/蓝，完整 4096 bytes 与 32×32 源图精确一致。
+  CORNER 的 nearest/bilinear、受限源 DMA、既有 2D/PGRAPH/状态/
+  纹理回归与 Closure 通过，见 `g3-win98-sifm-corner-origin.json`。
+  原版 IQ 已用修复构建重跑，最终九图比较仍待导出。
+
+- G4 顶点常量地址续修：Curie 的 XFCTX_ADDR 是 bits 76–85 的
+  十位字段，旧解码误沿用了 Mesa 旧头的八位掩码。06 GT1 原生
+  PC101 的缩放应读取 `c408=(3,0,0,0)`，却误读零值 c152。
+  已保留全部十位，降低时仍检查 544-vector 文件界限；解码覆盖
+  c255/256/408/511/512/543/1023，真实编码直接读 c408 的 GPU
+  像素、完整 GPU 回归、170 个 WGSL 模块和 Closure 通过，见
+  `g4-vp-ten-bit-constant-address.json`。06 仍需补齐新捕获的
+  DirectX 0xDD 顶点格式与 NRM 并重新验证整个 GT1。
+
+- G4 原生 NRM：06 GT1 的 opcode `0x39` 按 CineFX 3.0 的
+  XYZ 归一化语义降低为 DP3/RSQ/MUL，沿用源修饰、谓词、目标掩码
+  和半寄存器提交；规范未定义的 W 不作图像验收依据，实体硬件的
+  近似精度暂不复刻。真实 GPU 验证正/负 XYZ、未用 W 的 NaN/Infinity
+  及目标 alpha 保留；完整 GPU、171 个 WGSL 模块、Closure 通过，
+  原生捕获 FP 已重新解码/降低，见 `g4-native-fragment-nrm.json`。
+  06 全程与参考图仍须在后续原生复跑中验证。
+
+- G4 DirectX UBYTE4：06 GT1 的 `0x118DD` 属于 24-byte
+  FLOAT3 / 4-byte 骨骼索引 / FLOAT2 权重记录。真实字节为
+  `(11,0,0,0)`，程序乘 c408.x=3 后 ARR 读取骨骼矩阵，确认
+  需要未归一化的 UBYTE4；现在 `0xDD` 复用既有 U8_USCALED，
+  保留字节顺序与 0–255 数值。inline/indexed 记录、既有状态回归
+  和 Closure 通过，见 `g4-native-dx-ubyte4.json`。同时按实际
+  颜色目标/FP32 模式重新降低 NRM 的全部 15 份有效原生 FP，
+  包含无颜色输出程序，均成功；06 将从注册后的测试前状态复跑。
+
+- G3 Win98 99 修复后 IQ：原版两项完成 4026 次绘制，GPU/PGRAPH
+  零故障，正常保存并关机后导出 `NV98CF.3dp` 和 18 张原始 BMP。
+  IQ06 平均通道误差从 65.780782 降至 0.019491，最大差 8；
+  IQ02 仅一个像素差 4，IQ03–07 均只剩小误差。两张游戏帧
+  MAD=1.824872/1.306789，通道最大差超过 32 的像素占
+  0.163%/0.243%，保留为精度审查项，没有修改参考图或输出。
+  全部原始 SHA 与数值见 `g3-win98-8198-99-iq-corner-fixed.json`；
+  修复后的新鲜 26 项全跑与最后精度审查仍继续。
+
+- G6 只读深度下载收紧：仅测试深度、关闭 Z 写入且无 stencil 的
+  attachment 保留缓存与 CPU 写别名屏障，不再下载未变的深度。
+  真实 GPU 的 D16 遮挡查询正确计数/拒绝，附件回读为零；两次颜色
+  绘制加 IFC 更新仍共用一次颜色回读，重叠深度写等待 GPU 完成。
+  深度/stencil 写入的既有往返回归保持通过，完整 GPU 与 Closure
+  验证见 `g6-read-only-depth-downloads.json`。尚不将此合成结果计为
+  06 原生帧率或全程性能验收。
+
+- G4 原生 A16 纹理：06 GT1 首次使用的 `0x14` 为 16-bit
+  UNORM scalar，先进入存储 G，再应用 A/R/G/B crossbar；
+  `0xA9EE` 得到 `(0,scalar,0,1)`。通过既有 D9WG UNORM16
+  RGBA 格式上传，不截成 8-bit。CPU 精确字节、padding/DMA、
+  真实 GPU 双线性和完整 GPU/Closure 通过，见
+  `g4-native-a16-texture.json`。共享执行器当前以 RGBA16F 存放
+  UNORM16，采样精度保留为偏差；06 全程将重新运行。
+
+- G3 99 跨驱动 IQ 复核：修复后的 Win98 81.98 与 XP 93.71
+  原始输出在相同 64-row 元数据裁剪外，IQ01–07、09 完全逐像素
+  一致；IQ08 仅一个像素的三个通道不同。游戏帧并排/放大差分
+  未见场景结构缺失，保留纹理和边缘精度残差。原始 SHA 与数值见
+  `g3-native-99-cross-driver-iq.json`；跨驱动一致不替代代理参考
+  的误差审查，也不将 IQ-only 复跑称为新鲜 Win98 全程。
+
+- G1/G6 快照 GPU 静止点：原生 03 GT4 保存时会在 CPU 停止后，
+  由 GPU 完成回调继续消费大量后续 FIFO 命令。`prepare_save`
+  现只完成已经提交的批次/查询，未提交命令保留 GET/PUT 与快照，
+  恢复后继续；普通 `wait` 的完整递归排空保持原义。真实 FIFO/GPU
+  验证两次绘制保存、余下两次恢复、两个 REF 顺序及像素值，
+  设备/完整 GPU/Closure 通过，见 `g6-snapshot-submitted-work.json`。
+
+- G6 顶点提取热点：原版 03 GT4 的 release profile 中，
+  vertex_value/attribute 自身采样约 20%/13%。同步绘制内现
+  复用 float 转换缓冲、预取当前属性/base vertex，并按实际地址
+  复用重复索引（含零 stride）的 checked DMA/转换结果；下一次
+  绘制重新读取客体数据。11 种格式与旧实现逐字节一致，修改可见性、
+  后续非法索引、状态/完整 GPU/Closure 通过。相同宿主合成样例
+  1683→126 ms，非客体 FPS，见 `g6-profiled-vertex-fetch.json`。
+
+- G4 原生 A16L16：06 GT1 随后的 cube 纹理使用 `0x15`、
+  crossbar `0x694E`，低/高 16-bit 分量分别进入 R/G，B/A
+  为 1。增加双通道 UNORM16 解码与原位 crossbar，沿用 checked
+  Morton、128-byte cube face 对齐及上传缓存。精确字节、padding、
+  六面 cube、真实 GPU 双线性和完整 GPU/Closure 通过，见
+  `g4-native-a16l16-texture.json`；新的测试前状态复跑继续，
+  缺失格式陷阱之后的 IFC 表面错误不单独称为已解决。
+
+- G6 BC crossbar 分配收紧：03 GT4 profile 的纹理解码与 BC
+  blocks 各占约 11%/10% self 采样。已解压的 BC1/2/3 texel
+  不再逐像素分配 subarray 或读取未用 packed word，四个 crossbar
+  selector 每图预取。120 个随机/边缘尺寸/零一常量组合与旧实现
+  字节完全相同，纹理、完整 GPU 与 Closure 通过，见
+  `g6-bc-crossbar-allocation.json`；合成耗时不作为原生 FPS。
+
+- G1/G6 检查点磁盘一致性：命名检查点以前仅保存 RAM，外部
+  overlay 到续跑结束才保存，可能将不同时刻的 pagefile 与 RAM
+  配对。现于同一 CPU 暂停点保存 RAM、OS/game overlay，并最后
+  写入含 SHA-256/尺寸的 `.bundle.json`。定时/绘制计数检查点的
+  overlay 不再被运行结束状态覆盖。真实 Win98 成套输出已逐项
+  校验，见 `g6-checkpoint-disk-bundles.json`；旧单独检查点不追溯
+  认定一致，之前原生错误也不据此一概归因。
+
+- G2/G3 RGB555 辅助目标：原生 81.98 Blit 格式矩阵暴露
+  已有 surface code 1/2 未接到渲染器目标白名单。现接通既有
+  D9WG X1R5G5B5 上传/回读，真实 GPU 验证两个编码的 R/G/B
+  5-bit 值和完整回归，Closure 通过，见 `g2-native-rgb555-target.json`。
+  同一原生矩阵继续复跑；跨格式 API 拒绝不以此一概称为已解决。
+
+- G4 packed 通道别名：XP 2000 的原生 A8L8 `0x696C`
+  同时读取低 B/高 G；此前只暴露 B/A，遗漏 G 别名。现 A8L8
+  与 A16L16 的低分量重复到 B/R、高分量到 G/A；A16 的 G/A
+  为标量、B/R 为 1，修正此前合成用例对未使用分量补零的假定。
+  原生生产者、Mesa 路由和相关 Curie/RSX remap 交叉复核，完整
+  GPU/纹理/Closure 通过，见 `g4-packed-texture-lane-aliases.json`。
+  signed 转换及原生 06 图像仍继续验证。
+
+- G3/G4 signed-byte 纹理：XP 2000 后段原生 A8L8 使用
+  `FILTER=0xC2044000`、crossbar `0x696C`。增加 L8、RGBA8、
+  A8L8 的逐逻辑通道 SNORM8/UNORM8 解码，在别名/crossbar 前
+  转换并通过 RGBA16F 过滤，-128 钳到 -1。全部 256 值的 signed/
+  mixed 两种模式与独立 IEEE half 参考一致，跨零 GPU 双线性及
+  完整 GPU/纹理/Closure 通过，见 `g4-native-signed-byte-textures.json`。
+  非 byte signed/gamma 组合仍明确拒绝，受影响全跑须重新开始。
+
+- G6 输入 DMA 换绑：纹理/片段程序 DMA0/1 与顶点输入 DMA0/1
+  的数据在入队时已经复制到绘制命令，换绑不再触发附件下载。
+  两个片段 DMA selector 的真实 GPU 用例各自读取不同映射中的
+  0.25/0.5 常量，两次加法绘制共用一个批次与一次颜色回读，RGBA
+  为 191；完整 GPU/Closure 通过，见 `g6-input-dma-batching.json`。
+  附件 DMA 与同步屏障保留，不据此宣称原生超时或帧率已解决。
+
+- G4 首错诊断：增加默认关闭的 `NV_GRAPH_FAULTS`，有界保存
+  首 16 种 PGRAPH 错误及前 256 条命令、对象/输入引用；后续版本
+  增加 SET_OBJECT、内部 primitive 和 FIFO 寄存器。原生 03
+  重放首次错误为 BEGIN `0x1015`，早于顶点流和 M2MF 连锁错误；
+  根因继续调查，未将该运行计为通过。见
+  `g4-first-pgraph-fault-diagnostics.json`，语法检查与原生捕获通过。
+
+- G2/G6 原生复核：RGB555 修复后的同一 81.98 Blit 矩阵完成
+  END、9 次 GPU 绘制、零 GPU/PGRAPH 故障；系统内存跨格式复制
+  的原版 API 拒绝仍保留记录。该运行在第 60 秒保存成套检查点，
+  之后再执行矩阵至第 150 秒，结束后 RAM/OS/game 三份输出仍与
+  定时 manifest 的尺寸和 SHA 完全相符，验证后续执行未覆盖磁盘。
+
+- G6 M2MF 上传批处理：复用 CPU 引擎的 geometry/notifier 校验，
+  仅允许源读取不碰待写附件、目标和 notifier 写入不碰附件及只读
+  深度 guard 的线性复制保持批次。分页、非法和重叠访问仍等待。
+  真实 GPU 的 shader 常量复制产生 RGBA191、仅一次颜色回读；
+  GPU 源读取取得已完成的 RGBA128，目标/notifier/深度别名均阻挡。
+  CPU 2D、完整 GPU 与 Closure 通过，见 `g6-disjoint-m2mf-batching.json`；
+  原生 06 超时与独立性能验收仍继续。
+
+- G4 Direct3D 三角扇：原版 93.71 在 03 GT4 后使用 BEGIN
+  `0x1015`，与 Bochs NV40 fan 编码交叉核对，映射至既有 topology 7。
+  不按低位任意截断其他值，嵌套和非法 BEGIN 仍拒绝。索引/快照
+  与四顶点双三角的真实 GPU 全像素覆盖、完整 GPU/Closure 通过，
+  见 `g4-native-d3d-triangle-fan.json`；成套故障前状态的原生复跑继续。
+
+- G6 CPU 上下文设置：原生 03 屏障计数确认 `0x3062:0x188`
+  surface DMA 设置反复触发回读。现复用 PGRAPH 方法白名单，
+  surface/clip/ROP/pattern 的纯 CPU 元数据设置保留待提交批次；
+  绘图内存访问和非法方法仍保持屏障。真实 GPU 中换绑后 IFC
+  读取新映射，两次绘制仍一批/一次回读、RGBA191；图形/2D、
+  完整 GPU/Closure 通过，见 `g6-context-setter-batching.json`。
+
+- G6 屏障诊断：默认关闭的 `NV_BATCH_BARRIERS` 按 class/method
+  有界统计同步点，随 progress/final trace 和独立 JSON 导出；
+  03 release 原生续跑已捕获查询、信号量、surface DMA 与附件切换，
+  用于定位后续优化。首错诊断另保留 GET 附近 128-byte 原始命令。
+  见 `g6-batch-barrier-diagnostics.json`，不把并发运行计为独立性能报告。
+
+- G1/G6 检查点加载校验：存在 `.bundle.json` 时，在创建客体/
+  渲染器前验证 complete 状态、guest/VRAM/原盘路径及三份组件
+  的尺寸和流式 SHA；同内容的异名副本允许，缺失或错误 overlay
+  拒绝。真实 03 成套文件通过，其他 XP OS overlay 被拒绝；
+  早期 GT4 的 OS overlay 在该续跑中未变化，字节相同因此合法。
+  旧无 manifest 状态仍只作调查恢复，见 `g6-checkpoint-load-verification.json`。
+
+- G4 原生点精灵：03 的 CPU 测试下一首错为 BEGIN `0x1001`，
+  原始记录为 XYZRHW + PSIZE + diffuse，sprite control=`0x101`。
+  据原生生产者推断为点列表，接通该精确编码、常量/逐点 PSIZE
+  和 TEX0 的 `(S,T,0,1)` 替换，沿用 Nouveau 1–64 尺寸范围。
+  四像素点的方位/覆盖、逐点尺寸覆盖常量、非法 R-mode 拒绝及
+  完整 GPU/Closure 通过，见 `g4-native-point-sprites.json`。
+  其他坐标替换/R-mode 组合明确拒绝，原生复跑继续。
+
+- G4 GT4 黑色区域调查：捕获的蝴蝶纹理有透明 alpha，驱动启用
+  GREATER 2/255 和 SRC_ALPHA 混合。对应半精度 TEX/MUL 的
+  XRGB GPU 回归正确拒绝 alpha 0/1/2、混合 3/128/255；将原始
+  VP/FP/常量/纹理单独重放得到 5601 个蝴蝶像素、零黑色像素。
+  完整 GT4 黑色区域仍未定位，不能据此称为修复，见
+  `g4-native-alpha-cutout-regression.json`。
+
+- G3 XP 2000 无故障冷启动全跑：signed/packed/DP2 修复后重新从磁盘启动，
+  同一次原生运行完成全部 22 项并显示 61 分，144,035 次绘制、GPU/PGRAPH
+  故障均为 0。正常关机后导出 `NV2KSN.3DP` 和 18 张完整 IQ BMP，
+  RAM/OS/game 三件套与 SHA-256 manifest 保留，原盘未变。IQ 1/2 精确，
+  3–7 最大通道误差 8，8/9 仍有较大差异；并行调查分数不作为性能验收。
+  见 `g3-xp-9371-2000-full-clean.json`；完整图像和性能门禁仍未通过。
+
+- G4 GT4 黑色岩石根因修复：逐绘制像素历史定位第 142 次绘制，早于
+  蝴蝶；VP 的负 DP3 光照值经专用颜色路由进入阴影 ADD/DST_COLOR 混合。
+  现只在最终路由的前后主/次颜色输出做光栅化前钳位，TBUF 计算和纹理
+  坐标继续保留浮点范围。真实 GPU 回归区分插值前后钳位及负/大于一的
+  纹理坐标，完整 GPU/Closure 通过；相同原生检查点中黑区消失、岩石
+  纹理可见，GPU/PGRAPH 故障为 0。像素历史诊断默认关闭且有界；强制
+  逐绘制提交仅用于调查。见 `g4-native-color-interpolators.json`，03
+  整套图像门禁仍继续。
+
+- G6 呈现诊断补齐：默认关闭的 `NV_WATCH_FLIP` 同时记录 Curie
+  `1D6C/1D70/1D74` 和 BLIT/Curie 翻页计数，仍限制 512 条；关闭完整
+  trace 时也可使用。原生 03 CPU 续跑捕获了普通 selector-zero fence，
+  目标 0 已有场景但当前扫描面仍黑；继续调查，未据此修改翻页或时钟。
+  见 `g6-native-presentation-trace.json`。
+
+- G6 采样工具：`NV_CPU_PROFILE` 记录独立采样/计数窗口、Node 进程 CPU、
+  GPU/纹理/翻译计数、提交待完成墙钟时间与显示释放次数；
+  `tools/nv40_profile_report.mjs` 按实际采样时间加权，记录 V8 负 delta
+  并合并重叠，不把异步等待、CPU 和 GPU 时长相加。真实原生 03 的短窗
+  产生 1248 次绘制、421 批、3 次显示释放且无故障，分类合计 100%；
+  并行调查仅验证工具，不算性能门禁。06 重放另启默认关闭、有界 8 条
+  的无 GPU 提交时 FIFO 停滞诊断。见 `g6-native-profile-window.json`。
+  03 后续 CPU 场景已自行正常呈现，未修改翻页，先前黑屏不作为显示故障。
+
+- G6 原生纹理工作集：03 GT4 捕获的 162 次绘制、611 次纹理绑定访问
+  422 个 face/mip 变体，保留源字节与解码结果共 154.44 MiB。旧
+  64 MiB/256 项策略在每次热遍历仍有 562 次 miss；现按两倍显存、
+  64–256 MiB 上限及 1024 项保留，两个后续遍历均无 miss，三遍所有
+  返回字节的 SHA-256 完全一致。每次使用仍先做真实 DMA/PTE 校验和
+  源字节比较，纹理/修改/权限/LRU 测试及 release/Closure 通过。
+  增加可复现访问回放工具与仅供 harness 的 A/B 容量选项；这不等同于
+  原生 FPS 提升，也未据此宣布 06 超时已修复。见
+  `g6-native-texture-working-set.json`。
+
+- G3 Win98 2000 冷启动 CPU 复核：1024×768×16 桌面、仅选 CPU 的原生运行
+  完成 Helicopter/Adventure，80,715 次绘制、GPU/PGRAPH 和非软件 FIFO 故障
+  均为零；总分 N/A 符合未选游戏测试的设置。已保存并导出 NVCP16.3DP，
+  通过原生关机对话框退出后客体在 BIOS 停机，RAM/OS/game 成套保留。
+  本次未观察到 Blt 拒绝或暖切换条纹；不能据此声称通用修复。全 22 项
+  和图像门禁继续，见 `g3-win98-8198-2000-cpu16-cold.json`。
+
+- G6 FIFO 首错证据：默认关闭的 `NV_FIFO_FAULTS` 有界保存首 16 种真实
+  错误前的 RAMIN、RAMHT、命令窗口、MMIO 和页表写入；排除正常的软件
+  DAC 回调。06 成套活动状态重放可先发生 DMA 页故障，原版客体此前已
+  清除 RAMHT 并将推送页表改为无效 dummy PTE，且 GPU/缓存队列仍有工作。
+  这不足以证明 HASH 本身是根因，故未添加强行命中、绕过页权限或修改时钟。
+  语法检查及原生捕获通过，继续从测试前状态复跑；见
+  `g6-native-first-fifo-fault.json`，运行超时门禁仍未通过。
+
+- G4 03 原生结果导出：CPU/feature 续跑正常退出（launcher exit 0），从只读
+  游戏盘的 overlay 导出原版 NV03.3DR 和其中 Result.xml；四游戏、两 CPU、
+  五 feature 共 11 项状态均为 0，文件记录 389 3DMarks / 18 CPUMarks。
+  本段 82,895 次绘制、GPU/PGRAPH 和非软件 FIFO 故障为零；三项 sound
+  在无声卡 harness 中明确为 Not supported。早期游戏阶段跨越多次修复，
+  不作为最终冷启动/图像/性能验收，继续完整复跑。见
+  `g4-xp-9371-03-cpu-features-completed.json`。
+
+- G6 FIFO DWORD 读取：原生采样中 pusher run/read 占有可见 CPU 时间，
+  新增 checked 标量读取，常见单页命令省去额外四字节复制与 DataView；
+  每次仍验证真实 PTE、权限、limit 和 bus master，跨页保留通用读取。
+  捕获的原生 header 值构造的 50 万次读取微测中位 263.47→34.08 ms，
+  五轮校验和相同；这不是客体 FPS。VRAM/系统 RAM、大小端、跨页、
+  页表修改及 FIFO/快照/设备回归、Closure 通过，见
+  `g6-checked-dma-word-fetch.json`。
+
+- G6 06 单客体 release 时间分布：其余 NV 客体成套保存并退出后，原版默认
+  工作负载采样 305.30 秒，5904 次绘制、2340 批、6404 次回读，三类真实
+  故障均为零。客体 WASM/JIT 29.70%、上传准备 16.53%、Node/harness
+  12.60%、其他 NV CPU 10.00%、纹理 9.94%、顶点 8.10%；异步 pending
+  109.23 秒与 CPU 重叠。加载页的 379 次显示释放不当作测试 FPS；该窗口
+  未跑完测试。完整分布写入 gpu-devices Performance，见
+  `g6-xp-9371-06-isolated-window.json`。
+
+- G6 测试 GPU 传输：采样中接收回调自身占 7.57%，旧代码按每个 socket
+  chunk 重新拼接整个未完成回读，复制量随图像大小呈二次增长。现使用
+  扩容/压紧缓冲与独立的消息副本；4 MiB 分块微测中位 241.48→112.86 ms，
+  SHA 相同。逐字节头部、连续/分段/掩码/关闭、缓冲复用与完整真实 GPU
+  像素/同步回归通过，见 `g6-linear-gpu-test-transport.json`。不据此声称
+  原生驱动超时或整套性能门禁已通过。
+
+- G6 同一解码图像复用：06 采样中 target 的逐图像回调自身占 14.42%
+  （包含比较与上传记录）。纹理缓存命中会返回同一个 host 字节视图，
+  原先仍逐字节扫描；现对严格相同对象直接判定相等，新客体读回及修改
+  继续逐字节比较，DMA/PTE/源字节校验未删。2 MiB 同对象 500 次微测
+  213.65→0.021 ms，不代表 FPS；完整真实 GPU 的 CPU 修改、部分行/
+  mip/face 与同步回归、Closure 通过，见
+  `g6-identical-decoded-image-reuse.json`。
+
+- G6 原生 UI 工具：可在保留的 NVPROBE 槽中运行测试用 Win32 控件
+  检查器；只操作已观察、可见、启用且属于 3DMark 的 Button/Edit，
+  不改图形 API 或结果。XP 2000 已通过真实 Clear/IQ/OK 处理器选成
+  2 of 22，执行 IQ 后以原生 Edit/Save 保存 NVCIQ。长 modal handler
+  可令消息超时，工具明确要求先检查界面，不能据此重发点击。
+  `NV_TOOLS_LIVE_ARTIFACTS` 有界导出变化的根文件，严格 C 构建和
+  原生控件/文件名确认通过，见 `g6-native-benchmark-ui-controls.json`。
+  同时将 GPU 传输回归纳入 devices-test。
+
+- G3 2000 钳位后 IQ 复核：原版仅选两组 IQ，正常结束并保存 NVCIQ，
+  safe-off 后导出 18 张 I/T BMP，1039 次绘制、三类真实故障均为零。
+  I 图只排除顶部 64 行元数据，T 缩略图完整比较；IQ1/2 两类均精确，
+  3–7 最大通道误差 8。IQ8 大图 MAD 6.55→5.76、最大误差 176→104，
+  IQ9 仍有黑色木桶；图像门禁未过，继续逐绘制定位。见
+  `g3-xp-9371-2000-color-clamped-iq.json`。
+
+- G6 像素诊断扩展：默认关闭的逐绘制观察可选择 first/limit（最大
+  4096 次、256 条变化），读取线性 RGB565/1555 与 D16/D24S8。
+  同一 2000 IQ 状态的颜色变化与先前观察完全一致；深度额外定位
+  第 891 次黑桶覆盖（D16 65535→63017），并与原始程序/64 顶点
+  捕获对应。1033 次绘制、三类真实故障为零；逐绘制提交只用于调查，
+  不计性能。见 `g6-native-depth-pixel-history.json`。
+
+- G2/G6 PFIFO 预取等待修复：先关闭 puller 预取 acquire→REF 全队列，
+  再启用可稳定复现 acquire 未满足而 final drain 提前把 REF 写成 99。
+  现所有 drain 均遵守 semaphore 等待，快照后重复运行仍保持 REF=0，
+  直到真实 RAM release=42 才提交 REF=99。回归先红后绿，完整真实 GPU
+  的 REF/像素/别名/快照套件和 Closure 通过。它与 06 过早释放资源现象
+  相符，但原生整套仍需重跑；见 `g6-prefetched-acquire-ordering.json`。
+
+- G3/G4 顶点双目标写入：2000 原生 MOV 同时写 TBUF3/R12，后续 MAD
+  从 R12 累积光照；此前 output 选择错误丢掉 temp 写入，造成黑桶和暗场景。
+  现按独立六位 temp 目标及共享 output 选择同时提交，保留 mask/predicate
+  和双发射读先于写；标量亦修正。解码、真实 GPU 双目标/掩码/条件/
+  read-before-write、171 个 WGSL 与 Closure 通过。原生两项 IQ 正常结束、
+  保存 NVDIQ 并 safe-off 后导出 18 图；IQ8 MAD 5.7627→0.2198，
+  IQ9 4.0030→0.1121，木桶恢复棕色，三类真实故障为零。最大残差
+  88/64 尚需复核，完整图像门禁继续；见
+  `g3-native-vertex-dual-destination.json`。
+
+- G3/G5 Win98 2000 冷启动全 22 项：81.98、1024×768×16 桌面原生
+  完成全部测试，显示 84 分，两段合计 167,492 次绘制，三类真实故障
+  为零；未再观察到 CPU Blt 拒绝或条纹。保存 NV982K 项目及全部
+  18 张 IQ BMP，经原生关机对话框确认后停在 BIOS（EIP 0xFE93D、
+  HLT=1），原盘未变。中途一次成套暂停用于独立采样，分数不作性能
+  验收；该进程早于双目标写入修复，IQ8/9 仍保留旧光照缺陷，需再跑
+  新 IQ，未接受图像门禁。见 `g3-win98-8198-2000-full-clean.json`。
+
+- G6 零颜色掩码回读：绑定颜色附件但所有通道写入关闭时，改保留
+  GPU 读取/别名保护，省去不会改变像素的整面回读；同批此前的真实
+  写入仍保留。回归先红后绿：真实遮挡查询仍返回 64、原 VRAM 逐字节
+  保留且零附件回读；四 MRT 仅 RT1/RT3 开通道时只回读两面。完整
+  真实 GPU 像素/别名/屏障/快照及 Closure 通过，尚不据此声称原生
+  FPS 或 06 超时已解决；见 `g6-masked-color-readback.json`。
+
+- G3/G5 Win98 双目标修复后 IQ：81.98 冷启动仅选两组，1032 次
+  绘制、三类真实故障为零；保存 NVWDIQ、处理原生保存提示并正常
+  关闭程序，再确认关机到 BIOS HLT 后导出全部 18 图。I/T 各有
+  8 张与 XP 93.71 对应区域逐像素一致；IQ8 大图仅 851/786432
+  像素不同（MAD 0.01148），缩略图 5 像素。对 proxy 的 IQ8/9
+  MAD 为 0.2311/0.1121，残差完整保留，未据此接受整套图像门禁。
+  见 `g3-win98-8198-2000-vertex-dual-iq.json`。
+
+- G2 PULL1 引擎状态：实际提交 PGRAPH 对象/方法后更新最近引擎
+  低四位，保留信号量位；REF 内建方法和软件对象陷阱不改变最近
+  硬件引擎，随现有 RAMFC 按通道往返。旧实现一直留在引擎 0。
+  回归先红后绿，设备、完整真实 GPU 像素/REF/别名/快照和 Closure
+  通过。06 原生影响继续验证，未据此声称超时解决；见
+  `g2-puller-last-engine.json`。
+
+- G2 原生软件回调引擎续修：93.71 ISR 会比较 PULL1 与被截获子通道的
+  ENGINE；此前软件对象仍留引擎 1，导致同一 DAC bind 在 88.98 秒内
+  重试 1,209,389 次而 CACHE_GET 不动。现软件 bind/方法先选择引擎 0，
+  保留信号量位；PGRAPH、内建方法和 RAMFC 语义保留。回归先红后绿，
+  设备、完整真实 GPU 与 Closure 通过。同一保存的黑屏现场恢复后进入
+  原生 06 GT1 加载并提交真实绘制，非软件 FIFO/PGRAPH/GPU 故障为零；
+  纠正上一条对软件陷阱的假设，整套 06 继续验证。见
+  `g2-puller-software-target-native.json`。
+
+- G6 字节顶点转换：原生采样中 vertex_value 自身占 3.86%，06 实际使用
+  DirectX D3DCOLOR。以 2 KiB 共享 f32 位表复用 BGRA/UNORM8/UBYTE
+  的 256 种转换，省去重复除法/舍入及临时 DataView，checked DMA 保留。
+  所有字节值、分量数、偏移视图、缺省分量、短缓冲和完整 state 回归、
+  Closure 通过；50 万次 CPU 微测及相同校验和见
+  `g6-byte-vertex-conversion.json`，不当作原生 FPS 或 06 完成证据。
+
+- G6 06 RAMHT 生命周期：默认关闭的有界观察准确跟踪 DD001010。
+  单 NV 客体默认六项在 9,368 次绘制后仍被原生 XDDM 驱动清理；
+  5.384 秒创建 10E60/0080E973，546.029 秒 miniport 删除，
+  546.069 秒才首次查找失败，546.106 秒 pusher PTE 失效。删除时
+  GPU 仍 pending，GPU/PGRAPH 故障为零。确认删除先于 HASH 错误，
+  发起清理的原因仍开放；不接受 06 完成/分数门禁。纹理/程序缓存
+  统计及原始栈候选保留，见 `g6-xp-9371-06-ramht-lifetime.json`。
+
+- G6 原生 UI 工具续修：用 Toolhelp32 的真实 3DMark 进程 PID 约束
+  HWND，保留可见/启用及 Button/Edit 检查，覆盖不带程序名的 modal。
+  `NV_UI_BINARY` 在冷启动工具盘中与原始 NVPROBE 共存；XP 05 准备
+  已验证原探针 started/problem=0、独立工具的进程/控件枚举及原生
+  OK handler 正常退出。严格 C 构建、harness 语法和 Win98 原始 API
+  导出检查通过，Win98 新工具运行仍待验证。见
+  `g6-native-ui-process-scope.json`。
+
+- G4 05 原生路径准备：原始 Boost 拒绝 E 盘根目录 EXE；以独立 XP
+  文件系统工具创建新的 C:\NV05RUN→E:\ 目录联接，避免重复大型 DAT。
+  工具拒绝已有目录，原盘只读、写入仅在 overlay；原始程序进入 Business
+  主界面、默认五项及 Tip modal，正常关闭后 CLI 进入 GT1。严格 C 构建
+  与 harness 语法通过。随后遇到与 2001 SE 相同的 Curie 17D0 中断和
+  对象错误，默认整套及图像门禁未通过；见 `g4-05-native-directory-setup.json`。
+
+- G2 PGRAPH 当前对象：补齐 NV40 CTX_USER、CTX_SWITCH_A/I 与八个
+  子通道 CACHE_A/I，发布已加载对象的类/实例，保留高位、RAMIN 复用
+  与屏障顺序。原生 93.71 ISR 在 17D0 中断读到 4097/E9B6，修正此前
+  两项恒零；未知方法仍真实陷阱。回归先红后绿、设备、完整真实 GPU
+  与 Closure 通过。2001 SE 仍在 26,962 次绘制后遇到 input15，未通过
+  整套；保留故障前成套快照继续定位。见 `g2-pgraph-object-mirrors.json`。
+
+- G6 原生栈诊断：扩展采样跨未映射栈页时，CPU 的正常地址翻译曾
+  注入缺页并干扰 ISR；该次采样作废。现直接只读遍历 x86 页表，缺失
+  页保留 null，不改 TLB、A/D、CR2 或 RAM。4 KiB/PSE/PAE、跨页与
+  256 字边界回归通过；同一原生现场采到 136 个缺失字，ISR 仍完整
+  读取 4097/E9B6 并恢复 FIFO，没有采样 panic/重置。见
+  `g6-safe-native-stack-inspection.json`，整套图形门禁继续验证。
+
+- G4 TEX BX2：05 实际法线采样 17269C82 设置 bit21，旧解码丢失。
+  现归一化分量先做 2x−1，再缩放/饱和/半精度/条件提交；保留 crossbar
+  常量，浮点纹理忽略，未连接的 depth/gamma/signed 组合明确陷阱。
+  原转换器在真实 GPU 的负值回归先失败，修复后半/全寄存器、缩放、
+  常量、浮点旁路与完整 GPU、texture/graph、Closure 均通过。原生
+  GT1 继续绘制但蓝色材质仍在，图像与整套门禁未通过；见
+  `g4-fragment-texture-bx2.json`。
+
+- G4 原生 L8 光照：05 实际单字节 lightmap 使用普通 AAE4 remap，
+  无符号解码却只填 B，有符号路径已复制 RGB。现先复制三个存储别名
+  再走原 crossbar，保留 alpha=1。字节 1 回归先红后绿，真实 GPU 灰色
+  采样、完整 GPU、texture 与 Closure 通过。同一原生 GT1 frame24/
+  0:55.47 的蓝色地面、墙和护甲恢复灰色，点(40,720)从(0,0,255)
+  到(255,255,255)，顶部 730 行纯蓝像素从 28,616 到 0；BX2 单独修复
+  仍蓝的对照保留。整套/固定 IQ/性能继续验证，见
+  `g4-native-l8-lightmap-aliases.json`。
+
+- G4 03 冷启动全十一项：原生 93.71 完成 4 GT、2 CPU、5 feature，
+  导出的原始 NV03F.3DR/XML 全部 status=0，3 sound 明确 Not supported。
+  三段合计 280,310 次绘制，GPU/PGRAPH/非软件 FIFO 故障均零，原启动器
+  EXIT_CODE=0。XP 正常关机到既有 806F3048 HLT/display=null 状态后，
+  保存配套 RAM/overlay 并导出 ZIP，CRC 与 XML 解析通过。原生 355/18
+  分仅作输出记录；两次续跑及并行负载不作性能，XML 的 Checksums Valid=No
+  和 Invalid Score=No 原样保留。该运行早于 L8/BX2，固定 IQ 与最终图像
+  门禁继续；见 `g4-xp-9371-03-cold-full-eleven.json`。
+
+- G6 原生 UI 工具续修：沿 WS_CHILD 父链聚焦真正顶层窗口，再执行已观察到的原版按钮；复选框仍向直接父窗口发 WM_COMMAND。Run 等待由 NV_RUN_DELAY_MS 在 1–30 秒内配置，默认 5 秒；Win98 用 12 秒。严格 C 编译与语法检查通过，原版 2001 SE 从 21/21 配置进入 Car Chase、0/21 loading 页，见 `g6-native-ui-root-focus.json`；完整 21 项与图像门禁继续运行，尚未据此验收。
+
+- G3 Win98 99 冷启动完整 26 项已由原版成功窗口确认，原生分数 130/13422；六次成对快照续跑合计 37758 draws、零 GPU/PGRAPH 故障，正常关机至 BIOS `FE93D/HLT=1`。已导出原始 `NV99F.3DP` 与 18 张 IQ BMP，原盘均未变，见 `g3-win98-8198-99-cold-full.json`。暂停/并行负载不接受性能分数；该冷跑开始于后续专门 IQ 修复之前，IQ8/9 与参照仍有明显差异，图像门禁保持未通过。
+
+- G6 GPU 资源缓存测量：新增命中、缺失、LRU 淘汰与首次图像上传字节计数，保留原 64 项策略。健康原生 06 快照重放 2701 draws、132 次淘汰、832197944 首次上传字节，零 GPU/PGRAPH 错误，见 `g6-gpu-resource-cache-baseline.json`。这仅证实后半段有资源周转，不能把必要首次上传都算成浪费，亦未证明超时根因或完成性能验收。
+
+- G4 用户裁剪平面：原生 05 Troll 的 `1478=2` 曾触发真实 raster 拒绝；现解码六平面控制、`1FD0/1FD4` TBUF 分量映射及输出使能，用独立透视插值距离接入现有片元 discard 路径。六平面双方向、双组交集、不同 W、输出掩码的真实 GPU 像素验证和完整回归通过；三个实际故障程序按原控制位编译/链接通过，173 个 WGSL 模块与 Closure 通过，见 `g4-programmable-user-clip-planes.json`。原生默认五项已从同一冷启动前测状态重跑；完整结果、MSAA/几何裁剪一致性与最终图像门禁未据此验收，未赋予未知 FP input15 任意含义。
+
+- G6 GPU 缓存保留改为最多 512 项、两倍客体显存且限 64–512 MiB 的逻辑图像字节预算，计入 mip/cube/volume/格式扩展；当前绘制绑定及待回读附件受保护，必要超预算图像在使用/回读后淘汰。相同 70 纹理两轮 GPU 序列：64 项产生 70 个第二轮缺失，96 项为零缺失/零首次重传；16 项、520-byte 与活动附件超过 128-byte 的压力用例及完整 GPU 回归、图形单测、Closure 均通过。见 `g6-gpu-resource-byte-budget.json`；原生 06 冷默认六项继续运行，超时根因与完整性能门禁未据此宣布解决。
+
+- G2 notifier 上下文续修：按硬件 GROBJ word1 的低 24 位处理 DMA_NOTIFY，写回 RAMIN、CTX_SWITCH_B/CTX_CACHE_B，保留上部标志；预装 notifier、NULL 绑定、CPU 写与 v5 快照/旧 v4 迁移一致，M2MF 的检查/屏障使用同一来源。原版 93.71 ISR 的 `40014C` 从旧捕获的 0 变为真实 `E98E`，见 `g2-notifier-object-context.json`；RED/GREEN、2D/图形/FIFO/设备及完整真实 GPU 回归、Closure 通过。未宣称由此解决 FP input15 或完整 2001。
+- G6 06 缓存结果续记：新预算运行到 9705 draws、零 GPU/PGRAPH/非软件 FIFO 错误，仍出现原版 Display Driver Stopped Responding 对话框；已保存原始失败状态。缓存的等工作量复用收益成立，但真实驱动超时仍未解决，默认六项未完成。
+
+- G2 旧快照迁移补全：v4 原先只恢复缓存 notifier，之后 SET_OBJECT 会重读旧 RAMIN 的零值。现仅在记录一致、RAMIN 类仍匹配且低 24 位为空时恢复缺失写回；冲突、类复用与非零字段不改。原生 06 M2MF 快照中的 notifier 从 0 恢复为 37676、真实 DMA 描述符可解析；旧快照重绑定、冲突/复用保护与完整 GPU 回归通过，见 `g2-legacy-notifier-writeback-migration.json`。此前零绘制的迁移失败试验不当作硬件故障；05 与 06 已重新继续。
+
+- G4 TEX8/9 控制范围：原生 05 的 `B60=0` 暴露 XF 坐标控制只接收前八组，硬件实际为 B40–B64 共十组。已接收新增两组禁用零值、检查保留位；未知非零 TEX8/9 控制明确拒绝。真实 TEX8/9 GPU 像素用例现在先提交控制方法，完整 GPU/图形单测与 Closure 通过，见 `g4-disabled-tex89-coordinate-controls.json`。原生默认五项从之前健康状态继续，未据此完成整套或图像验收。
+
+- G1 诊断补齐：原生设备枚举通过 SetupDiOpenDevRegKey 读取实际 DriverVersion。次要对照驱动官方 61.77 安装后冷启动确认 `6.1.7.7`、设备 started/problem=0；1024×768 原生模式设置仍返回 DISP_CHANGE_FAILED，未验收其显示能力，也未替代计划要求的 93.71/81.98，见 `g1-native-driver-version-diagnostic.json`。
+
+- G6 原生等待诊断：MMIO 观察可按绘制数延迟开始，另加有界 PC/安全栈/普通 RAM 只读采样及首个 FIFO 停滞成套快照。06 的后段定向观察没有 USER GET 读取；原版显示驱动实际沿 fence 等待路径运行，完成值在 GPU 工作期间持续增长，随后驱动清理映射并报超时。清理后 DMA 页错误不当作首因；完整六项、根因修复与性能验收仍开放，见 `g6-native-fence-wait-diagnostics.json`。
+
+- G4 05 原始结果导出：健康冷跑检查点续跑 145790 draws，零 GPU/非软件 PGRAPH 错误，原程序 exit0，`NV05F.3DR` ZIP CRC 与 XML 校验通过，正常关机至 `806F3048/HLT1/modeNULL`。结果仅三 GT 和 CPU1 为 status0；CPU2 为 N/A、CPU 总分提示测试不足，因此默认五项未验收，继续以原版 UI 核对/补跑，见 `g4-xp-9371-05-cold-three-gt-cpu1.json`。原生79仅保留输出，不作性能结论。
+
+- G4 原生三角列表：独立 D3D8 HAL 小样例的 DrawPrimitiveUP 三角列表触发真实首错 `BEGIN=1012`，早于顶点流连锁错误。按原生生产者与上游 NV40 编码证据，仅映射 1012 至 canonical TRIANGLES5；保留嵌套/未知编码拒绝。RED/GREEN、分段索引快照、六顶点双独立三角的完整 8×8 GPU 像素、完整真实 GPU 回归及 Closure 通过，见 `g4-native-d3d-triangle-list.json`。SPEC/VSPEC 与未知 FP15 继续原生调查，未据此验收。
+
+- G4 原生 FP15 XYZ：独立未修改 D3D8 小样例对比 SPEC/VSPEC，常量眼向量为 inline，变量眼向量生成与原版 2001 相同的 MOV input15.xyz 反射序列。依据该编译器证据与微软 VSPEC 定义，按透视插值后的 TEX1/2/3.Q 重建 XYZ；未定义 W、相对及未观察到的访问仍拒绝。175 WGSL、独立 Q 分量精确像素、不等 W 与直接插值控制逐像素一致、完整 GPU 回归与 Closure 通过。同一原生程序归一化 SHA 一致，修复前 input15 故障、修复后零 PGRAPH/GPU 故障，见 `g4-native-variable-eye-vector.json`。真实硅片穷尽一致性及 XP/Win98 完整 2001、IQ/性能仍待验收。
+
+- G4 2001 固定帧复核：四张原始 IQ 图与既有 D3D8 代理参照已逐图查看，场景几何、材质、人物与可见效果对应；MAD 为 0.6814/0.5910/0.2840/1.9015，差异集中于纹理细节与边缘。新增可复现的只读 BMP 对比工具，记录最大误差分位与有符号 RGB 均值，独立旧比较结果完全一致；已验证行方向、padding、元数据排除和截断拒绝。见 `g4-xp-9371-2001-native-iq-reference.json`。未用整体均值替代局部误差，残差原因与图像门禁继续开放。
+
+- G5 Win98 原始 2005 版 03 冷跑在 97715 draws、零 GPU/非软件 PGRAPH 故障时提示 GT3 DDS corrupted。主 DAT 与已通过 XP 全 11 项的 DAT 及失败 overlay 的 SHA 完全一致；客体 ReadFile/只读映射却在文件页 11094000–11095000 返回同一错误 4 KiB。独立导出复算 CRC 一致，失败 RAM 的物理 CA1000 含整页错误内容，较早检查点该页为零。新增只读原生有界文件校验及系统 RAM DMA 写观察，继续定位覆盖者，未修改原始素材或宣称全套通过。见 `g5-win98-03-original-cached-file-page.json`。
+
+- G5 调查发现并独立修复 x86 分页权限：WP=0 的内核只读页写入曾把共享 TLB 填成用户可写，后续 CPL3 绕过 #PF。现该内核覆写仅缓存为 supervisor，用户读重走页表后仍可读、写仍受保护。旧核 16 种解释器/JIT、普通/PAE、小页/大页组合均静默覆盖；新核全部正确 #PF(error7)，214 原子/分页/MMIO 回归、14 QEMU 系统对照和 133 Rust 测试通过。见 `g5-legacy-supervisor-wp-cache-isolation.json`。Win98 03 的具体缓存页覆盖是否由此产生仍待干净复跑证实，未原地修补缓存或素材。
+
+- G5 Win98 2001 SE 原版全 21 项已完成，原生成功界面 193 分、七 GT 和全部理论/DX8 数值齐全；90612 draws，零 GPU/非软件 PGRAPH/FIFO 故障。原程序导出 NVW01A.3DP 与八张 IQ BMP，正常关机至 FE93D/HLT1/modeNULL。两张大图与 XP 原版逐像素一致，另两张差异 1246/68 像素；代理参考残差与性能仍开放。见 `g5-win98-8198-2001-native-all21.json`。本次为恢复客体中的完整新跑，早于单独 CPU 权限修复，不称为再次冷启动。
+
+- G6 可选 BC 上传：仅在实际 GPUDevice 已启用 BC 时，对线性、AAE4 恒等 crossbar 的 BC1/2/3 保留 checked 编码字节，缺失能力和特殊 remap/gamma 继续 CPU 转换。完整块行局部上传、cube/mip 尾部与 NPOT 实际存储计数均有真实 GPU 对照；共享 GPU、190 executor 用例、完整 glbridge 与 Closure 通过。70 张纹理 CPU 微测编码缓存 35 MiB，相比 RGBA 路径 252 MiB 且避免循环解码；不当作原生 FPS。sRGB 白黑插值实测 104 对既有 102，故保守回退而不放宽阈值。见 `g6-native-bc-texture-upload.json`，完整原生与图像/性能门禁仍开放。
+
+- G6 Win16 栈诊断：Win98 USER.EXE 使用非零 SS base、16-bit SP，旧只读采样却把带陈旧高位的 ESP 当平坦地址。现按 SS base 和栈宽定位，宽度/线性边界不回绕，并记录 SS 元数据；旧实现新用例先红，修复后普通/PAE、缺页、跨页、非平坦 16/32-bit 与只读副作用检查全绿。见 `g6-native-segmented-stack-diagnostics.json`。仅修正诊断，GT2 等待原因仍待查。
+
+- G4/G6 长测环境：05 在原生 XP 屏保上报 D3DERR_DEVICELOST；原版导出确认仅 11/16 项完成（余五 batch 未跑）。06 导出确认 SM2/CPU 四项完成、两 HDR 未跑，检查时也有屏保；未捕获其首个退出原因。已在原版显示属性/电源选项关闭屏保与显示器自动关闭，保存配套状态并开始完整重跑。ZIP CRC/XML 有效，原生分数不当作性能或全套验收，见 `g6-native-screen-saver-interruption.json`。
+
+- G5/G6 GT2 等待对照：同一已停滞的配套 RAM/磁盘分别用分页修复前后核执行 90 秒，均零新绘制/零 GPU 错误，512 个相邻计数样本中位约 84.6/101.0 MIPS，仍处于 USER 消息循环。IDT 确认 C0001100 是原生 timer IRQ 入口，不能仅凭该 PC 判为 CPU 卡死。对照未回退 refactor 修复，也不能逆转更早客体状态；已开始修复核的新冷启动检查内存与系统设置。见 `g5-win98-03-gt2-wp-controls.json`，全十一项继续开放。
+
+- G6 原生只读内存诊断：`NVCHECK.EXE /memory` 独立查询 GlobalMemoryStatus、C 空闲簇与有界 Toolhelp 进程/线程，不挂钩或暂停原程序。可选 `NV_FILECHECK_BINARY` 与原 NVPROBE/NVUI 共存；CPU 采样增加相邻退休指令计数。严格 C 构建、harness 语法与真实 Win98 冷启动调用通过；桌面阶段物理可用 153.10 MiB、虚拟可用 2040.63 MiB，驱动 started1/problem0。见 `g6-native-memory-status-diagnostic.json`，不将桌面数值当作 GT2 峰值或全套验收。
+
+- G5 原始 03 冷跑准备续核：Win98 原屏保已为 None，电源属性却为 15 分钟关闭显示器；已由原生界面改为 Never。独立文件 ReadFile/只读映射再次验证原 DAT 指定范围 CRC d98897c1；原版 Pro UI 确认 4GT/2CPU/5feature、sound0，保存配套开跑前状态后用实际鼠标启动。设置问题是否导致先前 GT2 等待未据此定论，完整新跑继续；详情并入 `g6-native-memory-status-diagnostic.json`。
+
+- G6 BC 对照入口：harness 的 `NV_HOST_BC=cpu` 仅收紧宿主可选能力，保持原客体/驱动/时钟和 GPU write/done 原对象及次序；默认 auto 不变。真实 backend 在初始/后续 hello/reset 下均保持 CPU 路径，协议与无 renderer/未知值拒绝回归通过。后续原生同状态 A/B 仍待整套结束后采集，未宣布 FPS 收益；记录并入 `g6-native-bc-texture-upload.json`。
+
+- G6 线性 VRAM DMA：既有 146 秒原生采样中 DMA read/ranges 自身约 3.21/0.86 秒。线性 VRAM 对象的一份基址/PTE 权限覆盖全段，现完整端点校验后一次连续复制；分页和系统内存保留逐页检查，字节/权限不缓存。跨页回归先红后绿，越界/权限失败零部分写、全部 DMA/FIFO/2D/state/texture 与完整真实 GPU、Closure 通过。交错预热微测每 1 GiB 的范围对象 262400→256，SHA 相同，中位 Node CPU 138.78→113.56 ms；并行宿主数据不作原生 FPS。见 `g6-contiguous-linear-vram-dma.json`。
+
+- G5 修复核冷跑续核：关闭原生屏保/显示器断电后，03 在 93902 draws、零 GPU 错误时报 `screens/testloading_gt3.dds` 损坏。第二个 MiB 的原生 ReadFile/只读映射 CRC 均为 ef6acacf，正确值 ea6e7853；CRC 匹配的 ReadFile 转储定位九个错误缓存页，EB4000 含 GT2 hangar 已解码前缀。独立 WP 修复不能据此宣称解决全部损坏。诊断工具新增写入/刷新/客体缓冲及无缓存读回、映射写后 CRC；另有 NVMAP 宿主转储与原生校验不一致，故只采用 CRC 匹配的副本作 RAM 内容证据。见 `g5-win98-03-wp-fixed-cached-pages.json`，继续追查实际写入者。
+
+- G5/G6 写入者诊断：`ir-test-hooks` 构建增加有界物理页观察，复用 checked code-dirty 路径记录 PC/CR3/寄存器和写前前缀，不编辑客体页表或注入调试异常；生产核无对应导出。解释器/JIT 的标量、RMW、跨页 REP/SSE、XCHG 与设备写入覆盖通过，观察前后 RAM 一致；启用观察的 16 组 WP 分页测试仍正确 #PF7。`NV_GUEST_WRITE_PAGES` 有界保存并报告丢弃，见 `g6-native-backing-write-observer.json`。当前从损坏前状态追查九个缓存页，不据此宣称根因或性能验收。
+
+- G5 磁盘路径独立修复：IDE 传输后 LBA28 head 曾误取地址低 nibble，且未同步 Device 读回；省略第二次 Device 写的真实端口回归会读到错误位置。现保留正确 head/CHS 读回、六字节 LBA48 进位与计数位宽，并按实际 DRQ 推进多扇区读写块。旧源四组分别先红，新源/发布核的地址、负载、CHS、零计数及块中断均绿；磁盘镜像/错误/写回/扇区回归和 33 项 AHCI、Closure 通过。见 `g5-ide-taskfile-and-block-progress.json`。当前原生进程仍载入旧 IDE，尚不把独立设备修复称为素材损坏根因。
+
+- G4 06 HDR 首错：默认六项完成前段 SM2/CPU 后，在 Canyon Flight 首次绘制遇到纹理格式 31，PGRAPH 停止；174358 draws、GPU failure0 不能当作健康运行。按 Nouveau 定义补齐 RG16F：四字节客体半浮点双分量经 crossbar 保留原始位，上传 RGBA16F；浮点 gamma 仍拒绝、TEX BX2 旁路包含该格式。旧回归先红，负零/次正规/NaN payload/padded mip/DMA 与完整真实 GPU 的线性过滤、LOD clamp、半/全输出通过，175 WGSL 和 Closure 通过。见 `g4-06-native-rg16f-texture.json`；已从同一六项运行的故障前健康配套状态继续，完整 HDR/图像门禁仍开放。
+
+- G5 文件损坏调查观测：增加有界、只读 IDE 回调/实际物理写入 SHA 记录及原生一分钟内存采样；独立文件探针可显式保留映射 30 秒，供一致快照页表核对。修复 IDE 后的新 Win98 冷启动中，1 MiB 范围的 1024 次读取及物理写入全部匹配原 DAT；ReadFile、映射、256 页快照和两份磁盘副本 CRC 均为 d27713d7。默认探针不等待，观测不改客体数据/页表/IRQ；单元测试、严格 MinGW 编译及原生短测通过。此前 GT2 后缓存损坏原因和完整 03 门禁仍未解决，见 `g5-native-ide-and-mapped-copy-observer.json`。
+
+- G4/G6 原生 HDR 读回等待：格式 31 续修后原版 06 在 81254 次新增绘制处命中共享执行器的 4000 ms MapAsync 超时（113/1024²）；该窗口有 6598 ms 批次，随后仍继续提交，不能据此称为永久 GPU 丢失。默认读回上限改为 30000 ms，显式超时及永久挂起的失败响应保留。真实 4500 ms 延迟回归旧默认失败、新默认完整返回像素；全部 191 executor 测试及 glbridge 构建通过。从故障前配套健康快照继续原版六项，原生完整验收尚待完成，见 `g6-native-hdr-readback-deadline.json`。
+
+- G5 观测容量校准：原生 Win98 的 DAT DMA 通过 1 KiB PRDT 分段，完整 470 MiB 一遍就需约 92 万条 source/copy 记录；将有界记录上限提高到 2097152，避免原 262144 条在 GT2 前丢弃后续定位证据。通过一致 RAM/磁盘快照继续原版运行，前段日志保留；不把调查续跑作为性能门禁。观测单测与 harness 语法复核通过。
+
+- G6 精确上传范围热点：原生 HDR 的 40.68 秒 Node 诊断采样中，字节比较占 12.01% self。保留原来的正向 DWORD/完全相同图像路径，只把已确认有修改后的尾部扫描改为分组 DWORD 加最终逐字节收尾；上传首尾字节及整行范围完全相同。独立字节索引 oracle、4096 随机用例、4 MiB 图像边界、完整真实 GPU 的 BC/mip/cube/附件别名与快照回归、图形单测及 Closure 通过。7 轮微测的首/中单字节修改中位数由 144.73/59.36 ms 降到 32.17/27.35 ms；不据并行微测宣称原生 FPS，见 `g6-exact-upload-tail-scan.json`。
+
+- G0 Win98 PCI 芯片组安装补齐：原 ISA 桥 Code 8/未启动，MACHINE2.INF 的 ISA_DRV 指向外部 isapnp.vxd，系统却未复制该文件。工具盘现从所有者安装 ISO 同取该原文件；只补缺失文件，并通过原 INF 修复已有失败节点、保留驱动键。原生复核 ISA 桥与 NV40 均为 problem0/started1，系统加载器 SHA 与 CAB 一致。IDE 两子通道仍为 Code10，ESDI_506.PDR 与原 CAB 一致、NoIDE 标记不存在；未把此项当作 03 缓存问题修复。增加有界 RAM 调查选项及配套状态容量验证，512 MiB 仅完成桌面准备。见 `g0-win98-isa-loader-completion.json`。
+
+- G4 XP 05 原版完整 16 项已完成：原生成功窗口 188 分、CPU221；原版 NV05N.3DR 的 ZIP CRC/XML 有效，3GT/2CPU/5feature/6batch 共16项均为 status0、正数结果。全程1920034 draws、GPU failure0、draw fault0，仅17D0/17D4预期软件 PGRAPH 方法。末帧捕获未自动刷新，原生窗口检查后确认已成功，未当成卡死；保留配套结果状态。并行/暂停分数不接受性能门禁，IQ 与正常关机继续后续步骤，见 `g4-xp-9371-05-native-all16.json`。
+
+- G4 XP 06 原版默认六项已完成：原生成功窗口总分102、SM2=36、HDR/SM3=36、CPU=232。原版 NV06N.3DR ZIP CRC/XML 有效，2SM2/2CPU/2HDR均为 status0与正数结果；最后一段89614 draws、GPU/draw/nonsoftwarePGRAPH故障0，只有17D0/17D4预期软件方法。只从首错前的配套健康状态续跑，未修改失败 RAM 来取得成功。7feature/6batch仍未运行，原生分数不作并行/暂停后的性能门禁，见 `g4-xp-9371-06-native-default6.json`。
+
+- G5 ATA 命令中断顺序：旧并行口在执行新命令后才拉低 IRQ，同步 IDENTIFY/PIO/错误响应的新 INTRQ 被随后撤销。现先清旧 IRQ，再执行命令，与 QEMU 命令口顺序一致。真实 Rust8259/ATA/ATAPI 端口回归旧版在电平 IRQ14 下 pending0 应为64，新版双通道边沿/电平、状态确认、nIEN、PIO 字节均通过；source/release 进度/大盘、镜像错误/回写、33项 AHCI及 Closure通过。原生 Win98 子通道仍 Code10，未把真实中断缺陷续修冒称为缓存损坏根因，见 `g5-ide-command-interrupt-order.json`。
+
+- G6 原生 UI 选择：增加有界 ComboBox 列表/索引选择与原版通知，以及树控件客户区的真实鼠标输入。05 的 14 项 IQ 列表和索引 2→0 往返通过；06 原版主界面确认 SM2/CPU/HDR 均 0/2、feature 7/7、batch 6/6，保持 1280×1024/None/Optimal。原生请求时间戳区分相同诊断内容，避免采集端误判超时；严格 MinGW 构建通过。见 `g6-native-combo-tree-controls.json`；完整 feature/batch 与 IQ 门禁继续。
+
+- G6 UI 模态保护：控件自身 enabled 不代表父对话框可操作；现在沿 WS_CHILD 父链拒绝禁用窗口下的动作。原版 XP 05 成功提示仍打开时，对主窗口 Run 的请求已在发送消息前明确拒绝；严格 C 编译通过。串行 IQ 改为核对原版保存提示后点击其 OK，再选择下一项；见 `g6-native-combo-tree-controls.json`。
+
+- G6 顶点循环热点：原版 06 顶点特性测试的并行宿主采样中，array_vertices/vertex_value/indices 合计约 33% self，另有逐元素回调开销。索引改为有界 DataView 循环，canonical float4 改为四次直接 DWORD 写入；保留原 DMA 检查、转换和默认分量。7 轮交错微测的 16/32 位索引 Node CPU 中位 36.86/37.79→3.73/3.28 ms，indexed/inline 顶点 115.44/51.79→63.84/25.42 ms，输出逐字节一致。state/graph/texture/DMA、完整真实 WebGPU 像素/别名/快照回归及 Closure 通过。见 `g6-native-vertex-loop-overhead.json`；不据微测宣称原生 FPS，最终独立时间分布仍待采集。
+
+- G6 有界浮点顶点读取：仅对密集、线性 VRAM 的 FLOAT1–4 合并一次 checked DMA，跨度至多 4 MiB 且不超过索引属性载荷四倍；保留原始 DWORD 位、缺省分量和每次 draw 的新读取。分页/系统内存、零 stride 与稀疏索引保留逐顶点路径。旧实现新回归先红；48 组布局/基顶点、NaN/负零、限长/权限、可跳过中间未映射页的回归全绿，完整真实 GPU 和 Closure 通过。显式测前 GC 的 7 轮交错微测 indexed CPU 中位 54.29→32.19 ms；未改动的控制用例波动不解释为收益。见 `g6-bounded-float-vertex-spans.json`；最终原生性能验收继续。
+
+- G4 XP 05 原版固定帧已收取：3GT 的 480/897/1630 帧，以及单/多填充、Pixel Shader、简单/复杂 Vertex Shader 第 1 帧，共八张原始 1024×768 BMP；保持 None AA、Optimal、VS/PS3_0 和默认特性选项。八图头/行数据完整，原生 NV05N.3DR 的 SHA 与已验收全 16 项导出相同。最初 GT2 的 UI 干扰从打断前健康状态重跑；额外 Batch8 IQ 的未完成尝试不计入取图验收。原图、预览、原生成功日志和哈希见 `g4-xp-9371-05-native-iq.json`；精确代理参照、BC 同状态对照和正常关机继续。
+
+- G5 原生 XRGB 查询修复：Win98 03 在 199986 draws 首次触发 NOP END 无颜色输出拒绝；原方法为 X8R8G8B8、仅 alpha 写、无 alpha test、只读深度，实际没有有效颜色写入。现按附件真实通道计算 shader 需求、GPU mask 和 dirty 跟踪，保留有意义颜色/alpha test 的严格拒绝。旧源码新真实 GPU 回归先红；可见/遮挡查询、颜色/深度不变、零无效回读，以及同批 XRGB destination-alpha 混合精确像素均绿，完整 GPU/图形单测与 Closure 通过。见 `g5-native-xrgb-nop-occlusion.json`；原版完整十一项和最终图像/性能门禁仍继续。
+
+- G6 小工具盘输出：原生 UI helper 增加编译期 NV_UI_OUTPUT，默认路径不变；真实 XP 原版 05 在 1.44 MiB 内存 FAT12 软盘写出新 REQUEST_TICK、成功窗口和实际控件，经公开 set_fda/get_disk_fda 与 FAT12 读取验证。避免每次 UI 查询导出整张游戏临时 IMG，临时 raw 验证后删除。见 `g6-native-ui-floppy-output.json`。
+
+- G6 原版 BC 同状态对照：同一健康 05 IQ-ready 配套状态分别自动 BC/CPU，均成功保存 GT1 frame480，无 GPU/PGRAPH 故障。自动路径 499 次编码上传 19,847,360 bytes，总上传较 CPU 少 104,671,064 bytes；全图 MAD0.17475/max46。相同 CPU 实例重复图 MAD0.00278/max75，但重复不变的像素仍有 BC max46，不能把差异全归于原版重复性。原全16结果 SHA 不变，临时120 MiB导出验证后删除。见 `g6-native-05-bc-fixed-frame-control.json`；非 FPS、最终图像门禁继续。
+
+- G4 XP05 正常关机补齐：全16完成后的健康 IQ-ready 血缘继续，经原生按钮关闭取图窗口，以 stock shutdown.exe 正常关闭；先见 Saving your settings，后稳定在 806F3048/HLT1/display=null、clock normal。保存完成的 RAM/OS/game 配套 bundle 后停止，原盘 size/mtime 未变；RAM 无损压缩校验后删除解压副本。原全16结果 SHA 仍一致，见 `g4-xp-9371-05-full16-normal-shutdown.json`；代理固定帧与最终性能继续。
+
+- G4 RGBA8 目标补齐：既有 RT color15/16 描述现在接通 X8B8G8R8/A8B8G8R8；X 格式 alpha mask 按无 alpha 处理。真实 GPU 回归暴露共享执行器缺失四字节读回布局，现补齐 RGBA 打包、X 不透明/显式 padding 保留。两个 XRGB 字节顺序在单批两次绘制精确输出 BGRA[191,128,64,255]/RGBA[64,128,191,255]，带 alpha 的 A8B8G8R8 同一混合输出[16,32,48,255]。旧实现 mask/目标拒绝/读回布局分别先红，完整真实 GPU、共享 glbridge、state/graph 与 Closure 均绿，见 `g4-rgba8-native-target-readback.json`；仅独立 FIFO/GPU 验证，不额外宣称原版整套或图像门禁通过。
+
+- G6 原生空闲策略读回：新增只读默认的 XP 环境 helper，可显式 /disable-idle 调用正式 SPI/电源方案 API。参照 XP 的 Windows 标志确为屏保，Shift 唤醒后返回 GT2 原版保存成功；API确认屏保 active1/600秒、显示AC1200秒。显式设置后独立读回 active0，以及 AC/DC 显示、待机、S4 空闲超时全0；其余电源方案字段保留。严格 C 构建及真实 XP 验证通过，见 `g6-native-xp-idle-policy.json`。这不证明另一次 native06 0x100000EA 的原因，继续查停滞线程。
+
+- G6 native06 补充13项本轮失败已确认：1323724 draws 后停在 806F3048/HLT1/display=null，但页文件头为 PAGE/DUMP、bugcheck100000EA，参数与只读栈相符，驱动名 nv4_disp。因此此终点不计正常关机或完成；GPU/PGRAPH零错误不足以验收。完整配套失败状态已压缩保存，临时 APFS 合并 IMG 提取事件/页文件头后删除，原盘未变。停滞线程属于原版3DMark06；被中断的对象查找68节点有限，8/1目标存在，单次PC不证明首因。见 `g6-native-06-feature13-watchdog.json`；从开跑前GUI检查空闲策略并继续定位/复跑，不改客体/驱动/时钟/看门狗。
+
+- G6 压缩检查点直接恢复：原始 RAM 缺失时，有界解码同名 `.state.zst` 到内存，按原 bundle 校验解压大小/SHA、磁盘 overlay 和客体配置；原始 RAM 存在仍优先验证原文件。截断、错哈希、错大小、超限和缺少 Node zstd 支持的回归通过。真实 native06 开跑前 GUI 已从 650667581-byte 压缩包恢复 1464808072-byte RAM，驱动 started1/problem0，无临时展开文件；见 `g6-compressed-checkpoint-restore.json`。
+
+- G4 05 参照固定帧：原版程序经 D3D9 proxy 保存全部八张要求的 IQ 图（GT1/2/3 为 480/897/1630，其余五项 frame1），1024×768/None/Optimal/VS3/PS3；逐次原版成功提示及60秒 GPU静止核对通过。全图对比旧 native：fillrate 两张逐字节一致，VS simple max1，但 GT1 MAD107.22、GT2 43.74、GT3 74.78、PS16.85；图像门禁未通过，需用最新 XRGB 修复重测定位。参照导出临时块已删除，见 `g4-05-proxy-fixed-frame-reference.json`。
+
+- G5 Win98 81.98 原版03完整十一项完成：512 MiB/128 MiB VRAM、1024×768/None/Optimal，冷跑配套状态在 XRGB/NOP 修复后继续，原版保存 NVW03.3DR；ZIP CRC/XML 确认4 GT、2 CPU、5 feature均正数/status0，声音三项为不支持。续跑277289 draws，零 GPU/PGRAPH/非软件FIFO错误；原版 ExitWindows 正常关机至 BIOS FE93D/HLT1/display=null，成套保存后退出，原盘未变。见 `g5-win98-8198-03-full-eleven.json`。并行/续跑分数不作性能验收；IDE子通道Code10和图像门禁仍独立开放，不将512 MiB视为旧256 MiB损坏的已证明原因。
+
+- G6 附件前向比较热点：原版06 Batch8实际24索引绘制的40秒Node诊断中，精确字节比较占11.921秒self。前向扫描每组8DWORD，再细定位首差异字节；尾部及新鲜客体读取不变。独立oracle、4096随机及32/64边界、完整真实GPU/别名/快照与Closure通过。交错CPU微测unchanged49.219→43.650ms、last-byte50.594→36.458ms，middle34.102→36.127ms有回退，完整记录不宣称整体或原生FPS收益。见 `g6-forward-attachment-byte-scan.json`；06完整结果与最终独立性能门禁继续。
+
+- G6 附件读取复制：只对 packed/非swizzle/对齐线性VRAM提供同步checked视图，每次仍校验完整权限/范围并精确比较新鲜字节。相同图像保留旧独立副本，变化的VRAM先复制再缓存；默认读取与其他布局仍复制，CPU后写不能污染比较基线。权限/边界/CPU修改回归、完整真实GPU混合/别名/深度查询/快照、state/render/texture/DMA及Closure通过。同进程交错微测32次1280×1024绑定的读取复制167772160→0bytes，CPU中位62.547→42.444ms；非原生FPS。见 `g6-checked-attachment-views.json`，从配套Batch8状态继续原版06。
+
+- G4 A16光照查找别名修正：原版93.71的05 PS帧用纹理11/格式14/remapA9EE/TEX h2.x读取标量；先前据相关RSX把B/R补1的推断不适用于此原生消费者。现标量在所有storage lane保留原16位值，常数仍由显式crossbar ZERO/ONE控制。旧源码新回归先红，0/1/32768/65535、padding/DMA/常数及真实GPU双线性与完整回归、Closure均绿。同一健康RAM的原版PS帧全图MAD16.8453→0.43593、max234→34；新参照BMP与旧参照SHA完全一致。见 `g4-native-a16-scalar-aliases.json`；仍保留残差，继续GT1及其余固定帧，未宣布整套图像门禁通过。
+
+- G6 同步FIFO附件复用：每次NVFIFO.run有独立临时scope，返回客体前清除；同scope且同GPU批次内，CPU不会执行，别名FIFO写仍按原屏障退役批次，因此可复用已校验的独立packed线性VRAM图像。每draw完整读写权限/范围检查不变，新scope/布局/描述符/批次重读；scope与图像不进快照。实际双draw混合只读附件一次，像素/单次回读/REF顺序不变；CPU后写、权限、完整GPU别名/保护/快照与单测、Closure通过。32绑定微测CPU38.407→2.369ms、读取32→1而64次校验全保留。见 `g6-fifo-scope-attachment-reuse.json`；非原生FPS，继续06配套状态。
+
+- G4 05 A16 修复后八图复测：原版逐项保存并核对成功提示、GPU 静止60秒；全16结果SHA保持不变。两张fillrate与参照完全一致，VS simple最大1；GT1/GT2/GT3/PS全图MAD分别0.8293/1.1084/9.6631/0.4310（含原版64行元数据排除）。GT3气球材质过暗、水面波形明显不符，图像门禁继续开放；CPU BC对照也保留，未把小PS残差直接归因于partial precision。见 `g4-05-native-a16-fixed-frames.json`。诊断客体已停止并清理不用的FDA副本与展开驱动缓存，原图/配套来源保留。
+
+- G6 数据软盘冷启动：NV_FDA 的 FAT12 工具模板不应先于已安装硬盘引导；harness 在提供数据软盘时改为 HDD-first，其他启动顺序保留。相同 XP03 正常关机磁盘 overlay 冷启动已进入1024×768桌面，原生93.71探针problem0/started1，并打开原版Image Quality；见 `g6-data-floppy-cold-boot.json`。原盘只读，未据桌面完成图像验收。
+
+- G6 小绘制有界批次：原生06 Batch8原路径每32draw下载整张目标，现将draw上限改256，保留8MiB命令上限及query/别名/CPU可见性/FIFO退出/快照屏障。真实FIFO257draw回归旧实现先红32≠256，新实现两批/两次颜色下载、混合像素255和REF顺序正确；完整真实GPU、FIFO/render单测、Closure通过，见 `g6-bounded-small-draw-batches.json`。先前scope续跑250410新draw后仍为PAGE/DUMP 100000EA，已成套保存并压缩749670143bytes，取证IMG删除；不把批次改进等同看门狗根因修复，继续健康起点复跑。
+
+- G6 绘制诊断快照热点：新的40秒Batch8采样中program自身4.768秒，发现shaders每次都Array.from/filter完整method Map。正常绘制改用不收集state的program，公开program诊断默认仍保留完整状态，逐次VP/FP/DMA/inline常量校验不变。迭代器陷阱旧实现先红，新实现及原有变更失效/LRU、完整真实GPU/Closure通过；4352附加method、3000次的七轮交错CPU中位372.656→123.075ms，非FPS。见 `g6-draw-without-diagnostic-state.json`。
+
+- G6 顶点常量热点：翻译结果记录程序可读的native常量连续范围；每draw仍新读当前值，相对寻址保守读取全部544，生成的viewport/texture常量顺序保持。真实Batch8六指令VP的native常量载荷8704→64bytes；10000次新鲜读取的七轮交错CPU中位282.274→4.952ms，位值与全量快照选择结果一致。空/稀疏/相邻/543/相对范围、真实GPU同代码c543两次修改191→64像素及完整回归/Closure通过，见 `g6-referenced-vertex-constant-ranges.json`，不作原生FPS或看门狗修复声明。
+
+- G6 VP表读取热点：decoder增加可选有界指令provider，沿原可达控制流每次新读当前指令，native绘制不再先复制整个544槽VP表；公开全表API保留。跨越不可达存储、入口544、缺END最多544次和短指令拒绝回归先红后绿；104个原版05/06程序与旧全表/原decode数据完全一致，完整GPU/graph/着色器WGSL/Closure通过。Batch8六指令读取2176→24DWORD，10000次七轮交错CPU中位310.458→33.313ms。见 `g6-reachable-vertex-program-fetch.json`，不据此验收原生FPS或看门狗。
+
+- G6 精确着色器键：用VP入口/可达PC/原始四DWORD及FP normalized原始词替代重复序列化扩展decoder对象，所有lowering选项保留，不以hash或DMA地址替代源码。104原版程序的键等价关系双向一致；VP/FP改码失效、恢复复用、inline常量、LRU/字节预算及完整真实GPU/Closure通过。独立10000次键序列化七轮CPU中位251.953→16.206ms，示例4878→468字符，非绘制/FPS测量；见 `g6-exact-raw-shader-keys.json`。
+
+- G6 测试回读掩码热点：40秒native06采样的WebSocket接收回调自身5.433秒；掩码改为按实际mask字节组成的对齐DWORD异或，非对齐前缀/尾部及小消息仍逐字节。1920个独立oracle边界组合、所有包头拆分/fragment/控制/4MiB+7/readback归属及完整真实GPU回归通过。相同parser、16个4MiB+7分块消息七轮CPU中位72.198→26.366ms，数据全同；见 `g6-word-gpu-test-unmask.json`，仅测试传输且不作FPS/看门狗修复声明。
+
+- G6 诊断磁盘写入：GT3像素历史已有约72MB，旧helper在没有新事件的后续每批完成仍整文件重写。现仅事件追加后写出，最终JSON内容/有界事件及GPU完成语义不变，语法检查通过；见 `g6-pixel-diagnostic-changed-writes.json`。现场只读观察器同时改为有界追加，释放先前大对象；过期中间状态/关闭安装缓存已按清单清理，2000旧基线706076700bytes无损压缩校验为183330573bytes，原盘不变。
+
+- G4 XP06补充十三项完成：原版93.71在1280×1024/None/Optimal、SM2/CPU/HDR各0/2、feature7/7、batch6/6后返回原版结果窗口，经Save As保存NV06B.3DR（SHA1c1e87bceaf6e7e1bfe665ed80dc1e809c92d408b86b452822e5a663f89f5117）。ZIP CRC/XML逐项确认7feature+6batch均正数/status0，单位base/exp保留；最后续跑497668draw、GPU/PGRAPH/非软件FIFO错误0，原default6的NV06N SHA不变。仅从首错前配套健康状态续跑，未修补失败RAM、驱动、客体时钟或看门狗；前轮真实100000EA证据保留，不能把成功孤立归因某一优化。见 `g4-xp-9371-06-feature7-batch6.json`；原生所有要求测试的功能结果已收齐，IQ、正常关机、最终单客体性能仍继续。
+
+- G6 原生控件实际值：GetWindowTextA对外部进程只能取caption，原helper的帧号/ComboBox/owner-draw按钮常为空。对标准Edit/ComboBox/Button改用200ms有界WM_GETTEXT，保持512byte缓冲并跳过password编辑。严格MinGW通过，原版06未改动的GT1默认帧2095、1280×1024/None/Optimal/VS3/PS3及实际Run/Close文本均读回，见 `g6-native-foreign-control-values.json`。06原版IQ列表实际只提供4GT，其余特性需按计划无IQ项的固定时点取图路径比较，不能假定同05有全部feature IQ。
+
+- G4 IQ比较区域更正：原版03/05的画面信息叠层在底部，之前通用helper误默认排除了顶部64行。现增加明确的bottom排除与ROI高度，保留旧调用兼容；独立3×4 BMP用例验证底部元数据/顶部场景、双端范围和拒绝空ROI。05复测记录已改为top0/bottom64，并同时保存全图指标，未据裁剪放宽门禁：GT3全图MAD11.2359，底部64行排除后11.8772，气球/水面仍开放。最新常量优化后的GT3三次原版保存SHA相同，且与A16复测原图逐字节一致，见修订后的 `g4-05-native-a16-fixed-frames.json`。
+
+- G4 XP06 原版四张 GT IQ 收齐：原版工具自身默认帧 GT1=2095、GT2=1139、HDR1=1225、HDR2=1428，1280×1024/None/Optimal/VS3/PS3；每次原版保存成功提示和 GPU 静止60秒后直接导出 BMP，四图头/像素数据和 SHA 已验证。原 default6 与补充13项项目 SHA 不变；见 `g4-xp-9371-06-four-gt-iq.json`。这里只记录四张真实菜单项，不把它等同七项 feature 的画面覆盖；代理参照、feature 固定时点和正常关机继续。
+
+- G4 XP06 本轮正常关机补齐：default6、补充feature7+batch6和四张GT IQ均导出后，关闭原版保存提示/IQ窗口，通过stock shutdown.exe正常关机至806F3048/HLT1/display=null，505705续跑draw且GPU失败0。RAM/OS/game配套bundle已逐项SHA验证；1428504528-byte RAM无损压缩校验为659955285bytes后删除raw，再停止客体。见 `g4-xp-9371-06-required-tests-normal-shutdown.json`；保留此前真实100000EA失败记录，图像与最终单客体性能门禁仍开放。
+
+- G4 原版03九张代理参照收齐：GT1=1038、GT2/3/4=1000，fill1/fill2/VS/Ragtroll采用原版默认可见帧60，PS默认660；1024×768/None/Optimal且特性开关默认关闭。逐项原版保存提示和60秒GPU静止记录齐全，九张BMP数据与SHA验证通过。导出期间过早关闭客体造成finally恢复报错，但1024个1MiB连续块已完整写出；从完整1GiB块组恢复全部九图、校验后删除临时块，未重建或改动图像。见 `g4-03-proxy-nine-fixed-frames.json`；原生四项frame60补取及图像审查继续。
+
+- G4 原生03可见特性帧补齐：从正常关机磁盘对冷启动，原版fill1/fill2/VS/Ragtroll各保存frame60、原版成功提示和GPU静止60秒后直接导出，替代先前淡入frame1；PS实际默认660沿用已保存图。四图与九张参照均已验证；GT1仍明显缺少白色尾迹，不能把整套图像标为通过。见 `g4-03-native-visible-feature-frames.json`；继续定位GT1和05 GT3差异。
+
+- G6 参照小文件直接读取：artifact工具增加显式D3D_ARTIFACT_DIRECT=1，对main-thread客体通过公开disk_buffer只读解析有界FAT32并仅传输请求文件，浏览器/宿主逐项SHA一致；保留原stream模式。实际05原生UI输出7907bytes成功导出，无临时盘块，缺失文件明确失败；语法检查通过。见 `g6-bounded-proxy-artifact-reads.json`。当前05以公开set_cdrom_files加载工具光盘、UI输出写入游戏盘RAM overlay，绕过软盘可用性问题但不宣称已定位其根因。
+
+- G3/G4 SM3点精灵连接修复：原生03 GT1有真实尾迹几何，但SM3 VP未声明TEX0时linker未连接光栅器生成UV，PS采透明纹理边缘。对实际点精灵扩展的TEXCOORD0–7连接生成(u,v,0,1)，普通绘制/未写入零值和反射对象保持；微软point-sprites契约支持此行为。新增unit与真实GPU四色checker旧实现先红，现58着色器单测、199 naga及完整NV40真实GPU回归通过。相同健康RAM配套源的原版GT1 frame1038重取白色尾迹恢复，scene MAD4.3613→1.0324，max183→103；旧三次原生重复全图一致。原图及全图/ROI残差均保留，见 `g4-sm3-point-sprite-semantic-coordinates.json`。全glbridge套件仍在后台运行，不列为已通过；其余图像/最终性能门禁继续。
+
+- G4 03 点精灵修复后的九张原版固定帧复测：GT1/2/3/4 分别为1038/1000/1000/1000，四项可见特性帧60、PS660。每张均等原版保存成功及GPU计数静止60秒后直接导出，40738draws、零GPU/PGRAPH错误；随后 stock XP 正常关机并校验配套冷启动 overlay。GT1 白色尾迹已恢复；其余帧保留场景与完整图误差，无新设容差门槛。完整glbridge串行315文件测试已通过。见 `g4-03-nine-point-sprite-fixed-frames.json`。05 GT3、06 HDR与最终门禁继续。
+
+- G4 06 四个原版代理固定帧参考已直接导出并完成 browser/host SHA 校验，默认1280×1024、None AA、Optimal、VS/PS3.0，GT1/GT2/HDR1/HDR2 为2095/1139/1225/1428，零命令/GPU错误。与原生同帧比较后，HDR1/HDR2 的绿色竖纹及光照错误构成实质画面缺陷，不能以功能跑完代替IQ验收；保留原始图及误差，继续定位。见 `g4-06-four-gt-proxy-references.json`。
+
+- G4 05 GT3 冷启动纯解释器对照完成：原版1630帧与JIT原图逐字节相同（SHA cc4392ae…bb、完整图MAD0），排除JIT独有问题。新增独立原生D3D9饱和运算探针；四条合法shader的API/回读全部成功，其中常量MOV_sat的两项像素失败，DP3合并饱和和MUL_sat两项正确，保留原生机器码及失败配套检查点。此步骤是缩小根因范围，不是修复或G4验收；未强行改原生SAT位。见 `g4-05-native-interpreter-saturation-control.json`。
+
+- G6 Win9x 自绘按钮输入工具：复用既有 `/point` 的有界 client 坐标和 stock `mouse_event` 路径支持 Button，仍拒绝跨线程 BM_CLICK。原生98 Tip、IQ和Run均已通过鼠标输入，GT1完整原图及原版保存成功控件已导出；其场景误差与修复后XP相同。此项只修工具输入，IQ后98无头桌面黑屏另记，不将其当显示验收通过。见 `g6-win9x-native-button-point-input.json`。
+
+- G4 原生饱和探针新增全新XP安装对照：不加载既有overlay，由原版SetupAPI重新装93.71并切1024×768×32，四条合法shader仍为两项MOV_sat失败、DP3/MUL两项正确。排除旧OS overlay作为唯一原因；原始结果、正常关机overlay和可恢复检查点已保留，不能据此强改原生指令。见 `g4-05-native-interpreter-saturation-control.json` 的 freshDriverControl。
+
+- G3/G4 FP源精度修饰符修复：原版93.71将部分MOV_sat折叠为SRC1中的三位输入钳位，旧解码器只看目标SAT，误判为编译器/CPU丢位。现分别解码三个源并按硬件顺序应用，保留半寄存器别名与动态索引；真实GPU原版机器码先红后绿，188个WGSL验证及完整NV40渲染回归通过。相同全新安装驱动检查点重跑未修改NVSAT，四项从两失败变全部通过，6792顶点GT3气球材质离线像素恢复到原版API参考。见 `g3-fragment-source-precision.json`；原版05全图复测在运行，06 HDR/Win98显示等门禁仍开放。
+
+- G3/G4 宽FP16纹理布局修复：新增未修改原生D3D9 HAL对照，93.71对RG16F/RGBA16F都发format1f，但逐单元优化寄存器高三位分别为0/3；后者必须读取八字节及四个独立半浮点通道。旧实现混读RG/BA，原生RGBA16F点/线性像素均错；修复后四项API/回读均成功、FAILURES0，驱动机器码逐字相同。新增布局单测先红后绿，原版HDR分段TEX及全NV40真实GPU回归通过。该高位语义来自原版API控制推断，envytools仅证实字段合法范围，未冒称文档已命名。见 `g3-wide-half-float-texture-mode.json`；06原图复测在运行，HDR图像门禁尚未关闭。
+
+- G4 06宽FP16修复后原版四GT固定帧重取及正常关机完成：HDR1/HDR2/GT1/GT2为1225/1428/2095/1139，保持1280×1024、None/Optimal、默认VS/PS3_0。逐张完整BMP、原版保存提示及GPU静止60秒齐全，8068draws零GPU错误。HDR竖纹消失，HDR1/HDR2 scene MAD分别35.18→14.43、52.15→3.33；HDR1仍有明显偏色，不能关闭图像门禁。健康RAM配套1528411500字节状态保留，无损压缩校验后删raw；stock XP正常关机及冷启动磁盘对已验证。见 `g4-06-wide-half-four-fixed-frames.json`；继续排查浮点采样与剩余门禁。
+
+- G3/G4 原生FP32采样修复：扩展官方93.71 HAL探针，R32F原先AAE4红通道为0；format1c的mode4实际是16字节RGBA32F，旧实现误读为4字节。现修正标量通道及宽布局，保留padded scalar区分；六次受支持绘制的Create/Draw/Readback/Lock全成功且像素全正确，原版机器码逐字相同。R16F由CheckDeviceFormat明确NOTAVAILABLE，只记录不称为渲染通过。新单测先红后绿，原版TEX序列及完整NV40真实GPU回归、Closure通过。见 `g3-native-float32-texture-modes.json`；继续重取原版图像，不把探针通过代替G4。
+
+- G4 05源精度修复后八张原版固定帧及正常关机完成：GT480/897/1630、五项feature1，None/Optimal/VS3_0/PS3_0默认选项。逐图保存成功和GPU静止60秒，7472draws零GPU错误；原图SHA、正常关机冷磁盘对及1197830556字节健康RAM无损压缩校验齐全。GT3黑块恢复，scene MAD11.88→3.71仍有残差；三材质分别匹配自己的原版常量后，700,100处原生VS/PS与API参考均一致，旧误套另一材质常量的差异不作缺陷证据。见 `g4-05-source-precision-eight-fixed-frames.json`；本轮早于FP32修复，最新图像复核继续。
+
+- G6 原生 UI helper 的 IDE 冷启动交付：沿用 NV_UI_BINARY 的 IDE 交付，补齐64..65536字节 MZ 检查且拒绝与 RAM restore 混用；清除重复准备。Win98 81.98 以 D:\NVUI.EXE 成功读取原版控件并用真实鼠标完成 Tip/IQ/Run，GT1 frame1038 已有完整原图、原版保存成功和 GPU 静止60秒；其 SHA 与修复后 XP 原图相同。严格 GUI helper 构建及 harness 语法检查通过，见 `g6-native-ide-ui-delivery.json`。其余八图在继续，不据工具交付成功推断先前软盘/黑屏诊断的根因。
+
+- G7 文档状态同步：gpu-devices、驱动安装说明和偏差表已链接已完成的 Win98 03 十一项、XP06 补充十三项及正常关机证据，去掉这些功能覆盖仍未完成的过期表述；明确九图复测、HDR1偏色、06 feature画面和最终独立profile仍开放。历史305秒测量保留并标明早于后续成功，不将此同步当作G7完成。
+
+- G4 FP32修复后06四张原版IQ及正常关机复核：四图逐项保存成功、GPU静止60秒和完整BMP验证，8042draws零GPU错误；1521183076字节健康RAM无损压缩校验为642168925字节并删除raw，stock XP正常关机及冷磁盘对已导出。HDR1 scene MAD15.3424/max157仍明显偏绿，未验收；新材质记录与原生格式探针进一步指出UNORM16 mode3宽布局，继续修复，不把FP32探针通过当作HDR全图通过。见 `g4-06-float32-four-fixed-frames.json`。
+
+- G3/G4 原生宽UNORM16采样修复：官方93.71的G16R16/A16B16G16R16同发format15，后者mode3必须八字节且有独立AA4E通道排列；旧四字节路径混读原版HDR反射立方体。未修改HAL探针十次受支持draw的机器码全相同，宽UNORM两种过滤均由ff80ff80恢复ff204080、FAILURES4→0，原双通道和FP16/32结果保持。新增单测先红后绿，精确16位/padded六面mip/DMA边界及完整真实GPU、Closure均通过，见 `g3-native-wide-unorm16-texture-mode.json`；原版HDR全图复测继续，未据探针关闭IQ门禁。
+
+- G6 宿主磁盘余量保护：并行客体与检查点累积曾使98/06宿主写盘ENOSPC退出，已保存成功的六张98/三张06原图保留，未导出部分不计完成。harness现默认8GiB余量，每循环检查，预算足够时停止CPU并保存RAM/OS/game配套后以PAUSED_DISK退出；预算不足不再追加大状态文件。真实release05状态用高测试阈值验证自动配套保存/干净关闭、所有SHA及原盘未变，负阈值拒绝、语法检查通过。清理约2.15GB可再生驱动缓存/未引用旧99调试RAM，05中断压缩先核对原RAM再无损重压，后续单客体串行。见 `g6-native-host-disk-reserve.json`；剩余原图续跑，未把宿主ENOSPC称为驱动失败。
+
+- G5 Win98 03九张原版固定帧及桌面生命周期完成：六张既有成功导出在宿主ENOSPC前保留，其余VS60/PS660/Ragtroll60从同一正常关机磁盘对冷启动补齐；每图原版成功提示、完整BMP、SHA及GPU静止60秒均验证。八张scene与XP逐像素相同，GT3最大差2；四GT/五feature与代理场景内容一致，所有原始残差保留而未新设阈值。最后通过确认焦点的系统菜单关闭03，实见RGB565桌面及开始菜单响应；stock ExitWindows至FE93D/HLT1/display=null，冷磁盘对SHA和原盘未变。健康桌面679298360字节RAM无损压缩校验为236940270字节后删除raw。见 `g5-win98-8198-03-nine-iq-desktop-return.json`；不把两次运行说成单次九图，06与最终性能门禁继续。
+
+- G3/G4 原生完整通道控制通过：同一未修改93.71 HAL读取UNORM16、FP16/FP32的全部RGB及缺省通道，新增G32R32F，十一draw均成功、FAILURES0；R16F明确不支持跳过。R32F由驱动MOV补GB=1，G32R32F由两次UNORM16取样及PK2US重建，不据API格式名臆造新物理布局。严格C构建通过，见 `g3-native-float-complete-channels.json`。同时将旧宽UNORM探针前十draw固化为与原SHA完全相同的独立文件，避免后续HDR观察记录追加改变证据哈希。
+
+- G4 最新纹理格式下05八张原版固定帧已补齐并正常关机：前两图及真实磁盘余量checkpoint恢复后的六次保存均保留原版成功提示、完整BMP和60秒静止；GT2在恢复点已完成，明确未声称新增绘制。六张scene与上一轮完全相同，GT1/GT2仅小变化，全部误差保留。宿主检查器信号误用导致一次中断后，恢复健康八图配套状态，stock XP关机至806F3048/HLT1、display=null且导出冷磁盘对，见 `g4-05-current-format-eight-fixed-frames.json`。
+
+- G3/G4/G5 旧套件固定帧内容复核完成：99/2000九I九T及2001四I四T的元数据排除、逐像素误差和并排场景均已复核；T缩略图不误裁64行。99首图的大误差仅一个覆盖像素，2000原黑桶/光照缺陷已消失，2001四场景的对象、材质和可见效果对应；Win98与XP的2000/2001除少量局部边缘外一致。接受计划允许的小图像残差并完整保留最大值、分位与有符号均值，不声称物理NV40逐像素等价，也不把观察位置冒称唯一根因，见 `g5-legacy-original-fixed-frame-review.json`。05/06和最终profile仍独立继续。
+
+- G4 05八固定帧内容复核完成：三GT、PS及两VS原图与代理逐图查看，屋顶/对象/光照/网格对应，两个fillrate场景精确相同。GT3水面保留高频图案差异，所有MAD/最大值及完整原图仍记录；接受内容一致性而不宣称位精确或未经证明的唯一精度根因，见 `g4-05-current-format-eight-fixed-frames.json` 的referenceReview。
+
+- G7 证据完整性复核：核对520个现存小型产物/源码条目，运行产物哈希均匹配；两处历史工具源码SHA分别以8504f95d/0cc90695的Git blob复核并补充版本限定。大RAM归档仍以各配套manifest/无损解压SHA验证为准，见 `g7-retained-artifact-integrity.json`；不把此小文件核对当作尚未完成的06图像/性能验收。
+
+- G4 最新格式下06全新冷启动四张原版IQ已保存并逐图复核：1280×1024、None/Optimal、VS/PS3_0，HDR1/2与GT1/2均有完整BMP、原版成功提示及静止60秒，累计8027draw、GPU0故障。HDR1绿色偏色消失，龙体轮廓/姿态对应；scene MAD为6.624697/3.326139/0.800554/1.274144，水面/反射/高光及边缘残差完整保留；冷跑排除了旧GPU状态恢复污染。接受内容一致性而不宣称位精确，见 `g4-06-current-cold-four-fixed-frames.json`。已返回并核对默认六项主界面以保存同源采样配套状态；七feature截图、该冷客体最终正常关机和G6报告继续。
+
+- G6 配套overlay无损归档及直接恢复完成：宿主保护在06四图完成后实际安全暂停；新增逻辑.bin→.bin.zst（含显式.zst）加载，按原始解压字节及manifest精确校验，RAM/OS/game都验证后才应用扇区/启动客体，不生成raw副本。边界、损坏、错扇区、双磁盘归档及raw优先测试通过；真实XP从RAM+OS双zstd恢复到默认六项主界面且GPU0故障。117份overlay的18,910,046,616原字节逐份解压SHA核对后保留为8,573,065,796归档字节，释放10,336,980,820字节；原盘/数据未删，见 `g6-compressed-overlay-restore.json`。
+
+- G6 原生窗口关闭工具补齐：恢复后键盘退出未能证明主窗口关闭；新增只接受真实可见/启用/本benchmark进程顶层窗口的 `/close`，走正常WM_CLOSE并保留原应用确认处理，子窗口和禁用父链保护保持。严格C构建通过；XP06实际返回ACTION_RESULT0，原版launcher记录EXIT_CODE0，未强制终止进程；Run就绪等待设15秒，见 `g6-native-benchmark-window-close.json`。
+
+- G4 06原生七feature图像与生命周期完成：原版CLI相对结果文件、固定帧率模式下保留有界连续帧；PS/两VS的Frame3/Time2、Perlin的Frame1/Time2及较晚粒子Frame91/Time9.19均按原版HUD读取，填充率无HUD须以六帧相位与代理对比，不以FPS推造时间。粒子越界目标未计成功，记录249次实际呈现和正常退出后前移取样。累计50409draw/GPU0故障；原生probe started/problem0、真实桌面开始菜单、stock XP正常关机、冷磁盘对和原盘未变验证完成。健康RAM1547134812字节无损归档673102984字节，见 `g4-06-native-seven-feature-frames.json`；代理内容/相位对比仍继续。

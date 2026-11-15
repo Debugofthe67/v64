@@ -562,8 +562,10 @@ export interface V86Options {
      * II) and "virtio_gpu" (virtio-gpu as virtio-vga) offer 3D when the page
      * has loaded build/glbridge/libv86-webgpu.js and WebGPU has an adapter,
      * and 2D only otherwise (docs/gpu-devices.md).
-     * "geforce_6800" is an experimental NV40 register/display probe; NVIDIA
-     * driver initialization and 3D support are still under development.
+     * "geforce_6800" is an experimental NV40 device tested with native NVIDIA
+     * XP 93.71 and Win98 81.98 drivers. CPU 2D is available without WebGPU;
+     * native 3D uses the shared WebGPU executor. Validated scope and limits
+     * are recorded in docs/gpu-devices.md and docs/gpu-deviations.md.
      */
     graphics_adapter: "bochs_vga" | "vmware_svga" | "virtio_gpu" | "geforce_6800" | "none";
     /**

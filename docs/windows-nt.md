@@ -209,8 +209,10 @@ record the incomplete tests.
 The driver runs in PCI mode; an AGP bridge is not required for this tested
 configuration. Original 3DMark99/2000/2001/03/05 suites and the required
 06 default, feature and batch tests have exported successful native projects.
-Image quality and the final isolated performance gate remain open. See [GeForce 6800 GT](gpu-devices.md#geforce-6800-gt) for current
-capabilities, snapshot behavior and known limits. This validation does not
+Reference image reviews and [repeated isolated GT1 rendering profiles](fixtures/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
+are recorded separately from those functional results. Pixel residuals and a
+Shader Particles position deviation remain documented. See [GeForce 6800 GT](gpu-devices.md#geforce-6800-gt)
+for the validated scope, snapshot behavior and limits. This validation does not
 cover Windows 2000 or NVIDIA WDDM drivers on Vista and newer.
 
 ## 5. Windows Vista and newer

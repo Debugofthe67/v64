@@ -184,13 +184,20 @@ power-off. The tested image originally used a 15-minute monitor timeout;
 [the native setup check](fixtures/nv40/g6-native-memory-status-diagnostic.json)
 records this setting separately from benchmark execution. The later
 [original 03 suite](fixtures/nv40/g5-win98-8198-03-full-eleven.json) completed
-all eleven selected tests and shut down normally; its image gate remains open.
+all eleven selected tests and shut down normally.
+Its [nine original IQ images](fixtures/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)
+were subsequently reviewed against the API reference. Eight scene regions
+match XP exactly and GT3 differs by at most two channel values; reference
+pixel residuals remain recorded. RGB565 desktop/Start-menu return and a later
+normal shutdown were also verified.
 
 1024×768×32, 640×480×8, 800×600×16 and a DOS mode-13h/text/desktop round trip
 are recorded in the [native display fixture](fixtures/nv40/g1-native-modes-dos.json).
 The [clean DxDiag fixture](fixtures/nv40/g3-win98-8198-dxdiag-clean.json)
-records the three successful D3D tests. Full 3DMark and game compatibility
-remains in progress; see [GeForce 6800 GT](gpu-devices.md#geforce-6800-gt).
+records the three successful D3D tests. The selected original 99 MAX, 2000,
+2001 SE and 03 suites have completed, together with the tested 8bpp StarCraft
+and 16bpp Red Alert 2 round trips. See [GeForce 6800 GT](gpu-devices.md#geforce-6800-gt)
+for their image reviews and the limits of this experimental device.
 
 ### 3.3 Enabling absolute mouse positioning (VBMOUSE)
 
