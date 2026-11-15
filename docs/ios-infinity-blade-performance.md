@@ -1,5 +1,17 @@
 # Infinity Blade 安装与帧率验证
 
+## 清理旧挂载实验 img（2026-11-15）
+
+磁盘可用量降至约 2.9 GiB 后，核对并删除 11 月 4 日的三份旧原始 NAND
+实验文件：`build/ios/cprotect.img`、`cprotect-dkey.img`、`cp-cbc.img`。
+它们早于本轮 IPA 安装，相关本地脚本用于启动/密钥包/挂载探针；清理前检查
+精确长度、修改时间、普通文件、单硬链接及无打开句柄。当前 OPFS NAND、
+战斗 master 和独立剧情进度副本均未受影响。
+
+三份分配块合计 4,649,402,368 bytes（约 4.33 GiB）；不是按 55.5 GB 稀疏逻辑
+长度报告回收。清理后 `df` 可用约 7.4 GiB，完整审计在本地忽略文件
+`infinity-perf-next/obsolete-img-cleanup.json`。清理在 FPS 批次结束后进行。
+
 ## IT 内精确 FP helper：同场景复测通过（2026-11-15）
 
 对已校验的 scalar VADD/VSUB/VMUL/VDIV/VNMUL、VCMP 及不涉及 GPR 的
