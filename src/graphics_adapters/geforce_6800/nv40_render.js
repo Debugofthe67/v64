@@ -561,7 +561,10 @@ export class NV40Render
                 this.command(OP.SET_SAMPLER_STATE,{"sampler":unit,"state":state,"value":value});
         }
         this.command(OP.SET_VERTEX_SHADER,{"shader_handle":vs});this.command(OP.SET_PIXEL_SHADER,{"shader_handle":ps});
-        this.constants(OP.SET_VERTEX_SHADER_CONSTANT_F,0,this.engine.vertex_constants(o,0,544));
+        // Read current native values for every range the translated program
+        // can access. Relative addressing conservatively retains all 544.
+        for(const [first,count] of shaders.vertex.constant_ranges || [[0,544]])
+            this.constants(OP.SET_VERTEX_SHADER_CONSTANT_F,first,this.engine.vertex_constants(o,first,count));
         for(const [index,values] of shaders.vertex.viewport_constants) this.constants(OP.SET_VERTEX_SHADER_CONSTANT_F,index,values);
         for(const [index,values] of shaders.vertex.texture_constants) this.constants(OP.SET_VERTEX_SHADER_CONSTANT_F,index,values);
         shaders.fragment.constant_values.forEach((values,index)=>this.constants(OP.SET_PIXEL_SHADER_CONSTANT_F,index,values));

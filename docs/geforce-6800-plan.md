@@ -2261,3 +2261,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 小绘制有界批次：原生06 Batch8原路径每32draw下载整张目标，现将draw上限改256，保留8MiB命令上限及query/别名/CPU可见性/FIFO退出/快照屏障。真实FIFO257draw回归旧实现先红32≠256，新实现两批/两次颜色下载、混合像素255和REF顺序正确；完整真实GPU、FIFO/render单测、Closure通过，见 `g6-bounded-small-draw-batches.json`。先前scope续跑250410新draw后仍为PAGE/DUMP 100000EA，已成套保存并压缩749670143bytes，取证IMG删除；不把批次改进等同看门狗根因修复，继续健康起点复跑。
 
 - G6 绘制诊断快照热点：新的40秒Batch8采样中program自身4.768秒，发现shaders每次都Array.from/filter完整method Map。正常绘制改用不收集state的program，公开program诊断默认仍保留完整状态，逐次VP/FP/DMA/inline常量校验不变。迭代器陷阱旧实现先红，新实现及原有变更失效/LRU、完整真实GPU/Closure通过；4352附加method、3000次的七轮交错CPU中位372.656→123.075ms，非FPS。见 `g6-draw-without-diagnostic-state.json`。
+
+- G6 顶点常量热点：翻译结果记录程序可读的native常量连续范围；每draw仍新读当前值，相对寻址保守读取全部544，生成的viewport/texture常量顺序保持。真实Batch8六指令VP的native常量载荷8704→64bytes；10000次新鲜读取的七轮交错CPU中位282.274→4.952ms，位值与全量快照选择结果一致。空/稀疏/相邻/543/相对范围、真实GPU同代码c543两次修改191→64像素及完整回归/Closure通过，见 `g6-referenced-vertex-constant-ranges.json`，不作原生FPS或看门狗修复声明。

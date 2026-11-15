@@ -1632,6 +1632,12 @@ try
             const addressPop=pc=>{const i=flowInstruction(pc,"POPA");i.scalar={name:"POPA",type:"temp",index:0,mask:15};return i;};
             const addressColor=(pc,component)=>{const i=instruction(pc,"MOV",1,"output",0);i.address={register:0,component,constant:true,input:false};return i;};
             const terminal=pc=>{const i=instruction(pc);i.end=true;return i;};
+            for(const [value,expected] of [[.75,191],[.25,64]])
+            {
+                method(0x1EFC,543);
+                [...new Uint32Array(Float32Array.of(value,value,value,value).buffer)].forEach((word,i)=>method(0x1F00+i*4,word));
+                await flowDraw([position,instruction(1,"MOV",1,"output",543),terminal(2)],expected);
+            }
             for(let component=0;component<4;component++)
                 await flowDraw([position,loadAddress(1),addressPush(2),loadAddress(3,1,5),addressPop(4),addressColor(5,component),terminal(6)],
                     [64,128,191,255][component]);

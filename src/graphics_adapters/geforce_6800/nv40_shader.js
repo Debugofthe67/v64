@@ -506,7 +506,16 @@ export function translate_vertex_program(program,options={})
             shader.emit(OP.MAD,output,src(0,position,[3,3,3,3]),src(2,bias),src(0,30));
         }
     }
-    return {...shader.finish(),viewport_constants,texture_constants:[...vertexTextureConstants.values()]};
+    const constant_ranges=[];
+    if(program.instructions.some(i=>i.address.constant && i.sources.some(s=>s.type==="constant")))
+        constant_ranges.push([0,544]);
+    else for(const index of [...shader.constants].filter(index=>index<544).sort((a,b)=>a-b))
+    {
+        const last=constant_ranges[constant_ranges.length-1];
+        if(last && last[0]+last[1]===index)last[1]++;
+        else constant_ranges.push([index,1]);
+    }
+    return {...shader.finish(),constant_ranges,viewport_constants,texture_constants:[...vertexTextureConstants.values()]};
 }
 
 export function translate_fragment_program(program,options={})

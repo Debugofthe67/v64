@@ -23,6 +23,15 @@ function validate(name,translated)
 try
 {
     const vs=translate_vertex_program(vertex),ps=translate_fragment_program(fragment);
+    assert.deepEqual(vs.constant_ranges,[],"input-only vertex programs need no native constant upload");
+    const sparseConstants=structuredClone(vertex);
+    sparseConstants.instructions=[17,18,543].map((index,pc)=>{
+        const i=structuredClone(vertex.instructions[0]);i.pc=pc;i.end=pc===2;
+        i.sources[0]={...i.sources[0],type:"constant",index};return i;
+    });
+    assert.deepEqual(translate_vertex_program(sparseConstants).constant_ranges,[[17,2],[543,1]],"sparse native constants include the last register");
+    sparseConstants.instructions[0].address.constant=true;
+    assert.deepEqual(translate_vertex_program(sparseConstants).constant_ranges,[[0,544]],"relative constant addressing retains the full native bank");
     assert.deepEqual(vs.inputs,[[0,[1,0]]]);assert.deepEqual(vs.outputs,[[0,0]]);
     assert.equal(validate("position",vs).reflection.outputDeclarations[0].usage,0);
     assert.deepEqual(validate("constant",ps).reflection.colorOutputs,[0]);
