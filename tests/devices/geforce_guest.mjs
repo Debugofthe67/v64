@@ -103,6 +103,10 @@ export async function run_geforce_guest(win98)
         win98 ? "windows98/windows98hdd.img" : "windowsxp/windowsxp_multidisk_C_4G.img");
     const out = path.resolve(process.env.NV_OUT || path.join(root, "build/nv40-" + (win98 ? "win98" : "xp")));
     fs.mkdirSync(out, { recursive: true });
+    const disk_reserve_mb=Number(process.env.NV_DISK_RESERVE_MB ?? 8192);
+    assert(Number.isSafeInteger(disk_reserve_mb) && disk_reserve_mb>=0 && disk_reserve_mb<=1048576,
+        "NV_DISK_RESERVE_MB must be an integer in 0..1048576");
+    const free_disk_bytes=()=>{const stat=fs.statfsSync(out);return stat.bavail*stat.bsize;};
     // NV_DRIVER may name either an installer or its extracted directory.
     const driver = path.resolve(process.env.NV_DRIVER || path.join(root, "build/nv40-fixtures", win98 ?
         "81.98_forceware_win9x_english.exe" : "93.71_forceware_winxp2k_english_whql.exe"));
@@ -251,7 +255,7 @@ export async function run_geforce_guest(win98)
     assert(Number.isFinite(seconds) && seconds > 0 && seconds <= 21600);
     assert(Number.isFinite(run_delay) && run_delay>=1000 && run_delay<=30000);
     let nv, error = null, launches = 0, next_launch = launch, cancelled = false, checkpoint = false, clock_start = 0;
-    let profiler=null,barrier_report=null,stall=null,guest_sampler=null;
+    let profiler=null,barrier_report=null,stall=null,guest_sampler=null,disk_pause=null;
     let ide_read_watch=null,ide_read_fd=null,ide_read_rows=0,ide_read_dropped=0;
     const cancel = () => { cancelled = true; };
     process.on("SIGINT", cancel);
@@ -813,6 +817,26 @@ export async function run_geforce_guest(win98)
         for(; elapsed() < seconds && !error && !cancelled;)
         {
             await delay(capture_interval?Math.min(1000,Math.max(100,capture_interval*1000)):1000);
+            const available=disk_reserve_mb?free_disk_bytes():Infinity;
+            if(available<disk_reserve_mb*1048576)
+            {
+                await vm.stop();
+                // Leave room for final artifacts and disk overlays as well as
+                // RAM/VRAM and the embedded tools disk. Never start a second
+                // automatic state write when this reserve cannot cover one.
+                const minimum=(memory_mb+vram_mb+1024)*1048576+tools.bytes.byteLength;
+                disk_pause={availableBytes:available,reserveBytes:disk_reserve_mb*1048576,
+                    checkpointMinimumBytes:minimum,checkpoint:null};
+                checkpoint=true;
+                if(free_disk_bytes()>=minimum)
+                {
+                    const state_file=path.join(out,"checkpoint-disk-reserve-"+Date.now()+".state");
+                    await save_bundle(state_file);disk_pause.checkpoint=state_file+".bundle.json";
+                }
+                fs.writeFileSync(path.join(out,"disk-reserve.json"),JSON.stringify(disk_pause,null,2)+"\n");
+                console.log("NV40 host disk reserve reached; matching checkpoint",disk_pause.checkpoint);
+                cancelled=true;break;
+            }
             cpu.devices.display.request_frame(true);
             for(const name of live_artifacts)
             {
@@ -1003,14 +1027,15 @@ export async function run_geforce_guest(win98)
     // A successful install API alone is insufficient: the device must be started by nv.
     const initialized = win98 ? /DEVICE .* problem=0 cm=0 started=1 .*driver=\S+ description=NVIDIA GeForce 6800/m.test(text) :
         /DEVICE .* problem=0 cm=0 started=1 service=nv(?:\s|$)/m.test(text);
-    const result = { status: initialized ? "INITIALIZED" : "BLOCKED", seconds: Math.round(elapsed()),
+    const result = { status: disk_pause ? "PAUSED_DISK" : initialized ? "INITIALIZED" : "BLOCKED", seconds: Math.round(elapsed()),
         build: {javascript:release_build?"release":"source",wasm:wasm_path},
         guest: win98 ? "win98" : "xp", driver, rom: process.env.NV_ROM || "v86 G0 SeaVGABIOS",
         error, probe: text, trace: "trace.json", imageUnchanged: true,
+        ...(disk_pause?{diskReserve:disk_pause}:{}),
         ...(game_path?{game:{path:game_path,slot:"secondary-slave",imageUnchanged:true}}:{}),
-        reason: initialized ? "native device started; rendering acceptance is recorded separately" : text ? "driver install/initialization did not complete" : "guest probe did not start" };
+        reason: disk_pause ? disk_pause.checkpoint ? "host disk reserve reached; resume the matching checkpoint" : "host disk reserve reached; insufficient room for a new checkpoint" : initialized ? "native device started; rendering acceptance is recorded separately" : text ? "driver install/initialization did not complete" : "guest probe did not start" };
     fs.writeFileSync(path.join(out, "result.json"), JSON.stringify(result, null, 2) + "\n");
     console.log(JSON.stringify(result, null, 2));
-    if(!initialized) process.exitCode = 1;
+    if(!initialized || disk_pause) process.exitCode = 1;
     return result;
 }

@@ -1023,6 +1023,7 @@ CI 运行 `make devices-test` 与 `make test-glbridge`，浏览器与客体测�
   | `NV_HDB` | 3DMark 镜像（第二块盘） |
   | `NV_OVERLAY_SAVE`、`NV_OVERLAY_LOAD` | 保存或加载 overlay |
   | `NV_STATE_SAVE`、`NV_STATE_LOAD` | 保存/恢复 RAM；有 `.bundle.json` 时自动核对 RAM 与 OS/game overlay 的尺寸、SHA、客体、显存及原盘路径 |
+  | `NV_DISK_RESERVE_MB` | 宿主余量低于阈值时保存配套状态并退出，默认8192 MiB；0显式关闭；不足检查点预算时不追加大文件 |
   | `NV_UI_BINARY` | 冷启动时将有界原生 MZ helper 放入 IDE 工具盘根目录 `NVUI.EXE`；不允许与 RAM restore 同用 |
   | `NV_GPU_RENDERER=chrome` | 渲染器放在无头 Chrome 里 |
   | `NV_OUT` | 输出目录 |
@@ -2318,3 +2319,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 FP32修复后06四张原版IQ及正常关机复核：四图逐项保存成功、GPU静止60秒和完整BMP验证，8042draws零GPU错误；1521183076字节健康RAM无损压缩校验为642168925字节并删除raw，stock XP正常关机及冷磁盘对已导出。HDR1 scene MAD15.3424/max157仍明显偏绿，未验收；新材质记录与原生格式探针进一步指出UNORM16 mode3宽布局，继续修复，不把FP32探针通过当作HDR全图通过。见 `g4-06-float32-four-fixed-frames.json`。
 
 - G3/G4 原生宽UNORM16采样修复：官方93.71的G16R16/A16B16G16R16同发format15，后者mode3必须八字节且有独立AA4E通道排列；旧四字节路径混读原版HDR反射立方体。未修改HAL探针十次受支持draw的机器码全相同，宽UNORM两种过滤均由ff80ff80恢复ff204080、FAILURES4→0，原双通道和FP16/32结果保持。新增单测先红后绿，精确16位/padded六面mip/DMA边界及完整真实GPU、Closure均通过，见 `g3-native-wide-unorm16-texture-mode.json`；原版HDR全图复测继续，未据探针关闭IQ门禁。
+
+- G6 宿主磁盘余量保护：并行客体与检查点累积曾使98/06宿主写盘ENOSPC退出，已保存成功的六张98/三张06原图保留，未导出部分不计完成。harness现默认8GiB余量，每循环检查，预算足够时停止CPU并保存RAM/OS/game配套后以PAUSED_DISK退出；预算不足不再追加大状态文件。真实release05状态用高测试阈值验证自动配套保存/干净关闭、所有SHA及原盘未变，负阈值拒绝、语法检查通过。清理约2.15GB可再生驱动缓存/未引用旧99调试RAM，05中断压缩先核对原RAM再无损重压，后续单客体串行。见 `g6-native-host-disk-reserve.json`；剩余原图续跑，未把宿主ENOSPC称为驱动失败。

@@ -1,0 +1,71 @@
+{
+  "stage": "G6 native harness host disk reserve",
+  "status": "Real release guest guard checkpoint and clean harness exit verified; original benchmark gates continue",
+  "cause": "Concurrent guest memory/swap and accumulating artifacts exhausted the host volume. Win98 IQ and native06 IQ exited with host ENOSPC. No native driver fault or normal shutdown is inferred from those host exits.",
+  "policy": {
+    "defaultReserveMiB": 8192,
+    "explicitDisable": "NV_DISK_RESERVE_MB=0",
+    "checkInterval": "Once per harness loop, normally one second",
+    "checkpointBudget": "Guest RAM + VRAM + embedded tools disk +1024MiB; final artifacts retain reserve",
+    "behavior": "Stop CPU, save matching RAM/OS/game bundle when affordable, mark PAUSED_DISK and close VM/renderer. If checkpoint budget is unavailable, skip a new large state write and report that limit.",
+    "operations": "Use one executing guest at a time on this constrained host."
+  },
+  "validation": {
+    "source": "build/nv40-xp-mark05-current-format-iq/checkpoint-native-current05-gt2-in-flight-space.state.bundle.json",
+    "run": "build/nv40-native-disk-reserve-control",
+    "testThresholdMiB": 1048576,
+    "testMethod": "Deliberately high threshold triggers guard against actual free-space measurement without filling the host disk.",
+    "resultStatus": "PAUSED_DISK",
+    "error": null,
+    "diskReserve": {
+      "availableBytes": 14562488320,
+      "reserveBytes": 1099511627776,
+      "checkpointMinimumBytes": 2541748224,
+      "checkpoint": "/Users/renruisi/Desktop/Code/v86/build/nv40-native-disk-reserve-control/checkpoint-disk-reserve-1794732398813.state.bundle.json"
+    },
+    "checkpoint": {
+      "state": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-native-disk-reserve-control/checkpoint-disk-reserve-1794732398813.state",
+        "bytes": 1207946148,
+        "sha256": "26556b44e32289a48280b68b28775a0f377d66ddbcde5fdb91f18fdf50777eab"
+      },
+      "osOverlay": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-native-disk-reserve-control/checkpoint-disk-reserve-1794732398813.state.hda-overlay.bin",
+        "bytes": 126680616,
+        "sha256": "b5543df1d76d9b1ec923e8617002be491731a1619d738095ffb7381a19f479b2"
+      },
+      "gameOverlay": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-native-disk-reserve-control/checkpoint-disk-reserve-1794732398813.state.game-overlay.bin",
+        "bytes": 443794,
+        "sha256": "74e4079caf4f29c564302d374d58da4ae3463ca8b1dd91ff2ce3a70cce3caa54"
+      }
+    },
+    "allBundleHashesVerified": true,
+    "gpuFailures": 0,
+    "originalImagesUnchanged": true,
+    "invalidNegativeThresholdRejectedBeforeGuestStart": true,
+    "harnessSyntax": "node --check passed"
+  },
+  "retainedOriginalFrames": {
+    "Win98_03": [
+      "GT1",
+      "GT2",
+      "GT3",
+      "GT4",
+      "fillrate1",
+      "fillrate2"
+    ],
+    "native06": [
+      "hdr1",
+      "hdr2",
+      "GT1"
+    ],
+    "limits": "Only previously confirmed original-save artifacts count; unexported work at host termination is rerun."
+  },
+  "cleanup": {
+    "manifest": "build/nv40-regenerable-cache-and-superseded99-cleanup.json",
+    "bytes": 2154240599,
+    "scope": "Regenerable expanded driver caches and seven obsolete unreferenced preliminary99 RAM-only debug archives. Corrected full26 project/IQ/trace evidence, original disk inputs and canonical downloaded drivers retained."
+  },
+  "incompleteCompressionRecovery": "Original05 RAM size/SHA checked against bundle before removing the truncated .zst; recompression then verified losslessly."
+}
