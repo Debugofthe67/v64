@@ -7,9 +7,9 @@
 //! templates or a precise retry. What raises an exception (SVC, BKPT, UDF)
 //! or waits (WFE, WFI,
 //! YIELD), and the UNPREDICTABLE forms around the PC, are single steps.
-//! Inside an IT block every instruction is a helper call or a step (ITSTATE
-//! decides their conditions), but in IT blocks of native instructions only
-//! (their conditions compiled, ITSTATE left 0, no block starts inside);
+//! Interpreted IT blocks use helpers or steps (ITSTATE decides their
+//! conditions). Native IT blocks compile their conditions with ITSTATE 0
+//! and no internal block starts; scalar FP may still use its exact helper.
 //! compiled code is entered at ITSTATE 0 (pages::run), and a step that
 //! leaves ITSTATE set ends the activation.
 
@@ -42,6 +42,9 @@ pub enum Kind {
     /// FP/SIMD data processing: no GPR reads/writes or PC/context changes. Errors
     /// still retry through the usual interpreter with all GPRs committed.
     FpHelper,
+    /// A validated scalar FP operation in a native IT block. Its exact
+    /// helper runs only when this condition passes; it cannot touch GPRs.
+    ItFpHelper { cond: u8 },
     /// B, BL, B<c>: to `target` (the page's offset, wrapping), when `cond`
     /// holds (14: always); BL's LR the next instruction's address (T32's
     /// with bit 0 set)
@@ -285,6 +288,7 @@ impl Kind {
             Self::Helper => 0x7FFF,
             Self::RegisterHelper { mask } => mask,
             Self::FpHelper
+            | Self::ItFpHelper { .. }
             | Self::Nop
             | Self::It
             | Self::Neon { .. }
@@ -366,6 +370,7 @@ pub fn kind_name(kind: &Kind) -> String {
         Kind::Helper => "helper".into(),
         Kind::RegisterHelper { .. } => "register-helper".into(),
         Kind::FpHelper => "fphelper".into(),
+        Kind::ItFpHelper { cond } => format!("it-fphelper/{}", cond),
         Kind::Branch { cond, .. } => format!("branch/{}", cond),
         Kind::Interwork { .. } => "blx".into(),
         Kind::CompareBranch { .. } => "cbz".into(),
@@ -2491,6 +2496,10 @@ fn t32_return(word: u32, length: u8) -> Option<Kind> {
 fn t32_native_it(word: u32, length: u8, itstate: u8) -> Option<Kind> {
     let cond = itstate >> 4;
     let last = itstate & 7 == 0;
+    if length == 4 && matches!(fp_data(word, true),
+        Some(Kind::FpArith { .. } | Kind::FpCompare { .. } | Kind::FpMove { kind: 0..=2, .. })) {
+        return Some(Kind::ItFpHelper { cond });
+    }
     let mut kind =
         t32_native(word, length).or_else(|| last.then(|| t32_return(word, length)).flatten())?;
     match &mut kind {
@@ -4611,6 +4620,7 @@ impl Emitter<'_> {
             }),
             Kind::Helper | Kind::RegisterHelper { .. } => self.a32_helper(i.word, i.length, offset),
             Kind::FpHelper => self.a32_fp_helper(i.word, i.length, offset),
+            Kind::ItFpHelper { cond } => self.when(cond, |e| e.a32_fp_helper(i.word, i.length, offset)),
             Kind::Branch { target, cond, link } => {
                 if cond != 14 {
                     self.load32(state::nzcv as u32);
