@@ -305,11 +305,17 @@ For performance acceptance, verify the scene and faults, run one guest at a
 time, record host conditions and compare repeated windows from the same
 checkpoint with the same cache-start conditions. Concurrent investigation
 profiles can locate expensive paths, but do not establish a performance gate.
+Start each repeat with a fresh renderer and empty host decode/translation
+caches. This does not clear the operating system or Metal driver caches.
+Record the original test selection and launch action; a default-suite loading
+window and a particular feature scene are different workloads. End profiling
+before saving a large RAM checkpoint, then finish any archive work before
+starting the next measured window.
 
 The decoded-texture cache retains actual source bytes and decoded results,
-bounded by twice guest VRAM with a 64–256 MiB range and 1024 mip/face entries.
+bounded by twice guest VRAM with a 64–512 MiB range and 1024 mip/face entries.
 For controlled comparisons, the test harness accepts `NV_TEXTURE_CACHE_MIB`
-(64/128/256) and `NV_TEXTURE_CACHE_ENTRIES` (256/512/1024); the sampling report
+(64/128/256/512) and `NV_TEXTURE_CACHE_ENTRIES` (256/512/1024); the sampling report
 records the chosen limits. A captured VRAM-only texture access sequence can
 also compare the old and current budgets without running a guest:
 
