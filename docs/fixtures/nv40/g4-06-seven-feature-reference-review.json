@@ -1,0 +1,1277 @@
+{
+  "stage": "G4 original06 seven feature reference content review",
+  "status": "Functional and scene-content review complete, with explicit retained pixel/particle-position deviations; physical-NV40 and per-particle trajectory equivalence not established",
+  "nativeCaptureFixture": "docs/fixtures/nv40/g4-06-native-seven-feature-frames.json",
+  "functionalResultFixture": "docs/fixtures/nv40/g4-xp-9371-06-feature7-batch6.json",
+  "method": "Original HUD frame/time; fill rates have no HUD and use six same-argument presents per path, all raw hashes compared.",
+  "excludeTopRows": 0,
+  "excludeBottomRows": 64,
+  "referenceProvenance": {
+    "registeredMainClosed": true,
+    "gameDrive": "D",
+    "helperCDDrive": "E",
+    "dll": {
+      "bytes": 172544,
+      "sha256": "8c40a72e08249841c1979f8f9c28a94419fd527053fc4647cc427ea8481edf7d"
+    },
+    "exe": {
+      "bytes": 3818904,
+      "sha256": "a8270172b9356e5e4870658a54a2b06ef5545c4c771b0c456aa5d490b0f0a8a3"
+    },
+    "failed": 0,
+    "dropped": 0,
+    "hostErrors": 0,
+    "gpuErrors": 0,
+    "devices": 0
+  },
+  "referenceOriginalBatchExits": {
+    "cases": [
+      "fillrate1",
+      "fillrate2",
+      "ps",
+      "vssimple",
+      "vscomplex",
+      "shaderparticle",
+      "perlinnoise"
+    ],
+    "allOriginalBatchExitsObserved": true
+  },
+  "referenceFinalCounters": {
+    "status": "PASS",
+    "scope": "Original06 seven feature reference captures; all original CLI batches exited0, image review separate",
+    "captured": 4,
+    "commandsFailed": 0,
+    "droppedDraws": 0,
+    "hostErrors": 0,
+    "gpuErrors": 0,
+    "stats": {
+      "drawCalls": 5382,
+      "indexedDrawCalls": 1776128,
+      "upDrawCalls": 0
+    },
+    "originalProcessWindows": 0,
+    "guestStopped": true
+  },
+  "referenceRunnerExit": {
+    "code": 0,
+    "browserErrors": [],
+    "monitorErrors": [],
+    "time": "2026-11-15T11:47:10.198Z"
+  },
+  "cases": [
+    {
+      "native": {
+        "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-present-301.bmp",
+        "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate1_f30_t10-present-302.bmp",
+        "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36"
+      },
+      "width": 1280,
+      "height": 1024,
+      "roi_y": 0,
+      "roi_height": 960,
+      "pixels": 1228800,
+      "different_pixels": 0,
+      "exact_pixel_percent": 100.0,
+      "mean_absolute_rgb_error": 0.0,
+      "mean_signed_rgb_error": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_channel_error": 0,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 0,
+        "95": 0,
+        "99": 0,
+        "99.9": 0
+      },
+      "pixel_max_channel_error_histogram": {
+        "0": 1228800
+      },
+      "case": "fillrate1",
+      "nativePresentOrdinal": 301,
+      "referencePresentOrdinal": 302,
+      "observedHUDFrame": null,
+      "observedHUDTime": null,
+      "nativeSequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-presents.json",
+      "referenceSequenceMetadata": "build/nv40-proxy06-final-feature-iq/feature-fillrate1_f30_t10-presents.json",
+      "boundedSequence": {
+        "native": [
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-present-299.bmp",
+            "sha256": "eb2c7fff54fe2d789c6ecf2aede77c57f630602d6bd9b13454cdb653ae0fd49f"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-present-300.bmp",
+            "sha256": "b3fe85c2be4be1305ad10f1aa4409228ee219f220cc94913e2248b0f42914895"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-present-301.bmp",
+            "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-present-302.bmp",
+            "sha256": "698d9fd7ecb8fb80d15b2fbedcfe421d9ab0200a1e0bf6724221789f5b336121"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-present-303.bmp",
+            "sha256": "8bc9c6d915b323e7431c11e3abdc61ebdfc5dc1ea3325b232d0eb7ba36bb0108"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-present-304.bmp",
+            "sha256": "a46e9e75a5c4adc40bc2e4954328474a21d45263f3c4c17eda616afc951b82bd"
+          }
+        ],
+        "reference": [
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate1_f30_t10-present-299.bmp",
+            "sha256": "70808a6c97e95b2bc017a21f084e433142ad72b8ae1678b51ef7da0a426dfd74"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate1_f30_t10-present-300.bmp",
+            "sha256": "eb2c7fff54fe2d789c6ecf2aede77c57f630602d6bd9b13454cdb653ae0fd49f"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate1_f30_t10-present-301.bmp",
+            "sha256": "b3fe85c2be4be1305ad10f1aa4409228ee219f220cc94913e2248b0f42914895"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate1_f30_t10-present-302.bmp",
+            "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate1_f30_t10-present-303.bmp",
+            "sha256": "698d9fd7ecb8fb80d15b2fbedcfe421d9ab0200a1e0bf6724221789f5b336121"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate1_f30_t10-present-304.bmp",
+            "sha256": "8bc9c6d915b323e7431c11e3abdc61ebdfc5dc1ea3325b232d0eb7ba36bb0108"
+          }
+        ]
+      },
+      "phaseMatrix": "build/nv40-06-fill-phase-matrix.json",
+      "matchedSequencePairs": [
+        {
+          "nativePresent": 299,
+          "referencePresent": 300,
+          "sceneMeanAbsoluteRGBError": 0
+        },
+        {
+          "nativePresent": 300,
+          "referencePresent": 301,
+          "sceneMeanAbsoluteRGBError": 0
+        },
+        {
+          "nativePresent": 301,
+          "referencePresent": 302,
+          "sceneMeanAbsoluteRGBError": 0
+        },
+        {
+          "nativePresent": 302,
+          "referencePresent": 303,
+          "sceneMeanAbsoluteRGBError": 0
+        },
+        {
+          "nativePresent": 303,
+          "referencePresent": 304,
+          "sceneMeanAbsoluteRGBError": 0
+        }
+      ],
+      "pairedPreview": "build/nv40-06-final-fillrate1-reference.png",
+      "visualReview": "Blue layered radial fill pattern corresponds. Five consecutive scene pairs are byte-identical with native299..303/reference300..304; no HUD exists in these images.",
+      "reviewedActualPairedImage": true
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-present-301.bmp",
+        "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate2_f30_t10-present-302.bmp",
+        "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36"
+      },
+      "width": 1280,
+      "height": 1024,
+      "roi_y": 0,
+      "roi_height": 960,
+      "pixels": 1228800,
+      "different_pixels": 0,
+      "exact_pixel_percent": 100.0,
+      "mean_absolute_rgb_error": 0.0,
+      "mean_signed_rgb_error": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_channel_error": 0,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 0,
+        "95": 0,
+        "99": 0,
+        "99.9": 0
+      },
+      "pixel_max_channel_error_histogram": {
+        "0": 1228800
+      },
+      "case": "fillrate2",
+      "nativePresentOrdinal": 301,
+      "referencePresentOrdinal": 302,
+      "observedHUDFrame": null,
+      "observedHUDTime": null,
+      "nativeSequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-presents.json",
+      "referenceSequenceMetadata": "build/nv40-proxy06-final-feature-iq/feature-fillrate2_f30_t10-presents.json",
+      "boundedSequence": {
+        "native": [
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-present-299.bmp",
+            "sha256": "eb2c7fff54fe2d789c6ecf2aede77c57f630602d6bd9b13454cdb653ae0fd49f"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-present-300.bmp",
+            "sha256": "b3fe85c2be4be1305ad10f1aa4409228ee219f220cc94913e2248b0f42914895"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-present-301.bmp",
+            "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-present-302.bmp",
+            "sha256": "698d9fd7ecb8fb80d15b2fbedcfe421d9ab0200a1e0bf6724221789f5b336121"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-present-303.bmp",
+            "sha256": "8bc9c6d915b323e7431c11e3abdc61ebdfc5dc1ea3325b232d0eb7ba36bb0108"
+          },
+          {
+            "file": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-present-304.bmp",
+            "sha256": "a46e9e75a5c4adc40bc2e4954328474a21d45263f3c4c17eda616afc951b82bd"
+          }
+        ],
+        "reference": [
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate2_f30_t10-present-299.bmp",
+            "sha256": "70808a6c97e95b2bc017a21f084e433142ad72b8ae1678b51ef7da0a426dfd74"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate2_f30_t10-present-300.bmp",
+            "sha256": "eb2c7fff54fe2d789c6ecf2aede77c57f630602d6bd9b13454cdb653ae0fd49f"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate2_f30_t10-present-301.bmp",
+            "sha256": "b3fe85c2be4be1305ad10f1aa4409228ee219f220cc94913e2248b0f42914895"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate2_f30_t10-present-302.bmp",
+            "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate2_f30_t10-present-303.bmp",
+            "sha256": "698d9fd7ecb8fb80d15b2fbedcfe421d9ab0200a1e0bf6724221789f5b336121"
+          },
+          {
+            "file": "build/nv40-proxy06-final-feature-iq/feature-fillrate2_f30_t10-present-304.bmp",
+            "sha256": "8bc9c6d915b323e7431c11e3abdc61ebdfc5dc1ea3325b232d0eb7ba36bb0108"
+          }
+        ]
+      },
+      "phaseMatrix": "build/nv40-06-fill-phase-matrix.json",
+      "matchedSequencePairs": [
+        {
+          "nativePresent": 299,
+          "referencePresent": 300,
+          "sceneMeanAbsoluteRGBError": 0
+        },
+        {
+          "nativePresent": 300,
+          "referencePresent": 301,
+          "sceneMeanAbsoluteRGBError": 0
+        },
+        {
+          "nativePresent": 301,
+          "referencePresent": 302,
+          "sceneMeanAbsoluteRGBError": 0
+        },
+        {
+          "nativePresent": 302,
+          "referencePresent": 303,
+          "sceneMeanAbsoluteRGBError": 0
+        },
+        {
+          "nativePresent": 303,
+          "referencePresent": 304,
+          "sceneMeanAbsoluteRGBError": 0
+        }
+      ],
+      "pairedPreview": "build/nv40-06-final-fillrate2-reference.png",
+      "visualReview": "Same phase correspondence and byte-identical five-frame scene sequence for multi-texturing. Single/multi output patterns are the same original scene, not a performance claim.",
+      "reviewedActualPairedImage": true
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark06-feature-wait15/feature-ps-present-03.bmp",
+        "sha256": "8b78f81814609c50a52ec76486abcbee35822e83ea41a70f191ccada3374bc17"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-final-feature-iq/feature-ps-present-04.bmp",
+        "sha256": "deac1e3d8b74cb37435ad2dcfc41d77beb88360d1eac3cf7f10aa02db14c3667"
+      },
+      "width": 1280,
+      "height": 1024,
+      "roi_y": 0,
+      "roi_height": 960,
+      "pixels": 1228800,
+      "different_pixels": 904125,
+      "exact_pixel_percent": 26.422119140625,
+      "mean_absolute_rgb_error": 0.9409345160590278,
+      "mean_signed_rgb_error": [
+        -0.26979899088541665,
+        -0.21215901692708333,
+        -0.14335856119791668
+      ],
+      "max_channel_error": 38,
+      "pixel_max_channel_error_percentiles": {
+        "50": 1,
+        "90": 3,
+        "95": 4,
+        "99": 7,
+        "99.9": 11
+      },
+      "pixel_max_channel_error_histogram": {
+        "0": 324675,
+        "1": 558642,
+        "2": 161689,
+        "3": 83673,
+        "4": 45366,
+        "5": 24602,
+        "6": 13484,
+        "7": 7258,
+        "8": 4080,
+        "9": 2229,
+        "10": 1204,
+        "11": 707,
+        "12": 409,
+        "13": 262,
+        "14": 172,
+        "15": 101,
+        "16": 72,
+        "17": 36,
+        "18": 34,
+        "19": 33,
+        "20": 10,
+        "21": 10,
+        "22": 16,
+        "23": 4,
+        "24": 4,
+        "25": 5,
+        "26": 2,
+        "27": 2,
+        "28": 3,
+        "29": 4,
+        "31": 3,
+        "33": 5,
+        "35": 1,
+        "37": 1,
+        "38": 2
+      },
+      "case": "ps",
+      "nativePresentOrdinal": 3,
+      "referencePresentOrdinal": 4,
+      "observedHUDFrame": 3,
+      "observedHUDTime": "0:02.00",
+      "nativeSequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-ps-presents.json",
+      "referenceSequenceMetadata": "build/nv40-proxy06-final-feature-iq/feature-ps-presents.json",
+      "pairedPreview": "build/nv40-06-final-ps-reference.png",
+      "visualReview": "Matching original Frame3/Time0:02.00: rock relief, lighting and silhouette correspond; local shading residuals retained.",
+      "reviewedActualPairedImage": true
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark06-feature-wait15/feature-vssimple-present-03.bmp",
+        "sha256": "ef2cbae1124121c5a67e14635afa5224731743ec15f62b9dd1d55244f2e66b59"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-final-feature-iq/feature-vssimple-present-04.bmp",
+        "sha256": "4ee4670ef8a4eaf91c61715ec0925293962c3a332a54154a83b7a5692317c7df"
+      },
+      "width": 1280,
+      "height": 1024,
+      "roi_y": 0,
+      "roi_height": 960,
+      "pixels": 1228800,
+      "different_pixels": 5694,
+      "exact_pixel_percent": 99.53662109375,
+      "mean_absolute_rgb_error": 0.0046337890625,
+      "mean_signed_rgb_error": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_channel_error": 1,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 0,
+        "95": 0,
+        "99": 0,
+        "99.9": 1
+      },
+      "pixel_max_channel_error_histogram": {
+        "0": 1223106,
+        "1": 5694
+      },
+      "case": "vssimple",
+      "nativePresentOrdinal": 3,
+      "referencePresentOrdinal": 4,
+      "observedHUDFrame": 3,
+      "observedHUDTime": "0:02.00",
+      "nativeSequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-vssimple-presents.json",
+      "referenceSequenceMetadata": "build/nv40-proxy06-final-feature-iq/feature-vssimple-presents.json",
+      "pairedPreview": "build/nv40-06-final-vssimple-reference.png",
+      "visualReview": "Matching original Frame3/Time0:02.00: all creature poses and coverage correspond; maximum channel difference1.",
+      "reviewedActualPairedImage": true
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark06-feature-wait15/feature-vscomplex-present-03.bmp",
+        "sha256": "b1a69c9f49f47fd4237198c874893c6070d6cb2ac537ea9f824aa06b33eb3bb1"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-final-feature-iq/feature-vscomplex-present-04.bmp",
+        "sha256": "602bdc1fef8b7bad39ff107e78c01b27a84ca5257ec29749efaa3b31b823060b"
+      },
+      "width": 1280,
+      "height": 1024,
+      "roi_y": 0,
+      "roi_height": 960,
+      "pixels": 1228800,
+      "different_pixels": 935701,
+      "exact_pixel_percent": 23.85245768229166,
+      "mean_absolute_rgb_error": 1.5625431315104166,
+      "mean_signed_rgb_error": [
+        0.3520402018229167,
+        0.5554329427083333,
+        -0.4314013671875
+      ],
+      "max_channel_error": 56,
+      "pixel_max_channel_error_percentiles": {
+        "50": 2,
+        "90": 6,
+        "95": 8,
+        "99": 17,
+        "99.9": 30
+      },
+      "pixel_max_channel_error_histogram": {
+        "0": 293099,
+        "1": 318423,
+        "2": 187569,
+        "3": 117073,
+        "4": 108117,
+        "5": 65508,
+        "6": 38198,
+        "7": 33201,
+        "8": 24480,
+        "9": 10030,
+        "10": 4597,
+        "11": 3396,
+        "12": 2829,
+        "13": 2501,
+        "14": 2231,
+        "15": 2030,
+        "16": 1873,
+        "17": 1723,
+        "18": 1558,
+        "19": 1446,
+        "20": 1343,
+        "21": 1195,
+        "22": 1073,
+        "23": 944,
+        "24": 761,
+        "25": 615,
+        "26": 588,
+        "27": 456,
+        "28": 392,
+        "29": 284,
+        "30": 270,
+        "31": 192,
+        "32": 144,
+        "33": 131,
+        "34": 105,
+        "35": 95,
+        "36": 84,
+        "37": 72,
+        "38": 47,
+        "39": 37,
+        "40": 24,
+        "41": 15,
+        "42": 12,
+        "43": 9,
+        "44": 7,
+        "45": 4,
+        "46": 3,
+        "47": 3,
+        "48": 5,
+        "49": 1,
+        "50": 2,
+        "51": 2,
+        "53": 1,
+        "55": 1,
+        "56": 1
+      },
+      "case": "vscomplex",
+      "nativePresentOrdinal": 3,
+      "referencePresentOrdinal": 4,
+      "observedHUDFrame": 3,
+      "observedHUDTime": "0:02.00",
+      "nativeSequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-vscomplex-presents.json",
+      "referenceSequenceMetadata": "build/nv40-proxy06-final-feature-iq/feature-vscomplex-presents.json",
+      "pairedPreview": "build/nv40-06-final-vscomplex-reference.png",
+      "visualReview": "Matching original Frame3/Time0:02.00: grass hill, blade coverage and lighting correspond; local raster/shading residuals retained.",
+      "reviewedActualPairedImage": true
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-present-91.bmp",
+        "sha256": "b0505b327c3705c7094af52e9165ae934d031a844384701d90bac1e2028cfa16"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-final-feature-iq/feature-shaderparticle_f30_mid-present-92.bmp",
+        "sha256": "1541f53593707e0f731d08b439b32b7a225035efb95535a52de7d819e7f77f75"
+      },
+      "width": 1280,
+      "height": 1024,
+      "roi_y": 0,
+      "roi_height": 960,
+      "pixels": 1228800,
+      "different_pixels": 975771,
+      "exact_pixel_percent": 20.591552734374996,
+      "mean_absolute_rgb_error": 38.58487874348958,
+      "mean_signed_rgb_error": [
+        0.02270263671875,
+        0.02270263671875,
+        0.02270263671875
+      ],
+      "max_channel_error": 255,
+      "pixel_max_channel_error_percentiles": {
+        "50": 27,
+        "90": 97,
+        "95": 126,
+        "99": 184,
+        "99.9": 237
+      },
+      "pixel_max_channel_error_histogram": {
+        "0": 253029,
+        "1": 23151,
+        "2": 22203,
+        "3": 15844,
+        "4": 17045,
+        "5": 13702,
+        "6": 14925,
+        "7": 12162,
+        "8": 13438,
+        "9": 11430,
+        "10": 12457,
+        "11": 11113,
+        "12": 12076,
+        "13": 10739,
+        "14": 11856,
+        "15": 10561,
+        "16": 11391,
+        "17": 10451,
+        "18": 11505,
+        "19": 10559,
+        "20": 11531,
+        "21": 11071,
+        "22": 12302,
+        "23": 12289,
+        "24": 14548,
+        "25": 14960,
+        "26": 17022,
+        "27": 16909,
+        "28": 16506,
+        "29": 14553,
+        "30": 14348,
+        "31": 13551,
+        "32": 14265,
+        "33": 13560,
+        "34": 14175,
+        "35": 12570,
+        "36": 12557,
+        "37": 10901,
+        "38": 11401,
+        "39": 9971,
+        "40": 10414,
+        "41": 8876,
+        "42": 9674,
+        "43": 7794,
+        "44": 8593,
+        "45": 6980,
+        "46": 8146,
+        "47": 6520,
+        "48": 8295,
+        "49": 6463,
+        "50": 8594,
+        "51": 6434,
+        "52": 8834,
+        "53": 6446,
+        "54": 8876,
+        "55": 6354,
+        "56": 8446,
+        "57": 6123,
+        "58": 7547,
+        "59": 5812,
+        "60": 7151,
+        "61": 5458,
+        "62": 6866,
+        "63": 5263,
+        "64": 6814,
+        "65": 5146,
+        "66": 7011,
+        "67": 5151,
+        "68": 6774,
+        "69": 4885,
+        "70": 6411,
+        "71": 4730,
+        "72": 5879,
+        "73": 4467,
+        "74": 5542,
+        "75": 4298,
+        "76": 5278,
+        "77": 4327,
+        "78": 5077,
+        "79": 3935,
+        "80": 4737,
+        "81": 4016,
+        "82": 4369,
+        "83": 3676,
+        "84": 4256,
+        "85": 3504,
+        "86": 3825,
+        "87": 3355,
+        "88": 3519,
+        "89": 3164,
+        "90": 3256,
+        "91": 2956,
+        "92": 3113,
+        "93": 2909,
+        "94": 2927,
+        "95": 2756,
+        "96": 2981,
+        "97": 2767,
+        "98": 2903,
+        "99": 2654,
+        "100": 2723,
+        "101": 2579,
+        "102": 2564,
+        "103": 2409,
+        "104": 2440,
+        "105": 2351,
+        "106": 2461,
+        "107": 2305,
+        "108": 2442,
+        "109": 2220,
+        "110": 2180,
+        "111": 2068,
+        "112": 2097,
+        "113": 2053,
+        "114": 1999,
+        "115": 2038,
+        "116": 1929,
+        "117": 1844,
+        "118": 1855,
+        "119": 1770,
+        "120": 1745,
+        "121": 1638,
+        "122": 1723,
+        "123": 1487,
+        "124": 1625,
+        "125": 1528,
+        "126": 1560,
+        "127": 1386,
+        "128": 1486,
+        "129": 1446,
+        "130": 1385,
+        "131": 1318,
+        "132": 1336,
+        "133": 1251,
+        "134": 1306,
+        "135": 1166,
+        "136": 1220,
+        "137": 1210,
+        "138": 1164,
+        "139": 1155,
+        "140": 1109,
+        "141": 1096,
+        "142": 1094,
+        "143": 1017,
+        "144": 1082,
+        "145": 1017,
+        "146": 1093,
+        "147": 908,
+        "148": 988,
+        "149": 920,
+        "150": 956,
+        "151": 881,
+        "152": 880,
+        "153": 842,
+        "154": 833,
+        "155": 762,
+        "156": 814,
+        "157": 758,
+        "158": 746,
+        "159": 703,
+        "160": 681,
+        "161": 685,
+        "162": 673,
+        "163": 631,
+        "164": 655,
+        "165": 650,
+        "166": 626,
+        "167": 635,
+        "168": 609,
+        "169": 585,
+        "170": 533,
+        "171": 534,
+        "172": 522,
+        "173": 545,
+        "174": 506,
+        "175": 492,
+        "176": 488,
+        "177": 487,
+        "178": 489,
+        "179": 464,
+        "180": 424,
+        "181": 477,
+        "182": 440,
+        "183": 443,
+        "184": 417,
+        "185": 415,
+        "186": 392,
+        "187": 382,
+        "188": 328,
+        "189": 380,
+        "190": 313,
+        "191": 366,
+        "192": 340,
+        "193": 368,
+        "194": 274,
+        "195": 330,
+        "196": 265,
+        "197": 306,
+        "198": 271,
+        "199": 290,
+        "200": 239,
+        "201": 239,
+        "202": 247,
+        "203": 232,
+        "204": 216,
+        "205": 191,
+        "206": 223,
+        "207": 188,
+        "208": 200,
+        "209": 208,
+        "210": 202,
+        "211": 202,
+        "212": 194,
+        "213": 200,
+        "214": 158,
+        "215": 177,
+        "216": 174,
+        "217": 177,
+        "218": 168,
+        "219": 198,
+        "220": 141,
+        "221": 176,
+        "222": 162,
+        "223": 144,
+        "224": 166,
+        "225": 135,
+        "226": 115,
+        "227": 124,
+        "228": 106,
+        "229": 90,
+        "230": 94,
+        "231": 91,
+        "232": 70,
+        "233": 77,
+        "234": 61,
+        "235": 67,
+        "236": 60,
+        "237": 65,
+        "238": 66,
+        "239": 67,
+        "240": 52,
+        "241": 43,
+        "242": 56,
+        "243": 51,
+        "244": 39,
+        "245": 51,
+        "246": 53,
+        "247": 58,
+        "248": 40,
+        "249": 46,
+        "250": 51,
+        "251": 52,
+        "252": 52,
+        "253": 58,
+        "254": 59,
+        "255": 303
+      },
+      "case": "shaderparticle",
+      "nativePresentOrdinal": 91,
+      "referencePresentOrdinal": 92,
+      "observedHUDFrame": 91,
+      "observedHUDTime": "0:09.19",
+      "nativeSequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-presents.json",
+      "referenceSequenceMetadata": "build/nv40-proxy06-final-feature-iq/feature-shaderparticle_f30_mid-presents.json",
+      "pairedPreview": "build/nv40-06-final-shaderparticle-reference.png",
+      "visualReview": "Matching original Frame91/Time0:09.19: radial bright particle cloud, center, spread and aggregate intensity correspond. Individual particle positions differ substantially. Three native runs have identical six-frame scene regions; this is an explicit stable cross-path position deviation, not attributed to changing random seeds. No per-particle trajectory or bit-equivalence acceptance is claimed.",
+      "reviewedActualPairedImage": true
+    },
+    {
+      "native": {
+        "file": "build/nv40-xp-mark06-feature-wait15/feature-perlinnoise-present-01.bmp",
+        "sha256": "08412e78183dcdf7237b1c43a49ed5b2f2629b9467a51eabbcc472efa521bf84"
+      },
+      "reference": {
+        "file": "build/nv40-proxy06-final-feature-iq/feature-perlinnoise-present-02.bmp",
+        "sha256": "bc5984e6c562bdb1771e95251d911d68df33f32afd7b4de235054613ce5bfd8d"
+      },
+      "width": 1280,
+      "height": 1024,
+      "roi_y": 0,
+      "roi_height": 960,
+      "pixels": 1228800,
+      "different_pixels": 583417,
+      "exact_pixel_percent": 52.521402994791664,
+      "mean_absolute_rgb_error": 0.44607530381944444,
+      "mean_signed_rgb_error": [
+        -0.29264485677083335,
+        -0.29264485677083335,
+        0.0
+      ],
+      "max_channel_error": 5,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 2,
+        "95": 2,
+        "99": 3,
+        "99.9": 4
+      },
+      "pixel_max_channel_error_histogram": {
+        "0": 645383,
+        "1": 400305,
+        "2": 133209,
+        "3": 44420,
+        "4": 5192,
+        "5": 291
+      },
+      "case": "perlinnoise",
+      "nativePresentOrdinal": 1,
+      "referencePresentOrdinal": 2,
+      "observedHUDFrame": 1,
+      "observedHUDTime": "0:02.00",
+      "nativeSequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-perlinnoise-presents.json",
+      "referenceSequenceMetadata": "build/nv40-proxy06-final-feature-iq/feature-perlinnoise-presents.json",
+      "pairedPreview": "build/nv40-06-final-perlinnoise-reference.png",
+      "visualReview": "Matching original Frame1/Time0:02.00: cloud/noise structure and color gradients correspond; local rounding residuals retained.",
+      "reviewedActualPairedImage": true
+    }
+  ],
+  "fillRatePhaseMatrix": {
+    "excludeBottomRows": 64,
+    "cases": [
+      {
+        "tag": "fillrate1_f30_t10",
+        "ordinals": [
+          299,
+          300,
+          301,
+          302,
+          303,
+          304
+        ],
+        "matrix": [
+          [
+            1.3346576605902778,
+            0,
+            1.3326361762152779,
+            2.2709749348958335,
+            3.078945855034722,
+            3.802448459201389
+          ],
+          [
+            2.272917751736111,
+            1.3326361762152779,
+            0,
+            1.3383740234375,
+            2.2733642578125,
+            3.0628960503472222
+          ],
+          [
+            3.0891959635416666,
+            2.2709749348958335,
+            1.3383740234375,
+            0,
+            1.3467496744791667,
+            2.2642588975694444
+          ],
+          [
+            3.8267762586805554,
+            3.078945855034722,
+            2.2733642578125,
+            1.3467496744791667,
+            0,
+            1.3431277126736112
+          ],
+          [
+            4.485702039930556,
+            3.802448459201389,
+            3.0628960503472222,
+            2.2642588975694444,
+            1.3431277126736112,
+            0
+          ],
+          [
+            5.1105316840277775,
+            4.462041558159722,
+            3.7801226128472223,
+            3.0446815321180556,
+            2.246875,
+            1.3413037109375
+          ]
+        ],
+        "closestPhasePairs": [
+          {
+            "nativeOrdinal": 299,
+            "referenceOrdinal": 300,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 300,
+            "referenceOrdinal": 301,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 301,
+            "referenceOrdinal": 302,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 302,
+            "referenceOrdinal": 303,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 303,
+            "referenceOrdinal": 304,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 304,
+            "referenceOrdinal": 304,
+            "meanAbsoluteRGB": 1.3413037109375
+          }
+        ],
+        "qualification": "No HUD present. Same documented fixedfps30, six-frame series per path; matrix diagnoses phase correspondence, not a chosen error tolerance."
+      },
+      {
+        "tag": "fillrate2_f30_t10",
+        "ordinals": [
+          299,
+          300,
+          301,
+          302,
+          303,
+          304
+        ],
+        "matrix": [
+          [
+            1.3346576605902778,
+            0,
+            1.3326361762152779,
+            2.2709749348958335,
+            3.078945855034722,
+            3.802448459201389
+          ],
+          [
+            2.272917751736111,
+            1.3326361762152779,
+            0,
+            1.3383740234375,
+            2.2733642578125,
+            3.0628960503472222
+          ],
+          [
+            3.0891959635416666,
+            2.2709749348958335,
+            1.3383740234375,
+            0,
+            1.3467496744791667,
+            2.2642588975694444
+          ],
+          [
+            3.8267762586805554,
+            3.078945855034722,
+            2.2733642578125,
+            1.3467496744791667,
+            0,
+            1.3431277126736112
+          ],
+          [
+            4.485702039930556,
+            3.802448459201389,
+            3.0628960503472222,
+            2.2642588975694444,
+            1.3431277126736112,
+            0
+          ],
+          [
+            5.1105316840277775,
+            4.462041558159722,
+            3.7801226128472223,
+            3.0446815321180556,
+            2.246875,
+            1.3413037109375
+          ]
+        ],
+        "closestPhasePairs": [
+          {
+            "nativeOrdinal": 299,
+            "referenceOrdinal": 300,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 300,
+            "referenceOrdinal": 301,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 301,
+            "referenceOrdinal": 302,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 302,
+            "referenceOrdinal": 303,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 303,
+            "referenceOrdinal": 304,
+            "meanAbsoluteRGB": 0
+          },
+          {
+            "nativeOrdinal": 304,
+            "referenceOrdinal": 304,
+            "meanAbsoluteRGB": 1.3413037109375
+          }
+        ],
+        "qualification": "No HUD present. Same documented fixedfps30, six-frame series per path; matrix diagnoses phase correspondence, not a chosen error tolerance."
+      }
+    ]
+  },
+  "particleSpatialReview": {
+    "originalHUD": {
+      "frame": 91,
+      "time": "0:09.19"
+    },
+    "native": {
+      "file": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-present-91.bmp",
+      "sha256": "b0505b327c3705c7094af52e9165ae934d031a844384701d90bac1e2028cfa16",
+      "meanRGB": 63.79607991536459,
+      "intensityCentroid": {
+        "x": 638.9611871770128,
+        "y": 499.2232449856921
+      },
+      "intensityStandardDeviation": {
+        "x": 240.87037539862646,
+        "y": 200.2359703259789
+      },
+      "brightPixelFraction": 0.08996500651041667
+    },
+    "reference": {
+      "file": "build/nv40-proxy06-final-feature-iq/feature-shaderparticle_f30_mid-present-92.bmp",
+      "sha256": "1541f53593707e0f731d08b439b32b7a225035efb95535a52de7d819e7f77f75",
+      "meanRGB": 63.77337727864583,
+      "intensityCentroid": {
+        "x": 639.5657844321436,
+        "y": 499.15485653583477
+      },
+      "intensityStandardDeviation": {
+        "x": 241.01304243678376,
+        "y": 199.96831772834742
+      },
+      "brightPixelFraction": 0.08993815104166666
+    },
+    "coarse32PixelTileMeanAbsoluteError": 5.68635009765625,
+    "repeated": [
+      {
+        "ordinal": 89,
+        "original": {
+          "file": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-present-89.bmp",
+          "sceneSHA256": "ad3148aab00b238bdc826a02e4f97e4af6bd6d8098a3d48a85456a70c2f98582"
+        },
+        "repeats": [
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_a-present-89.bmp",
+            "sceneSHA256": "ad3148aab00b238bdc826a02e4f97e4af6bd6d8098a3d48a85456a70c2f98582",
+            "sceneByteIdentical": true
+          },
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_b-present-89.bmp",
+            "sceneSHA256": "ad3148aab00b238bdc826a02e4f97e4af6bd6d8098a3d48a85456a70c2f98582",
+            "sceneByteIdentical": true
+          }
+        ]
+      },
+      {
+        "ordinal": 90,
+        "original": {
+          "file": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-present-90.bmp",
+          "sceneSHA256": "658750a9731387c80576b3ccb00d9fe2f0b03c11ce4b0f5ac82df46f2dc75f73"
+        },
+        "repeats": [
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_a-present-90.bmp",
+            "sceneSHA256": "658750a9731387c80576b3ccb00d9fe2f0b03c11ce4b0f5ac82df46f2dc75f73",
+            "sceneByteIdentical": true
+          },
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_b-present-90.bmp",
+            "sceneSHA256": "658750a9731387c80576b3ccb00d9fe2f0b03c11ce4b0f5ac82df46f2dc75f73",
+            "sceneByteIdentical": true
+          }
+        ]
+      },
+      {
+        "ordinal": 91,
+        "original": {
+          "file": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-present-91.bmp",
+          "sceneSHA256": "de64c3416b979f2ac34203a4a9755311c6247a10037d80a5e7c263528950f3d8"
+        },
+        "repeats": [
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_a-present-91.bmp",
+            "sceneSHA256": "de64c3416b979f2ac34203a4a9755311c6247a10037d80a5e7c263528950f3d8",
+            "sceneByteIdentical": true
+          },
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_b-present-91.bmp",
+            "sceneSHA256": "de64c3416b979f2ac34203a4a9755311c6247a10037d80a5e7c263528950f3d8",
+            "sceneByteIdentical": true
+          }
+        ]
+      },
+      {
+        "ordinal": 92,
+        "original": {
+          "file": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-present-92.bmp",
+          "sceneSHA256": "387cbb623a94e59fff1104ec159fd1465d5163cfe931e50c0abc68a4b8798526"
+        },
+        "repeats": [
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_a-present-92.bmp",
+            "sceneSHA256": "387cbb623a94e59fff1104ec159fd1465d5163cfe931e50c0abc68a4b8798526",
+            "sceneByteIdentical": true
+          },
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_b-present-92.bmp",
+            "sceneSHA256": "387cbb623a94e59fff1104ec159fd1465d5163cfe931e50c0abc68a4b8798526",
+            "sceneByteIdentical": true
+          }
+        ]
+      },
+      {
+        "ordinal": 93,
+        "original": {
+          "file": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-present-93.bmp",
+          "sceneSHA256": "154ced2bc76bdd311f1da36da9026853b400a80cbaaa7bbdf77623b073557c74"
+        },
+        "repeats": [
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_a-present-93.bmp",
+            "sceneSHA256": "154ced2bc76bdd311f1da36da9026853b400a80cbaaa7bbdf77623b073557c74",
+            "sceneByteIdentical": true
+          },
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_b-present-93.bmp",
+            "sceneSHA256": "154ced2bc76bdd311f1da36da9026853b400a80cbaaa7bbdf77623b073557c74",
+            "sceneByteIdentical": true
+          }
+        ]
+      },
+      {
+        "ordinal": 94,
+        "original": {
+          "file": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-present-94.bmp",
+          "sceneSHA256": "3e95cd645d04881405a1f2cee41cbf5ebb9381c1005f2257b663fcf573fe7e25"
+        },
+        "repeats": [
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_a-present-94.bmp",
+            "sceneSHA256": "3e95cd645d04881405a1f2cee41cbf5ebb9381c1005f2257b663fcf573fe7e25",
+            "sceneByteIdentical": true
+          },
+          {
+            "file": "build/nv40-xp-mark06-native-particle-repeats/feature-particle_repeat_b-present-94.bmp",
+            "sceneSHA256": "3e95cd645d04881405a1f2cee41cbf5ebb9381c1005f2257b663fcf573fe7e25",
+            "sceneByteIdentical": true
+          }
+        ]
+      }
+    ],
+    "interpretation": "Same original HUD frame/time and corresponding radial bright particle cloud. Original native and two sequential reruns are compared without the bottom64 metadata rows. Coarse moments are descriptive, not new pass thresholds. Cross-path particle positions differ substantially; no random-seed or uniquely isolated arithmetic cause is claimed."
+  },
+  "nativeParticleRepeatCounters": {
+    "gpu": {
+      "batches": 3234,
+      "draws": 10940,
+      "bytes": 21599765344,
+      "readbacks": 7248,
+      "failures": 0,
+      "uploads": 1020,
+      "uploadBytes": 6227609636,
+      "resourceHits": 42530,
+      "resourceMisses": 18,
+      "resourceEvictions": 0,
+      "coldUploadBytes": 107167780,
+      "resourceBytes": 107167780,
+      "peakResourceBytes": 107167780,
+      "nativeBCUploads": 0,
+      "nativeBCUploadBytes": 0
+    },
+    "nonSoftwareFaults": []
+  },
+  "nativeParticleRepeatShutdown": {
+    "saved": true,
+    "osBytes": 223205124,
+    "gameBytes": 67630,
+    "normalShutdown": {
+      "command": "stock XP shutdown.exe -s -t 0",
+      "eip": 2154770504,
+      "halted": 1,
+      "display": null,
+      "draws": 10940,
+      "failures": 0
+    }
+  },
+  "repeatHarnessCleanupFailure": {
+    "file": "build/nv40-xp-mark06-native-particle-repeats/host.log",
+    "observed": "After stock XP shutdown and overlay export, final host PNG refresh raised ReferenceError: cpu is not defined. No result.json was produced; successful host teardown is not claimed for this run.",
+    "fix": "d3e48376e changes final refresh to vm.v86.cpu; subsequent scene-backed profiles verify the corrected teardown."
+  },
+  "originalHelp": {
+    "file": "build/nv40-06-original-help/3dmarkusage.htm",
+    "sha256": "1e1a38c8dfcc3404108e845880b613ec4cf3601e606426331864c4c8d75a201a"
+  },
+  "limits": [
+    "The seven CLI image runs were ended after bounded captures. They do not replace the earlier original successful feature7/batch6 project or supply benchmark scores.",
+    "Original fixedfps arguments do not define all tests HUD times. Actual HUD frame/time were read, and fill-rate phase correspondence uses a consecutive sequence.",
+    "Pixel differences, full histograms, signed errors and maxima remain present; descriptive cloud moments and image review do not create a numerical pass tolerance.",
+    "The substantial Shader Particles position residual is retained as a compatibility/precision limitation. Its unique arithmetic cause has not been isolated. No random-seed explanation or physical-hardware identity is claimed."
+  ]
+}

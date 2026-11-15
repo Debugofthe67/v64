@@ -391,5 +391,7 @@
     "restore": "zstd -d build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.zst -o build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state"
   },
   "checkpointPurpose": "Healthy all4 IQ complete, original default6 main settings verified. Same source will be restored into two fresh renderer/cache profiling runs.",
-  "continuation": "Host reserve safely paused after all4 IQs; no normal shutdown claimed for cold process. Healthy default6-ready RAM/OS/game source restored with full decoded SHA in build/nv40-xp-mark06-current-feature-resume for feature images and later normal shutdown."
+  "continuation": "Host reserve safely paused after all4 IQs; no normal shutdown claimed for cold process. Healthy default6-ready RAM/OS/game source restored with full decoded SHA in build/nv40-xp-mark06-current-feature-resume for feature images and later normal shutdown.",
+  "latestLifecycleContinuation": "docs/fixtures/nv40/g4-06-native-seven-feature-frames.json",
+  "lifecycleQualification": "The initial cold four-IQ process reached the disk reserve after all original saves; normal shutdown was later established from the matched restored ready checkpoint after native feature captures. No shutdown is claimed for the initially paused process."
 }

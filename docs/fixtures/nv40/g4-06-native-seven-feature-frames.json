@@ -1,6 +1,6 @@
 {
   "stage": "G4 original06 native seven feature capture/lifecycle",
-  "status": "Native captures, driver/desktop/normal shutdown complete; proxy phase/time/content comparison remains open",
+  "status": "Native captures, proxy content review, driver/desktop and normal shutdown complete; pixel and particle-position deviations retained",
   "source": "build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.bundle.json",
   "driver": "Original XP93.71 D3D9 HAL, CPU808c5fc9 release, normal clock, RAM1024/VRAM256",
   "method": "Original documented per-test CLI and fixedfps modes, nosplash/nosysteminfo/noscreens, relative result filenames. Presented authoritative VRAM copied after native GPU completion; bounded six/four/eight-frame series. No benchmark, GPU program, clock or watchdog patch.",
@@ -17,7 +17,7 @@
       "sequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-presents.json",
       "sequenceMetadataSHA256": "fe5c463706a64ef9eed1e2fae8e3d469b784da9e353d86fa93980d028daab0fc",
       "sequenceFrames": 6,
-      "qualification": "No HUD in fill-rate images; all six phases will be compared with proxy."
+      "qualification": "No HUD; five consecutive native299..303/reference300..304 scene pairs are byte-identical. Full six-by-six phase matrix retained in reference review."
     },
     {
       "case": "fillrate2",
@@ -31,7 +31,7 @@
       "sequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-presents.json",
       "sequenceMetadataSHA256": "895e5bd8afc800b73b2ac752705e2303f363d5438ca517edf48e09fb6adeac94",
       "sequenceFrames": 6,
-      "qualification": "No HUD in fill-rate images; all six phases will be compared with proxy."
+      "qualification": "No HUD; five consecutive native299..303/reference300..304 scene pairs are byte-identical. Full six-by-six phase matrix retained in reference review."
     },
     {
       "case": "ps",
@@ -169,6 +169,7 @@
   "limits": [
     "Image-only fixed-rate captures do not validate default benchmark scores or physical hardware FPS. Earlier complete default6 and feature7/batch6 successful projects remain the functional result evidence.",
     "HUD elapsed time and frame count are recorded as actually displayed; no FPS-derived timestamp is substituted.",
-    "Proxy reference comparison must complete before accepting this image gate."
-  ]
+    "Reference review records scene correspondence and explicit pixel/particle-position deviations; no per-particle or physical-NV40 bit identity is claimed."
+  ],
+  "referenceReview": "docs/fixtures/nv40/g4-06-seven-feature-reference-review.json"
 }

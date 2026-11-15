@@ -273,8 +273,8 @@ long-lived investigation snapshots are not substitutes for a clean guest
 acceptance run.
 
 The original functional suites through06 on XP and through03 on Win98 have
-completed. Reference content reviews retain local pixel residuals;06 feature
-images and the final isolated profile remain open. Both XP and a
+completed. Reference content reviews retain local pixel residuals and a
+Shader Particles position deviation; the final isolated profile remains open. Both XP and a
 [fresh cold Win98 run](fixtures/nv40/g3-win98-8198-99-cold-full.json) completed
 all 26 3DMark99 tests and exported their native projects and IQ images.
 The [corrected XP run](fixtures/nv40/g3-xp-9371-99-full-corrected.json) and
@@ -328,8 +328,15 @@ removed, and all four game scenes correspond. Water/reflection/highlight and
 raster/detail residuals remain documented in the original full images and
 per-pixel statistics; physical NV40 bit identity is not claimed. The
 [legacy content review](fixtures/nv40/g5-legacy-original-fixed-frame-review.json)
-also covers both drivers'99/2000/2001 images. The06 feature images and final
-single-guest release profile remain open.
+also covers both drivers'99/2000/2001 images. The [seven06 feature review](fixtures/nv40/g4-06-seven-feature-reference-review.json)
+matches original HUD frames/times; five consecutive scene pairs in each fill-rate
+test are byte-identical. PS/VS/Perlin content corresponds with local residuals.
+Shader Particles has corresponding cloud position, spread and aggregate brightness,
+but substantial individual-position differences. Three native six-frame sequences
+are identical outside the HUD, so changing random seeds are not asserted as the
+cause. Per-particle trajectory equivalence remains unvalidated. Native desktop,
+driver and normal shutdown checks are [retained separately](fixtures/nv40/g4-06-native-seven-feature-frames.json).
+The final single-guest release profile remains open.
 The unmodified
 NVIDIA driver advertises SM3.0 capabilities beyond the validated subset;
 known unsupported draw states and instructions produce bounded faults;
