@@ -175,5 +175,50 @@
   "limits": [
     "Identical original interpreter/JIT IQ excludes a JIT-only cause. Shared CPU behavior and driver compilation still require investigation.",
     "Native green HDR patterns in06 are a separate open defect; do not infer that this observation explains them."
-  ]
+  ],
+  "freshDriverControl": {
+    "source": "Original read-only XP base image, no loaded OS/game overlay; original SetupAPI installed canonical93.71.",
+    "driverInstallationLog": "build/nv40-xp-fresh-9371-saturation/NV.TXT",
+    "installedSuccessfully": true,
+    "mode": "1024x768x32, original ChangeDisplaySettings result0",
+    "probeResult": "DEVICE=00000000\nTARGET=00000000\nREADBACK_SURFACE=00000000\nCASE=00000000\nCREATE_SHADER=00000000\nDRAW=00000000\nREADBACK=00000000\nLOCK=00000000\nPIXEL=ff0080ff\nEXPECTED_RGB=004080bf\nCASE=00000001\nCREATE_SHADER=00000000\nDRAW=00000000\nREADBACK=00000000\nLOCK=00000000\nPIXEL=ff0080ff\nEXPECTED_RGB=004080bf\nCASE=00000002\nCREATE_SHADER=00000000\nDRAW=00000000\nREADBACK=00000000\nLOCK=00000000\nPIXEL=ff404000\nEXPECTED_RGB=00404000\nCASE=00000003\nCREATE_SHADER=00000000\nDRAW=00000000\nREADBACK=00000000\nLOCK=00000000\nPIXEL=ff404000\nEXPECTED_RGB=00404000\nFAILURES=00000004\n",
+    "sameFourValidCases": true,
+    "failingCases": [
+      0,
+      1
+    ],
+    "passingCases": [
+      2,
+      3
+    ],
+    "checkpoint": "build/nv40-xp-fresh-9371-saturation/checkpoint-native-fresh-9371-saturation-failure.state.bundle.json",
+    "normalShutdown": {
+      "kind": "cold-boot-only disk overlay pair; no RAM checkpoint",
+      "guest": "xp",
+      "memoryMiB": 1024,
+      "vramMiB": 256,
+      "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+      "gameImage": null,
+      "osOverlay": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-fresh-9371-saturation/native-iq-normal-shutdown-os-overlay.bin",
+        "bytes": 89449152,
+        "sha256": "38268e5911576d10ecd91e2d894063d6bff3a12217dbeb8ec8634136e36622ab"
+      },
+      "gameOverlay": null,
+      "normalShutdown": {
+        "command": "stock XP shutdown.exe -s -t 0",
+        "eip": 2154770504,
+        "halted": 1,
+        "display": null,
+        "draws": 5,
+        "failures": 0
+      }
+    },
+    "inference": "The same mismatch on newly installed93.71 excludes the previous OS overlay as the sole cause; shared CPU behavior and native compiler handling remain open."
+  },
+  "writeWatchCorePrecheck": {
+    "file": "build/nv40-write-watch.wasm",
+    "sha256": "def5026e9a55308df1f46f2258e9e183e6dc25606c9c5b11350040eee07c14d8",
+    "validation": "16 interpreter/compiled legacy/PAE/small/large/read-before-write WP privilege cases passed with write watch enabled. Test core is for diagnosis only."
+  }
 }
