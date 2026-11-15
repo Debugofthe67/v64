@@ -2305,3 +2305,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G3/G4 宽FP16纹理布局修复：新增未修改原生D3D9 HAL对照，93.71对RG16F/RGBA16F都发format1f，但逐单元优化寄存器高三位分别为0/3；后者必须读取八字节及四个独立半浮点通道。旧实现混读RG/BA，原生RGBA16F点/线性像素均错；修复后四项API/回读均成功、FAILURES0，驱动机器码逐字相同。新增布局单测先红后绿，原版HDR分段TEX及全NV40真实GPU回归通过。该高位语义来自原版API控制推断，envytools仅证实字段合法范围，未冒称文档已命名。见 `g3-wide-half-float-texture-mode.json`；06原图复测在运行，HDR图像门禁尚未关闭。
 
 - G4 06宽FP16修复后原版四GT固定帧重取及正常关机完成：HDR1/HDR2/GT1/GT2为1225/1428/2095/1139，保持1280×1024、None/Optimal、默认VS/PS3_0。逐张完整BMP、原版保存提示及GPU静止60秒齐全，8068draws零GPU错误。HDR竖纹消失，HDR1/HDR2 scene MAD分别35.18→14.43、52.15→3.33；HDR1仍有明显偏色，不能关闭图像门禁。健康RAM配套1528411500字节状态保留，无损压缩校验后删raw；stock XP正常关机及冷启动磁盘对已验证。见 `g4-06-wide-half-four-fixed-frames.json`；继续排查浮点采样与剩余门禁。
+
+- G3/G4 原生FP32采样修复：扩展官方93.71 HAL探针，R32F原先AAE4红通道为0；format1c的mode4实际是16字节RGBA32F，旧实现误读为4字节。现修正标量通道及宽布局，保留padded scalar区分；六次受支持绘制的Create/Draw/Readback/Lock全成功且像素全正确，原版机器码逐字相同。R16F由CheckDeviceFormat明确NOTAVAILABLE，只记录不称为渲染通过。新单测先红后绿，原版TEX序列及完整NV40真实GPU回归、Closure通过。见 `g3-native-float32-texture-modes.json`；继续重取原版图像，不把探针通过代替G4。

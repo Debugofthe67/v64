@@ -25,7 +25,7 @@ void WINAPI entry(void)
     symbol.raw=library?GetProcAddress(library,"Direct3DCreate9"):0;
     IDirect3D9 *d3d=symbol.call?symbol.call(D3D_SDK_VERSION):0;
     IDirect3DDevice9 *device=0;IDirect3DSurface9 *target=0,*readback=0;
-    IDirect3DPixelShader9 *shader=0;HWND window=0;DWORD failures=0;
+    IDirect3DPixelShader9 *shader=0,*scalar_shader=0;HWND window=0;DWORD failures=0;
     if(!d3d){report("NO_RUNTIME",1);failures++;goto done;}
     window=CreateWindowExA(0,"STATIC","Native float texture control",WS_OVERLAPPEDWINDOW,
         0,0,160,160,0,0,GetModuleHandleA(0),0);
@@ -49,6 +49,11 @@ void WINAPI entry(void)
         0x02000001,0x800f0800,0x80e40000,0xffff};
     hr=IDirect3DDevice9_CreatePixelShader(device,program,&shader);
     report("CREATE_SHADER",hr);if(FAILED(hr)){failures++;goto done;}
+    DWORD scalar_program[sizeof(program)/sizeof(program[0])];
+    for(UINT i=0;i<sizeof(program)/sizeof(program[0]);i++)scalar_program[i]=program[i];
+    scalar_program[13]=0x80000000; /* Replicate sampled R, independent of missing-channel defaults. */
+    hr=IDirect3DDevice9_CreatePixelShader(device,scalar_program,&scalar_shader);
+    report("CREATE_SCALAR_SHADER",hr);if(FAILED(hr)){failures++;goto done;}
     IDirect3DDevice9_SetPixelShader(device,shader);
     IDirect3DDevice9_SetRenderState(device,D3DRS_LIGHTING,FALSE);
     IDirect3DDevice9_SetRenderState(device,D3DRS_CULLMODE,D3DCULL_NONE);
@@ -61,21 +66,30 @@ void WINAPI entry(void)
     struct vertex {float x,y,z,w,u,v;} vertices[3]={{0,0,0,1,.375f,.375f},
         {0,128,0,1,.375f,.375f},{128,0,0,1,.375f,.375f}};
     const WORD values[]={0x3000,0x3400,0x3800,0x3c00}; /* .125,.25,.5,1 */
-    for(UINT format=112;format<=113;format++)
+    const float full_values[]={.125f,.25f,.5f,1};
+    const UINT formats[]={111,112,113,114,116};
+    for(UINT test=0;test<sizeof(formats)/sizeof(formats[0]);test++)
     {
+        UINT format=formats[test],channels=format==113||format==116?4:format==112?2:1;
+        IDirect3DDevice9_SetPixelShader(device,channels==1?scalar_shader:shader);
         IDirect3DTexture9 *texture=0;report("FORMAT",format);
+        hr=IDirect3D9_CheckDeviceFormat(d3d,0,D3DDEVTYPE_HAL,mode.Format,0,D3DRTYPE_TEXTURE,(D3DFORMAT)format);
+        report("TEXTURE_CAPS",hr);
+        if(FAILED(hr)){report("SKIPPED_UNSUPPORTED_FORMAT",format);continue;}
         hr=IDirect3DDevice9_CreateTexture(device,4,4,1,0,(D3DFORMAT)format,D3DPOOL_MANAGED,&texture,0);
         report("CREATE_TEXTURE",hr);if(FAILED(hr)){failures++;continue;}
         D3DLOCKED_RECT locked;hr=IDirect3DTexture9_LockRect(texture,0,&locked,0,0);
         report("LOCK_TEXTURE",hr);
         if(FAILED(hr)){failures++;IDirect3DTexture9_Release(texture);continue;}
         report("SOURCE_PITCH",locked.Pitch);
-        UINT channels=format==113?4:2;
         for(UINT y=0;y<4;y++)for(UINT x=0;x<4;x++)for(UINT c=0;c<channels;c++)
-            *(WORD*)((BYTE*)locked.pBits+y*locked.Pitch+(x*channels+c)*2)=values[c];
+        {
+            if(format>=114)*(float*)((BYTE*)locked.pBits+y*locked.Pitch+(x*channels+c)*4)=full_values[c];
+            else *(WORD*)((BYTE*)locked.pBits+y*locked.Pitch+(x*channels+c)*2)=values[c];
+        }
         IDirect3DTexture9_UnlockRect(texture,0);
         IDirect3DDevice9_SetTexture(device,0,(IDirect3DBaseTexture9*)texture);
-        for(UINT filter=1;filter<=2;filter++)
+        for(UINT filter=1;filter<=(format>=114?1U:2U);filter++)
         {
             report("FILTER",filter);
             IDirect3DDevice9_SetSamplerState(device,0,D3DSAMP_MINFILTER,filter);
@@ -97,14 +111,12 @@ void WINAPI entry(void)
                 else
                 {
                     DWORD pixel=*(DWORD*)((BYTE*)locked.pBits+16*locked.Pitch+16*4);report("PIXEL",pixel);
-                    if(format==113)
+                    DWORD expected=channels==1?0x00202020:0x00204080;
+                    report("EXPECTED_RGB",expected);
+                    for(UINT c=channels==2?1:0;c<3;c++)
                     {
-                        report("EXPECTED_RGB",0x00204080);
-                        for(UINT c=0;c<3;c++)
-                        {
-                            int delta=(int)(pixel>>(c*8)&255)-(int)(0x00204080>>(c*8)&255);
-                            if(delta < -1 || delta > 1)failures++;
-                        }
+                        int delta=(int)(pixel>>(c*8)&255)-(int)(expected>>(c*8)&255);
+                        if(delta < -1 || delta > 1)failures++;
                     }
                     IDirect3DSurface9_UnlockRect(readback);
                 }
@@ -115,6 +127,7 @@ void WINAPI entry(void)
     }
 done:
     report("FAILURES",failures);
+    if(scalar_shader)IDirect3DPixelShader9_Release(scalar_shader);
     if(shader)IDirect3DPixelShader9_Release(shader);
     if(readback)IDirect3DSurface9_Release(readback);
     if(target)IDirect3DSurface9_Release(target);

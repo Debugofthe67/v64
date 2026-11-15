@@ -196,11 +196,11 @@ o.methods.set(0x1A10,0xAAE4);assert.deepEqual([...new Uint16Array(texture.read(t
 for(const [code,bpp,expected] of [[27,16,[0x7FFF3800,0x80000000,0x40400000,0x3F000000]],
     [28,4,[0x7FFF3800,0,0,0x3F800000]]])
 {
-    o.methods.set(0x1A04,0x12029|code<<8);o.methods.set(0x1840,bpp);o.methods.set(0x1A10,0xAA6C);
+    o.methods.set(0x1A04,0x12029|code<<8);o.methods.set(0x1840,bpp);o.methods.set(0x1A10,code===28?0xAAE4:0xAA6C);
     new Uint32Array(vram.buffer,0x2000,4).set([0x7FFF3800,0x80000000,0x40400000,0x3F000000]);
     const surface=texture.describe(o,0);assert.equal(surface.d3d,116);assert.equal(surface.upload_bpp,16);
     assert.deepEqual([...new Uint32Array(texture.read(surface).buffer)],expected,"FP32 storage bits and scalar expansion "+code);
-    o.methods.set(0x1A10,0xAAE4);
+    o.methods.set(0x1A10,code===28?0xAA6C:0xAAE4);
     assert.deepEqual([...new Uint32Array(texture.read(texture.describe(o,0)).buffer)],
         [expected[2],expected[1],expected[0],expected[3]],"FP32 crossbar "+code);
     assert.throws(()=>texture.read({...surface,dma:{...surface.dma,limit:0x2000+bpp-2}}),/limit/);
@@ -208,6 +208,24 @@ for(const [code,bpp,expected] of [[27,16,[0x7FFF3800,0x80000000,0x40400000,0x3F0
     o.methods.set(0x1A14,0x01010000);
 }
 console.log("PASS: FP32 fragment textures preserve raw bits, expand R32F and apply the component crossbar");
+const nativeScalar32={methods:new Map(o.methods)};
+for(const [at,value]of[[0x1A04,0x1BC29],[0x1A10,0xAAE4],[0x1A18,1<<16|1],[0x1A14,0x01014000],[0x1840,64],[0xB00,0x2DC0]])nativeScalar32.methods.set(at,value);
+new Uint32Array(vram.buffer,0x2000,4).set([0x3E000000,0x3E800000,0x3F000000,0x3F800000]);
+assert.equal(new Uint32Array(texture.read(texture.describe(nativeScalar32,0)).buffer)[0],0x3E000000,
+    "original93.71 R32F identity crossbar exposes the scalar in red");
+nativeScalar32.methods.set(0xB00,0x22DC0);
+const nativeWide32=texture.describe(nativeScalar32,0);assert.equal(nativeWide32.bpp,16,
+    "original93.71 format1c mode4 reads four float32 components per texel");
+assert.deepEqual([...new Uint32Array(texture.read(nativeWide32).buffer)],
+    [0x3E000000,0x3E800000,0x3F000000,0x3F800000],"native wide FP32 preserves RGBA storage order");
+const wide32Bits=[0x7FC12345,0x80000000,0x7F800000,0xFF800000];
+new Uint32Array(vram.buffer,0x2000,4).set(wide32Bits);
+assert.deepEqual([...new Uint32Array(texture.read(nativeWide32).buffer)],wide32Bits,
+    "wide FP32 preserves NaN payloads, signed zero and infinities");
+assert.throws(()=>texture.read({...nativeWide32,dma:{...nativeWide32.dma,limit:0x200E}}),/limit/);
+nativeScalar32.methods.set(0x1A14,0x02024000);
+assert.throws(()=>texture.describe(nativeScalar32,0),/FP32 texture filtering/);
+console.log("PASS: native R32F red channel and wide RGBA32F mode, raw payloads and DMA bounds");
 // Nouveau's RG16F (format1f) routes its two half words through the same
 // paired storage lanes as A16L16. Its R/G view then selects X/Y and literal0/1.
 const rg16={methods:new Map([[0x184,0x10],[0x1A00,0xC000],[0x1A04,0x2BF29],

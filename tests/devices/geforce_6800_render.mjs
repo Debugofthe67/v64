@@ -887,7 +887,7 @@ try
         for(const [code,values,expected] of [[27,[2,-1,.5,.25],[0x4000,0xBC00,0x3800,0x3400]],
             [28,[.5],[0x3800,0,0,0x3C00]]])
         {
-            method(0x1A04,0x12029|code<<8);method(0x1A10,0xAA6C);method(0x1A14,0x01010000);
+            method(0x1A04,0x12029|code<<8);method(0x1A10,code===28?0xAAE4:0xAA6C);method(0x1A14,0x01010000);
             method(0x1A18,1<<16|1);method(0x1840,values.length*4);
             vram.set(new Uint8Array(Float32Array.from(values).buffer),0x20000);
             method(0x1808,6);
@@ -896,6 +896,23 @@ try
             assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,4)],expected,"sampled FP32 fragment format "+code);
         }
         console.log("PASS: real WebGPU RGBA32F/R32F fragment textures retain HDR, signed values and scalar zero/one expansion");
+        method(0x1A04,0x1BC29);method(0x1A10,0xAAE4);method(0x1840,64);
+        new Float32Array(vram.buffer,0x20000,4).set([.125,.25,.5,1]);
+        for(const mode of [0,4])
+        {
+            method(0xB00,0x2DC0|mode<<15);
+            const code=mode===0?[0x17008200,0x1C9DC811,0x1C800,0x1C800,
+                0x01400E81,0x1C9C0000,0x1C800,0x1C800]:
+                [0x17008200,0x1C9DC811,0x1C800,0x1C800,0x17008400,0x1C9DC811,0x1C800,0x1C800,
+                 0x17008800,0x1C9DC811,0x1C800,0x1C800,0x01400E81,0x1C9DC800,0x1C800,0x1C800];
+            code.forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));method(0x1808,6);
+            for(const word of new Uint32Array(Float32Array.of(0,0,.5,.5,0,16,.5,.5,16,0,.5,.5).buffer))method(0x1818,word);
+            method(0x1808,0);await engine.backend.wait();assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
+            assert.deepEqual([...new Uint16Array(vram.buffer,0x10000,3)],mode===0?[0x3000,0x3000,0x3000]:[0x3000,0x3400,0x3800],
+                "original93.71 FP32 scalar/wide texture mode "+mode+" and exact native TEX sequence");
+        }
+        method(0xB00,0);
+        console.log("PASS: real WebGPU original R32F red sampling, wide RGBA32F mode and split TEX instructions");
         method(0x208,0x148);method(0x20C,32);method(0x1FC4,0x06144321);method(0x1FF4,(1<<14)|(1<<4));
         [1<<24|3<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800]
             .forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
