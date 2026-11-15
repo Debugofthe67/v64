@@ -1,0 +1,231 @@
+{
+  "stage": "G5 original Win98 81.98 3DMark03 full eleven and normal shutdown",
+  "configuration": {
+    "memoryMiB": 512,
+    "vramMiB": 128,
+    "resolution": [
+      1024,
+      768
+    ],
+    "AA": "None",
+    "filter": "Optimal",
+    "selected": {
+      "game": 4,
+      "CPU": 2,
+      "feature": 5,
+      "sound": 0
+    },
+    "ISAbridge": "problem0/started1",
+    "IDEchildChannels": "Code10 remains; BIOS compatibility path"
+  },
+  "lineage": "Cold 512MiB original run after stale IDE IRQ fix; resumed matching pre-NOP-fault checkpoint with effective XRGB channel correction, then completed original eleven tests. Paired continuation is functional evidence, not uninterrupted performance evidence.",
+  "nativeResults": [
+    {
+      "name": "3DMark Score",
+      "value": "507.000000000",
+      "unit": "3DMarks",
+      "status": "0",
+      "category": "Game Tests"
+    },
+    {
+      "name": "GT1 - Wings of Fury",
+      "value": "4.928189278",
+      "unit": "FPS",
+      "status": "0",
+      "category": "Game Tests"
+    },
+    {
+      "name": "GT2 - Battle of Proxycon",
+      "value": "4.033613682",
+      "unit": "FPS",
+      "status": "0",
+      "category": "Game Tests"
+    },
+    {
+      "name": "GT3 - Troll's Lair",
+      "value": "4.346863270",
+      "unit": "FPS",
+      "status": "0",
+      "category": "Game Tests"
+    },
+    {
+      "name": "GT4 - Mother Nature",
+      "value": "3.088226795",
+      "unit": "FPS",
+      "status": "0",
+      "category": "Game Tests"
+    },
+    {
+      "name": "CPU Score",
+      "value": "24.000000000",
+      "unit": "CPUMarks",
+      "status": "0",
+      "category": "CPU Tests"
+    },
+    {
+      "name": "CPU Test 1",
+      "value": "1.807851315",
+      "unit": "FPS",
+      "status": "0",
+      "category": "CPU Tests"
+    },
+    {
+      "name": "CPU Test 2",
+      "value": "0.587371469",
+      "unit": "FPS",
+      "status": "0",
+      "category": "CPU Tests"
+    },
+    {
+      "name": "Fill Rate (Single-Texturing)",
+      "value": "1332.589308636",
+      "unit": "Texels/s",
+      "status": "0",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "Fill Rate (Multi-Texturing)",
+      "value": "1930.611707126",
+      "unit": "Texels/s",
+      "status": "0",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "Vertex Shader",
+      "value": "1.145737886",
+      "unit": "FPS",
+      "status": "0",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "Pixel Shader 2.0",
+      "value": "17.820962906",
+      "unit": "FPS",
+      "status": "0",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "Ragtroll",
+      "value": "1.008906245",
+      "unit": "FPS",
+      "status": "0",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "No sounds",
+      "value": "-1.000000000",
+      "unit": "FPS",
+      "status": "2",
+      "category": "Sound Tests"
+    },
+    {
+      "name": "24 sounds",
+      "value": "-1.000000000",
+      "unit": "FPS",
+      "status": "2",
+      "category": "Sound Tests"
+    },
+    {
+      "name": "60 sounds",
+      "value": "-1.000000000",
+      "unit": "FPS",
+      "status": "2",
+      "category": "Sound Tests"
+    }
+  ],
+  "validation": {
+    "ZIPCRC": "passed",
+    "positiveSuccessfulRequiredTests": 11,
+    "nativeScore": 507,
+    "GPU": {
+      "batches": 53159,
+      "draws": 277289,
+      "bytes": 108950346984,
+      "readbacks": 73438,
+      "failures": 0,
+      "uploads": 11446,
+      "uploadBytes": 19101383940,
+      "resourceHits": 1217949,
+      "resourceMisses": 476,
+      "resourceEvictions": 188,
+      "coldUploadBytes": 409158916,
+      "resourceBytes": 263485980,
+      "peakResourceBytes": 268420412,
+      "nativeBCUploads": 2322,
+      "nativeBCUploadBytes": 92004168
+    },
+    "PGRAPHfaults": 0,
+    "nonSoftwareFIFOfaults": 0,
+    "originalOSImageUnchanged": true,
+    "originalGameImageUnchanged": true
+  },
+  "shutdown": {
+    "request": "rundll32.exe user.exe,ExitWindows",
+    "CPU": {
+      "eip": "0xFE93D",
+      "halted": 1
+    },
+    "displayMode": null,
+    "matchingBundle": {
+      "status": "complete",
+      "guest": "win98",
+      "vramMiB": 128,
+      "memoryMiB": 512,
+      "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windows98/windows98hdd.img",
+      "gameImage": "/Users/renruisi/Desktop/Code/v86/build/nv40-original03-runtime.img",
+      "state": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-mark03-xrgb-nop-fixed/checkpoint-native-full11-normal-shutdown.state",
+        "bytes": 961117640,
+        "sha256": "7946a71a5518297f4ee9e298df10f64d91350043b3f26523a920be5c4fbb55b0"
+      },
+      "osOverlay": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-mark03-xrgb-nop-fixed/checkpoint-native-full11-normal-shutdown.state.hda-overlay.bin",
+        "bytes": 198800388,
+        "sha256": "d96c34e3c9c57f325afcf2d5e38f0ece2745ce18c38bdc9f6be8fbb7b21ae90f"
+      },
+      "gameOverlay": {
+        "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-mark03-xrgb-nop-fixed/checkpoint-native-full11-normal-shutdown.state.game-overlay.bin",
+        "bytes": 69694,
+        "sha256": "b59d634ae84ada564df35d5174a413cebf711c701f72b0f2c669f0c5028dbebc"
+      }
+    }
+  },
+  "limits": [
+    "Fixed-frame IQ gate remains separate.",
+    "Parallel and checkpoint-resumed scores are not performance acceptance.",
+    "512MiB, IDE IRQ and GPU changes coexist; this does not prove memory size caused older 256MiB DDS corruption.",
+    "IDE child Code10 remains and is not claimed fixed."
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-win98-mark03-xrgb-nop-fixed/NVW03.3DR",
+      "bytes": 3330,
+      "sha256": "f655665d5ec6d4442d555bdb022d4382197d90e22ea1feb620fd68072b42fa52"
+    },
+    {
+      "file": "build/nv40-win98-mark03-xrgb-nop-fixed/native-full11-numeric.json",
+      "bytes": 2210,
+      "sha256": "dd5d938a133f09e00149e04107e260ebf48decb794d23ac61ed22a4d9a0158fd"
+    },
+    {
+      "file": "build/nv40-win98-mark03-xrgb-nop-fixed/result.json",
+      "bytes": 37522,
+      "sha256": "3e989822e0db92765bffa8882a9f4a3da258b138df60bc83cdf1795378f7aebb"
+    },
+    {
+      "file": "build/nv40-win98-mark03-xrgb-nop-fixed/trace.json",
+      "bytes": 6358986,
+      "sha256": "73580e4b9c71227dcfe2fbce3e20a8ed76124deca2171db2eeef21a99aa26df4"
+    },
+    {
+      "file": "build/nv40-win98-mark03-xrgb-nop-fixed/capture-0161.png",
+      "bytes": 38331,
+      "sha256": "3ce282caf530e0a8eec0aa020a3ec717ecd96e0f9f21f90e075972d1fa7e915e"
+    },
+    {
+      "file": "build/nv40-win98-mark03-xrgb-nop-fixed/checkpoint-native-full11-normal-shutdown.state.bundle.json",
+      "bytes": 1070,
+      "sha256": "fef99061674d13185243934cc68d0e852b053bf37ba5ce441db3924ce757b90a"
+    }
+  ]
+}

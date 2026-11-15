@@ -2243,3 +2243,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 压缩检查点直接恢复：原始 RAM 缺失时，有界解码同名 `.state.zst` 到内存，按原 bundle 校验解压大小/SHA、磁盘 overlay 和客体配置；原始 RAM 存在仍优先验证原文件。截断、错哈希、错大小、超限和缺少 Node zstd 支持的回归通过。真实 native06 开跑前 GUI 已从 650667581-byte 压缩包恢复 1464808072-byte RAM，驱动 started1/problem0，无临时展开文件；见 `g6-compressed-checkpoint-restore.json`。
 
 - G4 05 参照固定帧：原版程序经 D3D9 proxy 保存全部八张要求的 IQ 图（GT1/2/3 为 480/897/1630，其余五项 frame1），1024×768/None/Optimal/VS3/PS3；逐次原版成功提示及60秒 GPU静止核对通过。全图对比旧 native：fillrate 两张逐字节一致，VS simple max1，但 GT1 MAD107.22、GT2 43.74、GT3 74.78、PS16.85；图像门禁未通过，需用最新 XRGB 修复重测定位。参照导出临时块已删除，见 `g4-05-proxy-fixed-frame-reference.json`。
+
+- G5 Win98 81.98 原版03完整十一项完成：512 MiB/128 MiB VRAM、1024×768/None/Optimal，冷跑配套状态在 XRGB/NOP 修复后继续，原版保存 NVW03.3DR；ZIP CRC/XML 确认4 GT、2 CPU、5 feature均正数/status0，声音三项为不支持。续跑277289 draws，零 GPU/PGRAPH/非软件FIFO错误；原版 ExitWindows 正常关机至 BIOS FE93D/HLT1/display=null，成套保存后退出，原盘未变。见 `g5-win98-8198-03-full-eleven.json`。并行/续跑分数不作性能验收；IDE子通道Code10和图像门禁仍独立开放，不将512 MiB视为旧256 MiB损坏的已证明原因。
