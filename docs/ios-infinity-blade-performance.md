@@ -1,5 +1,24 @@
 # Infinity Blade 安装与帧率验证
 
+## CPSID 核心的桥上 90 帧采样（2026-11-15）
+
+回到默认 Chrome 参数与 CPSID 核心，重新克隆配对主副本，预热 8 帧，对后续
+90 帧同时采样 CPU Worker 和主线程。rate 1、持续唤醒、discard 增量 0。
+窗口严格落在已验证的 180 帧动态战斗范围；带 profiler 的时间不作为 FPS 对照。
+实际读取 JIT 开关确认 `a64_step_stats=0`、trace=0，未把逐指令计数混入采样。
+
+CPU Worker 包含 `run_machine_core` 约 87.7%、pages::run 75.6%、解释器 15.2%、
+page access 8.8%、IOP 8.1%、A32 helper 6.6%；now 自身约 5.3%。比例有嵌套，
+不能相加。主线程约 90.2% 空闲，仍以模拟 CPU 路径为主要排查方向，未量化
+GPU 硬件利用率。原始样本为 `golem-cpsid-90.cpuprofile` 及主线程/窗口 JSON。
+
+另在暂停后启用统计，单独运行 30 帧，再关闭统计。T32 聚合桶 op40/sub9
+约 124.7 万采样估算计数，最后记录 `0xe89c1021`；step_key 会合并不同编码，
+这不是该单个字的精确次数，不能仅凭它归因到某个 LDM 或 PLD。下一步需精确
+字采样。单独诊断结束图仍为 HP 460、敌人 115、盾 8、无教学覆盖。
+本次恢复后合计收到 43 个音频输入、3,121,920 decoded samples、6,299,136 PCM
+bytes，failures=0、errors=[]；不把总计当成单独 90 帧的增量。
+
 ## Wasm 分层编译诊断：不强制 TurboFan（2026-11-15）
 
 用本机 Chrome 的 V8 帮助及真实编译日志确认支持 `--no-liftoff`，在隔离测试
