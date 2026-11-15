@@ -1,7 +1,7 @@
 {
   "stage": "G6 native UI helper delivery through cold-boot IDE tools disk",
   "status": "Original Win98 03 native helper actions and first IQ save verified; remaining IQ sequence running",
-  "implementation": "NV_UI_BINARY copies a bounded MZ helper into the generated IDE tools disk as NVUI.EXE before cold boot. Paired RAM restore rejects this option, retaining its matching disk state.",
+  "implementation": "The existing NV_UI_BINARY IDE tools-disk delivery now rejects paired RAM restore and validates a 64..65536-byte MZ executable. Duplicate preparation was removed; restored RAM must retain its matching tools disk.",
   "configuration": {
     "guest": "Win98 SE",
     "driver": "81.98",
