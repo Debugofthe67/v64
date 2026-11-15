@@ -2339,3 +2339,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 配套overlay无损归档及直接恢复完成：宿主保护在06四图完成后实际安全暂停；新增逻辑.bin→.bin.zst（含显式.zst）加载，按原始解压字节及manifest精确校验，RAM/OS/game都验证后才应用扇区/启动客体，不生成raw副本。边界、损坏、错扇区、双磁盘归档及raw优先测试通过；真实XP从RAM+OS双zstd恢复到默认六项主界面且GPU0故障。117份overlay的18,910,046,616原字节逐份解压SHA核对后保留为8,573,065,796归档字节，释放10,336,980,820字节；原盘/数据未删，见 `g6-compressed-overlay-restore.json`。
 
 - G6 原生窗口关闭工具补齐：恢复后键盘退出未能证明主窗口关闭；新增只接受真实可见/启用/本benchmark进程顶层窗口的 `/close`，走正常WM_CLOSE并保留原应用确认处理，子窗口和禁用父链保护保持。严格C构建通过；XP06实际返回ACTION_RESULT0，原版launcher记录EXIT_CODE0，未强制终止进程；Run就绪等待设15秒，见 `g6-native-benchmark-window-close.json`。
+
+- G4 06原生七feature图像与生命周期完成：原版CLI相对结果文件、固定帧率模式下保留有界连续帧；PS/两VS的Frame3/Time2、Perlin的Frame1/Time2及较晚粒子Frame91/Time9.19均按原版HUD读取，填充率无HUD须以六帧相位与代理对比，不以FPS推造时间。粒子越界目标未计成功，记录249次实际呈现和正常退出后前移取样。累计50409draw/GPU0故障；原生probe started/problem0、真实桌面开始菜单、stock XP正常关机、冷磁盘对和原盘未变验证完成。健康RAM1547134812字节无损归档673102984字节，见 `g4-06-native-seven-feature-frames.json`；代理内容/相位对比仍继续。

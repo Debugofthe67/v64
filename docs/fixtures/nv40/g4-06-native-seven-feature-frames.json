@@ -1,0 +1,174 @@
+{
+  "stage": "G4 original06 native seven feature capture/lifecycle",
+  "status": "Native captures, driver/desktop/normal shutdown complete; proxy phase/time/content comparison remains open",
+  "source": "build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.bundle.json",
+  "driver": "Original XP93.71 D3D9 HAL, CPU808c5fc9 release, normal clock, RAM1024/VRAM256",
+  "method": "Original documented per-test CLI and fixedfps modes, nosplash/nosysteminfo/noscreens, relative result filenames. Presented authoritative VRAM copied after native GPU completion; bounded six/four/eight-frame series. No benchmark, GPU program, clock or watchdog patch.",
+  "cases": [
+    {
+      "case": "fillrate1",
+      "captureTag": "fillrate1_f30_t10",
+      "originalFixedFPSArgument": 30,
+      "selectedPresentOrdinal": 301,
+      "observedHUDFrame": null,
+      "observedHUDTime": null,
+      "artifact": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-present-301.bmp",
+      "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36",
+      "sequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-fillrate1_f30_t10-presents.json",
+      "sequenceMetadataSHA256": "fe5c463706a64ef9eed1e2fae8e3d469b784da9e353d86fa93980d028daab0fc",
+      "sequenceFrames": 6,
+      "qualification": "No HUD in fill-rate images; all six phases will be compared with proxy."
+    },
+    {
+      "case": "fillrate2",
+      "captureTag": "fillrate2_f30_t10",
+      "originalFixedFPSArgument": 30,
+      "selectedPresentOrdinal": 301,
+      "observedHUDFrame": null,
+      "observedHUDTime": null,
+      "artifact": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-present-301.bmp",
+      "sha256": "7bce56ce91852541d86a8d419051a7802f3e8e832fc2346dc549831457af2d36",
+      "sequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-fillrate2_f30_t10-presents.json",
+      "sequenceMetadataSHA256": "895e5bd8afc800b73b2ac752705e2303f363d5438ca517edf48e09fb6adeac94",
+      "sequenceFrames": 6,
+      "qualification": "No HUD in fill-rate images; all six phases will be compared with proxy."
+    },
+    {
+      "case": "ps",
+      "captureTag": "ps",
+      "originalFixedFPSArgument": 1,
+      "selectedPresentOrdinal": 3,
+      "observedHUDFrame": 3,
+      "observedHUDTime": "0:02.00",
+      "artifact": "build/nv40-xp-mark06-feature-wait15/feature-ps-present-03.bmp",
+      "sha256": "8b78f81814609c50a52ec76486abcbee35822e83ea41a70f191ccada3374bc17",
+      "sequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-ps-presents.json",
+      "sequenceMetadataSHA256": "2fb619fec392c06f54a9adcd4e4eeb4868a82716ecbb281b98fb3c2a645dc650",
+      "sequenceFrames": 8,
+      "qualification": "Actual original HUD frame/time read from captured image; no assumption that every test advances by1/FPS."
+    },
+    {
+      "case": "vssimple",
+      "captureTag": "vssimple",
+      "originalFixedFPSArgument": 1,
+      "selectedPresentOrdinal": 3,
+      "observedHUDFrame": 3,
+      "observedHUDTime": "0:02.00",
+      "artifact": "build/nv40-xp-mark06-feature-wait15/feature-vssimple-present-03.bmp",
+      "sha256": "ef2cbae1124121c5a67e14635afa5224731743ec15f62b9dd1d55244f2e66b59",
+      "sequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-vssimple-presents.json",
+      "sequenceMetadataSHA256": "33abef43c6e3b7bba2978ef2096f71d45059887e23a0543f4eb59b082bcea119",
+      "sequenceFrames": 8,
+      "qualification": "Actual original HUD frame/time read from captured image; no assumption that every test advances by1/FPS."
+    },
+    {
+      "case": "vscomplex",
+      "captureTag": "vscomplex",
+      "originalFixedFPSArgument": 1,
+      "selectedPresentOrdinal": 3,
+      "observedHUDFrame": 3,
+      "observedHUDTime": "0:02.00",
+      "artifact": "build/nv40-xp-mark06-feature-wait15/feature-vscomplex-present-03.bmp",
+      "sha256": "b1a69c9f49f47fd4237198c874893c6070d6cb2ac537ea9f824aa06b33eb3bb1",
+      "sequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-vscomplex-presents.json",
+      "sequenceMetadataSHA256": "c878d31c69b748da7f8cb6f973505b3a6617aea70d83e701741873f8cd650523",
+      "sequenceFrames": 4,
+      "qualification": "Actual original HUD frame/time read from captured image; no assumption that every test advances by1/FPS."
+    },
+    {
+      "case": "shaderparticle",
+      "captureTag": "shaderparticle_f30_mid",
+      "originalFixedFPSArgument": 30,
+      "selectedPresentOrdinal": 91,
+      "observedHUDFrame": 91,
+      "observedHUDTime": "0:09.19",
+      "artifact": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-present-91.bmp",
+      "sha256": "b0505b327c3705c7094af52e9165ae934d031a844384701d90bac1e2028cfa16",
+      "sequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-shaderparticle_f30_mid-presents.json",
+      "sequenceMetadataSHA256": "0e4949b719b0cb47bb62e3d71bf9c2af5864061a8b33738d1539f1dc78aa7068",
+      "sequenceFrames": 6,
+      "qualification": "Actual original HUD frame/time read from captured image; no assumption that every test advances by1/FPS."
+    },
+    {
+      "case": "perlinnoise",
+      "captureTag": "perlinnoise",
+      "originalFixedFPSArgument": 1,
+      "selectedPresentOrdinal": 1,
+      "observedHUDFrame": 1,
+      "observedHUDTime": "0:02.00",
+      "artifact": "build/nv40-xp-mark06-feature-wait15/feature-perlinnoise-present-01.bmp",
+      "sha256": "08412e78183dcdf7237b1c43a49ed5b2f2629b9467a51eabbcc472efa521bf84",
+      "sequenceMetadata": "build/nv40-xp-mark06-feature-wait15/feature-perlinnoise-presents.json",
+      "sequenceMetadataSHA256": "150e6ede18bf1eaa3128f0022412d4dedf9e0784eba69e7a94037675dd2828ef",
+      "sequenceFrames": 4,
+      "qualification": "Actual original HUD frame/time read from captured image; no assumption that every test advances by1/FPS."
+    }
+  ],
+  "calibration": {
+    "absoluteResultFilename": "Two commands exited0 with zero graphics; relative result name as in original help starts rendering. Zero draws were not counted as a pass.",
+    "earlyParticleHUD": "The initial four FPS1 particles frames render a nonempty particle cloud but HUD is partly entering the screen. Later frames selected instead.",
+    "unavailableTarget": "ShaderParticle FPS30 attempt naturally exited0 after249 observed scene presents, before requested299..304. Preserved status/exit log; target moved to89..94.",
+    "originalHelp": "build/nv40-06-original-help/3dmarkusage.htm"
+  },
+  "captureValidation": "Synthetic known RGB top/bottom and padded pitch check preserves original10 releases, captures bounded8, verifies BMP orientation/channel order; actual GPU/image/header/frame stamps separately checked.",
+  "desktop": {
+    "image": "build/nv40-xp-mark06-feature-wait15/native-seven-features-desktop-start-menu.png",
+    "metadata": "build/nv40-xp-mark06-feature-wait15/native-feature-desktop-return.json",
+    "viewedActualStartMenu": true
+  },
+  "driverProbe": {
+    "file": "build/nv40-xp-mark06-feature-wait15/native-feature-probe-result.txt",
+    "exactEND": true,
+    "problem": 0,
+    "started": 1,
+    "service": "nv"
+  },
+  "normalShutdown": {
+    "kind": "cold-boot-only disk overlay pair; no RAM checkpoint",
+    "guest": "xp",
+    "memoryMiB": 1024,
+    "vramMiB": 256,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark06.img",
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-feature-wait15/native-iq-normal-shutdown-os-overlay.bin",
+      "bytes": 223205124,
+      "sha256": "56901893f940c2b0790f8ff3c0928deb989b381b3d9a7c6036957154f92c5e55"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-feature-wait15/native-iq-normal-shutdown-game-overlay.bin",
+      "bytes": 67630,
+      "sha256": "dd7b0f75afaa13145f25c7e1dad73c649535e316d9006549cf445f87a9cbfbb6"
+    },
+    "normalShutdown": {
+      "command": "stock XP shutdown.exe -s -t 0",
+      "eip": 2154770504,
+      "halted": 1,
+      "display": null,
+      "draws": 50409,
+      "failures": 0
+    }
+  },
+  "result": {
+    "status": "INITIALIZED",
+    "error": null,
+    "imageUnchanged": true,
+    "gameImageUnchanged": true
+  },
+  "totalDraws": 50409,
+  "gpuFailures": 0,
+  "pairedCheckpoint": "build/nv40-xp-mark06-feature-wait15/checkpoint-native-seven-features-desktop-return.state.bundle.json",
+  "archive": {
+    "original": "build/nv40-xp-mark06-feature-wait15/checkpoint-native-seven-features-desktop-return.state",
+    "archive": "build/nv40-xp-mark06-feature-wait15/checkpoint-native-seven-features-desktop-return.state.zst",
+    "originalBytes": 1547134812,
+    "archiveBytes": 673102984,
+    "sha256": "d9312c6badef1ba451fb8a40b90a24f66ba4446f8b6c6d9c7b556ca5793e9c2f",
+    "restore": "zstd -d build/nv40-xp-mark06-feature-wait15/checkpoint-native-seven-features-desktop-return.state.zst -o build/nv40-xp-mark06-feature-wait15/checkpoint-native-seven-features-desktop-return.state"
+  },
+  "limits": [
+    "Image-only fixed-rate captures do not validate default benchmark scores or physical hardware FPS. Earlier complete default6 and feature7/batch6 successful projects remain the functional result evidence.",
+    "HUD elapsed time and frame count are recorded as actually displayed; no FPS-derived timestamp is substituted.",
+    "Proxy reference comparison must complete before accepting this image gate."
+  ]
+}
