@@ -1,0 +1,55 @@
+{
+  "stage": "G6 native readback and explicit preparation of XP idle policy",
+  "default": "Read-only SystemParametersInfo/GetActivePwrScheme/ReadPwrScheme query.",
+  "apply": "Explicit /disable-idle uses ordinary SPI_SETSCREENSAVEACTIVE and SetActivePwrScheme to disable screen saving, display timeouts, idle standby and S4 idle timeouts on AC/DC. Other scheme fields are read and preserved.",
+  "originalEvidence": {
+    "before": "NVENV BEGIN\r\nREQUEST_TICK=0x00207ea4\r\nSCREEN_SAVER_QUERY=0x00000001\r\nSCREEN_SAVER_ACTIVE=0x00000001\r\nSCREEN_SAVER_TIMEOUT=0x00000258\r\nPOWER_QUERY=0x00000001\r\nSCHEME=0x00000000\r\nDISPLAY_AC=0x000004b0\r\nDISPLAY_DC=0x0000012c\r\nIDLE_AC=0x00000000\r\nIDLE_DC=0x0000012c\r\nHIBERNATE_AC=0x00000000\r\nHIBERNATE_DC=0x00000384\r\nRESULT=0x00000000\r\nNVENV END\r\n",
+    "after": "NVENV BEGIN\r\nREQUEST_TICK=0x00213c2b\r\nSCREEN_SAVER_QUERY=0x00000001\r\nSCREEN_SAVER_ACTIVE=0x00000001\r\nSCREEN_SAVER_TIMEOUT=0x00000258\r\nPOWER_QUERY=0x00000001\r\nSCHEME=0x00000000\r\nDISPLAY_AC=0x000004b0\r\nDISPLAY_DC=0x0000012c\r\nIDLE_AC=0x00000000\r\nIDLE_DC=0x0000012c\r\nHIBERNATE_AC=0x00000000\r\nHIBERNATE_DC=0x00000384\r\nAPPLY_DISABLE_IDLE\r\nSCREEN_SAVER_SET=0x00000001\r\nPOWER_SET=0x00000001\r\nAFTER\r\nSCREEN_SAVER_QUERY=0x00000001\r\nSCREEN_SAVER_ACTIVE=0x00000000\r\nSCREEN_SAVER_TIMEOUT=0x00000258\r\nPOWER_QUERY=0x00000001\r\nSCHEME=0x00000000\r\nDISPLAY_AC=0x00000000\r\nDISPLAY_DC=0x00000000\r\nIDLE_AC=0x00000000\r\nIDLE_DC=0x00000000\r\nHIBERNATE_AC=0x00000000\r\nHIBERNATE_DC=0x00000000\r\nRESULT=0x00000000\r\nNVENV END\r\n",
+    "screensaverObserved": "Windows XP logo; one Shift wakes back to the original GT2 saved-frame success dialog.",
+    "originalGT2": "897, 1024x768, None AA, Optimal, VS/PS3_0; original frame save completed before observation."
+  },
+  "validation": [
+    "Both default D:\\NVENV.TXT and compile-time A:/NVUI.TXT builds compile with strict warnings and no CRT.",
+    "Real XP main-thread proxy guest reads SCREEN_SAVER_ACTIVE1, timeout600 and DISPLAY_AC1200.",
+    "Explicit application returns SCREEN_SAVER_SET1/POWER_SET1 and independently reads SCREEN_SAVER_ACTIVE0 with all six idle timeouts0.",
+    "A 1.44MiB RAM tools floppy provides bounded output; original OS/game images are served read-only."
+  ],
+  "limits": "This confirms and prepares the proxy environment. It does not establish that idle policy caused the separate native06 0x100000EA failure. No clock, graphics or driver hooks.",
+  "evidence": [
+    {
+      "file": "tests/devices/geforce_environment.c",
+      "bytes": 3259,
+      "sha256": "fabc8b59574abaf8ff25f5ab74daa8f46fc8cffa92c3585ca3090c64a31a4966"
+    },
+    {
+      "file": "build/nv40-env-native.exe",
+      "bytes": 9888,
+      "sha256": "45250d95e4bb21df3db7e5b2ed8d00787f9e75513e1c3dc7de3b585ca9d4c14d"
+    },
+    {
+      "file": "build/nv40-env-floppy.exe",
+      "bytes": 9888,
+      "sha256": "0cdb6ac01549b9e872672eebbedc8426b174a75822134eaf688aefd21b102cab"
+    },
+    {
+      "file": "build/nv40-proxy05-fixed-iq-local/native-idle-before.json",
+      "bytes": 390,
+      "sha256": "733b55673fa351f374b3cc5ce02982a816b49481838c4e2d81db58411fb63325"
+    },
+    {
+      "file": "build/nv40-proxy05-fixed-iq-local/native-idle-disabled.json",
+      "bytes": 773,
+      "sha256": "798de2935005edcc85f1c0ba14e5e3706318f2ca941575feccaefbf6a42d6cbd"
+    },
+    {
+      "file": "build/nv40-proxy05-fixed-iq-local/frame-00087.png",
+      "bytes": 33513,
+      "sha256": "3e2e706f3d9617201103890049c7068331724850c12861ab3317e7f05cb15165"
+    },
+    {
+      "file": "build/nv40-proxy05-fixed-iq-local/frame-00100.png",
+      "bytes": 381865,
+      "sha256": "803c90ba33a2ad223f11656c491b768f117f1dbade1995ac7ec381099ae7535c"
+    }
+  ]
+}

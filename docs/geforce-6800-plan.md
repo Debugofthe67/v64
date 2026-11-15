@@ -2235,3 +2235,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 XP05 正常关机补齐：全16完成后的健康 IQ-ready 血缘继续，经原生按钮关闭取图窗口，以 stock shutdown.exe 正常关闭；先见 Saving your settings，后稳定在 806F3048/HLT1/display=null、clock normal。保存完成的 RAM/OS/game 配套 bundle 后停止，原盘 size/mtime 未变；RAM 无损压缩校验后删除解压副本。原全16结果 SHA 仍一致，见 `g4-xp-9371-05-full16-normal-shutdown.json`；代理固定帧与最终性能继续。
 
 - G4 RGBA8 目标补齐：既有 RT color15/16 描述现在接通 X8B8G8R8/A8B8G8R8；X 格式 alpha mask 按无 alpha 处理。真实 GPU 回归暴露共享执行器缺失四字节读回布局，现补齐 RGBA 打包、X 不透明/显式 padding 保留。两个 XRGB 字节顺序在单批两次绘制精确输出 BGRA[191,128,64,255]/RGBA[64,128,191,255]，带 alpha 的 A8B8G8R8 同一混合输出[16,32,48,255]。旧实现 mask/目标拒绝/读回布局分别先红，完整真实 GPU、共享 glbridge、state/graph 与 Closure 均绿，见 `g4-rgba8-native-target-readback.json`；仅独立 FIFO/GPU 验证，不额外宣称原版整套或图像门禁通过。
+
+- G6 原生空闲策略读回：新增只读默认的 XP 环境 helper，可显式 /disable-idle 调用正式 SPI/电源方案 API。参照 XP 的 Windows 标志确为屏保，Shift 唤醒后返回 GT2 原版保存成功；API确认屏保 active1/600秒、显示AC1200秒。显式设置后独立读回 active0，以及 AC/DC 显示、待机、S4 空闲超时全0；其余电源方案字段保留。严格 C 构建及真实 XP 验证通过，见 `g6-native-xp-idle-policy.json`。这不证明另一次 native06 0x100000EA 的原因，继续查停滞线程。
