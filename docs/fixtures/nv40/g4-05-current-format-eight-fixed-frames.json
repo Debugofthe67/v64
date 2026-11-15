@@ -665,5 +665,19 @@
       "failures": 0
     }
   },
-  "shutdownScreen": "build/nv40-xp-mark05-current-normal-shutdown/capture-0003.png"
+  "shutdownScreen": "build/nv40-xp-mark05-current-normal-shutdown/capture-0003.png",
+  "referenceReview": {
+    "status": "Original fixed-frame content accepted with recorded local pixel residuals",
+    "viewedPairs": [
+      "build/nv40-05-current-GT1-reference.png",
+      "build/nv40-05-current-GT2-reference.png",
+      "build/nv40-05-current-GT3-reference.png",
+      "build/nv40-05-current-PS-reference.png",
+      "build/nv40-05-current-vssimple-reference.png",
+      "build/nv40-05-current-vscomplex-reference.png"
+    ],
+    "exactFillrateScenes": true,
+    "finding": "GT1/GT2 objects, shadows and lighting correspond. GT3 balloon roof/material now corresponds after source-precision fix; the water retains higher-frequency pattern differences. PS rocky lighting and both VS meshes/foliage correspond. All original resolution/frame settings and full-image metrics remain unchanged.",
+    "qualification": "The API reference and decoded native driver programs are different arithmetic/raster paths. The observed water/detail/edge residual is retained, without claiming a uniquely proven numerical cause or physical NV40 bit identity."
+  }
 }
