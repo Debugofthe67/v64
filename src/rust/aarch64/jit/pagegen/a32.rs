@@ -34,6 +34,8 @@ pub struct Inst32 {
 #[derive(Clone, Copy)]
 pub enum Kind {
     Nop,
+    /// PL1 CPSID without a mode change: only sets A/I/F mask bits.
+    MaskInterrupts { mask: u32 },
     /// the interpreter's execute (pages::a32_page_helper)
     Helper,
     /// A known synchronization helper's explicit GPR operands. It still
@@ -290,6 +292,7 @@ impl Kind {
             Self::FpHelper
             | Self::ItFpHelper { .. }
             | Self::Nop
+            | Self::MaskInterrupts { .. }
             | Self::It
             | Self::Neon { .. }
             | Self::FpArith { .. }
@@ -367,6 +370,7 @@ pub enum NeonForm {
 pub fn kind_name(kind: &Kind) -> String {
     match kind {
         Kind::Nop => "nop".into(),
+        Kind::MaskInterrupts { .. } => "cpsid".into(),
         Kind::Helper => "helper".into(),
         Kind::RegisterHelper { .. } => "register-helper".into(),
         Kind::FpHelper => "fphelper".into(),
@@ -1091,6 +1095,19 @@ fn pl1_steps(word: u32, length: u8, thumb: bool) -> bool {
 
 fn sign_extend(value: u32, bits: u32) -> i64 {
     ((value << (32 - bits)) as i32 >> (32 - bits)) as i64
+}
+
+/// Only CPSID A/I/F, with no mode change. CPSIE must still leave the
+/// activation so a newly unmasked pending interrupt is checked immediately.
+fn interrupt_mask(word: u32, length: u8, thumb: bool) -> Option<Kind> {
+    let mask = if !thumb && word & 0xFFFF_FE3F == 0xF10C_0000 {
+        word & 0x1C0
+    }
+    else if thumb && length == 2 && word & 0xFFF8 == 0xB670 {
+        (word & 7) << 6
+    }
+    else { return None; };
+    (mask != 0).then_some(Kind::MaskInterrupts { mask })
 }
 
 /// Registers read or written by validated exclusive accesses and barriers.
@@ -2567,6 +2584,11 @@ pub(super) fn discover(
         let mut kind = if thumb { t32(word, length, o) } else { a32(word, o) };
         if env.el1 && pl1_steps(word, length, thumb) {
             kind = None;
+        }
+        if env.el1 && crate::aarch64::cpu::a32_only() {
+            if let Some(mask) = interrupt_mask(word, length, thumb) {
+                kind = Some(mask);
+            }
         }
         // (an instruction of an IT block whose instructions are all native)
         if let Some(&itstate) = native_it.borrow().get(&o) {
@@ -4425,6 +4447,13 @@ impl Emitter<'_> {
     pub(super) fn instruction32(&mut self, offset: u16, i: &Inst32, index: &BTreeMap<u16, usize>) {
         self.a32_itstate = i.itstate;
         match i.kind {
+            Kind::MaskInterrupts { mask } => {
+                self.c32(state::pstate as i32);
+                self.load32(state::pstate as u32);
+                self.c32(mask as i32);
+                self.b.or_i32();
+                self.b.store_aligned_i32(0);
+            },
             Kind::Data {
                 op,
                 s,
