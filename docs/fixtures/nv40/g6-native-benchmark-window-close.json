@@ -12,7 +12,8 @@
     "action": "/close 0x000500c6",
     "actionResult": 0,
     "originalProcessExitCode": 0,
-    "GPUdrawsBeforeFeatureLaunch": 0
+    "GPUdrawsBeforeFeatureLaunch": 0,
+    "immutableExitLog": "build/nv40-xp-mark06-feature-wait15/normal-main-close-launcher.txt"
   },
   "strictBuild": "MinGW -Os -nostdlib -Wall -Wextra -Werror, GUI subsystem",
   "artifacts": {
@@ -28,7 +29,7 @@
       "bytes": 322,
       "sha256": "ea12781d791d47e720db23d77e6f7639250431d8a7da9700b049a1657128ef65"
     },
-    "build/nv40-xp-mark06-feature-wait15/NVLAUNCH.TXT": {
+    "build/nv40-xp-mark06-feature-wait15/normal-main-close-launcher.txt": {
       "bytes": 179,
       "sha256": "b5f353e6b56dccc219a539db21007dc1df267ff9973689c72a20317f1e967659"
     }
