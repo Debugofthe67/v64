@@ -2314,3 +2314,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 原生 UI helper 的 IDE 冷启动交付：沿用 NV_UI_BINARY 的 IDE 交付，补齐64..65536字节 MZ 检查且拒绝与 RAM restore 混用；清除重复准备。Win98 81.98 以 D:\NVUI.EXE 成功读取原版控件并用真实鼠标完成 Tip/IQ/Run，GT1 frame1038 已有完整原图、原版保存成功和 GPU 静止60秒；其 SHA 与修复后 XP 原图相同。严格 GUI helper 构建及 harness 语法检查通过，见 `g6-native-ide-ui-delivery.json`。其余八图在继续，不据工具交付成功推断先前软盘/黑屏诊断的根因。
 
 - G7 文档状态同步：gpu-devices、驱动安装说明和偏差表已链接已完成的 Win98 03 十一项、XP06 补充十三项及正常关机证据，去掉这些功能覆盖仍未完成的过期表述；明确九图复测、HDR1偏色、06 feature画面和最终独立profile仍开放。历史305秒测量保留并标明早于后续成功，不将此同步当作G7完成。
+
+- G4 FP32修复后06四张原版IQ及正常关机复核：四图逐项保存成功、GPU静止60秒和完整BMP验证，8042draws零GPU错误；1521183076字节健康RAM无损压缩校验为642168925字节并删除raw，stock XP正常关机及冷磁盘对已导出。HDR1 scene MAD15.3424/max157仍明显偏绿，未验收；新材质记录与原生格式探针进一步指出UNORM16 mode3宽布局，继续修复，不把FP32探针通过当作HDR全图通过。见 `g4-06-float32-four-fixed-frames.json`。
