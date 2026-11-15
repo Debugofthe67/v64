@@ -1,5 +1,24 @@
 # Infinity Blade 安装与帧率验证
 
+## NZCV 局部缓存：没有实际收益，撤回（2026-11-15）
+
+尝试将 A32/T32 的 NZCV 保存在局部变量，在一般 helper 前后与退出时同步，
+纯 FP helper 前同步以支持谓词，VMRS APSR 直接更新局部标志。新增
+`qflagsync.a32.S`，覆盖热条件 FP/helper、MSR、VMRS、ADC、跨页链、权限错误
+重试的 SPSR、FP 禁用后的真/假谓词。最终 9 出口在主/fallback/原控制核心均与
+QEMU 一致；完整 29 组 page、fallback 九组、系统/MMU/GIC、CPSID oracle、
+A32 seed 5538 的 40×100×32、A64 同 seed 的 20×120×64 随机程序通过。
+
+初版未对齐错误探针在控制和候选均出现已有 ESR 优先级差异；原日志保存在
+`flags-unaligned-existing.log`。最终用对齐的权限错误独立检查标志同步，没有
+更改异常优先级实现，也没有把初版失败当成通过。
+
+桥上相同配对检查点，预热 8/测量 180 帧，A/B/B/A 为
+6.400 / 6.429 / 6.438 / 6.489 FPS，renderer CPU 秒/帧为
+0.24920 / 0.25130 / 0.25380 / 0.24899。候选没有 FPS 收益且 CPU 用时略增，
+撤回两份运行时文件的改动，仅保留独立测试。默认主/fallback 仍为 CPSID 核心。
+本地证据为 `flags-*` 与 `compare-flags-golem.log`；无游戏资源进入仓库。
+
 ## 已保留：PL1 CPSID 直接设置掩码（2026-11-15）
 
 高频 ARM `0xf10c0080` 是 CPSID I（关中断）。仅为 arm32 PL1、无模式切换、
