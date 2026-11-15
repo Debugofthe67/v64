@@ -2271,3 +2271,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 测试回读掩码热点：40秒native06采样的WebSocket接收回调自身5.433秒；掩码改为按实际mask字节组成的对齐DWORD异或，非对齐前缀/尾部及小消息仍逐字节。1920个独立oracle边界组合、所有包头拆分/fragment/控制/4MiB+7/readback归属及完整真实GPU回归通过。相同parser、16个4MiB+7分块消息七轮CPU中位72.198→26.366ms，数据全同；见 `g6-word-gpu-test-unmask.json`，仅测试传输且不作FPS/看门狗修复声明。
 
 - G6 诊断磁盘写入：GT3像素历史已有约72MB，旧helper在没有新事件的后续每批完成仍整文件重写。现仅事件追加后写出，最终JSON内容/有界事件及GPU完成语义不变，语法检查通过；见 `g6-pixel-diagnostic-changed-writes.json`。现场只读观察器同时改为有界追加，释放先前大对象；过期中间状态/关闭安装缓存已按清单清理，2000旧基线706076700bytes无损压缩校验为183330573bytes，原盘不变。
+
+- G4 XP06补充十三项完成：原版93.71在1280×1024/None/Optimal、SM2/CPU/HDR各0/2、feature7/7、batch6/6后返回原版结果窗口，经Save As保存NV06B.3DR（SHA1c1e87bceaf6e7e1bfe665ed80dc1e809c92d408b86b452822e5a663f89f5117）。ZIP CRC/XML逐项确认7feature+6batch均正数/status0，单位base/exp保留；最后续跑497668draw、GPU/PGRAPH/非软件FIFO错误0，原default6的NV06N SHA不变。仅从首错前配套健康状态续跑，未修补失败RAM、驱动、客体时钟或看门狗；前轮真实100000EA证据保留，不能把成功孤立归因某一优化。见 `g4-xp-9371-06-feature7-batch6.json`；原生所有要求测试的功能结果已收齐，IQ、正常关机、最终单客体性能仍继续。
