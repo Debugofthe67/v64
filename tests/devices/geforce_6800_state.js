@@ -11,6 +11,19 @@ ramin.setUint32(0x100,0x303D,true);ramin.setUint32(0x104,0xFFFF,true);ramin.setU
 const surface=state.target(o);assert.equal(surface.d3d,21);assert.equal(surface.width,3);assert.equal(surface.height,2);
 vram.fill(0xAA,0x1000,0x1020);const data=Uint8Array.from({length:24},(_,i)=>i);
 state.write(surface,data);assert.deepEqual(state.read(surface),data);
+{
+const packed={...surface,pitch:12};
+const copied=state.read(packed),borrowed=state.read(packed,true);
+assert.equal(borrowed.buffer,vram.buffer,"explicit packed VRAM view avoids an attachment copy");
+assert.equal(borrowed.byteOffset,0x1000);
+vram[0x1000]^=1;
+assert.notEqual(copied[0],borrowed[0],"ordinary reads retain immutable snapshot ownership");
+vram[0x1000]^=1;
+assert.throws(()=>state.read({...packed,dma:{...packed.dma,flags:packed.dma.flags|0x8000}},true),/access denied/);
+assert.throws(()=>state.read({...packed,dma:{...packed.dma,limit:0x100F}},true),/limit/);
+assert.notEqual(state.read({...packed,offset:0x1002},true).buffer,vram.buffer,"unaligned views keep the copied path");
+assert.notEqual(state.read(surface,true).buffer,vram.buffer,"padded rows keep the copied path");
+}
 assert.deepEqual([...vram.subarray(0x100C,0x1010)],[170,170,170,170],"row padding remains outside a GPU readback");
 const short={...surface,dma:{...surface.dma,limit:0x1018}};const before=vram.slice(0x1000,0x1020);
 assert.throws(()=>state.write(short,data),/limit/);assert.deepEqual(vram.subarray(0x1000,0x1020),before,"late row fault leaves all rows intact");

@@ -1,0 +1,100 @@
+{
+  "stage": "G6 checked live attachment views with immutable resource images",
+  "change": [
+    "Explicit synchronous views only for packed, non-swizzled, aligned linear VRAM attachments; full DMA read permissions and bounds checked each time.",
+    "Padded, swizzled, unaligned and system-memory paths retain copied reads.",
+    "Exact comparison of fresh bytes remains mandatory. Unchanged data retains the previous immutable image; modified VRAM is copied before retention, so CPU writes cannot change the comparison baseline."
+  ],
+  "validation": [
+    "State regressions verify default snapshot ownership, explicit view ownership, read denial, DMA limit, padded and unaligned fallbacks.",
+    "Resource regressions verify CPU writes leave cached images unchanged, changed data reuploads and repeated identical views emit no upload.",
+    "Complete real WebGPU blend history, aliases, CPU-write ordering, textures, depth/query and snapshot regressions pass.",
+    "State/render/texture/DMA and Closure0errors/0warnings pass."
+  ],
+  "microbenchmark": {
+    "scope": "Same-process alternating attachment-read CPU microbenchmark; exact unchanged native1280x1024 image,32binds,7rounds,explicitGC; not nativeFPS",
+    "times": {
+      "copied": [
+        63.065,
+        63.165,
+        62.051,
+        61.836,
+        62.125,
+        63.07,
+        62.547
+      ],
+      "view": [
+        42.092,
+        42.484,
+        42.063,
+        42.447,
+        41.914,
+        42.444,
+        42.549
+      ]
+    },
+    "medianCPUms": {
+      "copied": 62.547,
+      "view": 42.444
+    },
+    "readerCopiedBytes": {
+      "copied": [
+        167772160,
+        167772160,
+        167772160,
+        167772160,
+        167772160,
+        167772160,
+        167772160
+      ],
+      "view": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "uploads": 1
+  },
+  "interpretation": "For32 unchanged1280x1024 attachment bindings, reader copies167772160\u21920bytes and CPU median62.547\u219242.444ms. This is a CPU microbenchmark, not an isolated native FPS result.",
+  "evidence": [
+    {
+      "file": "build/nv40-attachment-view-benchmark.json",
+      "bytes": 746,
+      "sha256": "f33823b269bf7366bf693f0005cf8cdaa3cb3ab485bd728245a8c9268af2fb13"
+    },
+    {
+      "file": "build/nv40-attachment-view-state.log",
+      "bytes": 95,
+      "sha256": "3b46c030f7cbdd9d353ab75ba47c23365445405c52fa541ce758ffc113f38667"
+    },
+    {
+      "file": "build/nv40-attachment-view-render.log",
+      "bytes": 95,
+      "sha256": "22897543f5914fffc623ba01f5b67f6b1e7fa050e7b8d13b7346ade243901c63"
+    },
+    {
+      "file": "build/nv40-attachment-view-texture.log",
+      "bytes": 723,
+      "sha256": "e0cc8e311d42062be998c226fac9065d1dc0aab6f9b85490e8270acab06b8c53"
+    },
+    {
+      "file": "build/nv40-attachment-view-dma.log",
+      "bytes": 104,
+      "sha256": "568d54807d5393a1ae49df7118e7c907cd4b24182fabad112b07147f1eabdd7e"
+    },
+    {
+      "file": "build/nv40-attachment-view-gpu.log",
+      "bytes": 6177,
+      "sha256": "de0c20cb9a72906e9aa0446b4e7e42a62666adc45a92619d1b824eecb273d6f5"
+    },
+    {
+      "file": "build/nv40-attachment-view-closure.log",
+      "bytes": 3020,
+      "sha256": "928cdedd9ef614b44a371f6342106afd0f2aa0671fe80e28dd774fb3f4091174"
+    }
+  ]
+}

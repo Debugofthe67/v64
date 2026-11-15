@@ -260,9 +260,9 @@ export class NV40Render
         this.resources.delete(key);this.resources.set(key,resource);
         const handle=resource.handle;
         if(this.draw_resources)this.draw_resources.add(handle);
-        if(images)images.forEach((bytes,index)=>{
+        const retained=images && images.map((bytes,index)=>{
             const previous=resource.images && resource.images[index],changed=nv40_changed_bytes(previous,bytes);
-            if(!changed) return;
+            if(!changed) return previous;
             const level=index%levels,face=surface.cube?Math.floor(index/levels):0;
             const width=Math.max(1,surface.width>>>level),height=Math.max(1,surface.height>>>level),
                 rowHeight=surface.native_bc?4:1,pitch=surface.native_bc?Math.ceil(width/4)*surface.block:width*surface.bpp;
@@ -278,8 +278,9 @@ export class NV40Render
                 "height":Math.min(height,last*rowHeight)-first*rowHeight,
                 "depth":surface.volume?Math.max(1,surface.depth>>>level):1,"row_pitch":pitch,"data_bytes":payload.length});
             w.patch_field("data_offset",w.data(payload));this.stats.uploads++;this.stats.uploadBytes+=payload.length;
+            return bytes.buffer===this.device.vram().buffer?new Uint8Array(bytes):bytes;
         });
-        resource.images=images;
+        resource.images=retained;
         return handle;
     }
     shader(code,vertex)
@@ -498,14 +499,14 @@ export class NV40Render
         if(!active && !zsa.enabled && !get(o,0x17CC)) return;
         const initial=colors.map(surface=>{
             if(!surface) return null;
-            this.engine.state.validate(surface,true);return this.engine.state.read(surface);
+            this.engine.state.validate(surface,true);return this.engine.state.read(surface,true);
         });
         let depth=null,depthBytes=null;
         if(zsa.enabled)
         {
             depth=this.engine.state.target(o,0,true);this.engine.state.validate(depth,true);
             if(zsa.stencil && depth.d3d!==75) throw new RangeError("NV40 stencil needs D24S8");
-            depthBytes=this.engine.state.read(depth);
+            depthBytes=this.engine.state.read(depth,true);
         }
         // Everything that can fault on guest state is checked before emitting
         // commands or changing the host's resource cache.

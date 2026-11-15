@@ -8,7 +8,7 @@ import {NVDMA} from "../../src/graphics_adapters/geforce_6800/nv_dma.js";
 import {NVTrace} from "../../src/graphics_adapters/geforce_6800/nv_trace.js";
 import {d9wg_commands} from "../../src/graphics_adapters/vmware_svga/svga3d_d9wg.js";
 import {OP,FIELD_LAYOUT,NV_RS} from "../../src/graphics_adapters/vmware_svga/d9wg_constants.js";
-import {expand_primitives,nv40_blend_state,nv40_depth_state,nv40_cull_state,nv40_color_masks} from "../../src/graphics_adapters/geforce_6800/nv40_render.js";
+import {NV40Render,expand_primitives,nv40_blend_state,nv40_depth_state,nv40_cull_state,nv40_color_masks} from "../../src/graphics_adapters/geforce_6800/nv40_render.js";
 const offset=(name,field)=>FIELD_LAYOUT[name].fields.find(item=>item[0]===field)[1];
 const channelMasks={methods:new Map([[0x324,0x01000000],[0x370,0x1110]])};
 assert.deepEqual(nv40_color_masks(channelMasks,[{d3d:22},{d3d:21},{d3d:114},{d3d:24}]),[0,8,0,0],"only real format channels can be written");
@@ -60,6 +60,24 @@ const device={renderer:remote?remote.renderer:fake,vram_size:vram.length,vram:()
     registers:new Map([[0x200,0x1100],[0x400720,1],[0x3250,1],[0x3280,1]])};
 device.dma=new NVDMA(device);device.graph=new NVGraph(device);device.fifo=new NVFIFO(device);device.fifo.active=0;
 const graph=device.graph,engine=graph.engine3d;
+{
+    const cache=new NV40Render(engine,{post(){},listen(){}});
+    const surface={dma:{flags:0x303D,class_id:0x3D,target:0,linear:true,pte:3,adjust:0,limit:0xFFFFF},
+        offset:0x80000,pitch:32,width:8,height:8,bpp:4,d3d:21,swizzle:false};
+    vram.fill(0,surface.offset,surface.offset+256);cache.initialize();
+    const handle=cache.target(surface,engine.state.read(surface,true)),resource=[...cache.resources.values()][0];
+    const original=resource.images[0];assert.notEqual(original.buffer,vram.buffer,"cached image owns its bytes");
+    vram[surface.offset]=37;assert.equal(original[0],0,"CPU VRAM writes cannot mutate the cached comparison baseline");
+    assert.equal(cache.target(surface,engine.state.read(surface,true)),handle);
+    assert.equal(cache.stats.uploads,2,"a changed live attachment is uploaded again");
+    assert.equal(resource.images[0][0],37);const changed=resource.images[0];
+    cache.target(surface,engine.state.read(surface,true));
+    assert.equal(cache.stats.uploads,2,"an unchanged view adds no upload");
+    assert.equal(resource.images[0],changed,"an unchanged view retains the immutable image");
+    vram[surface.offset]=91;assert.equal(changed[0],37,"later CPU writes remain visible to the next comparison");
+    cache.target(surface,engine.state.read(surface,true));assert.equal(cache.stats.uploads,3);
+    vram.fill(0,surface.offset,surface.offset+256);
+}
 ram.setUint32(0x1000,0x303D,true);ram.setUint32(0x1004,0xFFFFF,true);ram.setUint32(0x1008,3,true);
 ram.setUint32(0x2000,0x4097,true);device.fifo.channel(0).bindings[0]=0x2000;
 const method=(at,value)=>{device.registers.set(0x400720,1);graph.method(0,0,0x2000,at,value);assert.equal(device.registers.get(0x400720),1,JSON.stringify(graph.faults));};

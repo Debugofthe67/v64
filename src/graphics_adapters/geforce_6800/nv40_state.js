@@ -94,10 +94,18 @@ export class NV40State
         if(this.packed(surface)){this.device.dma.ranges(surface.dma,surface.offset,surface.width*surface.height*surface.bpp,write);return;}
         for(let row=0;row<surface.height;row++) this.device.graph.engine2d.row(surface,0,row,surface.width,write);
     }
-    read(surface)
+    read(surface,view=false)
     {
         if(this.packed(surface))
         {
+            // Rendering may inspect a synchronous checked view. The resource
+            // cache must retain its own immutable image, never this live VRAM.
+            if(view && !surface.swizzle && surface.dma.linear && !surface.dma.target)
+            {
+                const ranges=this.device.dma.ranges(surface.dma,surface.offset,surface.width*surface.height*surface.bpp,false);
+                if(ranges.length===1 && !(ranges[0].at&3))
+                    return this.device.vram().subarray(ranges[0].at,ranges[0].at+ranges[0].count);
+            }
             const bytes=this.device.dma.read(surface.dma,surface.offset,surface.width*surface.height*surface.bpp);
             return surface.swizzle?this.reorder(surface,bytes,false):bytes;
         }
