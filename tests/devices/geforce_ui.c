@@ -6,6 +6,9 @@
 #include <windows.h>
 #include <tlhelp32.h>
 #include <oleacc.h>
+#ifndef NV_UI_OUTPUT
+#define NV_UI_OUTPUT "D:\\NVUI.TXT"
+#endif
 
 static HANDLE output;
 static unsigned int written, windows;
@@ -151,7 +154,7 @@ static DWORD rows(HWND window)
 }
 void __attribute__((stdcall)) entry(void)
 {
-    output=CreateFileA("D:\\NVUI.TXT",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,0,CREATE_ALWAYS,0,0);
+    output=CreateFileA(NV_UI_OUTPUT,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,0,CREATE_ALWAYS,0,0);
     if(output==INVALID_HANDLE_VALUE)ExitProcess(2);
     text("REQUEST_TICK=");hex(GetTickCount());text("\r\n");
     find_benchmarks();

@@ -2227,3 +2227,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 XP 05 原版固定帧已收取：3GT 的 480/897/1630 帧，以及单/多填充、Pixel Shader、简单/复杂 Vertex Shader 第 1 帧，共八张原始 1024×768 BMP；保持 None AA、Optimal、VS/PS3_0 和默认特性选项。八图头/行数据完整，原生 NV05N.3DR 的 SHA 与已验收全 16 项导出相同。最初 GT2 的 UI 干扰从打断前健康状态重跑；额外 Batch8 IQ 的未完成尝试不计入取图验收。原图、预览、原生成功日志和哈希见 `g4-xp-9371-05-native-iq.json`；精确代理参照、BC 同状态对照和正常关机继续。
 
 - G5 原生 XRGB 查询修复：Win98 03 在 199986 draws 首次触发 NOP END 无颜色输出拒绝；原方法为 X8R8G8B8、仅 alpha 写、无 alpha test、只读深度，实际没有有效颜色写入。现按附件真实通道计算 shader 需求、GPU mask 和 dirty 跟踪，保留有意义颜色/alpha test 的严格拒绝。旧源码新真实 GPU 回归先红；可见/遮挡查询、颜色/深度不变、零无效回读，以及同批 XRGB destination-alpha 混合精确像素均绿，完整 GPU/图形单测与 Closure 通过。见 `g5-native-xrgb-nop-occlusion.json`；原版完整十一项和最终图像/性能门禁仍继续。
+
+- G6 小工具盘输出：原生 UI helper 增加编译期 NV_UI_OUTPUT，默认路径不变；真实 XP 原版 05 在 1.44 MiB 内存 FAT12 软盘写出新 REQUEST_TICK、成功窗口和实际控件，经公开 set_fda/get_disk_fda 与 FAT12 读取验证。避免每次 UI 查询导出整张游戏临时 IMG，临时 raw 验证后删除。见 `g6-native-ui-floppy-output.json`。
