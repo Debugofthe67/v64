@@ -10,8 +10,9 @@
     "naga": "199 translated shaders validated",
     "nativeGPU": "Complete tests/devices/geforce_6800_render.mjs passed, including exact generated checker, constant/per-vertex PSIZE and existing blending/alias/query/readback ordering cases.",
     "sharedExecutorUnitLog": "build/nv40-sm3-sprite-executor-unit.log",
-    "glbridgeFullSuite": "Started separately; still running, not counted as a completed pass.",
-    "sharedExecutorUnit": "191 passed"
+    "glbridgeFullSuite": "PASS: node tests/glbridge/run.cjs exited0; all315 serial test files passed, including shared frontend fixtures.",
+    "sharedExecutorUnit": "191 passed",
+    "glbridgeFullSuiteLog": "build/nv40-sm3-sprite-glbridge-suite.log"
   },
   "original03": {
     "folder": "build/nv40-xp-mark03-point-sprite-fixed-iq",

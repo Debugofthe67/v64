@@ -2289,3 +2289,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G6 参照小文件直接读取：artifact工具增加显式D3D_ARTIFACT_DIRECT=1，对main-thread客体通过公开disk_buffer只读解析有界FAT32并仅传输请求文件，浏览器/宿主逐项SHA一致；保留原stream模式。实际05原生UI输出7907bytes成功导出，无临时盘块，缺失文件明确失败；语法检查通过。见 `g6-bounded-proxy-artifact-reads.json`。当前05以公开set_cdrom_files加载工具光盘、UI输出写入游戏盘RAM overlay，绕过软盘可用性问题但不宣称已定位其根因。
 
 - G3/G4 SM3点精灵连接修复：原生03 GT1有真实尾迹几何，但SM3 VP未声明TEX0时linker未连接光栅器生成UV，PS采透明纹理边缘。对实际点精灵扩展的TEXCOORD0–7连接生成(u,v,0,1)，普通绘制/未写入零值和反射对象保持；微软point-sprites契约支持此行为。新增unit与真实GPU四色checker旧实现先红，现58着色器单测、199 naga及完整NV40真实GPU回归通过。相同健康RAM配套源的原版GT1 frame1038重取白色尾迹恢复，scene MAD4.3613→1.0324，max183→103；旧三次原生重复全图一致。原图及全图/ROI残差均保留，见 `g4-sm3-point-sprite-semantic-coordinates.json`。全glbridge套件仍在后台运行，不列为已通过；其余图像/最终性能门禁继续。
+
+- G4 03 点精灵修复后的九张原版固定帧复测：GT1/2/3/4 分别为1038/1000/1000/1000，四项可见特性帧60、PS660。每张均等原版保存成功及GPU计数静止60秒后直接导出，40738draws、零GPU/PGRAPH错误；随后 stock XP 正常关机并校验配套冷启动 overlay。GT1 白色尾迹已恢复；其余帧保留场景与完整图误差，无新设容差门槛。完整glbridge串行315文件测试已通过。见 `g4-03-nine-point-sprite-fixed-frames.json`。05 GT3、06 HDR与最终门禁继续。

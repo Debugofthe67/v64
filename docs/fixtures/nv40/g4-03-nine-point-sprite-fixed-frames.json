@@ -1,0 +1,394 @@
+{
+  "stage": "G4 original03 nine fixed frames after generated point-sprite semantic fix",
+  "scope": "Nine original default-option IQ saves and successful normal shutdown; numerical residuals are retained, not silently accepted by a new threshold. The overall G4/G7 gates remain open.",
+  "configuration": {
+    "guest": "XP SP3",
+    "nativeDriver": "93.71",
+    "memoryMiB": 1024,
+    "vramMiB": 256,
+    "resolution": [
+      1024,
+      768
+    ],
+    "AA": "None",
+    "filter": "Optimal",
+    "options": "All original feature overrides unchecked"
+  },
+  "source": "build/nv40-xp-mark03-feature-iq-visible/checkpoint-native-visible-feature4-iq-before-gt1-diagnostic.state.bundle.json",
+  "implementation": "2ea1a1ea0",
+  "frames": [
+    {
+      "case": "GT1",
+      "testIndex": 0,
+      "frame": 1038,
+      "draws": 1284,
+      "readbacks": 680,
+      "successScreenshot": "build/nv40-xp-mark03-point-sprite-fixed-iq/capture-0012.png",
+      "successUI": "build/nv40-xp-mark03-point-sprite-fixed-iq/serial-GT1-success-0.txt",
+      "stableGPUSeconds": 60,
+      "hostTime": "2026-11-15T05:24:39.640417+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03G1F_01038.bmp",
+        "sha256": "95fb9e85dfd8bf04b88023d0a5a9936bf058f80c759fdce1801d25f6c0f53f16"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03GT1_01038.bmp",
+        "sha256": "14453ee23a949b1eec7a8dfeedbda85a35b8b151bc35be1c4b4377a612992726"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 704,
+        "mean_absolute_rgb_error": 1.0324179909446023,
+        "max_channel_error": 103,
+        "exact_pixel_percent": 38.17957097833807,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 3,
+          "95": 4,
+          "99": 8,
+          "99.9": 26
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 1.0180935329861112,
+        "max_channel_error": 103
+      }
+    },
+    {
+      "case": "GT2",
+      "testIndex": 1,
+      "frame": 1000,
+      "draws": 2071,
+      "readbacks": 1136,
+      "successScreenshot": "build/nv40-xp-mark03-point-sprite-fixed-iq/capture-0047.png",
+      "successUI": "build/nv40-xp-mark03-point-sprite-fixed-iq/serial-GT2-success-0.txt",
+      "stableGPUSeconds": 60,
+      "hostTime": "2026-11-15T05:36:35.474903+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0201000.bmp",
+        "sha256": "a8146a8392bc8e34642c63597817aabe8aad530c8c33cb2abb92fc05367bd790"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0201000.bmp",
+        "sha256": "063d8f58340e9edd5659f8050431b770040580135d525f2a7f233d6cebd86086"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 704,
+        "mean_absolute_rgb_error": 0.17996077104048294,
+        "max_channel_error": 89,
+        "exact_pixel_percent": 78.9095791903409,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 2,
+          "99": 6,
+          "99.9": 18
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.16940816243489584,
+        "max_channel_error": 89
+      }
+    },
+    {
+      "case": "GT3",
+      "testIndex": 2,
+      "frame": 1000,
+      "draws": 3038,
+      "readbacks": 1762,
+      "successScreenshot": "build/nv40-xp-mark03-point-sprite-fixed-iq/capture-0057.png",
+      "successUI": "build/nv40-xp-mark03-point-sprite-fixed-iq/serial-GT3-success-0.txt",
+      "stableGPUSeconds": 60,
+      "hostTime": "2026-11-15T05:40:12.399227+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0301000.bmp",
+        "sha256": "cdc3f1c7f34d88149ffde7ac7b252fdb16c3b6249a3a45946ac275cadfa51742"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0301000.bmp",
+        "sha256": "972feabf39b9ba59a2f2ea838d6ca2710d34eea13e228366095df40d540189f2"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 704,
+        "mean_absolute_rgb_error": 0.2238436612215909,
+        "max_channel_error": 81,
+        "exact_pixel_percent": 82.23627263849431,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 2,
+          "99": 5,
+          "99.9": 17
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.20677312215169272,
+        "max_channel_error": 81
+      }
+    },
+    {
+      "case": "GT4",
+      "testIndex": 3,
+      "frame": 1000,
+      "draws": 37197,
+      "readbacks": 21499,
+      "successScreenshot": "build/nv40-xp-mark03-point-sprite-fixed-iq/capture-0095.png",
+      "successUI": "build/nv40-xp-mark03-point-sprite-fixed-iq/serial-GT4-success-0.txt",
+      "stableGPUSeconds": 60,
+      "hostTime": "2026-11-15T05:53:02.556659+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0401000.bmp",
+        "sha256": "c5513b9928bbf390b00a00a3e3b9c8bca0973f8f8d482ab2059899185a57377c"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0401000.bmp",
+        "sha256": "2a78a77f1f8d5696bf3b89eeb589de45266927f1472179df90c9035793edba76"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 704,
+        "mean_absolute_rgb_error": 0.3328653971354167,
+        "max_channel_error": 100,
+        "exact_pixel_percent": 70.67413330078125,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 2,
+          "99": 6,
+          "99.9": 12
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.33815934922960067,
+        "max_channel_error": 100
+      }
+    },
+    {
+      "case": "fillrate1",
+      "testIndex": 4,
+      "frame": 60,
+      "draws": 37656,
+      "readbacks": 21759,
+      "successScreenshot": "build/nv40-xp-mark03-point-sprite-fixed-iq/capture-0103.png",
+      "successUI": "build/nv40-xp-mark03-point-sprite-fixed-iq/serial-fillrate1-success-0.txt",
+      "stableGPUSeconds": 60,
+      "hostTime": "2026-11-15T05:55:41.056635+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0500060.bmp",
+        "sha256": "793272bd9936b40cd02d4c53f4967ee72de5da44315c9bd2e2287c065a60668c"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0500060.bmp",
+        "sha256": "78b6d10cab1298748e47140f748ee26f20781361345a7c1423f2acaeb5610e35"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 704,
+        "mean_absolute_rgb_error": 0.3621312921697443,
+        "max_channel_error": 21,
+        "exact_pixel_percent": 49.06352650035512,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 2,
+          "95": 2,
+          "99": 3,
+          "99.9": 5
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.3499988979763455,
+        "max_channel_error": 21
+      }
+    },
+    {
+      "case": "fillrate2",
+      "testIndex": 5,
+      "frame": 60,
+      "draws": 37983,
+      "readbacks": 21967,
+      "successScreenshot": "build/nv40-xp-mark03-point-sprite-fixed-iq/capture-0110.png",
+      "successUI": "build/nv40-xp-mark03-point-sprite-fixed-iq/serial-fillrate2-success-0.txt",
+      "stableGPUSeconds": 60,
+      "hostTime": "2026-11-15T05:58:15.258901+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0600060.bmp",
+        "sha256": "e94f0f748b4a8503e9551da46849ff94bdf81e0c9844cf7a8d8c65fbaa6574fe"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0600060.bmp",
+        "sha256": "95e200449081494561de659c074b181ef39cd3a3ad98df92ca8b1cc2516b1445"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 704,
+        "mean_absolute_rgb_error": 0.045642737186316285,
+        "max_channel_error": 3,
+        "exact_pixel_percent": 88.04376775568181,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 1,
+          "99": 1,
+          "99.9": 2
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.04482057359483507,
+        "max_channel_error": 3
+      }
+    },
+    {
+      "case": "VS",
+      "testIndex": 6,
+      "frame": 60,
+      "draws": 39023,
+      "readbacks": 22447,
+      "successScreenshot": "build/nv40-xp-mark03-point-sprite-fixed-iq/capture-0119.png",
+      "successUI": "build/nv40-xp-mark03-point-sprite-fixed-iq/serial-VS-success-0.txt",
+      "stableGPUSeconds": 60,
+      "hostTime": "2026-11-15T06:01:25.327555+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0700060.bmp",
+        "sha256": "1d30083ff9c7ebf9b8a1ff101cb7760a52cf80b702908d18a6ca8918c38f9924"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0700060.bmp",
+        "sha256": "6835aa79881e27f23cb937f6d3c1ea16929a91e023d4ebaf50ccc6f06dbac475"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 704,
+        "mean_absolute_rgb_error": 0.9838326194069602,
+        "max_channel_error": 250,
+        "exact_pixel_percent": 22.621432217684657,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 3,
+          "95": 4,
+          "99": 7,
+          "99.9": 14
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.9227316114637587,
+        "max_channel_error": 250
+      }
+    },
+    {
+      "case": "PS",
+      "testIndex": 7,
+      "frame": 660,
+      "draws": 39878,
+      "readbacks": 22949,
+      "successScreenshot": "build/nv40-xp-mark03-point-sprite-fixed-iq/capture-0128.png",
+      "successUI": "build/nv40-xp-mark03-point-sprite-fixed-iq/serial-PS-success-0.txt",
+      "stableGPUSeconds": 60,
+      "hostTime": "2026-11-15T06:04:32.632998+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0800660.bmp",
+        "sha256": "b08b83b8d044ed8cf291cb3d564213c1e8638ac27aa1e8da249a6581f1a25487"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0800660.bmp",
+        "sha256": "f4b60b65792403c7b8352821529450e7dbd95df3295e1499327d99b3dd2c916c"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 704,
+        "mean_absolute_rgb_error": 0.09952429569128787,
+        "max_channel_error": 33,
+        "exact_pixel_percent": 87.99355246803977,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 1,
+          "99": 2,
+          "99.9": 10
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.09310362074110243,
+        "max_channel_error": 33
+      }
+    },
+    {
+      "case": "Ragtroll",
+      "testIndex": 8,
+      "frame": 60,
+      "draws": 40738,
+      "readbacks": 23357,
+      "successScreenshot": "build/nv40-xp-mark03-point-sprite-fixed-iq/capture-0137.png",
+      "successUI": "build/nv40-xp-mark03-point-sprite-fixed-iq/serial-Ragtroll-success-0.txt",
+      "stableGPUSeconds": 60,
+      "hostTime": "2026-11-15T06:07:43.364531+00:00",
+      "native": {
+        "file": "build/nv40-xp-mark03-point-sprite-fixed-iq/iq-artifacts/NV03F0900060.bmp",
+        "sha256": "c63658dac20bac0808be6d2eab26387e2531ad4d21f79150ab5b171d6589f270"
+      },
+      "reference": {
+        "file": "build/nv40-proxy03-fixed-iq-local/iq_PX03IQ0900060.bmp",
+        "sha256": "4eb36cc85685d6d1f40f2f90615fdae29b20e2132c1cede971a62b303b5d042a"
+      },
+      "scene": {
+        "roi_y": 0,
+        "roi_height": 704,
+        "mean_absolute_rgb_error": 0.32415031664299243,
+        "max_channel_error": 144,
+        "exact_pixel_percent": 59.53993363813921,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 2,
+          "99": 5,
+          "99.9": 13
+        }
+      },
+      "fullImage": {
+        "mean_absolute_rgb_error": 0.31034935845269096,
+        "max_channel_error": 144
+      }
+    }
+  ],
+  "normalShutdown": {
+    "kind": "cold-boot-only disk overlay pair; no RAM checkpoint",
+    "guest": "xp",
+    "memoryMiB": 1024,
+    "vramMiB": 256,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark03.img",
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark03-point-sprite-fixed-iq/native-iq-normal-shutdown-os-overlay.bin",
+      "bytes": 127684236,
+      "sha256": "7158d1c7b5db446a4641a2dd1573ad45c844f968c7734ea3c62caa8bcdf3a9d7"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark03-point-sprite-fixed-iq/native-iq-normal-shutdown-game-overlay.bin",
+      "bytes": 52543284,
+      "sha256": "3f629ce746e131af127da3c298454f1e7f232218558611b6ae49abb83ff01bca"
+    },
+    "normalShutdown": {
+      "command": "stock XP shutdown.exe -s -t 0",
+      "eip": 2154770504,
+      "halted": 1,
+      "display": null,
+      "draws": 40738,
+      "failures": 0
+    }
+  },
+  "validation": {
+    "originalSaveAndGPUQuietSecondsPerFrame": 60,
+    "fullGlbridgeSuite": "315 test files passed, node tests/glbridge/run.cjs exit0",
+    "suiteLog": "build/nv40-sm3-sprite-glbridge-suite.log",
+    "gpuAndPgraphErrors": 0,
+    "originalImagesReadOnly": "See final result.json for original OS/game size/mtime checks.",
+    "comparisonFile": "build/nv40-03-all-point-sprite-fixed-comparison.json",
+    "comparisonSha256": "c46c8cc2bac33ce78fed724e74645a0fb439021c738f6921a667c5e8b9db7249"
+  },
+  "limits": [
+    "GT1 white contrails recovered; full-scene old native repeats were identical before the fix.",
+    "Scene measurements exclude only the original bottom64 metadata rows; full-image measurements are retained.",
+    "XP05 GT3,06 HDR images,legacy image review and final isolated performance remain separate."
+  ]
+}
