@@ -2287,3 +2287,5 @@ G1 之后，2D（G2）与程序翻译器（`nv40_program.js` 与它的单元测�
 - G4 原生03可见特性帧补齐：从正常关机磁盘对冷启动，原版fill1/fill2/VS/Ragtroll各保存frame60、原版成功提示和GPU静止60秒后直接导出，替代先前淡入frame1；PS实际默认660沿用已保存图。四图与九张参照均已验证；GT1仍明显缺少白色尾迹，不能把整套图像标为通过。见 `g4-03-native-visible-feature-frames.json`；继续定位GT1和05 GT3差异。
 
 - G6 参照小文件直接读取：artifact工具增加显式D3D_ARTIFACT_DIRECT=1，对main-thread客体通过公开disk_buffer只读解析有界FAT32并仅传输请求文件，浏览器/宿主逐项SHA一致；保留原stream模式。实际05原生UI输出7907bytes成功导出，无临时盘块，缺失文件明确失败；语法检查通过。见 `g6-bounded-proxy-artifact-reads.json`。当前05以公开set_cdrom_files加载工具光盘、UI输出写入游戏盘RAM overlay，绕过软盘可用性问题但不宣称已定位其根因。
+
+- G3/G4 SM3点精灵连接修复：原生03 GT1有真实尾迹几何，但SM3 VP未声明TEX0时linker未连接光栅器生成UV，PS采透明纹理边缘。对实际点精灵扩展的TEXCOORD0–7连接生成(u,v,0,1)，普通绘制/未写入零值和反射对象保持；微软point-sprites契约支持此行为。新增unit与真实GPU四色checker旧实现先红，现58着色器单测、199 naga及完整NV40真实GPU回归通过。相同健康RAM配套源的原版GT1 frame1038重取白色尾迹恢复，scene MAD4.3613→1.0324，max183→103；旧三次原生重复全图一致。原图及全图/ROI残差均保留，见 `g4-sm3-point-sprite-semantic-coordinates.json`。全glbridge套件仍在后台运行，不列为已通过；其余图像/最终性能门禁继续。

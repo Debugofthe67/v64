@@ -4623,7 +4623,7 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             const semanticPair = shaderPipeline.linkShaderSemantics(
                 passthrough ? {version:{major:3},outputDeclarations:passthroughOutputs}
                     : vsResource && vsResource.translated.ok ? vsResource.translated.reflection : null,
-                pixelInterface);
+                pixelInterface, {pointSprite: !!drawOptions.pointExpansion && !!drawOptions.pointSprite});
             if (!semanticPair.ok) return {error: "shader semantic link failed: " + semanticPair.error, shaderError: true};
             const semanticLink = semanticPair.link;
             const semanticKey = semanticPair.key ? "|link:" + semanticPair.key : "";

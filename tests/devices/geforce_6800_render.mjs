@@ -563,6 +563,16 @@ try
         for(const word of new Uint32Array(Float32Array.of(4,4,4,99,99).buffer))method(0x1818,word);
         method(0x1808,0);await engine.backend.wait();
         assert.equal(Array.from({length:64},(_,i)=>vram[0x10003+i*4]).filter(Boolean).length,16,"routed per-vertex PSIZE overrides the one-pixel constant");
+        method(0x1FF4,1<<5); // The rasterizer supplies TEX0; the VP does not.
+        vram.fill(0,0x10000,0x10100);method(0x1808,0x1001);
+        for(const word of new Uint32Array(Float32Array.of(4,4,4,99,99).buffer))method(0x1818,word);
+        method(0x1808,0);await engine.backend.wait();
+        for(let y=2;y<6;y++) for(let x=2;x<6;x++)
+        {
+            const expected=y<4?x<4?[0,0,255,255]:[0,255,0,255]:x<4?[255,0,0,255]:[255,255,255,255];
+            assert.deepEqual([...vram.subarray(0x10000+(y*8+x)*4,0x10000+(y*8+x)*4+4)],expected,
+                "native point sprite generates TEX0 without a vertex output "+x+","+y);
+        }
         method(0x1758,2);method(0x1FC4,pointRoute);method(0x1FF4,1<<14);method(0x1E9C,0);
         [0x401F9C6C,0x0040080D,0x81000000,0x0001EF94,
             0x401F9C6C,0x0040000D,0x81000000,0x0001EF81].forEach((word,i)=>method(0xB80+(i%4)*4,word));

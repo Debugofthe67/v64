@@ -263,7 +263,7 @@
     // Match semantic components at link time, then pack only consumed values
     // into WebGPU locations. A PS3 has at most forty input components; splitting
     // flat colours from interpolated values still fits eleven vec4 locations.
-    function linkShaderSemantics(vertex, pixel) {
+    function linkShaderSemantics(vertex, pixel, options = {}) {
         try {
             if (!pixel || pixel.version.major < 3) return {ok: true, link: null, key: ""};
             const programmable3 = vertex && vertex.version.major >= 3;
@@ -291,7 +291,13 @@
                 const key = input.usage + ":" + input.usageIndex;
                 if (semantics.has(key)) throw new Error("duplicate pixel input semantic " + key);
                 semantics.add(key);
-                const output = bySemantic.get(key);
+                // Point coordinates come from rasterization, including when
+                // an SM3 vertex body declares no TEXCOORD output. The entry
+                // wrapper replaces these bindings with (u,v,0,1); register 0
+                // is only a placeholder and its raw value is never read.
+                const pointCoordinates = programmable3 && options.pointSprite &&
+                    input.usage === DECLUSAGE_TEXCOORD && input.usageIndex < 8;
+                const output = pointCoordinates ? {register: 0, mask: 15} : bySemantic.get(key);
                 // Between two programmable SM3 stages an input the vertex shader
                 // never writes is legal and reads zero; only the fixed canonical
                 // slots of a legacy vertex stage must match exactly.

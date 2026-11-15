@@ -1000,6 +1000,26 @@ test("SM3 semantic linking preserves every declared packed component", () => {
     assert.notStrictEqual(pair.key, pipeline.linkShaderSemantics(vs, {...ps, inputDeclarations: ps.inputDeclarations.slice(1)}).key);
 });
 
+test("SM3 point sprites link generated coordinates without vertex texture outputs", () => {
+    const vertex = {version: {major: 3}, outputDeclarations: [
+        {register: 0, usage: USAGE.POSITION, usageIndex: 0, mask: 15}]};
+    const pixel = {version: {major: 3}, inputDeclarations: [
+        {register: 0, usage: USAGE.TEXCOORD, usageIndex: 0, mask: 15},
+        {register: 1, usage: USAGE.TEXCOORD, usageIndex: 7, mask: 3},
+        {register: 2, usage: USAGE.TEXCOORD, usageIndex: 8, mask: 1}]};
+    const ordinary = pipeline.linkShaderSemantics(vertex, pixel);
+    const sprite = pipeline.linkShaderSemantics(vertex, pixel, {pointSprite: true});
+    assert.ok(sprite.ok, sprite.error);
+    assert.equal(ordinary.link.vertex.length, 0);
+    assert.equal(sprite.link.vertex.length, 6,
+        "the rasterizer supplies TEXCOORD0..7 even when the vertex body never writes them");
+    assert.deepEqual(sprite.link.vertex.map(item => [item.usageIndex, item.component]),
+        [[0, 0], [0, 1], [0, 2], [0, 3], [7, 0], [7, 1]]);
+    assert.notEqual(sprite.key, ordinary.key);
+    assert.equal(pipeline.linkShaderSemantics(vertex, pixel).key, ordinary.key,
+        "point-sprite linking must not mutate reusable shader reflection");
+});
+
 test("SM3 semantic linking rejects incompatible declarations before GPU pipeline creation", () => {
     const item = {register: 0, usage: 3, usageIndex: 0, mask: 7};
     const vertex = outputDeclarations => ({version: {major: 3}, outputDeclarations});
