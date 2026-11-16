@@ -120,6 +120,14 @@ The graphics adapter checks CPU-backed IOSurface seeds before drawing,
 so reused texture names follow UIKit's updated pixels. Unchanged seeds
 skip uploads. An existing NAND keeps its embedded native adapter; import
 a new iPhone to use an updated adapter while retaining the old VM's data.
+The same seed refresh fixes the lock screen's alternating stale highlight
+frames. A 40-frame capture over seven seconds verified repeated left-to-right
+highlight sweeps: one cycle's bright-pixel centroid moved approximately
+`20 → 73 → 143 → 191 → 253` across a 280-pixel text crop, followed by the
+normal dim interval. To repeat, wake the lock screen, capture the slider
+text without touching it for six to seven seconds, and check multiple
+consecutive sweeps. Wake the display again before further input tests;
+screenshots can retain the last frame after the guest display sleeps.
 Build an update with
 `V86_FIXTURE_VERSION=2 sh tools/ios/guest/build-apps.sh build/ios-install-fixtures-v2`.
 The [IPA implementation plan](ios-ipa-install-plan.md) records the acceptance
