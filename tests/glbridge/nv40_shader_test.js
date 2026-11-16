@@ -54,7 +54,7 @@ try
     assert(!reflected.some(item=>item.usage===11),"raw register numbers are not fixed semantics");
     const clips=[[0,5,2,1],[5,5,3,-1]],clipVS=translate_vertex_program(routed,{clips}),clipPS=translate_fragment_program(fragment,{clips});
     const clipVertex=validate("NV-user-clip-vertex",clipVS),clipPixel=validate("NV-user-clip-pixel",clipPS);
-    for(const usageIndex of [14,15])
+    for (const usageIndex of [14,15])
     {
         assert(clipVertex.reflection.outputDeclarations.some(item=>item.usage===5&&item.usageIndex===usageIndex));
         assert(clipPixel.reflection.inputDeclarations.some(item=>item.usage===5&&item.usageIndex===usageIndex));
@@ -69,7 +69,7 @@ try
     assert.deepEqual(eyeReflection.inputDeclarations.map(i=>[i.usage,i.usageIndex]),[[5,1],[5,2],[5,3]],
         "native VSPEC eye XYZ consumes the Q lanes of TEX1 through TEX3");
     validate("NV-variable-eye-and-clip",translate_fragment_program(eye,{clips}));
-    for(const change of [i=>{i.destination.mask=8;},i=>{i.sources[0].swizzle=[3,1,2,3];},
+    for (const change of [i=>{i.destination.mask=8;},i=>{i.sources[0].swizzle=[3,1,2,3];},
         i=>{i.input_relative=true;},i=>{i.name="ADD";}])
     {
         const unsupported=structuredClone(eye);change(unsupported.instructions[0]);
@@ -230,12 +230,12 @@ try
     assert.throws(()=>translate_fragment_program({constants:fragment.constants,word_count:12,instructions:[fpFlow("IF",0,10),fpMove(4)]}),/scope/);
     const alias=structuredClone(fragment),later=structuredClone(alias.instructions[0]);later.sources[0]={type:"temp",index:0,half:false,swizzle:[0,1,2,3]};alias.instructions.push(later);
     validate("fragment-half-full-alias",translate_fragment_program(alias));
-    for(const precision of [0,1,2,3,4,5]) for(const absolute of [false,true])
+    for (const precision of [0,1,2,3,4,5]) for (const absolute of [false,true])
     {
         const p=structuredClone(alias);Object.assign(p.instructions[1].sources[0],{precision,absolute,negate:true});
         validate("fragment-source-precision-"+precision+"-"+absolute,translate_fragment_program(p));
     }
-    for(const precision of [6,7])
+    for (const precision of [6,7])
     {
         const p=structuredClone(fragment);p.instructions[0].sources[0].precision=precision;
         assert.throws(()=>translate_fragment_program(p),/source precision/);

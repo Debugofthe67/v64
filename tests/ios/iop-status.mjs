@@ -34,7 +34,7 @@ try
     // too. Total helper work and architectural behavior remain observable.
     const ex=cpu.wm.exports,thumb=new Uint32Array(cpu.wasm_memory.buffer,cpu.state_base+332,1)[0]&32;
     const nop=thumb?0x4600:0xE1A00000,length=thumb?2:4;
-    const count=()=>{for(let i=0;i<4096;i++)if(ex.a32_helper_word(i,false)===nop)return ex.a32_helper_word(i,true);return 0;};
+    const count=()=>{for(let i=0;i<4096;i++) if(ex.a32_helper_word(i,false)===nop) return ex.a32_helper_word(i,true);return 0;};
     const r0=new Uint32Array(cpu.wasm_memory.buffer,cpu.state_base+64,1)[0];
     for(const enabled of [0,1,0])
     {

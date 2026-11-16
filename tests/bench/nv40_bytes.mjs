@@ -5,14 +5,14 @@ import {nv40_changed_bytes} from "../../src/graphics_adapters/geforce_6800/nv40_
 const bytes=4<<20,iterations=32,rounds=7;
 function baseline(a,b)
 {
-    if(a===b)return null;
-    if(!a||a.length!==b.length)return[0,b.length];
+    if(a===b) return null;
+    if(!a||a.length!==b.length) return [0,b.length];
     const n=a.length>>>2,aw=new Uint32Array(a.buffer,a.byteOffset,n),bw=new Uint32Array(b.buffer,b.byteOffset,n);
     let first=0;while(first<n&&aw[first]===bw[first])first++;
     first*=4;while(first<b.length&&a[first]===b[first])first++;
-    if(first===b.length)return null;
+    if(first===b.length) return null;
     let last=b.length;while(last>first&&a[last-1]===b[last-1])last--;
-    return[first,last];
+    return [first,last];
 }
 const implementations={baseline,grouped:nv40_changed_bytes},results=[];
 let guard=0;
@@ -22,7 +22,7 @@ for(const scenario of ["first-byte","middle-byte","last-byte","whole-image","unc
     if(scenario==="whole-image")b.fill(255);
     else if(scenario!=="unchanged")b[scenario==="first-byte"?0:scenario==="middle-byte"?bytes>>>1:bytes-1]=1;
     const expected=baseline(a,b);assert.deepEqual(nv40_changed_bytes(a,b),expected);
-    for(const fn of Object.values(implementations))for(let i=0;i<32;i++)fn(a,b);
+    for(const fn of Object.values(implementations)) for(let i=0;i<32;i++)fn(a,b);
     await new Promise(resolve=>setImmediate(resolve));
     const timings={baseline:[],grouped:[]};
     for(let round=0;round<rounds;round++)

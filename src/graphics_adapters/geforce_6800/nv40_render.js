@@ -221,7 +221,7 @@ export class NV40Render
             // Required attachments and one draw's bindings may exceed the
             // retention budget. Keep them until use/readback has completed,
             // then trim again; never evict a resource still being assembled.
-            if(!first)break;
+            if(!first) break;
             const [key,resource]=first;
             this.writer.command(OP.DESTROY_RESOURCE,{"resource_handle":resource.handle,"resource_kind":resource.kind});
             this.resources.delete(key);this.stats.resourceBytes-=resource.bytes;this.stats.resourceEvictions++;
@@ -278,7 +278,7 @@ export class NV40Render
         // must survive eviction while new sampled textures fill the cache.
         this.resources.delete(key);this.resources.set(key,resource);
         const handle=resource.handle;
-        if(this.draw_resources)this.draw_resources.add(handle);
+        if(this.draw_resources) this.draw_resources.add(handle);
         const retained=images && images.map((bytes,index)=>{
             const previous=resource.images && resource.images[index],changed=nv40_changed_bytes(previous,bytes);
             if(!changed) return previous;
@@ -291,7 +291,7 @@ export class NV40Render
             const partial=previous && !surface.volume && previous.length===bytes.length;
             const first=partial?Math.floor(changed[0]/pitch):0,last=partial?Math.ceil(changed[1]/pitch):Math.ceil(height/rowHeight);
             const payload=partial?bytes.subarray(first*pitch,last*pitch):bytes;
-            if(!previous)this.stats.coldUploadBytes+=payload.length;
+            if(!previous) this.stats.coldUploadBytes+=payload.length;
             if(surface.native_bc){this.stats.nativeBCUploads++;this.stats.nativeBCUploadBytes+=payload.length;}
             const w=this.writer.command(OP.UPDATE_TEXTURE,{"resource_handle":handle,"level":level,"y":first*rowHeight,"z":face,"width":width,
                 "height":Math.min(height,last*rowHeight)-first*rowHeight,
@@ -645,7 +645,7 @@ export class NV40Render
     receive(message)
     {
         if(message["type"]==="caps") {this.bc_supported=message["textureCompressionBC"]===true;return;}
-        if(message["type"]==="lost")this.bc_supported=false;
+        if(message["type"]==="lost") this.bc_supported=false;
         const pending=this.pending;if(!pending) return;
         if(message["type"]==="lost") {this.fail(message["reason"]);return;}
         if(message["type"]==="write")

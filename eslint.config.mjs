@@ -47,6 +47,7 @@ export default [
                 "HTMLElement": "readonly",
                 "HTMLTextAreaElement": "readonly",
                 "AbortController": "readonly",
+                "AbortSignal": "readonly",
                 "DecompressionStream": "readonly",
 
                 "AudioContext": "readonly",

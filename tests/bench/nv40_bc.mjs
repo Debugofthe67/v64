@@ -18,7 +18,7 @@ for(let image=0;image<count;image++) for(let at=source+image*encodedBytes,end=at
 const expected=createHash("sha256").update(vram.subarray(source,source+count*encodedBytes)).digest("hex"),results=[];
 for(const compressed of [false,true])
 {
-    global.gc?.();
+    globalThis.gc?.();
     const textures=new NV40Texture(new NV40State(device));let blocks=0;
     const decode=textures.blocks.bind(textures);textures.blocks=(...args)=>{blocks++;return decode(...args);};
     const object={methods:new Map([[0x184,0x10],[0x1A04,0x10629],[0x1A08,0x30303],[0x1A0C,0x80000000],

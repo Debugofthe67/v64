@@ -9,9 +9,7 @@ static mut PAGES: [u32; 16] = [u32::MAX; 16];
 static mut RECORDS: [[u32; WORDS]; CAPACITY] = [[0; WORDS]; CAPACITY];
 static mut TOTAL: u32 = 0;
 
-pub fn watched(page: u32) -> bool {
-    unsafe { (&*(&raw const PAGES)).contains(&page) }
-}
+pub fn watched(page: u32) -> bool { unsafe { (&*(&raw const PAGES)).contains(&page) } }
 
 /// Called while stopped. Retire cached write translations so every alias
 /// takes the existing code-dirty slow path; guest access checks stay intact.
@@ -33,9 +31,7 @@ pub unsafe fn ir_test_write_watch(slot: u32, page: u32) -> bool {
 }
 
 #[no_mangle]
-pub unsafe fn ir_test_write_watch_total() -> u32 {
-    TOTAL
-}
+pub unsafe fn ir_test_write_watch_total() -> u32 { TOTAL }
 
 #[no_mangle]
 pub unsafe fn ir_test_write_watch_word(sequence: u32, word: u32) -> u32 {

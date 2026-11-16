@@ -37,7 +37,7 @@ for(const mode of ["interpreter","pages"]) for(const pae of [false,true]) for(co
         results.push(row);console.log(JSON.stringify(row));
         if(mode==="pages")assert(row.compiledInstructions>0,label+": compiled code executed");
     }
-    finally{await vm.destroy();}
+    finally {await vm.destroy();}
 }
 fs.writeFileSync("build/legacy-wp-privilege/result.json",JSON.stringify(results,null,2)+"\n");
 for(const row of results)

@@ -71,7 +71,7 @@ export class NVGraph
 
     written(at, value)
     {
-        if(at===0x40014C && this.current_object)this.current_object.notify_context=value>>>0;
+        if(at===0x40014C && this.current_object) this.current_object.notify_context=value>>>0;
         if(at>=0x400180 && at<0x4001A0 && this.current_object)
         {
             const subc=(at-0x400180)/4,object=this.bindings.get(this.current_object.channel+":"+subc);
@@ -376,13 +376,13 @@ export class NVGraph
             // and the slot still holds their class. Otherwise RAMIN may have
             // been reused, and its current contents must remain authoritative.
             const candidates=new Map();
-            for(const object of objects)if(object.methods.has(0x180))
+            for(const object of objects) if(object.methods.has(0x180))
             {
                 const prior=candidates.get(object.instance),value=object.notify_context&0xFFFFFF;
                 candidates.set(object.instance,prior===undefined?{value,class_id:object.class_id}:
                     prior && prior.value===value && prior.class_id===object.class_id?prior:null);
             }
-            for(const [instance,candidate] of candidates)if(candidate && candidate.value &&
+            for(const [instance,candidate] of candidates) if(candidate && candidate.value &&
                 (this.device.dma.word(instance)&0xFFFF)===candidate.class_id && !(this.device.dma.word(instance+4)&0xFFFFFF))
             {
                 const bytes=this.device.vram(),at=this.device.vram_size-(1<<20)+instance+4;

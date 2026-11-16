@@ -240,7 +240,9 @@ pub fn jit_page_has_code(page: Page) -> bool { jitrt::state().watch.watched(page
 /// translations (TLB fills, write translation caches).
 pub fn page_needs_notification(page: Page) -> bool {
     #[cfg(feature = "ir-test-hooks")]
-    if crate::write_watch::watched(page.to_u32()) { return true; }
+    if crate::write_watch::watched(page.to_u32()) {
+        return true;
+    }
     jit_page_has_code(page) || unsafe { crate::parallel::code::others_own(page.to_u32()) }
 }
 
@@ -249,7 +251,9 @@ pub fn page_needs_notification(page: Page) -> bool {
 #[inline(always)]
 pub fn page_watched(page: u32) -> bool {
     #[cfg(feature = "ir-test-hooks")]
-    if crate::write_watch::watched(page) { return true; }
+    if crate::write_watch::watched(page) {
+        return true;
+    }
     jitrt::watch::bit(page) || unsafe { crate::parallel::code::others_own(page) }
 }
 

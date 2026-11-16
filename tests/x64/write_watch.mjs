@@ -10,7 +10,7 @@ const file="build/write-watch.bin";
 const assembled=spawnSync("nasm",["-f","bin","tests/x64/write_watch.asm","-o",file],{encoding:"utf8"});
 assert.equal(assembled.status,0,assembled.stderr);
 const results=[];
-for(const mode of ["interpreter","pages"])for(const watched of [false,true])
+for(const mode of ["interpreter","pages"]) for(const watched of [false,true])
 {
     const vm=new V86(with_smp_mode({wasm_path:process.env.TEST_WASM||"build/nv40-write-watch.wasm",
         graphics_adapter:"none",multiboot:{url:file},memory_size:16<<20,disable_jit:mode==="interpreter",
@@ -48,7 +48,7 @@ for(const mode of ["interpreter","pages"])for(const watched of [false,true])
         if(mode==="pages")assert(compiled_hits(api)>0,"compiled execution");
         results.push({mode,watched,bytes});console.log("PASS write watch",mode,watched,count);
     }
-    finally{await vm.destroy();}
+    finally {await vm.destroy();}
 }
 for(const result of results)assert.deepEqual(result.bytes,results[0].bytes,"watch and execution tier preserve identical memory");
 console.log("PASS: six writer forms observed with identical watched/unwatched guest bytes");

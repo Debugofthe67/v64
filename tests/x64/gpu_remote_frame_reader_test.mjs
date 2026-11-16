@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import {frame_reader,unmask_frame} from "./gpu_remote_renderer.mjs";
 
-for(let offset=0;offset<8;offset++)for(let length=0;length<80;length++)
+for(let offset=0;offset<8;offset++) for(let length=0;length<80;length++)
     for(const mask of [[0,0,0,0],[255,128,1,254],[0x19,0xA3,0x57,0xD1]])
     {
         const storage=Uint8Array.from({length:offset+length+8},(_,i)=>(i*73+length)&255);

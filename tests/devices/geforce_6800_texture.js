@@ -81,8 +81,8 @@ assert.throws(()=>texture.describe(wideUnorm,0),/pitch/);
 wideUnorm.methods.set(0x1840,24);wideUnorm.methods.set(0xB00,0x2DC0);
 assert.equal(texture.describe(wideUnorm,0).bpp,4,"padding alone never widens paired UNORM16");
 wideUnorm.methods.set(0xB00,0x1ADC0);wideUnorm.methods.set(0x1A04,0x2B52D);
-for(let face=0;face<6;face++)for(const [offset,count,base]of[[0,4,face*32],[48,1,face*32+16]])
-    for(let pixel=0;pixel<count;pixel++)for(let channel=0;channel<4;channel++)
+for(let face=0;face<6;face++) for(const [offset,count,base] of [[0,4,face*32],[48,1,face*32+16]])
+    for(let pixel=0;pixel<count;pixel++) for(let channel=0;channel<4;channel++)
         unormView.setUint16(0xD000+face*72+offset+Math.floor(pixel/2)*24+pixel%2*8+channel*2,base+channel+1,true);
 assert.deepEqual(texture.images(texture.describe(wideUnorm,0)).map(bytes=>[...new Uint16Array(bytes.buffer)].slice(0,4)),
     Array.from({length:6},(_,face)=>[[1,2,3,4].map(n=>n+face*32),[17,18,19,20].map(n=>n+face*32)]).flat(),
@@ -242,7 +242,7 @@ for(const [code,bpp,expected] of [[27,16,[0x7FFF3800,0x80000000,0x40400000,0x3F0
 }
 console.log("PASS: FP32 fragment textures preserve raw bits, expand R32F and apply the component crossbar");
 const nativeScalar32={methods:new Map(o.methods)};
-for(const [at,value]of[[0x1A04,0x1BC29],[0x1A10,0xAAE4],[0x1A18,1<<16|1],[0x1A14,0x01014000],[0x1840,64],[0xB00,0x2DC0]])nativeScalar32.methods.set(at,value);
+for(const [at,value] of [[0x1A04,0x1BC29],[0x1A10,0xAAE4],[0x1A18,1<<16|1],[0x1A14,0x01014000],[0x1840,64],[0xB00,0x2DC0]])nativeScalar32.methods.set(at,value);
 new Uint32Array(vram.buffer,0x2000,4).set([0x3E000000,0x3E800000,0x3F000000,0x3F800000]);
 assert.equal(new Uint32Array(texture.read(texture.describe(nativeScalar32,0)).buffer)[0],0x3E000000,
     "original93.71 R32F identity crossbar exposes the scalar in red");
@@ -301,7 +301,7 @@ wide16.methods.set(0x1840,12);assert.throws(()=>texture.describe(wide16,0),/pitc
 wide16.methods.set(0x1840,24);wide16.methods.set(0xB00,0x2DC0);
 assert.equal(texture.describe(wide16,0).bpp,4,"large row padding does not turn RG16F into RGBA16F");
 const wideUnit=7,wideUnitObject={methods:new Map([[0x184,0x10],[0xB00+wideUnit*4,0x1ADC0]])};
-for(const [at,value] of wide16.methods)if(at>=0x1A00&&at<=0x1A1C)wideUnitObject.methods.set(at+wideUnit*32,value);
+for(const [at,value] of wide16.methods) if(at>=0x1A00&&at<=0x1A1C)wideUnitObject.methods.set(at+wideUnit*32,value);
 wideUnitObject.methods.set(0x1840+wideUnit*4,24);
 assert.equal(texture.describe(wideUnitObject,wideUnit).bpp,8,"wide format mode belongs to each texture unit");
 console.log("PASS: native format1f wide FP16 mode, exact lanes, independent padding and per-unit state");

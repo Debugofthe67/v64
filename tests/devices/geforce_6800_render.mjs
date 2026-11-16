@@ -202,7 +202,7 @@ try
             method(0x1808,0);await engine.backend.wait();
             assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
         },clipTriangle=[0,0,0,0,-4,0,16,0,0,-4,16,0,0,0,12],clipPixel=x=>[...vram.subarray(0x10000+32+x*4,0x10000+32+x*4+4)];
-        for(let plane=0;plane<6;plane++)for(const sign of [1,2])
+        for(let plane=0;plane<6;plane++) for(const sign of [1,2])
         {
             method(0x1478,sign<<(plane*4));method(0x1FF4,1<<(6+plane));await clipDraw(clipTriangle);
             assert.deepEqual(clipPixel(1),sign===1?[0x99,0x66,0x33,255]:[0,0,0,0],"clip plane "+plane+" left side, mode "+sign);
@@ -1238,16 +1238,16 @@ try
             assert.equal(engine.backend.stats.failures,0,JSON.stringify(graph.faults));
             assert.deepEqual([...vram.subarray(0x10000,0x10004)],color,"live color/depth targets survive texture cache turnover "+frame);
         };
-        for(let frame=0;frame<70;frame++)await textureFrame(frame);
+        for(let frame=0;frame<70;frame++) await textureFrame(frame);
         const warmedMisses=cache.stats.resourceMisses,warmedCold=cache.stats.coldUploadBytes;
-        for(let frame=0;frame<70;frame++)await textureFrame(frame);
+        for(let frame=0;frame<70;frame++) await textureFrame(frame);
         assert.equal(cache.stats.resourceMisses,warmedMisses,"a working set above 64 resources remains resident on its second pass");
         assert.equal(cache.stats.coldUploadBytes,warmedCold,"resident texture reuse does not upload its initial image again");
         cache.resource_limit=16;
-        for(let frame=70;frame<90;frame++)await textureFrame(frame);
+        for(let frame=70;frame<90;frame++) await textureFrame(frame);
         assert.equal(cache.resources.size,16,"entry budget evicts old textures while attachments remain correct");
         cache.resource_limit=512;cache.resource_byte_limit=520;
-        for(let frame=90;frame<100;frame++)await textureFrame(frame);
+        for(let frame=90;frame<100;frame++) await textureFrame(frame);
         assert(cache.stats.resourceBytes<=520,"logical image bytes, not only entry count, bound retained resources");
         cache.resource_byte_limit=128;await textureFrame(100);
         assert(cache.stats.resourceBytes<=128,"mandatory attachments exceeding retention budget are trimmed after actual readback");

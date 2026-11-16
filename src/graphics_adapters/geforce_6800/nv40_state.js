@@ -186,12 +186,12 @@ export class NV40State
     clips(o)
     {
         const control=get(o,0x1478),mask=o.methods.has(0x1FF4)?get(o,0x1FF4):null,routes=[];
-        if(control&~0x333333)throw new RangeError("NV40 invalid user clip plane control");
+        if(control&~0x333333) throw new RangeError("NV40 invalid user clip plane control");
         for(let plane=0;plane<6;plane++)
         {
             const mode=control>>>(plane*4)&3;
-            if(mode===3)throw new RangeError("NV40 invalid user clip plane mode");
-            if(!mode)continue;
+            if(mode===3) throw new RangeError("NV40 invalid user clip plane mode");
+            if(!mode) continue;
             // Curie's two clip maps each contain three byte-spaced 6-bit
             // TBUF register/component selectors (envytools hwtest).
             const selector=get(o,plane<3?0x1FD0:0x1FD4)>>>(plane%3*8)&63;

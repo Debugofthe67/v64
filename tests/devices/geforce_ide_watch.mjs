@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {watch_geforce_ide_reads} from "../lib/geforce_ide_watch.mjs";
 class CPU{
     constructor(){this.mem8=new Uint8Array(256);this.instruction_pointer=Uint32Array.of(0x1234);}
-    write_blob_physical(bytes,address){if(address+bytes.length>256)throw failure;this.mem8.set(bytes,address);return 7;}
+    write_blob_physical(bytes,address){if(address+bytes.length>256) throw failure;this.mem8.set(bytes,address);return 7;}
 }
 class Disk{
     constructor(){this.byteLength=1024;this.pending=[];}

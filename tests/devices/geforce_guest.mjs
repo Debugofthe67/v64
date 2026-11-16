@@ -391,7 +391,7 @@ export async function run_geforce_guest(win98)
                     const attempts=api.ir_test_write_watch_word(total-1,15)>>>0,last=records[records.length-1];
                     changed=changed||last[15]!==attempts;last[15]=attempts;
                 }
-                if(!changed)return;
+                if(!changed) return;
                 fs.writeFileSync(file,JSON.stringify({pages,words:["sequence","physical","bytes","eip","previousEip","cpl","cr3",
                     "eax","ecx","edx","ebx","esp","ebp","esi","edi","attempts","pagePrefix0..7"],dropped,records}));
             };
@@ -411,7 +411,7 @@ export async function run_geforce_guest(win98)
                 record(space,offset,size,write,value,implemented);
                 if(space!=="mmio" || !offsets.has(offset) || accesses.length>=512) return;
                 if(process.env.NV_WATCH_MMIO_AFTER_GRAPH_FAULT && !nv.graph.faults.length) return;
-                if((nv.graph.engine3d.backend?.stats.draws||0)<afterDraws)return;
+                if((nv.graph.engine3d.backend?.stats.draws||0)<afterDraws) return;
                 accesses.push({elapsed:elapsed(),offset,size,write,value:value>>>0,eip:cpu.instruction_pointer[0]>>>0,
                     stack:read_geforce_guest_stack(cpu,stackWords)});
                 fs.writeFileSync(path.join(out,"mmio-watch.json"),JSON.stringify(accesses,null,2));
@@ -719,7 +719,7 @@ export async function run_geforce_guest(win98)
                     const at=front+y*mode.pitch+x*4;
                     if(pixels[at]|pixels[at+1]|pixels[at+2]) {nonempty=true;break;}
                 }
-                if(!nonempty)return;
+                if(!nonempty) return;
                 const bytes=geforce_present_bmp(pixels,mode,front),file="profile-scene-"+(scenes.length+1)+".bmp";
                 fs.writeFileSync(path.join(out,file),bytes);
                 scenes.push({file,sha256:createHash("sha256").update(bytes).digest("hex"),

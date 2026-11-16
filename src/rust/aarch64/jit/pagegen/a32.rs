@@ -35,18 +35,24 @@ pub struct Inst32 {
 pub enum Kind {
     Nop,
     /// PL1 CPSID without a mode change: only sets A/I/F mask bits.
-    MaskInterrupts { mask: u32 },
+    MaskInterrupts {
+        mask: u32,
+    },
     /// the interpreter's execute (pages::a32_page_helper)
     Helper,
     /// A known synchronization helper's explicit GPR operands. It still
     /// commits/reloads every live local around the original interpreter.
-    RegisterHelper { mask: u16 },
+    RegisterHelper {
+        mask: u16,
+    },
     /// FP/SIMD data processing: no GPR reads/writes or PC/context changes. Errors
     /// still retry through the usual interpreter with all GPRs committed.
     FpHelper,
     /// A validated scalar FP operation in a native IT block. Its exact
     /// helper runs only when this condition passes; it cannot touch GPRs.
-    ItFpHelper { cond: u8 },
+    ItFpHelper {
+        cond: u8,
+    },
     /// B, BL, B<c>: to `target` (the page's offset, wrapping), when `cond`
     /// holds (14: always); BL's LR the next instruction's address (T32's
     /// with bit 0 set)
@@ -1106,7 +1112,9 @@ fn interrupt_mask(word: u32, length: u8, thumb: bool) -> Option<Kind> {
     else if thumb && length == 2 && word & 0xFFF8 == 0xB670 {
         (word & 7) << 6
     }
-    else { return None; };
+    else {
+        return None;
+    };
     (mask != 0).then_some(Kind::MaskInterrupts { mask })
 }
 
@@ -1116,7 +1124,8 @@ fn synchronization_gprs(word: u32, thumb: bool) -> Option<u16> {
     let reg = |r: u32| if r < 15 { 1u16 << r } else { 0 };
     if !thumb {
         if matches!(word & 0xFFFF_FFF0, 0xF57F_F040 | 0xF57F_F050 | 0xF57F_F060)
-            || word == 0xF57F_F01F {
+            || word == 0xF57F_F01F
+        {
             return Some(0);
         }
         if word >> 28 == 15 || word & 0x0F80_0FF0 != 0x0180_0F90 {
@@ -1127,15 +1136,24 @@ fn synchronization_gprs(word: u32, thumb: bool) -> Option<u16> {
         let status = word >> 12 & 15;
         let rt = if load { status } else { word & 15 };
         let pair = word >> 21 & 3 == 1;
-        if rn == 15 || rt == 15 || pair && (rt & 1 != 0 || rt >= 14)
-            || !load && (status == 15 || status == rn || status == rt || pair && status == rt + 1) {
+        if rn == 15
+            || rt == 15
+            || pair && (rt & 1 != 0 || rt >= 14)
+            || !load && (status == 15 || status == rn || status == rt || pair && status == rt + 1)
+        {
             return None;
         }
-        return Some(reg(rn) | reg(rt) | if pair { reg(rt + 1) } else { 0 }
-            | if load { 0 } else { reg(status) });
+        return Some(
+            reg(rn)
+                | reg(rt)
+                | if pair { reg(rt + 1) } else { 0 }
+                | if load { 0 } else { reg(status) },
+        );
     }
-    if matches!(word & 0xFFFF_FFF0,
-        0xF3BF_8F20 | 0xF3BF_8F40 | 0xF3BF_8F50 | 0xF3BF_8F60) {
+    if matches!(
+        word & 0xFFFF_FFF0,
+        0xF3BF_8F20 | 0xF3BF_8F40 | 0xF3BF_8F50 | 0xF3BF_8F60
+    ) {
         return Some(0);
     }
     let hi = word >> 16;
@@ -1144,7 +1162,9 @@ fn synchronization_gprs(word: u32, thumb: bool) -> Option<u16> {
     let rt = lo >> 12 & 15;
     let load = hi & 16 != 0;
     let bad = |r: u32| r == 13 || r == 15;
-    if rn == 15 || bad(rt) { return None; }
+    if rn == 15 || bad(rt) {
+        return None;
+    }
     if hi & 0xFFE0 == 0xE840 {
         let status = lo >> 8 & 15;
         if load && status != 15 || !load && (bad(status) || status == rn || status == rt) {
@@ -1161,11 +1181,11 @@ fn synchronization_gprs(word: u32, thumb: bool) -> Option<u16> {
     if pair && (bad(rt2) || load && rt == rt2)
         || !pair && rt2 != 15
         || load && status != 15
-        || !load && (bad(status) || status == rn || status == rt || pair && status == rt2) {
+        || !load && (bad(status) || status == rn || status == rt || pair && status == rt2)
+    {
         return None;
     }
-    Some(reg(rn) | reg(rt) | if pair { reg(rt2) } else { 0 }
-        | if load { 0 } else { reg(status) })
+    Some(reg(rn) | reg(rt) | if pair { reg(rt2) } else { 0 } | if load { 0 } else { reg(status) })
 }
 
 /// A32: the instruction's kind at `offset`; None: a single step
@@ -2513,8 +2533,12 @@ fn t32_return(word: u32, length: u8) -> Option<Kind> {
 fn t32_native_it(word: u32, length: u8, itstate: u8) -> Option<Kind> {
     let cond = itstate >> 4;
     let last = itstate & 7 == 0;
-    if length == 4 && matches!(fp_data(word, true),
-        Some(Kind::FpArith { .. } | Kind::FpCompare { .. } | Kind::FpMove { kind: 0..=2, .. })) {
+    if length == 4
+        && matches!(
+            fp_data(word, true),
+            Some(Kind::FpArith { .. } | Kind::FpCompare { .. } | Kind::FpMove { kind: 0..=2, .. })
+        )
+    {
         return Some(Kind::ItFpHelper { cond });
     }
     let mut kind =
@@ -2667,7 +2691,10 @@ pub(super) fn discover(
             }
         }
         let debug = unsafe { crate::aarch64::jit::pages::AARCH32_DEBUG };
-        let helper = matches!(kind, Some(Kind::Helper | Kind::FpHelper | Kind::RegisterHelper { .. }));
+        let helper = matches!(
+            kind,
+            Some(Kind::Helper | Kind::FpHelper | Kind::RegisterHelper { .. })
+        );
         if debug == 2 && !helper || debug == 3 && helper {
             kind = None;
         }
@@ -4649,7 +4676,9 @@ impl Emitter<'_> {
             }),
             Kind::Helper | Kind::RegisterHelper { .. } => self.a32_helper(i.word, i.length, offset),
             Kind::FpHelper => self.a32_fp_helper(i.word, i.length, offset),
-            Kind::ItFpHelper { cond } => self.when(cond, |e| e.a32_fp_helper(i.word, i.length, offset)),
+            Kind::ItFpHelper { cond } => {
+                self.when(cond, |e| e.a32_fp_helper(i.word, i.length, offset))
+            },
             Kind::Branch { target, cond, link } => {
                 if cond != 14 {
                     self.load32(state::nzcv as u32);

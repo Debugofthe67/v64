@@ -27,7 +27,7 @@ for(const filename of modules)
 }
 for(let round=0;round<4;round++) for(const item of (round&1?cases.slice().reverse():cases))
 {
-    global.gc?.();item.reset();const cpu=process.cpuUsage(),before=performance.now();let bytes;
+    globalThis.gc?.();item.reset();const cpu=process.cpuUsage(),before=performance.now();let bytes;
     for(let i=0;i<iterations;i++)bytes=item.engine.read(item.descriptor,offset,size);
     const wallMs=performance.now()-before,nodeCpuUs=process.cpuUsage(cpu);
     assert.equal(hash(bytes),item.expected);assert.equal(hash(item.vram.subarray(item.start,item.start+size)),item.expected);

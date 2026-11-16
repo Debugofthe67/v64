@@ -2,7 +2,7 @@
 const assert=require("node:assert/strict");
 const {createSVGARenderer}=require("../../src/browser/glbridge/svga_renderer.js");
 (async()=>{
-    for(const enabled of [false,true]) {
+    for (const enabled of [false,true]) {
         let listener;const replies=[];
         class Executor {
             constructor(){this.device=null;this.submits=0;}

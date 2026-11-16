@@ -230,7 +230,7 @@ export function translate_vertex_program(program,options={})
     // routing, plus explicit writes; unrouted indexed destinations are dead.
     const indexedTargets=new Set(options.result_map?options.result_map.filter(r=>r[3]!==false).map(r=>r[1]):
         [0,...Array.from({length:8},(_,i)=>7+i)]);
-    for(const [,register] of options.clips||[])if(register>=0)indexedTargets.add(register);
+    for(const [,register] of options.clips||[]) if(register>=0)indexedTargets.add(register);
     for(const i of program.instructions) for(const op of [i.vector,i.scalar])
         if(op.type==="output" && !i.address.output)indexedTargets.add(op.index);
     const indexedRegisters=[...indexedTargets].filter(index=>index>=0 && index<16);
@@ -493,7 +493,7 @@ export function translate_vertex_program(program,options={})
         shader.emit(OP.MOV,dst(6,target),shader.literal(1));
         for(const [plane,register,component,sign] of options.clips)
         {
-            if(Math.floor(plane/3)!==group)continue;
+            if(Math.floor(plane/3)!==group) continue;
             shader.emit(OP.MOV,dst(6,target,1<<(plane%3)),raw.has(register)?
                 src(0,raw.get(register),Array(4).fill(component),sign<0):shader.literal(0));
         }
@@ -838,7 +838,7 @@ export function translate_fragment_program(program,options={})
             if(i.expand)
             {
                 const expand=options.texture_expand?.[i.texture] || {mask:15};
-                if(expand.unsupported)throw new RangeError("NV40 texture BX2 with depth/gamma/signed conversion is not connected");
+                if(expand.unsupported) throw new RangeError("NV40 texture BX2 with depth/gamma/signed conversion is not connected");
                 const mask=i.destination.mask&expand.mask;
                 if(mask)shader.emit(OP.MAD,dst(0,30,mask),src(0,30),shader.literal(2),shader.literal(-1));
             }

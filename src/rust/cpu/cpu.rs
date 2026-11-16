@@ -2647,7 +2647,8 @@ pub fn tlb_set_has_code_multiple(physical_pages: &HashSet<Page>, has_code: bool)
             if physical_pages.contains(&tlb_physical_page) {
                 unsafe {
                     #[cfg(feature = "ir-test-hooks")]
-                    let has_code = has_code || crate::write_watch::watched(tlb_physical_page.to_u32());
+                    let has_code =
+                        has_code || crate::write_watch::watched(tlb_physical_page.to_u32());
                     tlb_data[page as usize] =
                         if has_code { entry | TLB_HAS_CODE } else { entry & !TLB_HAS_CODE }
                 }

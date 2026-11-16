@@ -222,7 +222,7 @@ export class NV40Texture
     {
         if(texture.native_bc)
         {
-            if(!texture.block || texture.crossbar!==0xAAE4)throw new RangeError("NV40 native BC requires an identity crossbar");
+            if(!texture.block || texture.crossbar!==0xAAE4) throw new RangeError("NV40 native BC requires an identity crossbar");
             return encoded;
         }
         if(texture.vertex || texture.depth_compare) return this.storage(texture,encoded);
