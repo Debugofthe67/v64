@@ -29,6 +29,15 @@ static unsigned state_count(struct context *ctx, unsigned pname)
 
 static void state_query(struct context *ctx, unsigned pname, void *out, unsigned opcode, unsigned width)
 {
+    if(pname == 0x85b2 || pname == 0x8a16)
+    {
+        if(!out) { draw_error(ctx, 0x501); return; }
+        unsigned value = pname == 0x85b2 ? ctx->client_storage : ctx->unpack_row_bytes;
+        if(opcode == gles2_glGetFloatv) *(float *)out = value;
+        else if(width == 1) *(unsigned char *)out = !!value;
+        else *(int *)out = value;
+        return;
+    }
     unsigned bytes = state_count(ctx, pname) * width;
     if(!out && bytes) { draw_error(ctx, 0x501); return; }
     if(!SEND(ctx->driver.connection, opcode, pname, bytes) ||

@@ -37,6 +37,7 @@ struct context {
     unsigned handle, error;
     unsigned framebuffer, frame_dirty;
     unsigned active_texture, texture_limit, textures[N90_TEXTURE_UNITS];
+    unsigned unpack_row_bytes, client_storage;
     char *strings[5];
     struct client_attrib attribs[N90_ATTRIBS];
 };

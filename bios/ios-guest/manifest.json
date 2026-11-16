@@ -6,15 +6,15 @@
   "sources": {
     "tools/ios/guest/build-gles.sh": "b922f014ca6fdc1d9fdbc799c356bd1e30df9d74b60c2c2241970883c7c92e25",
     "tools/ios/guest/eagl.c": "292d560a2110bcd340d0a90287257aa313d7f2bdd0f697f09a7b40494521fefe",
-    "tools/ios/guest/gli-context.c": "ee8d8d7e00e60142d1aba9c2ab8ec7cb1812c85520ecf8f526357ae056fe536a",
+    "tools/ios/guest/gli-context.c": "e80ef772816b5c20e8c2aab11e0bfc146a46ebb6ab5c976c0706589f6c2284b2",
     "tools/ios/guest/gli-photo.c": "def705590893cbca209f124200513cf4fa4b9be82755a5a2747d628470dbc927",
     "tools/ios/guest/gli-gates.s": "0fef9009ae9d35adcaa5f456d5bdb8526624ca0eefec064b7828d6780d578ffc",
     "tools/ios/guest/gles-transport.h": "2fd6ee9caf41015569b524bba257ba358c513b793039e1a657ead0b01b2ea8ab",
     "tools/ios/guest/gles-driver.h": "8973b472ab733c10759e2e4912a5f280a8cf01be4c99efbcfa8969fbeb590a0d",
     "tools/ios/guest/gli-surface.h": "94b9a54ec76a73ccaf29e16fc64a41606b5ed791e8542ef3f0b2ce94b84aa4f7",
     "tools/ios/guest/gli-draw.h": "e10c71d22ea400fd30f83ccd79043a15639cb4d035b04cfc5624f7dbbcc00048",
-    "tools/ios/guest/gli-texture.h": "2a9ca92cd125f27e5d902f6bacd8ade2f88b40ac2a5989a9aec7095fe80db653",
-    "tools/ios/guest/gli-query.h": "72bb25730deafdea1373a9a06c130686e73f2e73061ff1087ebb5603065cecba",
+    "tools/ios/guest/gli-texture.h": "11091ff02629d0386605a3c89904de941e193a8828172b9e0fd2fcc829d41525",
+    "tools/ios/guest/gli-query.h": "11cfeab399c463cef59efdf22257e485d3919f4f306db34aa1c4addb84376fe3",
     "tools/ios/guest/gli-uniform.h": "73f952d90156e0af6e64ae6098bbca1ec9eef58e7540c9e5f53003c4528216b3",
     "tools/ios/guest/gles-opcodes.mjs": "b93cb68a1f4310337dc48efd3ac5f8b6edf090a5ed9e22e8bf60fb03361219a1",
     "tools/ios/guest/gl-frame-wrappers.mjs": "c56b0a04860a55ef1b6990b57c5e8b977162c70b1db1e3ffbe07c32dc28ad5c3",
@@ -25,6 +25,6 @@
     "src/gles/gles_wire.js": "f07797f24fddb8688cf77059090e8083c4eec9cd07484c17d4fb6df68146b68c"
   },
   "files": {
-    "libv86gles.dylib": "adb4212fe0c474df18f5b4fcc6a0674b2d7ddf8a03926fd2651db0db711c1f92"
+    "libv86gles.dylib": "197ae508f39dc1bf53046676f60d15f79db2b765fba12ea2781d486907d9fb0a"
   }
 }

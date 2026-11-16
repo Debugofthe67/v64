@@ -144,6 +144,22 @@ this test hit iOS's launch watchdog; a second launch reached the game.
 This acceptance does not establish a frame-rate target or eliminate that
 startup performance limitation.
 
+Settings' grouped background uses an Apple texture upload path. The native
+adapter translates the [Apple RGBA/BGRA format pair](https://registry.khronos.org/OpenGL/extensions/APPLE/APPLE_texture_format_BGRA8888.txt)
+to the host's EXT format, handles [unpack row bytes](https://registry.khronos.org/OpenGL/extensions/APPLE/APPLE_row_bytes.txt)
+before transport, and retains the [client-storage preference](https://registry.khronos.org/OpenGL/extensions/APPLE/APPLE_client_storage.txt)
+locally while copying uploads. These states belong to each context and can
+be queried as integers, floats or booleans. Previously those parameters
+raised GL errors and left the striped background black, obscuring the
+Vibrate and other group headings. `node tests/ios/guest-texture.mjs`
+compiles the production upload/query headers with a host C compiler and
+checks channel order, padded source rows, alignment override, state reset,
+context isolation and bounds. It is included in `make ios-tests`.
+Native cold-boot acceptance verified the striped Settings → Sounds
+background and readable Vibrate headings, both switches changing from
+ON to OFF and back, and correct rendering after scrolling. No refused
+GL calls or GL errors remained in that run.
+
 ## Networking
 
 New iPhones offer an Internet connection through a virtual IP tunnel. The
