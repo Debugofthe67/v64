@@ -460,3 +460,6 @@ DrawTex 保留片段阶段的雾（距离为零），忽略几何裁剪、剔除
 
 DrawTex 的标量与向量入口都会标记离屏帧缓冲为已修改，使 IOSurface 在 Flush 时同步绘制结果。
 原版 iOS 包装函数测试检查 float/short/int/fixed 标量的 AAPCS 参数和线包长度，并验证脏帧状态。
+
+原生 `V86GLES1Test.ipa` 另外验证带边界哨兵的矩阵原始位查询，以及调色板压缩纹理上传后自动生成
+mip 并缩小采样；从新建测试 NAND 通过 UI 安装运行，原生像素断言通过并显示 `ES1 PASS`。

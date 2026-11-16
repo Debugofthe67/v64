@@ -11,6 +11,7 @@ extern void glGenTextures(int,unsigned *),glBindTexture(unsigned,unsigned),glTex
 extern void glTexParameteri(unsigned,unsigned,int),glTexParameteriv(unsigned,unsigned,const int *),glTexEnvi(unsigned,unsigned,int);
 extern void glEnable(unsigned),glDisable(unsigned),glDrawTexivOES(const int *),glReadPixels(int,int,int,int,unsigned,unsigned,void *);
 extern void glLightfv(unsigned,unsigned,const float *),glGetLightxv(unsigned,unsigned,int *);
+extern void glCompressedTexImage2D(unsigned,int,unsigned,int,int,int,int,const void *);
 static void draw(void *view)
 {
     static void *context;static unsigned rb,fb;int width=320,height=300,step=1;
@@ -35,6 +36,8 @@ static void draw(void *view)
     struct {int guard;int v[16];int end;} matrix={91,{0},92};
     glGetFixedv(0xba6,matrix.v);step=2;
     if(matrix.guard!=91||matrix.end!=92||matrix.v[12]!=32768||matrix.v[13]!=65536)goto failed;
+    int bits[18];for(int i=0;i<18;i++)bits[i]=91;bits[17]=92;glGetIntegerv(0x898d,bits+1);
+    if(bits[0]!=91||bits[17]!=92||bits[1]!=0x3f800000||bits[13]!=0x3f000000||bits[14]!=0x3f800000)goto failed;
     glPopMatrix();
     float light[]={0.25f,0.5f,0.75f,1};int result[6]={91,0,0,0,0,92};
     glLightfv(0x4000,0x1201,light);glGetLightxv(0x4000,0x1201,result+1);step=3;
@@ -65,6 +68,15 @@ static void draw(void *view)
     glTexEnvi(0x2300,0x2200,0x2100);glEnable(0xde1);glColor4ub(0,255,255,255);glDrawTexivOES(rect);
     unsigned char cyan[4];glReadPixels(3*width/4,3*height/4,1,1,0x1908,0x1401,cyan);step=5;
     if(cyan[0]||cyan[1]!=255||cyan[2]!=255||glGetError())goto failed;
+    // A compressed palette upload through the native pointer encoder,
+    // followed by automatic mip generation and minified sampling.
+    unsigned char palette[66]={255,0,0,255};int formats=0;
+    glGetIntegerv(0x86a2,&formats);step=6;if(formats!=15)goto failed;
+    glTexParameteri(0xde1,0x8191,1);glTexParameteri(0xde1,0x2801,0x2700);
+    glCompressedTexImage2D(0xde1,0,0x8b91,2,2,0,sizeof(palette),palette);
+    int small[]={0,0,0,1,1},full[]={0,0,2,2};glTexParameteriv(0xde1,0x8b9d,full);
+    glColor4ub(255,255,255,255);glDrawTexivOES(small);
+    glReadPixels(0,0,1,1,0x1908,0x1401,red);if(red[0]!=255||red[1]||red[2]||glGetError())goto failed;
     send1(context,"presentRenderbuffer:",(void *)0x8d41);
     CFStringRef text=string("ES1 PASS: matrix, light, arrays, VBO, texture, pixels");send1(label,"setText:",(void *)text);CFRelease(text);
     send1(label,"setNumberOfLines:",(void *)2);syslog(5,"V86 ES1 fixture PASS %dx%d",width,height);return;
