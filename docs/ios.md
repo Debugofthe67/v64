@@ -106,6 +106,14 @@ active-category volume. A test-owned `v86.test.volume` backdoor service can
 record these values independently of screen rendering; production CPUs
 do not register that service. This distinguishes lost button edges from
 stale on-screen text or HUD frames.
+For a volume regression, start at `0.5000`, press Volume − four times and
+check both the native readings and the screen show `0.4375`, `0.3750`,
+`0.3125`, `0.2500`; four Volume + presses should restore `0.5000`.
+Six clicks spaced 120 ms apart also verified `0.5000 → 0.1250 → 0.5000`.
+The graphics adapter checks CPU-backed IOSurface seeds before drawing,
+so reused texture names follow UIKit's updated pixels. Unchanged seeds
+skip uploads. An existing NAND keeps its embedded native adapter; import
+a new iPhone to use an updated adapter while retaining the old VM's data.
 Build an update with
 `V86_FIXTURE_VERSION=2 sh tools/ios/guest/build-apps.sh build/ios-install-fixtures-v2`.
 The [IPA implementation plan](ios-ipa-install-plan.md) records the acceptance

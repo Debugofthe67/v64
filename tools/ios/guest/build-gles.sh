@@ -31,7 +31,7 @@ compile() {
 }
 set -- "$out/eagl.o"
 if [ -n "$host_contexts" ]; then
-    stub IOSurface /System/Library/PrivateFrameworks/IOSurface.framework/IOSurface '_IOSurfaceGetID, _IOSurfaceGetWidth, _IOSurfaceGetHeight, _IOSurfaceGetPixelFormat, _IOSurfaceCreate, _IOSurfaceLookup, _IOSurfaceLock, _IOSurfaceUnlock, _IOSurfaceGetBaseAddress, _IOSurfaceGetBytesPerRow, _kIOSurfaceWidth, _kIOSurfaceHeight, _kIOSurfaceBytesPerElement, _kIOSurfacePixelFormat'
+    stub IOSurface /System/Library/PrivateFrameworks/IOSurface.framework/IOSurface '_IOSurfaceGetID, _IOSurfaceGetWidth, _IOSurfaceGetHeight, _IOSurfaceGetPixelFormat, _IOSurfaceCreate, _IOSurfaceLookup, _IOSurfaceLock, _IOSurfaceUnlock, _IOSurfaceGetBaseAddress, _IOSurfaceGetBytesPerRow, _IOSurfaceGetSeed, _kIOSurfaceWidth, _kIOSurfaceHeight, _kIOSurfaceBytesPerElement, _kIOSurfacePixelFormat'
     stub CoreFoundation /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation '_CFRetain, _CFRelease, _CFGetTypeID, _CFNumberCreate, _CFDictionaryCreateMutable, _CFDictionarySetValue, _kCFTypeDictionaryKeyCallBacks, _kCFTypeDictionaryValueCallBacks, _kCFBooleanTrue'
     stub CoreGraphics /System/Library/Frameworks/CoreGraphics.framework/CoreGraphics '_CGBitmapContextCreate, _CGBitmapContextCreateImage, _CGColorSpaceCreateDeviceRGB, _CGColorSpaceRelease, _CGContextDrawImage, _CGContextRelease, _CGImageGetBitmapInfo, _CGImageGetHeight, _CGImageGetTypeID, _CGImageGetWidth, _CGImageRelease'
     set -- "$@" -lIOSurface -lCoreFoundation -lCoreGraphics

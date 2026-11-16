@@ -7,7 +7,7 @@ extern void CFRelease(void *);
 
 extern int IOSurfaceLock(void *, unsigned, unsigned *), IOSurfaceUnlock(void *, unsigned, unsigned *);
 extern void *IOSurfaceGetBaseAddress(void *);
-extern unsigned IOSurfaceGetBytesPerRow(void *);
+extern unsigned IOSurfaceGetBytesPerRow(void *), IOSurfaceGetSeed(void *);
 
 struct window_callbacks {
     void *data;
@@ -28,6 +28,7 @@ struct binding {
     void *surface;
     struct native_window *window;
     unsigned name, target, handle, id, refs, retained, published;
+    unsigned cpu_seed, seed_valid;
     int lease;
 };
 
@@ -52,10 +53,12 @@ static void replace_binding(struct group *group, unsigned target, unsigned name,
     struct binding *old = *p;
     if(old)
     {
+        if(old->target == 0x0de1) group->surface_textures--;
         if(replacement && replacement->window == old->window) old->window = 0;
         *p = old->next;
     }
-    if(replacement) { replacement->next = group->bindings; group->bindings = replacement; }
+    if(replacement) { replacement->next = group->bindings; group->bindings = replacement;
+        if(replacement->target == 0x0de1) group->surface_textures++; }
     OSSpinLockUnlock(&lock);
     release_binding(old);
 }
@@ -82,6 +85,7 @@ static struct context *host_context(void *object)
 // these bytes. An unchanged seed must not overwrite newer GPU drawing.
 static int import_pixels(struct binding *b)
 {
+    if(b->seed_valid && IOSurfaceGetSeed(b->surface) == b->cpu_seed) return 1;
     unsigned seed = 0, current = 0, ok = 0;
     if(IOSurfaceLock(b->surface, 1, &seed)) return 0;
     if(SEND(b->lease, v86_IOSurfaceIsCurrent, b->handle, seed) && gles_read(b->lease, &current, 4))
@@ -110,7 +114,45 @@ static int import_pixels(struct binding *b)
             }
         }
     }
-    return IOSurfaceUnlock(b->surface, 1, 0) == 0 && ok;
+    int unlocked = IOSurfaceUnlock(b->surface, 1, 0) == 0;
+    if(unlocked && ok) { b->cpu_seed = seed; b->seed_valid = 1; }
+    return unlocked && ok;
+}
+
+// UIKit redraws CPU-backed IOSurfaces in place, reusing their GL texture
+// names. Refresh changed seeds before sampling, even without a new bind.
+// Unchanged surfaces need only the mapped seed read, never another upload.
+static int refresh_textures(struct context *ctx)
+{
+    if(!ctx->group->surface_textures) return 1;
+    struct binding *pending[N90_TEXTURE_UNITS]; unsigned count = 0;
+    OSSpinLockLock(&lock);
+    for(unsigned unit = 0; unit < ctx->texture_limit; unit++)
+    {
+        unsigned name = ctx->textures[unit];
+        if(!name) continue;
+        struct binding *b = ctx->group->bindings;
+        while(b && (b->target != 0x0de1 || b->name != name)) b = b->next;
+        if(!b) continue;
+        unsigned i = 0; while(i < count && pending[i] != b) i++;
+        if(i == count) { b->refs++; pending[count++] = b; }
+    }
+    OSSpinLockUnlock(&lock);
+    int ok = 1;
+    for(unsigned i = 0; i < count; i++) { if(!import_pixels(pending[i])) ok = 0; release_binding(pending[i]); }
+    if(!ok) ctx->driver.ok = 0;
+    return ok;
+}
+
+static void active_texture(struct context *ctx, unsigned unit)
+{
+    ctx->driver.ok &= SEND(ctx->driver.connection, gles2_glActiveTexture, unit);
+    if(unit >= 0x84c0 && unit - 0x84c0 < ctx->texture_limit) ctx->active_texture = unit - 0x84c0;
+}
+static void bind_texture(struct context *ctx, unsigned target, unsigned name)
+{
+    ctx->driver.ok &= SEND(ctx->driver.connection, gles2_glBindTexture, target, name);
+    if(target == 0x0de1) ctx->textures[ctx->active_texture] = name;
 }
 static int bind_surface(struct context *ctx, unsigned target, void *surface, struct native_window *window, unsigned retained)
 {
@@ -423,6 +465,9 @@ static void object_names(struct context *ctx, unsigned op, unsigned target, int 
         if(remove)
         {
             if(!SEND(c, op, 1, 4, names[i])) { ctx->driver.ok = 0; return; }
+            if(target == 0x0de1)
+                for(unsigned unit = 0; unit < ctx->texture_limit; unit++)
+                    if(ctx->textures[unit] == names[i]) ctx->textures[unit] = 0;
             if(target) replace_binding(ctx->group, target, names[i], 0);
         }
         else if(!SEND(c, op, 1, 4) || !gles_read(c, &names[i], 4)) { ctx->driver.ok = 0; return; }
@@ -469,6 +514,8 @@ static void read_rgba(struct context *ctx, int x, int y, int w, int h, unsigned 
 
 static void install_surface_functions(driver_word *table)
 {
+    table[N90_glActiveTexture - 5] = (driver_word)active_texture;
+    table[N90_glBindTexture - 5] = (driver_word)bind_texture;
     table[N90_glGenTextures - 5] = (driver_word)gen_Textures;
     table[N90_glDeleteTextures - 5] = (driver_word)delete_Textures;
     table[N90_glGenRenderbuffers - 5] = (driver_word)gen_Renderbuffers;

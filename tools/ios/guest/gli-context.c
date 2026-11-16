@@ -22,6 +22,7 @@ extern void *dlsym(void *, const char *);
 extern void OSSpinLockLock(volatile int *), OSSpinLockUnlock(volatile int *);
 
 #define N90_ATTRIBS 16
+#define N90_TEXTURE_UNITS 32
 struct client_attrib {
     const void *data;
     unsigned type;
@@ -35,6 +36,7 @@ struct context {
     struct group *group;
     unsigned handle, error;
     unsigned framebuffer, frame_dirty;
+    unsigned active_texture, texture_limit, textures[N90_TEXTURE_UNITS];
     char *strings[5];
     struct client_attrib attribs[N90_ATTRIBS];
 };
@@ -42,6 +44,7 @@ struct group {
     struct group *next;
     struct binding *bindings;
     unsigned connection, handle;
+    unsigned surface_textures;
 };
 static struct context *contexts;
 static struct group *groups;
@@ -155,6 +158,10 @@ static int create_context(void **out, const void *format, struct group *group, d
     }
     ctx->group = g;
     ctx->driver.ok = 1;
+    int texture_limit = 0;
+    if(!integer_value(ctx, 0x8b4d, &texture_limit) || texture_limit < 1 || texture_limit > N90_TEXTURE_UNITS)
+    { close_handle(ctx->driver.connection, ctx->handle); free(ctx); return 1; }
+    ctx->texture_limit = texture_limit;
     // GLI receives pointers to the function arrays; OpenGLES public
     // wrappers index from the start of the enclosing EAGL private state.
     for(int i = 0; i < 914; i++) primary[i] = (driver_word)invalid_operation;
