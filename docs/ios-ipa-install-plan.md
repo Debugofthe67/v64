@@ -446,3 +446,10 @@ ES1 `COLOR_LOGIC_OP` 使用目标附件副本执行全部 16 种逐位运算，�
 `25bd09f5da779abac6aa2a90bd243f280df3975eba990d667cb204801a76c9c8`）已通过 UI 安装，进入 Adventure，
 触控种植两株豌豆射手、收集阳光，并完成第一关获得向日葵卡片。测试使用独立 OPFS 磁盘，未改写 IPA
 架构来绕过检查，也未通过恢复 `Container/` 存档跳过关卡。
+
+自动 mip 生成会在 ES1 基础纹理上传、子图更新、压缩数据更新及帧缓冲复制后同步刷新影子元数据和 GPU
+内容；不把 `GENERATE_MIPMAP` 仅作为可查询开关。`OES_matrix_get` 的三个查询返回 16 个 IEEE754 原始位，
+原生输出长度与边界哨兵也有独立调用测试。
+
+Flat shading 将独立三角形、strip、fan 和线的末顶点作为 provoking vertex，三角形保持绕序。
+DrawTex 保留片段阶段的雾（距离为零），忽略几何裁剪、剔除和光照；GPU 用组合状态验证这些规则。

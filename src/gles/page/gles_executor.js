@@ -391,12 +391,12 @@ GLESExecutor.prototype.command = function(record)
     if(c.glslang && this.command3(c, name, args)) return undefined;
     switch(name)
     {
-        case "glTexImage2D": return this.tex_image(c, args, false);
-        case "glTexSubImage2D": return this.tex_image(c, args, true);
-        case "glCompressedTexImage2D": return this.compressed_tex_image(c, args);
-        case "glCompressedTexSubImage2D": return this.compressed_tex_image(c, args, true);
-        case "glCopyTexImage2D": return this.copy_tex_image(c, args, false);
-        case "glCopyTexSubImage2D": return this.copy_tex_image(c, args, true);
+        case "glTexImage2D": this.tex_image(c, args, false); break;
+        case "glTexSubImage2D": this.tex_image(c, args, true); break;
+        case "glCompressedTexImage2D": this.compressed_tex_image(c, args); break;
+        case "glCompressedTexSubImage2D": this.compressed_tex_image(c, args, true); break;
+        case "glCopyTexImage2D": this.copy_tex_image(c, args, false); break;
+        case "glCopyTexSubImage2D": this.copy_tex_image(c, args, true); break;
         case "glGenerateMipmap": return this.generate_mipmap(c, args[0]);
         case "glEGLImageTargetTexture2D": return this.invalidate_texture(c, args[0]);
         case "glBufferData": return this.buffer_data(c, args, false);
@@ -420,6 +420,7 @@ GLESExecutor.prototype.command = function(record)
         case "glDrawTexfv": return this.draw_tex(c, Array.from(new Float32Array(args[0].slice().buffer)));
         case "glDrawTexxv": return this.draw_tex(c, Array.from(new Int32Array(args[0].slice().buffer), v => v / 65536));
     }
+    if(this.shadow.mipmap_target(c,name,args)) this.generate_mipmap(c,args[0]);
     return undefined;
 };
 
@@ -848,6 +849,26 @@ GLESExecutor.prototype.apply_scissor = function(pass, c, target)
 
 // ---- draws
 
+/** Ordered independent primitives, preserving strip winding and GL's last vertex. */
+function primitive_order(mode, order)
+{
+    const out = [], count = order.length;
+    if(mode === GL.TRIANGLES || mode === GL.LINES)
+    {
+        const n = mode === GL.TRIANGLES ? 3 : 2;
+        for(let i = 0; i + n <= count; i += n) out.push(order.slice(i,i+n));
+    }
+    else if(mode === GL.TRIANGLE_STRIP || mode === GL.TRIANGLE_FAN)
+        for(let i = 2; i < count; i++) out.push(mode === GL.TRIANGLE_FAN ? [order[0],order[i-1],order[i]] :
+            i % 2 ? [order[i-1],order[i-2],order[i]] : order.slice(i-2,i+1));
+    else
+    {
+        for(let i = 1; i < count; i++) out.push([order[i-1],order[i]]);
+        if(mode === GL.LINE_LOOP && count > 1) out.push([order[count-1],order[0]]);
+    }
+    return out;
+}
+
 /**
  * A draw: vertices assembled on the CPU, the program's pipeline for the
  * state, its uniforms and textures
@@ -887,25 +908,22 @@ GLESExecutor.prototype.draw = function(c, mode, first, count, elements, logic_sp
     {
         // Destination reads must observe preceding primitives of this draw.
         const order = indices ? [...indices] : Array.from({ length: count }, (_, i) => first + i);
-        const primitives = [];
-        if(mode === GL.TRIANGLES || mode === GL.LINES)
-        {
-            const n = mode === GL.TRIANGLES ? 3 : 2;
-            for(let i = 0; i + n <= count; i += n) primitives.push(order.slice(i, i + n));
-        }
-        else if(mode === GL.TRIANGLE_STRIP || mode === GL.TRIANGLE_FAN)
-            for(let i = 2; i < count; i++) primitives.push(mode === GL.TRIANGLE_FAN ? [order[0],order[i-1],order[i]] :
-                i % 2 ? [order[i-1],order[i-2],order[i]] : order.slice(i-2,i+1));
-        else
-        {
-            for(let i = 1; i < count; i++) primitives.push([order[i-1],order[i]]);
-            if(mode === GL.LINE_LOOP && count > 1) primitives.push([order[count-1],order[0]]);
-        }
+        const primitives = primitive_order(mode,order);
         for(const primitive of primitives) this.draw(c, primitive.length === 3 ? GL.TRIANGLES : GL.LINES, 0, primitive.length,
             { type: GL.UNSIGNED_INT, bytes: new Uint8Array(new Uint32Array(primitive).buffer) }, true);
         return;
     }
     if(c.api === 1 && mode === GL.POINTS) return this.draw_points1(c, low, vertices, indices);
+    if(c.api === 1 && c.ff.shade_model === 0x1D00)
+    {
+        const order = indices ? [...indices] : Array.from({length:count},(_,i)=>first+i);
+        const primitives = primitive_order(mode,order);
+        // WebGPU uses the first provoking vertex; cyclically rotating a
+        // triangle keeps its winding while selecting GL's last vertex.
+        indices = new Uint32Array(primitives.flatMap(p=>[p.at(-1),...p.slice(0,-1)]));
+        mode = mode >= GL.TRIANGLES ? GL.TRIANGLES : GL.LINES;
+        count = indices.length;
+    }
     // (fans and loops as lists and strips; strips with indices keep u32, which never restarts)
     // (points: WebGPU's, one pixel each; gl_PointSize and glPointSize are not applied, gpu-deviations.md)
     let topology = { [GL.POINTS]: "point-list", [GL.LINES]: "line-list", [GL.LINE_STRIP]: "line-strip", [GL.LINE_LOOP]: "line-strip", [GL.TRIANGLES]: "triangle-list",
@@ -999,19 +1017,19 @@ GLESExecutor.prototype.ff_shaders = function(c, rectangle, points = false)
     if(rectangle)
     {
         signature.lighting = { enabled: false, lights: [] };
-        signature.fog = { enabled: false };
         signature.attributes.normal = false;
         signature.attributes.position = { components: 4 };
         signature.clipPlaneCount = 0;
         signature.texture.forEach(t => { if(t.enabled) t.matrix = false; });
     }
     const FF = globalThis["GLFixedFunction"];
-    const key = FF.signatureKey(signature);
+    const key = (rectangle ? "rectangle:" : points ? "points:" : "") + FF.signatureKey(signature);
     this.ff_cache = this.ff_cache || new Map();
     let entry = this.ff_cache.get(key);
     if(!entry)
     {
         const generated = FF.generate(signature);
+        if(rectangle) generated.wgslVertex = generated.wgslVertex.replace(/let fogCoord = [^;]+;/,"let fogCoord = 0.0;");
         if(points)
         {
             generated.wgslVertex = generated.wgslVertex.replace("gl_point_position(clip,ptSize,corner,glState.viewportParams)",
@@ -1143,8 +1161,8 @@ GLESExecutor.prototype.ff_bind_groups = function(c, ff, pipeline, target, viewpo
 /**
  * glDrawTex*OES: a rectangle at window coordinates (x, y) of width by
  * height, at depth z (0 to 1, in the depth range), each enabled unit's
- * texture by its crop rectangle, the current color; no lighting, fog,
- * matrices or viewport
+ * texture by its crop rectangle, the current color and fog distance zero;
+ * no lighting, clip planes, matrices or viewport
  */
 GLESExecutor.prototype.draw_tex = function(c, [x, y, z, w, h])
 {
@@ -1183,7 +1201,10 @@ GLESExecutor.prototype.draw_tex = function(c, [x, y, z, w, h])
         formats.push({ location: a.location, components: a.components, stride: a.components * 4 });
     }
     const layout = { buffers, formats, key: "tex:" + formats.map(f => f.location + ":" + f.components).join(",") };
-    const pipeline = this.pipeline(c, null, ff.shaders, layout, "triangle-list", target, false);
+    const enabled = new Set(c.enabled);
+    enabled.delete(0x0B44);enabled.delete(0x8037);
+    const raster = Object.assign({},c,{enabled,front_face:0x0901});
+    const pipeline = this.pipeline(raster, null, ff.shaders, layout, "triangle-list", target, false);
     if(!pipeline) return;
     const snapshot = ff_snapshot(c, [0, 0, W, H]);
     const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];

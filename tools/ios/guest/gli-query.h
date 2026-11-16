@@ -4,7 +4,8 @@ static unsigned state_count(struct context *ctx, unsigned pname)
 {
     switch(pname)
     {
-        case 0x0ba6: case 0x0ba7: case 0x0ba8: return 16;
+        case 0x0ba6: case 0x0ba7: case 0x0ba8:
+        case 0x898d: case 0x898e: case 0x898f: return 16;
         case 0x0b00: case 0x0b03: case 0x0b53: case 0x0b66:
         case 0x0ba2: case 0x0c10: case 0x0c22: case 0x0c23: case 0x8005: return 4;
         case 0x0b02: case 0x8129: return 3;

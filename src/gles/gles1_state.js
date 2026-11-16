@@ -580,6 +580,11 @@ export function gles1_state_value(c, pname)
         case 0x0BA6: return [ff.stacks[0x1700].at(-1), "f"];
         case 0x0BA7: return [ff.stacks[0x1701].at(-1), "f"];
         case 0x0BA8: return [ff.stacks[0x1702][unit].at(-1), "f"];
+        case 0x898D: case 0x898E: case 0x898F:
+        {
+            const values = pname === 0x898D ? ff.stacks[0x1700].at(-1) : pname === 0x898E ? ff.stacks[0x1701].at(-1) : ff.stacks[0x1702][unit].at(-1);
+            return [Array.from(new Int32Array(new Float32Array(values).buffer)), "i"];
+        }
         case 0x0BA3: return [[ff.stacks[0x1700].length], "i"];
         case 0x0BA4: return [[ff.stacks[0x1701].length], "i"];
         case 0x0BA5: return [[ff.stacks[0x1702][unit].length], "i"];

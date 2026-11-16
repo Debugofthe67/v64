@@ -63,6 +63,8 @@ const USAGES = new Set([GL.STREAM_DRAW, GL.STATIC_DRAW, GL.DYNAMIC_DRAW]);
 const MIN_FILTERS = new Set([GL.NEAREST, GL.LINEAR, GL.NEAREST_MIPMAP_NEAREST, GL.LINEAR_MIPMAP_NEAREST, GL.NEAREST_MIPMAP_LINEAR, GL.LINEAR_MIPMAP_LINEAR]);
 const WRAPS = new Set([GL.REPEAT, GL.CLAMP_TO_EDGE, GL.MIRRORED_REPEAT]);
 const ATTACHMENTS = [GL.COLOR_ATTACHMENT0, GL.DEPTH_ATTACHMENT, GL.STENCIL_ATTACHMENT];
+const TEXTURE_CHANGES = new Set(["glTexImage2D", "glTexSubImage2D", "glCompressedTexImage2D",
+    "glCompressedTexSubImage2D", "glCopyTexImage2D", "glCopyTexSubImage2D"]);
 
 /** A call's outcome when the rules refuse it */
 const REFUSED = Symbol("refused");
@@ -482,7 +484,26 @@ GLESShadow.prototype.call = function(handle, command, args)
     }
     const ret = handler(this, context, args);
     if(ret === REFUSED) return { ret: 0, keep: false };
+    const texture = this.mipmap_target(context, base, args);
+    if(texture)
+    {
+        const image = texture.images.get(0);
+        if(image)
+            for(let level = 1, w = image.width, h = image.height; w > 1 || h > 1; level++)
+            {
+                w = Math.max(1, w >> 1);h = Math.max(1, h >> 1);
+                texture.images.set(level, { width:w, height:h, format:image.format, type:image.type, compressed:image.compressed });
+            }
+    }
     return { ret, keep: this.keep };
+};
+
+/** An accepted ES1 base-image edit that must regenerate the mip chain. */
+GLESShadow.prototype.mipmap_target = function(c, name, args)
+{
+    if(c.api !== 1 || !TEXTURE_CHANGES.has(name) || args[1] > 0 || args[0] !== GL.TEXTURE_2D) return null;
+    const texture = bound_texture(c,args[0]);
+    return texture && texture.generate_mipmap ? texture : null;
 };
 
 /** Record an error (the first stays until glGetError) @return {symbol} REFUSED */
@@ -695,6 +716,7 @@ function get(as)
     return (shadow, c, [pname, params]) =>
     {
         query(shadow);
+        if(c.api === 1 && pname >= 0x898D && pname <= 0x898F && as !== "i") return fail(c,GL.INVALID_ENUM);
         const own = c.api === 1 ? gles1_state_value(c, pname) : null;
         if(own) return put(params, own[0], as, own[1]);
         let value = shadow.state_value(c, pname);

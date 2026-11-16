@@ -173,7 +173,7 @@ const EXTENSIONS = {
     1: ["GL_OES_EGL_image", "GL_OES_EGL_image_external", "GL_OES_compressed_paletted_texture", "GL_OES_compressed_ETC1_RGB8_texture", "GL_OES_element_index_uint",
         "GL_OES_framebuffer_object", "GL_OES_depth24", "GL_OES_packed_depth_stencil", "GL_OES_rgb8_rgba8", "GL_OES_texture_npot",
         "GL_OES_blend_func_separate", "GL_OES_blend_equation_separate", "GL_OES_blend_subtract",
-        "GL_OES_draw_texture", "GL_OES_point_sprite", "GL_OES_point_size_array", "GL_EXT_texture_format_BGRA8888", "GL_EXT_texture_filter_anisotropic", "GL_IMG_texture_compression_pvrtc"],
+        "GL_OES_draw_texture", "GL_OES_matrix_get", "GL_OES_point_sprite", "GL_OES_point_size_array", "GL_EXT_texture_format_BGRA8888", "GL_EXT_texture_filter_anisotropic", "GL_IMG_texture_compression_pvrtc"],
     2: ["GL_OES_EGL_image", "GL_OES_EGL_image_external", "GL_OES_compressed_ETC1_RGB8_texture", "GL_OES_element_index_uint",
         "GL_OES_depth24", "GL_OES_packed_depth_stencil", "GL_OES_rgb8_rgba8", "GL_OES_texture_npot", "GL_OES_standard_derivatives",
         "GL_EXT_texture_format_BGRA8888", "GL_EXT_texture_filter_anisotropic", "GL_IMG_texture_compression_pvrtc"],

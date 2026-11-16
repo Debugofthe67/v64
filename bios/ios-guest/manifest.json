@@ -14,7 +14,7 @@
     "tools/ios/guest/gli-surface.h": "94b9a54ec76a73ccaf29e16fc64a41606b5ed791e8542ef3f0b2ce94b84aa4f7",
     "tools/ios/guest/gli-draw.h": "50bec781957d29b5436e86b5f249f103cfdc3f1d5917f305b1738a33b6c3612a",
     "tools/ios/guest/gli-texture.h": "8c259303df239bf648848e1703b82cdbef8f2c9e0896a0cae303abde35649fbb",
-    "tools/ios/guest/gli-query.h": "a95b70d3cf601d65a1aba80c165e05528e69a1967f57785643e8ad9dcf866f63",
+    "tools/ios/guest/gli-query.h": "caec9ce60982e5019a3026aba3787cd94831ba8a6b19a2ac4f21a56da63efac0",
     "tools/ios/guest/gli-uniform.h": "73f952d90156e0af6e64ae6098bbca1ec9eef58e7540c9e5f53003c4528216b3",
     "tools/ios/guest/gli-fixed.h": "559ad0b166844ef14c8883e123b18a3d1b3d1aebc04e15a3878c4461bf21297f",
     "tools/ios/guest/gles-opcodes.mjs": "b93cb68a1f4310337dc48efd3ac5f8b6edf090a5ed9e22e8bf60fb03361219a1",
@@ -26,6 +26,6 @@
     "src/gles/gles_wire.js": "2c23c6ddce7bc4fc2aa88ba6c08f03c0964f901debce2993b92afa4046567715"
   },
   "files": {
-    "libv86gles.dylib": "0c91cae6b37fedc1b88ab7d3b6b200a21e63d218be04fdfe69417637a344d50c"
+    "libv86gles.dylib": "b1572c9d2bb98220ade7c5cf53206dc6d9b93b44928b8a8c8b7adeef2dc862cb"
   }
 }

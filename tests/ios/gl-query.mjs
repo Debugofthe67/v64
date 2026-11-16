@@ -16,6 +16,7 @@ const calls = [
     ["glGetIntegerv", [0xba2, 16], new Int32Array([3, 4, 640, 960])],
     ["glGetFloatv", [0xb70, 8], new Float32Array([0.25, 0.75])],
     ["glGetBooleanv", [0xc23, 4], new Uint8Array([1, 0, 1, 0])],
+    ["glGetIntegerv", [0x898d, 64], new Int32Array(Array.from({length:16},(_,i)=>i+100))],
     ["glGetIntegerv", [0x86a2, 4], new Int32Array([3])],
     ["glGetIntegerv", [0x86a3, 12], new Int32Array([0x83f0, 0x83f1, 0x83f2])],
     ["glGetShaderiv", [7, 0x8b81, 4], new Int32Array([1])],
@@ -86,6 +87,8 @@ int main(void)
     if(memcmp(range,(float[]){11,0.25,0.75,12},sizeof(range))) return 2;
     unsigned char mask[6]={91,9,9,9,9,92}; glGetBooleanv(0xc23,mask+1);
     if(memcmp(mask,(unsigned char[]){91,1,0,1,0,92},6)) return 3;
+    int matrix[18];for(int i=0;i<18;i++)matrix[i]=91;matrix[17]=92;glGetIntegerv(0x898d,matrix+1);
+    if(matrix[0]!=91||matrix[17]!=92)return 30;for(int i=0;i<16;i++)if(matrix[i+1]!=i+100)return 31;
     int formats[5]={91,0,0,0,92}; glGetIntegerv(0x86a3,formats+1);
     if(memcmp(formats,(int[]){91,0x83f0,0x83f1,0x83f2,92},sizeof(formats))) return 4;
     int status=0; glGetShaderiv(7,0x8b81,&status); if(status!=1) return 5;
