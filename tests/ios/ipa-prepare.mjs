@@ -9,10 +9,10 @@ import { plist_encode, plist_parse } from "../../src/ios/plist.js";
 import { zip_read } from "../../src/android/zip.js";
 import { make_zip } from "../android/fixtures.mjs";
 
-function image()
+function image(subtype = 9)
 {
     const b = new Uint8Array(0x900), v = new DataView(b.buffer), put = (a, n) => v.setUint32(a, n, true);
-    put(0, 0xFEEDFACE); put(4, 12); put(8, 9); put(12, 2); put(16, 2); put(20, 180);
+    put(0, 0xFEEDFACE); put(4, 12); put(8, subtype); put(12, 2); put(16, 2); put(20, 180);
     put(28, 1); put(32, 124); b.set(new TextEncoder().encode("__TEXT"), 36);
     put(52, 0x1000); put(56, 0x1000); put(64, 0x800); put(76, 1);
     b.set(new TextEncoder().encode("__text"), 84); put(116, 0x1400); put(120, 0x100); put(124, 0x400);
@@ -63,4 +63,13 @@ test("preparation reports unsupported header layout instead of modifying it", ()
     const original=image(),copy=original.slice();
     assert.throws(()=>macho_embed_info(original,new Uint8Array(5000)),/padding.*Info.plist/);
     assert.deepEqual(original,copy);
+});
+test("ARMv6 preparation preserves the subtype while linking, sealing and signing code", async () => {
+    const info = plist_encode({ CFBundleIdentifier: "org.v86.Legacy", CFBundleExecutable: "Legacy", CFBundleVersion: "1", MinimumOSVersion: "2.2.1" });
+    const b = make_zip([{ name: "Payload/Legacy.app/Info.plist", data: info }, { name: "Payload/Legacy.app/Legacy", data: image(6) }]);
+    const parts = [], manifest = await prepare_ipa((a, n) => b.subarray(a, a + n), b.length, data => parts.push(data.slice()));
+    const out = Buffer.concat(parts), app = await inspect_ipa((a, n) => out.subarray(a, a + n), out.length);
+    assert.equal(manifest.architecture, "armv6"); assert.equal(app.main.parsed.cpusubtype, 6);
+    assert.ok(app.main.parsed.dylibs.includes(SYSTEM_GL_LIBRARY));
+    assert.equal(manifest.trusted[0].cdhashes[0], Buffer.from(cdhashes(app.main.bytes)[0]).toString("hex"));
 });

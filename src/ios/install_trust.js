@@ -52,7 +52,7 @@ export function stage_install_trust(kernel, state, manifest, install_id)
 {
     validate_install_state(state);
     if(state.pending) fail("a previous installation must be resolved first");
-    if(manifest?.format !== "v86-ios-install" || manifest.format_version !== 1 || manifest.architecture !== "armv7" ||
+    if(manifest?.format !== "v86-ios-install" || manifest.format_version !== 1 || !["armv7", "armv6"].includes(manifest.architecture) ||
         !Array.isArray(manifest.trusted)) fail("invalid prepared application manifest");
     const pending = { install_id, bundle_id: manifest.bundle_id, version: manifest.version, build: manifest.build,
         prepared_sha256: manifest.prepared_sha256, hashes: manifest.trusted.flatMap(c => c.cdhashes) };

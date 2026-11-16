@@ -2,7 +2,7 @@
 // serializable; code and archive entries stay in the preparation worker.
 import { zip_entries, zip_read, zip_stream } from "../android/zip.js";
 import { plist_parse } from "./plist.js";
-import { macho_armv7 } from "../apple/macho.js";
+import { macho_ios_app } from "../apple/macho.js";
 import { SHA256 } from "../image/sha256.js";
 
 export const IPA_LIMITS = Object.freeze({ archive: 2 * 1024 ** 3, expanded: 4 * 1024 ** 3,
@@ -119,7 +119,7 @@ export async function inspect_ipa(read, size, progress = () => {})
                 if([0xCEFAEDFE, 0xCFFAEDFE, 0xCAFEBABE, 0xBEBAFECA].includes(magic))
                 {
                     if(entry.size > IPA_LIMITS.code) fail("code exceeds the 128 MiB limit");
-                    const slice = macho_armv7(await zip_read(read, entry));
+                    const slice = macho_ios_app(await zip_read(read, entry));
                     if(slice.parsed.min_ios && ios_version(slice.parsed.min_ios) > ios_version("6.1.3"))
                         fail(entry.name + " requires iOS " + slice.parsed.min_ios);
                     code.push({ path: entry.name, ...slice });
@@ -149,7 +149,7 @@ export async function inspect_ipa(read, size, progress = () => {})
         }
     }
     const main = code.find(c => c.path === prefix + executable);
-    if(!main || main.parsed.filetype !== 2) fail("missing ARMv7 application executable");
+    if(!main || main.parsed.filetype !== 2) fail("missing ARMv7 or ARMv6 application executable");
     const digest = new SHA256();
     for(let at = 0; at < size; at += 1 << 20)
     {
@@ -159,7 +159,7 @@ export async function inspect_ipa(read, size, progress = () => {})
     }
     const report = { name: String(info.CFBundleDisplayName || info.CFBundleName || [...roots][0].slice(0, -4)),
         bundle_id: info.CFBundleIdentifier, executable, version: String(info.CFBundleShortVersionString || info.CFBundleVersion || ""),
-        build: String(info.CFBundleVersion || ""), minimum_ios: minimum, architecture: "armv7", size, expanded_size: expanded,
+        build: String(info.CFBundleVersion || ""), minimum_ios: minimum, architecture: main.architecture, size, expanded_size: expanded,
         original_sha256: digest.hex(), code_count: code.length };
     return { report, entries: entries.filter(e => !sandbox_backup(e)), info, root, main, code };
 }

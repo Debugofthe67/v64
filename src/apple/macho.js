@@ -122,12 +122,16 @@ export function macho_parse(bytes)
     return result;
 }
 
-// Select one device ARMv7 slice. Do not accept ARMv7s or simulator binaries.
-export function macho_armv7(bytes)
+// Device applications prefer ARMv7 and may fall back to ARMv6. Keep a
+// strict ARMv7 entry point for callers requiring the newer architecture.
+export function macho_armv7(bytes) { return device_slice(bytes, [9], "ARMv7"); }
+export function macho_ios_app(bytes) { return device_slice(bytes, [9, 6], "ARMv7 or ARMv6"); }
+
+function device_slice(bytes, supported, description)
 {
     if(bytes.length < 8) throw new Error("Mach-O: truncated image");
     const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), magic = v.getUint32(0);
-    let selected = bytes;
+    let selected = bytes, fat_subtype = null;
     if(magic === 0xCAFEBABE || magic === 0xBEBAFECA)
     {
         const le = magic === 0xBEBAFECA, count = v.getUint32(4, le), spans = [];
@@ -141,18 +145,24 @@ export function macho_armv7(bytes)
                 offset % 2 ** alignment || spans.some(([a, b]) => offset < b && offset + size > a))
                 throw new Error("Mach-O: invalid Fat slice bounds");
             spans.push([offset, offset + size]);
-            if(type === CPU_TYPE_ARM && (subtype & 0xFFFFFF) === 9) matches.push(bytes.subarray(offset, offset + size));
+            if(type === CPU_TYPE_ARM && supported.includes(subtype & 0xFFFFFF))
+                matches.push({ subtype: subtype & 0xFFFFFF, bytes: bytes.subarray(offset, offset + size) });
         }
-        if(matches.length !== 1) throw new Error("Mach-O: expected one ARMv7 slice");
-        selected = matches[0];
+        const subtype = supported.find(s => matches.some(m => m.subtype === s));
+        const preferred = matches.filter(m => m.subtype === subtype);
+        if(preferred.length !== 1) throw new Error("Mach-O: expected one " + description + " slice");
+        selected = preferred[0].bytes; fat_subtype = subtype;
     }
     const parsed = macho_parse(selected);
-    if(parsed.is64 || parsed.cputype !== CPU_TYPE_ARM || (parsed.cpusubtype & 0xFFFFFF) !== 9)
-        throw new Error("Mach-O: app requires an ARMv7 device slice");
+    const subtype = parsed.cpusubtype & 0xFFFFFF;
+    if(parsed.is64 || parsed.cputype !== CPU_TYPE_ARM || !supported.includes(subtype))
+        throw new Error("Mach-O: app requires an " + description + " device slice");
+    if(fat_subtype !== null && subtype !== fat_subtype)
+        throw new Error("Mach-O: Fat architecture does not match slice header");
     for(const segment of parsed.segments)
         if(segment.fileoff + segment.filesize > selected.length) throw new Error("Mach-O: segment exceeds slice");
     if(parsed.encryption.some(e => e.cryptid !== 0)) throw new Error("Mach-O: FairPlay-encrypted code is unsupported");
-    return { bytes: selected, parsed };
+    return { bytes: selected, parsed, architecture: subtype === 6 ? "armv6" : "armv7" };
 }
 
 /**

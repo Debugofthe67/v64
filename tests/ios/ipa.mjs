@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { inspect_ipa } from "../../src/ios/ipa.js";
 import { plist_parse, plist_encode } from "../../src/ios/plist.js";
-import { macho_armv7 } from "../../src/apple/macho.js";
+import { macho_armv7, macho_ios_app } from "../../src/apple/macho.js";
 import { make_zip } from "../android/fixtures.mjs";
 
 const enc = s => new TextEncoder().encode(s);
@@ -134,6 +134,23 @@ test("Mach-O: selects ARMv7 Fat slice and validates slice bounds", () => {
     v.setUint32(36, 512); assert.throws(() => macho_armv7(b), /bounds/);
     const malformed = executable(); new DataView(malformed.buffer).setUint32(20, 0, true);
     assert.throws(() => macho_armv7(malformed), /load command/);
+});
+test("Mach-O: prefers ARMv7, falls back to ARMv6, and preserves architecture identity", async () => {
+    const arm6 = executable({ subtype: 6 }), arm7 = executable();
+    assert.equal(macho_ios_app(arm6).architecture, "armv6");
+    assert.equal((await inspect(archive({ main: arm6 }))).report.architecture, "armv6");
+    assert.throws(() => macho_armv7(arm6), /ARMv7/);
+    const b = new Uint8Array(1536), v = new DataView(b.buffer);
+    v.setUint32(0, 0xCAFEBABE); v.setUint32(4, 2);
+    for(const [i, subtype] of [6, 9].entries())
+        [12, subtype, 512 + 512 * i, 512, 9].forEach((n, j) => v.setUint32(8 + 20 * i + j * 4, n));
+    b.set(arm6, 512); b.set(arm7, 1024);
+    assert.deepEqual(macho_ios_app(b).bytes, arm7);
+    v.setUint32(32, 11); assert.deepEqual(macho_ios_app(b).bytes, arm6);
+    v.setUint32(12, 9); v.setUint32(32, 6);
+    assert.throws(() => macho_ios_app(b), /does not match/);
+    for(const subtype of [0, 5, 7, 8, 11, 14]) assert.throws(() => macho_ios_app(executable({ subtype })), /device slice/);
+    assert.throws(() => macho_ios_app(executable({ subtype: 6, encrypted: true })), /encrypted/);
 });
 
 test("IPA: resolves framework links and rejects indirect escapes, cycles and link parents", async()=>{

@@ -78,7 +78,13 @@ Choose **Open application** to ask SpringBoard to launch it. The first iPhone
 startup can take several minutes; if SpringBoard is still starting, wait and
 try Open again.
 
-The initial scope is unencrypted ARMv7 applications compatible with iOS 6.1.3.
+The installer accepts unencrypted ARMv7 and ARMv6 applications compatible
+with iOS 6.1.3. Fat applications prefer ARMv7 and fall back to ARMv6;
+preparation preserves the selected subtype when linking and signing code.
+ARMv7s, ARM64, simulator code and encrypted executables remain unsupported.
+Installation acceptance alone does not establish graphics/API compatibility.
+Legacy `Container/` sandbox backups are checked for ZIP integrity but are
+excluded from the prepared IPA; they never overwrite the new sandbox.
 ARM64-only packages, FairPlay-encrypted App Store executables, unsupported
 entitlements and executables without enough Mach-O header space are rejected
 with a reason. Applications are prepared and signed locally in a browser
