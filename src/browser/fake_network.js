@@ -354,13 +354,47 @@ function handle_fake_dns_static(packet, adapter)
 
 function handle_fake_dns_doh(packet, adapter)
 {
-    const fetch_url = `https://${adapter.doh_server || DEFAULT_DOH_SERVER}/dns-query`;
     const fetch_opts = {
         method: "POST",
         headers: [["content-type", "application/dns-message"]],
         body: packet.udp.data
     };
-    fetch(fetch_url, fetch_opts).then(async (resp) => {
+    // Respect an explicitly selected resolver. The public default has a
+    // fallback for hosts where one provider is unreachable.
+    const servers = adapter.doh_server ? [adapter.doh_server] : [DEFAULT_DOH_SERVER, "dns.google"];
+    (async () => {
+        let data;
+        for(const server of servers)
+        {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5000);
+            try
+            {
+                const resp = await fetch(`https://${server}/dns-query`, { ...fetch_opts, signal: controller.signal });
+                if(!resp.ok) throw new Error("DNS HTTP " + resp.status);
+                const answer = new Uint8Array(await resp.arrayBuffer());
+                if(answer.length < 12 || answer[0] !== packet.udp.data[0] ||
+                    answer[1] !== packet.udp.data[1] || !(answer[2] & 0x80)) throw new Error("Invalid DNS response");
+                data = answer;
+                break;
+            }
+            catch(error)
+            {
+                dbg_log("DNS request failed: " + error, LOG_FETCH);
+            }
+            finally
+            {
+                clearTimeout(timer);
+            }
+        }
+        if(!data)
+        {
+            // SERVFAIL releases the guest resolver instead of leaving an
+            // unhandled rejection and a query that can only time out.
+            data = packet.udp.data.slice();
+            data[2] = 0x81; data[3] = 0x82;
+            data.fill(0, 6, 12);
+        }
         const reply = {
             eth: {
                 ethertype: ETHERTYPE_IPV4,
@@ -375,11 +409,11 @@ function handle_fake_dns_doh(packet, adapter)
             udp: {
                 sport: 53,
                 dport: packet.udp.sport,
-                data: new Uint8Array(await resp.arrayBuffer())
+                data
             }
         };
         adapter.receive(make_packet(adapter.eth_encoder_buf, reply));
-    });
+    })();
     return true;
 }
 
