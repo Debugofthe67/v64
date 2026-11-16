@@ -166,7 +166,7 @@ its `NVAGP.INF` includes GeForce 6800 GT (`PCI\VEN_10DE&DEV_0045`).
    `WINDOWS\SYSTEM\ISAPNP.VXD`: the tested image was missing this loader.
    Install the original `ISA_DRV` section of `MACHINE2.INF` with the matching
    Windows 98 CD available. The harness supplies the missing original file;
-   [the native repair](fixtures/nv40/g0-win98-isa-loader-completion.json)
+   [the native repair](../tests/acceptance/nv40/g0-win98-isa-loader-completion.json)
    verifies the bridge starts afterwards. This repair does not establish
    protected-mode IDE operation; the two IDE child nodes still reported code 10.
    If the display reports code 12, check which device owns
@@ -181,19 +181,19 @@ its `NVAGP.INF` includes GeForce 6800 GT (`PCI\VEN_10DE&DEV_0045`).
 For long benchmark runs, select **None** under Display Properties → Screen
 Saver, then open its energy-saving Settings and select **Never** for monitor
 power-off. The tested image originally used a 15-minute monitor timeout;
-[the native setup check](fixtures/nv40/g6-native-memory-status-diagnostic.json)
+[the native setup check](../tests/acceptance/nv40/g6-native-memory-status-diagnostic.json)
 records this setting separately from benchmark execution. The later
-[original 03 suite](fixtures/nv40/g5-win98-8198-03-full-eleven.json) completed
+[original 03 suite](../tests/acceptance/nv40/g5-win98-8198-03-full-eleven.json) completed
 all eleven selected tests and shut down normally.
-Its [nine original IQ images](fixtures/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)
+Its [nine original IQ images](../tests/acceptance/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)
 were subsequently reviewed against the API reference. Eight scene regions
 match XP exactly and GT3 differs by at most two channel values; reference
 pixel residuals remain recorded. RGB565 desktop/Start-menu return and a later
 normal shutdown were also verified.
 
 1024×768×32, 640×480×8, 800×600×16 and a DOS mode-13h/text/desktop round trip
-are recorded in the [native display fixture](fixtures/nv40/g1-native-modes-dos.json).
-The [clean DxDiag fixture](fixtures/nv40/g3-win98-8198-dxdiag-clean.json)
+are recorded in the [native display fixture](../tests/acceptance/nv40/g1-native-modes-dos.json).
+The [clean DxDiag fixture](../tests/acceptance/nv40/g3-win98-8198-dxdiag-clean.json)
 records the three successful D3D tests. The selected original 99 MAX, 2000,
 2001 SE and 03 suites have completed, together with the tested 8bpp StarCraft
 and 16bpp Red Alert 2 round trips. See [GeForce 6800 GT](gpu-devices.md#geforce-6800-gt)

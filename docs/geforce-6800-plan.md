@@ -10,14 +10,14 @@
 
 | 阶段 | 交付与验收 | 证据 |
 | --- | --- | --- |
-| G0 | PCI/BAR/PROM、官方驱动跟踪、XP PFIFO 初始化与 Win98 PCI bus 枚举 | [XP 初始化](fixtures/nv40/g1-xp-9371-initialized.json)、[Win98 PCI](fixtures/nv40/g0-win98-pci-bus.json) |
-| G1 | 自编 NV VBE ROM、VPLL、光标、gamma、EDID；两驱动桌面/模式切换、DOS 与快照往返 | [桌面](fixtures/nv40/g1-xp-9371-desktop.json)、[模式/DOS](fixtures/nv40/g1-native-modes-dos.json) |
-| G2 | DMA/PFIFO/RAMHT/RAMFC、通知/中断及 CPU 2D/GDI/字体；两系统原生 DirectDraw/DxDiag | [XP](fixtures/nv40/g2-xp-9371-dxdiag-ddraw.json)、[Win98](fixtures/nv40/g2-win98-8198-dxdiag-ddraw.json)、[字体](fixtures/nv40/g2-xp-9371-font-reference.json) |
-| G3 | 原生固定功能生成程序、纹理/表面、DxDiag 3D；99 MAX、2000 完整套件与固定帧 | [99/2000 图像复核](fixtures/nv40/g5-legacy-original-fixed-frame-review.json)、[设备说明](gpu-devices.md#geforce-6800-gt) |
-| G4 | VP/FP 指令、控制流/条件码/地址、半精度别名、顶点纹理、MRT、FP16/32、深度比较/查询；2001/03/05/06 原版套件、图像 | [旧套件](fixtures/nv40/g5-legacy-original-fixed-frame-review.json)、[03](fixtures/nv40/g4-03-nine-point-sprite-fixed-frames.json)、[05](fixtures/nv40/g4-05-current-format-eight-fixed-frames.json)；[06 四图](fixtures/nv40/g4-06-current-cold-four-fixed-frames.json)、[七项特性](fixtures/nv40/g4-06-seven-feature-reference-review.json) |
-| G5 | 81.98 下99/2000/2001/03；16-bit RA2、8-bit StarCraft、DOS、桌面返回及正常关机 | [03 九图/生命周期](fixtures/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)、[RA2](fixtures/nv40/g5-win98-8198-ra2-16bpp.json)、[StarCraft](fixtures/nv40/g5-win98-8198-starcraft-8bpp.json) |
-| G6 | 缓存、顶点/常量/索引准备、FIFO/传输热点优化；同配套状态、release、单客体重复采样 | [两次 GT1 渲染窗口](fixtures/nv40/g6-xp-9371-06-final-gt1-work-windows.json)、[方法](profiling.md#native-nv40-guests) |
-| G7 | 管理器集成、驱动/偏差/性能文档、证据复核与本计划精简 | [设备](gpu-devices.md#geforce-6800-gt)、[偏差](gpu-deviations.md#geforce-6800-gt)、[收尾](fixtures/nv40/g7-final-closeout.json)、[历史完整性检查](fixtures/nv40/g7-retained-artifact-integrity.json) |
+| G0 | PCI/BAR/PROM、官方驱动跟踪、XP PFIFO 初始化与 Win98 PCI bus 枚举 | [XP 初始化](../tests/acceptance/nv40/g1-xp-9371-initialized.json)、[Win98 PCI](../tests/acceptance/nv40/g0-win98-pci-bus.json) |
+| G1 | 自编 NV VBE ROM、VPLL、光标、gamma、EDID；两驱动桌面/模式切换、DOS 与快照往返 | [桌面](../tests/acceptance/nv40/g1-xp-9371-desktop.json)、[模式/DOS](../tests/acceptance/nv40/g1-native-modes-dos.json) |
+| G2 | DMA/PFIFO/RAMHT/RAMFC、通知/中断及 CPU 2D/GDI/字体；两系统原生 DirectDraw/DxDiag | [XP](../tests/acceptance/nv40/g2-xp-9371-dxdiag-ddraw.json)、[Win98](../tests/acceptance/nv40/g2-win98-8198-dxdiag-ddraw.json)、[字体](../tests/acceptance/nv40/g2-xp-9371-font-reference.json) |
+| G3 | 原生固定功能生成程序、纹理/表面、DxDiag 3D；99 MAX、2000 完整套件与固定帧 | [99/2000 图像复核](../tests/acceptance/nv40/g5-legacy-original-fixed-frame-review.json)、[设备说明](gpu-devices.md#geforce-6800-gt) |
+| G4 | VP/FP 指令、控制流/条件码/地址、半精度别名、顶点纹理、MRT、FP16/32、深度比较/查询；2001/03/05/06 原版套件、图像 | [旧套件](../tests/acceptance/nv40/g5-legacy-original-fixed-frame-review.json)、[03](../tests/acceptance/nv40/g4-03-nine-point-sprite-fixed-frames.json)、[05](../tests/acceptance/nv40/g4-05-current-format-eight-fixed-frames.json)；[06 四图](../tests/acceptance/nv40/g4-06-current-cold-four-fixed-frames.json)、[七项特性](../tests/acceptance/nv40/g4-06-seven-feature-reference-review.json) |
+| G5 | 81.98 下99/2000/2001/03；16-bit RA2、8-bit StarCraft、DOS、桌面返回及正常关机 | [03 九图/生命周期](../tests/acceptance/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)、[RA2](../tests/acceptance/nv40/g5-win98-8198-ra2-16bpp.json)、[StarCraft](../tests/acceptance/nv40/g5-win98-8198-starcraft-8bpp.json) |
+| G6 | 缓存、顶点/常量/索引准备、FIFO/传输热点优化；同配套状态、release、单客体重复采样 | [两次 GT1 渲染窗口](../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)、[方法](profiling.md#native-nv40-guests) |
+| G7 | 管理器集成、驱动/偏差/性能文档、证据复核与本计划精简 | [设备](gpu-devices.md#geforce-6800-gt)、[偏差](gpu-deviations.md#geforce-6800-gt)、[收尾](../tests/acceptance/nv40/g7-final-closeout.json)、[历史完整性检查](../tests/acceptance/nv40/g7-retained-artifact-integrity.json) |
 
 ## 原版客体覆盖
 

@@ -41,7 +41,7 @@ const result = await run_xp_ram_probe({ root, out, files,
         assert.equal(result.owners.length, proxy ? 1 : 0);
         if(proxy) assert(result.batches > 0);else assert.equal(result.batches, 0);
         rows = parse_layout_rows(result.text);
-        if(proxy) { assert(result.text.includes("PASS proxy XYZ aliases, final buffer boundary and temporary clip/extents records"));compared = compare_layout_rows(rows, JSON.parse(fs.readFileSync(root + "docs/fixtures/d3d-review/d3d7-native-layout-reference.json")).rows); }
+        if(proxy) { assert(result.text.includes("PASS proxy XYZ aliases, final buffer boundary and temporary clip/extents records"));compared = compare_layout_rows(rows, JSON.parse(fs.readFileSync(root + "tests/glbridge/fixtures/d3d-review/d3d7-native-layout-reference.json")).rows); }
         else assert.equal(rows.filter(row => row.hr === 0).length, 84);
     } });
 result.rendering = proxy ? "App-local proxy software ProcessVertices; host commands acknowledged without rendering" : "Original Microsoft D3D7 RGB software ProcessVertices; no host rendering";
@@ -51,7 +51,7 @@ if(write_reference)
 {
     const reference = { provenance: { description: result.rendering, ...build, batches: result.batches, owners: result.owners,
         seconds: result.seconds, skipped: "OP_CLIP with XYZ output hangs in the original RGB runtime; native probes keep one spare destination vertex to contain spill writes" }, rows };
-    for(const file of [root + "docs/fixtures/d3d-review/d3d7-native-layout-reference.json", site + "/glbridge/tests/fixtures/d9wg_d3d7_native_layout_reference.json"])
+    for(const file of [root + "tests/glbridge/fixtures/d3d-review/d3d7-native-layout-reference.json", site + "/glbridge/tests/fixtures/d9wg_d3d7_native_layout_reference.json"])
         fs.writeFileSync(file, JSON.stringify(reference, null, 2) + "\n");
 }
 console.log(JSON.stringify({ status: result.status, seconds: result.seconds, layoutResults: rows.length, nativeComparisons: compared, proxy }));

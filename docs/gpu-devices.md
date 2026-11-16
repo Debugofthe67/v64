@@ -253,9 +253,9 @@ driver binary or microcode is distributed with the device.
 
 Driver setup is described in [Windows 9x](windows-9x.md#323-geforce-6800-gt-experimental)
 and [Windows XP](windows-nt.md#44-geforce-6800-gt-on-windows-xp-experimental).
-The [native display fixture](fixtures/nv40/g1-native-modes-dos.json),
-[Win98 DxDiag fixture](fixtures/nv40/g3-win98-8198-dxdiag-clean.json) and
-[XP RGB565 fixture](fixtures/nv40/g3-xp-9371-rgb565.json) record the scope
+The [native display fixture](../tests/acceptance/nv40/g1-native-modes-dos.json),
+[Win98 DxDiag fixture](../tests/acceptance/nv40/g3-win98-8198-dxdiag-clean.json) and
+[XP RGB565 fixture](../tests/acceptance/nv40/g3-xp-9371-rgb565.json) record the scope
 and read-only image checks.
 
 PFIFO, checked VRAM/PCI DMA, RAMHT/RAMFC and CPU GDI/blit/image operations
@@ -268,7 +268,7 @@ WebGPU renderer. Legacy VGA and CPU GDI do not require one.
 
 VRAM remains the snapshot authority. Pending GPU work is completed and read
 back before saving; host resources and translation caches are recreated on
-restore. Driver installation fixtures use overlays and cold reboots;
+restore. Driver installation ../tests/acceptance use overlays and cold reboots;
 long-lived investigation snapshots are not substitutes for a clean guest
 acceptance run.
 
@@ -276,68 +276,68 @@ The original functional suites through06 on XP and through03 on Win98 have
 completed. Reference content reviews retain local pixel residuals and a
 Shader Particles position deviation. Two final isolated GT1 work-distribution
 windows are recorded below. Both XP and a
-[fresh cold Win98 run](fixtures/nv40/g3-win98-8198-99-cold-full.json) completed
+[fresh cold Win98 run](../tests/acceptance/nv40/g3-win98-8198-99-cold-full.json) completed
 all 26 3DMark99 tests and exported their native projects and IQ images.
-The [corrected XP run](fixtures/nv40/g3-xp-9371-99-full-corrected.json) and
-[Win98 IQ rerun](fixtures/nv40/g3-win98-8198-99-iq-corner-fixed.json) record
+The [corrected XP run](../tests/acceptance/nv40/g3-xp-9371-99-full-corrected.json) and
+[Win98 IQ rerun](../tests/acceptance/nv40/g3-win98-8198-99-iq-corner-fixed.json) record
 remaining pixel differences from the proxy reference; eight Win98 images
 match XP exactly outside the metadata band, and the ninth differs at one pixel.
 
-Cold [XP](fixtures/nv40/g3-xp-9371-2000-full-clean.json) and
-[Win98](fixtures/nv40/g3-win98-8198-2000-full-clean.json) 3DMark2000 runs each
+Cold [XP](../tests/acceptance/nv40/g3-xp-9371-2000-full-clean.json) and
+[Win98](../tests/acceptance/nv40/g3-win98-8198-2000-full-clean.json) 3DMark2000 runs each
 completed all 22 selected tests. A later
-[Win98 IQ rerun](fixtures/nv40/g3-win98-8198-2000-vertex-dual-iq.json) removes
+[Win98 IQ rerun](../tests/acceptance/nv40/g3-win98-8198-2000-vertex-dual-iq.json) removes
 the substantial vertex-lighting defects; small reference residuals remain.
 
-[XP 3DMark2001 SE](fixtures/nv40/g4-xp-9371-2001-native-all21.json) completed
+[XP 3DMark2001 SE](../tests/acceptance/nv40/g4-xp-9371-2001-native-all21.json) completed
 all 21 selected tests in a fresh benchmark execution in a restored guest,
 exported its original project and eight IQ BMPs, and shut down normally.
-[XP 3DMark03](fixtures/nv40/g4-xp-9371-03-cold-full-eleven.json) completed its
+[XP 3DMark03](../tests/acceptance/nv40/g4-xp-9371-03-cold-full-eleven.json) completed its
 cold-boot eleven-test suite, exported the original result and shut down normally.
 These functional completions do not establish reference-image or isolated
 performance acceptance. The later
-[XP05 full16 run](fixtures/nv40/g4-xp-9371-05-native-all16.json) exported a
+[XP05 full16 run](../tests/acceptance/nv40/g4-xp-9371-05-native-all16.json) exported a
 valid original result with all three graphics, two CPU, five feature and six
-batch tests successful. Its [eight original fixed-frame images](fixtures/nv40/g4-xp-9371-05-native-iq.json)
+batch tests successful. Its [eight original fixed-frame images](../tests/acceptance/nv40/g4-xp-9371-05-native-iq.json)
 cover all three game scenes and five feature tests. Proxy-image comparison,
 normal shutdown and isolated performance validation are recorded separately.
-[Win98 2001 SE](fixtures/nv40/g5-win98-8198-2001-native-all21.json) also
+[Win98 2001 SE](../tests/acceptance/nv40/g5-win98-8198-2001-native-all21.json) also
 completed all 21, with the native project, eight IQ BMPs and normal shutdown.
-The [Win98 03 run](fixtures/nv40/g5-win98-8198-03-full-eleven.json), using
+The [Win98 03 run](../tests/acceptance/nv40/g5-win98-8198-03-full-eleven.json), using
 512 MiB RAM and 128 MiB VRAM, completed all four graphics, two CPU and five
 feature tests, exported its original successful project and shut down normally.
-Its [nine original IQ frames](fixtures/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)
+Its [nine original IQ frames](../tests/acceptance/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)
 were exported and visually reviewed against the proxy. Eight scene regions
 match XP exactly and GT3 differs by at most two channel values. Live RGB565
 desktop/Start-menu return and a later normal shutdown were verified.
 
-The [XP06 default-six run](fixtures/nv40/g4-xp-9371-06-native-default6.json)
+The [XP06 default-six run](../tests/acceptance/nv40/g4-xp-9371-06-native-default6.json)
 completed both SM2.0, both CPU and both HDR/SM3.0 tests. The separate
-[seven-feature and six-batch run](fixtures/nv40/g4-xp-9371-06-feature7-batch6.json)
+[seven-feature and six-batch run](../tests/acceptance/nv40/g4-xp-9371-06-feature7-batch6.json)
 also exported an original project with every selected test successful.
-[Normal shutdown](fixtures/nv40/g4-xp-9371-06-required-tests-normal-shutdown.json)
+[Normal shutdown](../tests/acceptance/nv40/g4-xp-9371-06-required-tests-normal-shutdown.json)
 and matching RAM/disk checkpoints were verified after those results and the
 four original GT IQ saves. Earlier native driver timeout failures remain
 recorded; the later completion is not attributed to one isolated change.
 
-Recent [03 point-sprite](fixtures/nv40/g4-03-nine-point-sprite-fixed-frames.json),
-[latest05](fixtures/nv40/g4-05-current-format-eight-fixed-frames.json)
-and [fresh cold06](fixtures/nv40/g4-06-current-cold-four-fixed-frames.json)
+Recent [03 point-sprite](../tests/acceptance/nv40/g4-03-nine-point-sprite-fixed-frames.json),
+[latest05](../tests/acceptance/nv40/g4-05-current-format-eight-fixed-frames.json)
+and [fresh cold06](../tests/acceptance/nv40/g4-06-current-cold-four-fixed-frames.json)
 recaptures remove substantial rendering defects. The cold06 run includes all
 FP16/FP32/UNORM16 texture fixes from its first command. HDR1's green tint is
 removed, and all four game scenes correspond. Water/reflection/highlight and
 raster/detail residuals remain documented in the original full images and
 per-pixel statistics; physical NV40 bit identity is not claimed. The
-[legacy content review](fixtures/nv40/g5-legacy-original-fixed-frame-review.json)
-also covers both drivers'99/2000/2001 images. The [seven06 feature review](fixtures/nv40/g4-06-seven-feature-reference-review.json)
+[legacy content review](../tests/acceptance/nv40/g5-legacy-original-fixed-frame-review.json)
+also covers both drivers'99/2000/2001 images. The [seven06 feature review](../tests/acceptance/nv40/g4-06-seven-feature-reference-review.json)
 matches original HUD frames/times; five consecutive scene pairs in each fill-rate
 test are byte-identical. PS/VS/Perlin content corresponds with local residuals.
 Shader Particles has corresponding cloud position, spread and aggregate brightness,
 but substantial individual-position differences. Three native six-frame sequences
 are identical outside the HUD, so changing random seeds are not asserted as the
 cause. Per-particle trajectory equivalence remains unvalidated. Native desktop,
-driver and normal shutdown checks are [retained separately](fixtures/nv40/g4-06-native-seven-feature-frames.json).
-The [final repeated GT1 work windows](fixtures/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
+driver and normal shutdown checks are [retained separately](../tests/acceptance/nv40/g4-06-native-seven-feature-frames.json).
+The [final repeated GT1 work windows](../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
 record the current release implementation separately from whole-suite results.
 The unmodified
 NVIDIA driver advertises SM3.0 capabilities beyond the validated subset;
@@ -348,7 +348,7 @@ some other register paths still store values. See
 
 ### Performance
 
-The [final repeated release windows](fixtures/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
+The [final repeated release windows](../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
 continue the same active original 3DMark06 GT1 state under XP93.71, with
 1024 MiB RAM, 256 MiB VRAM and a normal clock. Each starts a fresh renderer
 and empty host decode/translation caches; the decoded cache limit is512 MiB.
@@ -392,24 +392,24 @@ hardware timings or total default-suite elapsed time. The two runs use the
 current implementation, so their agreement is not a before/after speedup.
 See [profiling.md](profiling.md#native-nv40-guests) for the method and raw hashes.
 
-The [first305-second loading window](fixtures/nv40/g6-xp-9371-06-isolated-window.json)
+The [first305-second loading window](../tests/acceptance/nv40/g6-xp-9371-06-isolated-window.json)
 and later unsuccessful scene-capture attempts remain historical diagnostics,
 with different source states or observation limits. They are not the final
 repeat comparison or a baseline for a claimed native FPS improvement.
 
 Subsequent concurrent saved-state windows found substantial repeated BC
-texture decoding. A [bounded decoded-cache comparison](fixtures/nv40/g6-native-06-decoded-cache-budget.json)
+texture decoding. A [bounded decoded-cache comparison](../tests/acceptance/nv40/g6-native-06-decoded-cache-budget.json)
 reduces decode evictions from 2,248 to zero and BC decoder self samples from
 9.72 to 3.01 seconds for the measured windows; both still end at the original
 native driver timeout. The decoded cache now permits twice guest VRAM, capped
 at 512 MiB, with exact source-byte checks on every use. The same profile found
-184 IFC notifier-binding barriers. [Disjoint binding batching](fixtures/nv40/g6-disjoint-ifc-notifier-bindings.json)
+184 IFC notifier-binding barriers. [Disjoint binding batching](../tests/acceptance/nv40/g6-disjoint-ifc-notifier-bindings.json)
 preserves the real four-byte RAMIN writeback and retains ordering for aliases
 and invalid handles. These changes do not establish native 06 completion or
 an isolated performance improvement.
 
 When the acquired host device has BC compression enabled, [eligible linear
-BC1/2/3 textures](fixtures/nv40/g6-native-bc-texture-upload.json) retain their
+BC1/2/3 textures](../tests/acceptance/nv40/g6-native-bc-texture-upload.json) retain their
 checked encoded bytes through upload. Exact source/PTE checks and complete
 block-row updates remain in place; gamma and nonidentity crossbars retain
 CPU conversion. A synthetic 70-texture loop reduced cache residency from
@@ -418,8 +418,8 @@ cover alpha, cube faces, mip tails, partial updates and NPOT expansion;
 these results do not establish native FPS or full benchmark acceptance.
 
 A later native 06 vertex-feature sample identified index callbacks and vertex
-expansion as CPU hotspots. [Direct index and DWORD loops](fixtures/nv40/g6-native-vertex-loop-overhead.json)
-remove per-element callbacks. [Bounded linear VRAM float spans](fixtures/nv40/g6-bounded-float-vertex-spans.json)
+expansion as CPU hotspots. [Direct index and DWORD loops](../tests/acceptance/nv40/g6-native-vertex-loop-overhead.json)
+remove per-element callbacks. [Bounded linear VRAM float spans](../tests/acceptance/nv40/g6-bounded-float-vertex-spans.json)
 avoid per-vertex copies while preserving original float bits and DMA checks;
 paged, system-memory and sparse inputs retain individual fetches. The latter
 interleaved microbenchmark reduced indexed preparation CPU time from 54.29 to

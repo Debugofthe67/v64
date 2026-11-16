@@ -122,7 +122,7 @@ Keep Windows' system `opengl32.dll` and its dllcache copy intact. F6's local
 deployment verifies their hashes and installs only the driver and application
 copies. File size cannot identify this release: the old gl4es Cube DLL and the
 new proxy both happen to be 145408 bytes. Use the deployment SHA256 and guest
-probe, as recorded in `retro-gaming-site/glbridge/deployments/opengl-webgpu-F6.json`.
+probe, as recorded in `retro-gaming-site/tests/acceptance/deployments/opengl-webgpu-F6.json`.
 
 ## 5. Build the driver and DLLs
 

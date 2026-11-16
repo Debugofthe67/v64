@@ -321,7 +321,7 @@ window and a particular feature scene are different workloads. End profiling
 before saving a large RAM checkpoint, then finish any archive work before
 starting the next measured window.
 
-The [final NV40 repeated windows](fixtures/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
+The [final NV40 repeated windows](../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
 use an already active original GT1 process, with no input during measurement.
 Their paired state, software hashes, actual color-batch observations, isolation,
 archive verification and unsuccessful earlier diagnostics are retained. The

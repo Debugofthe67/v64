@@ -27,7 +27,7 @@ const result = await run_xp_ram_probe({ root, out, files,
         assert(result.batches > 0);assert.equal(result.owners.length, 1);assert.equal(result.releases.length, 1);
         const results = result.text.split(/\r?\n/).filter(line => line.startsWith("STATUS "));
         assert.equal(results.length, draw_cases ? 100 : 85);
-        const reference = JSON.parse(fs.readFileSync(root + "docs/fixtures/d3d-review/d3d7-native-clip-status-reference.json"));
+        const reference = JSON.parse(fs.readFileSync(root + "tests/glbridge/fixtures/d3d-review/d3d7-native-clip-status-reference.json"));
         const expected = reference.rows.map(r => "STATUS label=" + r.label + " test=" + r.test + " query=" + r.query + " hr=" + r.hr.toString(16).padStart(8, "0") + " words=" + r.words.map(x => x.toString(16).padStart(8, "0")).join(","));
         assert.deepEqual(results, expected.slice(0, results.length));
 

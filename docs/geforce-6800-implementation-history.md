@@ -36,7 +36,7 @@
   `NV_SECONDS` 控制调查时限，`NV_LAUNCH_SECONDS` 控制桌面后启动时机，`NV_ROM` 可覆盖 ROM。
   驱动可传安装包或解包目录；SZDD 文件名按原版 INF 恢复。尚不自动关机/重启，
   overlay 是暂停时的扇区副本，不把它当作干净关机的已安装驱动 fixture。
-- XP 93.71 的第一轮硬件跟踪见 `docs/fixtures/nv40/g0-xp-9371.json`：设备识别正确，
+- XP 93.71 的第一轮硬件跟踪见 `tests/acceptance/nv40/g0-xp-9371.json`：设备识别正确，
   原盘未变，但未完成安装。驱动大量轮询 `0x3304`、`0x3250` 和 PTIMER；
   `0x3304` 应是只读的 3，空壳返回 0；VGA MMIO 镜像仍是存值。对策是补齐这两项再复测。
   这证明驱动走到了硬件访问，**不能**证明 PCI 模式最终可用，也不能据此启动 A1。
@@ -67,7 +67,7 @@
   超过 JS Number 精确范围的时间戳与快照保持精确；计数、闹钟和比例寄存器保留硬件位宽。
   VRAM BAR 随 PCI memory decode 与上游转发开关映射；PM capability 的只读字段受保护。
   设备测试覆盖高时间戳往返、低 5 位清零、显存解码关闭/恢复及 PMCSR 掩码。
-- 最新客体验证：`docs/fixtures/nv40/g1-xp-9371.json` 与
+- 最新客体验证：`tests/acceptance/nv40/g1-xp-9371.json` 与
   `g1-xp-9371-registers.json` 保存复测结论和 469 项 MMIO 地址/读写方向清单，标明访问时走的是
   实现路径还是存值/默认值。`g0-win98-8198.json` 保存 Win98 原生设备和 PCI 注册表证据。
   使用 `node tools/nv40_trace_report.mjs <trace.json> <report.json>` 可重新生成清单。
@@ -89,7 +89,7 @@
   SetupAPI phantom 节点无法按 NT 路径注册；CM 的 `DO_NOT_INSTALL` 标志也不受支持。
   `pci.vxd/pcimp.pci` 从所有者安装 ISO 提取，不进仓库。探针兼容尚无 HardwareID 属性的
   新节点，通过设备实例 ID 识别 PCI 身份。客体已枚举 NV40、i440FX、PIIX 与 IDE，见
-  `docs/fixtures/nv40/g0-win98-pci-bus.json`。NVIDIA 驱动选择/加载仍待验证。
+  `tests/acceptance/nv40/g0-win98-pci-bus.json`。NVIDIA 驱动选择/加载仍待验证。
   harness 的 `NV_WIN98_ISO` 可指定安装 ISO；`NV_STATE_SAVE/LOAD`、可选
   `NV_STATE_SAVE_AT` 保存/恢复调查快照，`NV_CONTROL` 接受 Run 命令或 JSON `keys` 扫描码。
   定期输出 progress-trace，XP 禁用 overlay 内的自动崩溃重启，便于保留故障证据。

@@ -14,7 +14,7 @@ C 的 CPU 权威状态/查询/校验/快照、D 的渲染语义与性能、E 的
 | F6 | `0ff5b150` | `e0b52c0` |
 | G1 | `173d7cf3` | `8d4aec7` |
 
-宿主资源版本为 `8523858ab36865e264c6`。G 不改变客体 DLL/SYS：代理 SHA256 为 `4bffb949270e19d263289e46bbc01cb8eae49fe048e13260d06e0625cabdd71f`，驱动为 `57c47879bdc28c95352c259df2b441904a82dac36ebc33671d3f238cee68177d`。XP、Cube 2、Warcraft III 使用 F6 已安装的本地镜像；G 的程序安装与写盘均留在运行期覆盖中。F6 原镜像备份及系统 OpenGL 文件保护记录见[部署清单](../../retro-gaming-site/glbridge/deployments/opengl-webgpu-F6.json)。
+宿主资源版本为 `8523858ab36865e264c6`。G 不改变客体 DLL/SYS：代理 SHA256 为 `4bffb949270e19d263289e46bbc01cb8eae49fe048e13260d06e0625cabdd71f`，驱动为 `57c47879bdc28c95352c259df2b441904a82dac36ebc33671d3f238cee68177d`。XP、Cube 2、Warcraft III 使用 F6 已安装的本地镜像；G 的程序安装与写盘均留在运行期覆盖中。F6 原镜像备份及系统 OpenGL 文件保护记录见[部署清单](../../retro-gaming-site/tests/acceptance/deployments/opengl-webgpu-F6.json)。
 
 ## 门禁
 

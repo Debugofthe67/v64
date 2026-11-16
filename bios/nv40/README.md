@@ -11,7 +11,7 @@ real INT 10h calls, including 1024×768×32, banked writes, framebuffer clearing
 and a save/restore round trip through DOS text mode. It requires NASM.
 The ROM includes NV PLL limit tables. Original XP 93.71 and Win98 81.98
 drivers initialize in PCI mode; native mode changes and DOS/snapshot round
-trips are recorded in the [display fixture](../../docs/fixtures/nv40/g1-native-modes-dos.json).
+trips are recorded in the [display fixture](../../tests/acceptance/nv40/g1-native-modes-dos.json).
 The current benchmark scope and retained limitations are in the
 [implementation plan](../../docs/geforce-6800-plan.md).
 

@@ -197,19 +197,19 @@ The tested configuration is XP SP3 on i440FX with IDE, ACPI disabled,
 3. Select 1024×768, 32-bit color, and enable full display acceleration.
 4. With a WebGPU renderer available on the host, run DxDiag's DirectDraw
    and Direct3D tests. Native 93.71 has been verified with D3D7/8/9; the
-   [RGB565 fixture](fixtures/nv40/g3-xp-9371-rgb565.json) also checks native
+   [RGB565 fixture](../tests/acceptance/nv40/g3-xp-9371-rgb565.json) also checks native
    D3D9 rendering, system-memory readback and GDI conversion.
 
 Before a long benchmark run, select **(None)** in Display Properties →
 Screen Saver and **Never** for monitor power-off in Power Options. The original
 XP screen saver interrupted a native 3DMark05 run with `D3DERR_DEVICELOST`;
-[the interrupted exports](fixtures/nv40/g6-native-screen-saver-interruption.json)
+[the interrupted exports](../tests/acceptance/nv40/g6-native-screen-saver-interruption.json)
 record the incomplete tests.
 
 The driver runs in PCI mode; an AGP bridge is not required for this tested
 configuration. Original 3DMark99/2000/2001/03/05 suites and the required
 06 default, feature and batch tests have exported successful native projects.
-Reference image reviews and [repeated isolated GT1 rendering profiles](fixtures/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
+Reference image reviews and [repeated isolated GT1 rendering profiles](../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
 are recorded separately from those functional results. Pixel residuals and a
 Shader Particles position deviation remain documented. See [GeForce 6800 GT](gpu-devices.md#geforce-6800-gt)
 for the validated scope, snapshot behavior and limits. This validation does not

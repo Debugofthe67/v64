@@ -1,3 +1,6 @@
+# SIMD shift instructions
+
+```text
    0F F1     PSLLW 	mm 	mm/m64 	       mmx 	       Shift Packed Data Left Logical
 66 0F F1     PSLLW 	xmm 	xmm/m128       sse2 	       Shift Packed Data Left Logical
    0F F2     PSLLD 	mm 	mm/m64 	       mmx 	       Shift Packed Data Left Logical
@@ -37,3 +40,4 @@
    0F 73     PSLLQ 	mm 	imm8 	       mmx 	       Shift Packed Data Left Logical
 66 0F 73     PSLLQ 	xmm 	imm8 	       sse2 	       Shift Packed Data Left Logical
 66 0F 73     PSLLDQ 	xmm 	imm8 	       sse2 	       Shift Double Quadword Left Logical
+```

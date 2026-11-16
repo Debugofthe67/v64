@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("node:assert/strict");
-const reference = require("../../docs/fixtures/d3d-review/d3d7-native-layout-reference.json");
+const reference = require("./fixtures/d3d-review/d3d7-native-layout-reference.json");
 (async () => {
     const { parse_layout_rows, compare_layout_rows } = await import("../lib/d3d_layout_reference.mjs");
     assert.equal(reference.provenance.batches, 0);assert.deepEqual(reference.provenance.owners, []);
