@@ -204,6 +204,14 @@ makes a missing file a 404 (without it Cloudflare Pages answers any path with
 `index.html`, and a wrong image URL would become a disk of HTML). Any static
 host that sends those two headers can serve it.
 
+The deployment includes v86's original signed iPhone graphics adapter from
+`bios/ios-guest`. `make pages` verifies its source and binary hashes and stages
+it at `build/ios-guest/libv86gles.dylib`; the packer also verifies the release
+asset when run directly. Missing or stale graphics assets fail the build.
+Linux CI needs no iOS firmware or macOS toolchain for this step. See
+[the adapter's build instructions](../bios/ios-guest/README.md) when changing
+the guest graphics sources.
+
 The site holds no disk images: the library's machines use the images their
 users give (a file, a URL, a browser disk, the disk service).
 

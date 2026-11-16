@@ -1,0 +1,30 @@
+{
+  "format": "v86-ios-graphics-assets",
+  "version": 1,
+  "build": "10B329",
+  "mode": "host-contexts",
+  "sources": {
+    "tools/ios/guest/build-gles.sh": "27708d8a49a396c296d5e8dee76fb6720d7fbb7ad9dae65d2a7230b58161f694",
+    "tools/ios/guest/eagl.c": "292d560a2110bcd340d0a90287257aa313d7f2bdd0f697f09a7b40494521fefe",
+    "tools/ios/guest/gli-context.c": "ed78fea3d8a90b0ba27ecce4a4df6f4ee4868a2b7777c5e6bc50ab59bd07ac02",
+    "tools/ios/guest/gli-photo.c": "def705590893cbca209f124200513cf4fa4b9be82755a5a2747d628470dbc927",
+    "tools/ios/guest/gli-gates.s": "0fef9009ae9d35adcaa5f456d5bdb8526624ca0eefec064b7828d6780d578ffc",
+    "tools/ios/guest/gles-transport.h": "2fd6ee9caf41015569b524bba257ba358c513b793039e1a657ead0b01b2ea8ab",
+    "tools/ios/guest/gles-driver.h": "8973b472ab733c10759e2e4912a5f280a8cf01be4c99efbcfa8969fbeb590a0d",
+    "tools/ios/guest/gli-surface.h": "6bcd0de0cd31670a88230fd62f0c57097ec5ad4494a9c5c435fb02d9e8522a63",
+    "tools/ios/guest/gli-draw.h": "aaa5cca64ce001a2928f84ea6321d3d27f40efe453b407c0db7b61bd83c1769f",
+    "tools/ios/guest/gli-texture.h": "2a9ca92cd125f27e5d902f6bacd8ade2f88b40ac2a5989a9aec7095fe80db653",
+    "tools/ios/guest/gli-query.h": "e1496b96640009ce7240bc9e0ad16800c0a443f4dcce4ccfca1728cdb4d93e68",
+    "tools/ios/guest/gli-uniform.h": "73f952d90156e0af6e64ae6098bbca1ec9eef58e7540c9e5f53003c4528216b3",
+    "tools/ios/guest/gles-opcodes.mjs": "b93cb68a1f4310337dc48efd3ac5f8b6edf090a5ed9e22e8bf60fb03361219a1",
+    "tools/ios/guest/gl-frame-wrappers.mjs": "c56b0a04860a55ef1b6990b57c5e8b977162c70b1db1e3ffbe07c32dc28ad5c3",
+    "tools/ios/guest/gl-scalar.mjs": "9e5108cc3ac73aa9af95d1718754323704543e1ad1ae3b661b12138f0d18ddf2",
+    "tools/ios/gl-dispatch.mjs": "740afbc53a4a3ec378a301ca9551e701b732cc50274fa12ddc972edc4ea23758",
+    "src/apple/macho.js": "ef27ebf46a85c2dce5375bdb1997225f770919c25b522ba5bc3b0a40371f6f5c",
+    "src/gles/gles_protocol.js": "4c27157752c43723381ff2c552631f039578a076077a811a6d58c92e7141524c",
+    "src/gles/gles_wire.js": "f07797f24fddb8688cf77059090e8083c4eec9cd07484c17d4fb6df68146b68c"
+  },
+  "files": {
+    "libv86gles.dylib": "29e4dc19ab70078f272136b715a92325975bea9e0627c6e09b55fe79f00bc0d8"
+  }
+}

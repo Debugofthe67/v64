@@ -20,11 +20,22 @@ results.
    are discarded. The NAND holds its own boot files; the original system
    volume is kept separately so data can be reset without the keys.
 
-For graphics, build the v86 guest adapter from your own 10B329 dyld cache:
+Pages deployments include v86's signed ARMv7 graphics adapter. `make pages`
+verifies the release binary and its source manifest, so Linux CI requires no
+Apple build tools or firmware. A missing, corrupt or stale adapter fails the
+build. For a local development server, `make ios-graphics-assets` copies the
+same verified adapter to `build/ios-guest/libv86gles.dylib`.
+
+To build a development adapter on macOS from your own 10B329 dyld cache:
 
 ```sh
 make ios-guest IPHONE4_DYLD_CACHE=/path/to/dyld_shared_cache_armv7
 ```
+
+After changing its sources, use `make ios-graphics-assets-refresh` with the
+same `IPHONE4_DYLD_CACHE` argument to rebuild the release asset and manifest.
+Review and commit both with the sources; [the asset README](../bios/ios-guest/README.md)
+describes its contents and provenance.
 
 The importer reads `build/ios-guest/libv86gles.dylib` or a copy you select
 in the wizard. It links the two local display daemons, Safari and Photos

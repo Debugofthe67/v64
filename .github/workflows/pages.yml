@@ -63,9 +63,12 @@ jobs:
           node tests/app/vm_config.mjs
           node tests/app/presets.mjs
           node tests/app/machine_rules.mjs
+          node --test tests/ios/graphics-assets.mjs
 
       - name: Build the site
-        run: make pages
+        run: |
+          make pages
+          test -s build/pages/build/ios-guest/libv86gles.dylib
 
       # (a pull request from a fork has no secrets: built, not deployed)
       - name: Deploy to Cloudflare Pages
