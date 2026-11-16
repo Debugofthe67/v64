@@ -21,7 +21,8 @@ import { decode_pvrtc } from "../pvrtc.js";
 // through staging buffers copied in the command encoder, in order with the
 // draws. A post (rcFBPost) shows the color buffer: in the compositor's layer
 // when there is one, otherwise read back and handed to the CPU side
-// ("frame"). Points are WebGPU's, one pixel each.
+// ("frame"). ES1 points expand to sized quads; ES2+ points use WebGPU's
+// one-pixel primitives.
 
 import { GLESShadow } from "../gles_shadow.js";
 import { read_gles_batch } from "../gles_batch.js";
@@ -642,7 +643,8 @@ GLESExecutor.prototype.target_of = function(c)
     if(!any) return null;
     const view = t => t.texture.createView({ dimension: "2d", baseMipLevel: t.level, mipLevelCount: 1, baseArrayLayer: t.layer, arrayLayerCount: 1 });
     const width = Math.max(1, any.texture.width >> any.level), height = Math.max(1, any.texture.height >> any.level);
-    return { color: color ? color.texture : null, color_view: color ? view(color) : null, depth: depth ? view(depth) : null,
+    return { color: color ? color.texture : null, color_view: color ? view(color) : null,
+        color_level: color ? color.level : 0, color_layer: color ? color.layer : 0, depth: depth ? view(depth) : null,
         depth_format: depth ? depth.format : "", width, height, alpha: true,
         key: "f" + (color ? this.id_of(color.texture) + ":" + color.level + ":" + color.layer : "-") + "/" + (depth ? this.id_of(depth.texture) : "-") };
 };
@@ -841,7 +843,7 @@ GLESExecutor.prototype.apply_scissor = function(pass, c, target)
  * state, its uniforms and textures
  * @param {?{type: number, bytes: (Uint8Array|undefined), offset: (number|undefined)}} elements
  */
-GLESExecutor.prototype.draw = function(c, mode, first, count, elements)
+GLESExecutor.prototype.draw = function(c, mode, first, count, elements, logic_split = false)
 {
     if(!count) return;
     const program = c.api === 1 ? null : c.group.objects.get(c.program);
@@ -871,6 +873,28 @@ GLESExecutor.prototype.draw = function(c, mode, first, count, elements)
     }
     const vertices = high - low + 1;
     if(vertices <= 0 || vertices > 1 << 24) return;
+    if(c.api === 1 && c.enabled.has(0x0BF2) && c.ff.logic_op !== 0x1503 && !logic_split && mode !== GL.POINTS)
+    {
+        // Destination reads must observe preceding primitives of this draw.
+        const order = indices ? [...indices] : Array.from({ length: count }, (_, i) => first + i);
+        const primitives = [];
+        if(mode === GL.TRIANGLES || mode === GL.LINES)
+        {
+            const n = mode === GL.TRIANGLES ? 3 : 2;
+            for(let i = 0; i + n <= count; i += n) primitives.push(order.slice(i, i + n));
+        }
+        else if(mode === GL.TRIANGLE_STRIP || mode === GL.TRIANGLE_FAN)
+            for(let i = 2; i < count; i++) primitives.push(mode === GL.TRIANGLE_FAN ? [order[0],order[i-1],order[i]] :
+                i % 2 ? [order[i-1],order[i-2],order[i]] : order.slice(i-2,i+1));
+        else
+        {
+            for(let i = 1; i < count; i++) primitives.push([order[i-1],order[i]]);
+            if(mode === GL.LINE_LOOP && count > 1) primitives.push([order[count-1],order[0]]);
+        }
+        for(const primitive of primitives) this.draw(c, primitive.length === 3 ? GL.TRIANGLES : GL.LINES, 0, primitive.length,
+            { type: GL.UNSIGNED_INT, bytes: new Uint8Array(new Uint32Array(primitive).buffer) }, true);
+        return;
+    }
     if(c.api === 1 && mode === GL.POINTS) return this.draw_points1(c, low, vertices, indices);
     // (fans and loops as lists and strips; strips with indices keep u32, which never restarts)
     // (points: WebGPU's, one pixel each; gl_PointSize and glPointSize are not applied, gpu-deviations.md)
@@ -1092,6 +1116,17 @@ GLESExecutor.prototype.ff_bind_groups = function(c, ff, pipeline, target, viewpo
         if(ff.shaders.bindings.has("2:" + t.samplerBinding)) entries.push({ binding: t.samplerBinding, resource: this.sampler(texture) });
     }
     if(entries.length) groups.push([2, this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(2), entries })]);
+    if(ff.shaders.bindings.has("3:0"))
+    {
+        // Sample a copy of the destination, never the attachment being drawn.
+        this.end_pass();
+        const copy = this.device.createTexture({ label: "ES1 logic destination", size: [target.width,target.height],
+            format: COLOR_FORMAT, usage: U.COPY_DST | U.TEXTURE_BINDING });
+        if(target.color) this.encoder.copyTextureToTexture({ texture: target.color, mipLevel: target.color_level || 0,
+            origin: [0,0,target.color_layer || 0] }, { texture: copy }, [target.width,target.height]);
+        this.staging.push(copy);
+        groups.push([3,this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(3),entries: [{binding:0,resource:copy.createView()}] })]);
+    }
     return groups;
 };
 
@@ -1263,7 +1298,7 @@ GLESExecutor.prototype.attribute_values = function(c, a, low, vertices, componen
 /** The pipeline for the program, the vertex layout, the state and the target */
 GLESExecutor.prototype.pipeline = function(c, program, shaders, layout, topology, target, indexed, face)
 {
-    const blend = c.enabled.has(0x0BE2);
+    const blend = c.enabled.has(0x0BE2) && !(c.api === 1 && c.enabled.has(0x0BF2));
     const depth_test = c.enabled.has(0x0B71), stencil_test = c.enabled.has(0x0B90);
     // (one face's draw, stencil_faces: the other culled, that face's masks)
     const cull = face === 0 ? "back" : face === 1 ? "front" : c.enabled.has(0x0B44) ? (c.cull_face === 0x0404 ? "front" : "back") : "none";

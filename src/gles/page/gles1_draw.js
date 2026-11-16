@@ -77,6 +77,7 @@ export function ff_signature(c, points, textures)
         alphaTest: on(0x0BC0) ? ALPHA_FUNCS[ff.alpha_func] : "always",
         clipPlaneCount: ff.clip_planes.reduce((n, p, i) => on(0x3000 + i) ? i + 1 : n, 0),
         pointSprite: points && on(0x8861),
+        logicOp: on(0x0BF2) ? ff.logic_op : 0,
         flatShading: ff.shade_model === 0x1D00,
         colorTargets: 1,
     };

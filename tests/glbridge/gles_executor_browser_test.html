@@ -468,6 +468,36 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 6, 6), [0, 0, 255, 255]) && near(pixel(window, W, 1, 1), [128, 128, 128, 255], 3), "glDrawTexiOES: the crop rectangle's texel at the window rectangle");
 
+        // ---- ES1 logic operations, including primitive ordering
+        gl1("glDisable",0xde1);
+        gl1("glEnable",0xbf2);gl1("glEnable",0xbe2);gl1("glBlendFunc",0,0);
+        const source=[0x33,0x66,0x99,0xcc],destination=[0x99,0xcc,0x66,0xff];
+        const logic=[()=>0,(s,d)=>s&d,(s,d)=>s&~d,s=>s,(s,d)=>~s&d,(s,d)=>d,(s,d)=>s^d,(s,d)=>s|d,
+            (s,d)=>~(s|d),(s,d)=>~(s^d),(s,d)=>~d,(s,d)=>s|~d,s=>~s,(s,d)=>~s|d,(s,d)=>~(s&d),()=>255];
+        for(let op=0;op<16;op++)
+        {
+            gl1("glClearColor",...destination.map(v=>v/255));gl1("glClear",0x4000);
+            gl1("glLogicOp",0x1500+op);gl1("glColor4ub",...source);gl1("glDrawArrays",4,0,6);
+            window=await read_pixels(0,0,W,W);
+            check(near(pixel(window,W,1,1),source.map((s,i)=>logic[op](s,destination[i])&255),0),"ES1 logic operation "+op+" disables blending");
+        }
+        gl1("glClear",0x4000);gl1("glLogicOp",0x1506);
+        gl1("glVertexPointerData",2,0x1406,0,floats([0,0,4,0,0,8,0,0,4,0,0,8]),48);
+        gl1("glDrawArrays",4,0,6);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,1,1),destination,0),"ES1 XOR observes two overlapping primitives in one draw");
+        gl1("glBindTexture",0xde1,83);
+        gl1("glTexImage2D",0xde1,0,0x1908,2,2,0,0x1908,0x1401,null);
+        gl1("glBindFramebufferOES",0x8d40,84);
+        gl1("glFramebufferTexture2DOES",0x8d40,0x8ce0,0xde1,83,0);
+        gl1("glClear",0x4000);gl1("glLogicOp",0x150a);gl1("glColorMask",1,0,1,0);
+        gl1("glDrawTexiOES",0,0,0,2,2);
+        window=await read_pixels(0,0,2,2);
+        check(near(pixel(window,2,0,0),[102,204,153,255],0),"ES1 logic destination uses the FBO attachment and preserves masked channels");
+        gl1("glColorMask",1,1,1,1);gl1("glBindFramebufferOES",0x8d40,0);
+        gl1("glDisable",0xbf2);gl1("glDisable",0xbe2);gl1("glBlendFunc",1,0);
+        gl1("glClearColor",0,0,0,1);
+
         // ---- ES1 sized points, matrices, arrays and OES point sprites
         gl1("glDisable", 0x0DE1);
         gl1("glClear", 0x4000);
