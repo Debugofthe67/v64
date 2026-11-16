@@ -3,7 +3,7 @@ import { check_payload, extract_system_partition, ipsw_check, ipsw_image, ipsw_o
 import { complzss_decompress } from "./lzss.js";
 import { prepare_system_volume } from "./system_volume.js";
 import { check_guest_library, graphics_kernel, has_offline_lockdown, LOCKDOWN_DAEMON } from "./guest_load.js";
-import { offline_setup_file, systembag } from "./provision.js";
+import { offline_setup_file, offline_radio_file, systembag } from "./provision.js";
 import { write_hfsx_data } from "./hfsx_data.js";
 import { HFSPlus } from "./hfsplus.js";
 import { write_bootstrap_pages } from "./nand_layout.js";
@@ -113,7 +113,7 @@ export async function write_prepared_n90(read, nand, boot, progress, volume = nu
     const files = [{ path: "/keybags/systembag.kb", bytes: systembag(), dir_mode: 0o700, mode: 0o600 }];
     if(library) files.push({ path: "/v86/libv86gles.dylib", bytes: library, dir_mode: 0o755, mode: 0o755 });
     const lockdownd = await volume.lookup(LOCKDOWN_DAEMON);
-    if(install?.offline || lockdownd && has_offline_lockdown(await volume.contents(lockdownd))) files.push(offline_setup_file());
+    if(install?.offline || lockdownd && has_offline_lockdown(await volume.contents(lockdownd))) files.push(offline_setup_file(), offline_radio_file());
     if(install)
     {
         for(const path of ["/mobile/Library/Logs/.v86", "/mobile/Library/Logs/MobileInstallation/.v86"])

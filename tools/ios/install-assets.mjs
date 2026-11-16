@@ -7,7 +7,7 @@ const release=process.argv[2]==="--refresh";
 if(process.argv.length>(release?3:2)) throw Error("usage: install-assets.mjs [--refresh]");
 const root=path.resolve(import.meta.dirname,"../.."),directory=path.join(root,"bios/ios-install"),build=path.join(root,"build/ios-install-fixtures");
 const names={agent:"v86-app-agent",bootstrap:"libv86appbootstrap.dylib",policy:"libv86install.dylib"};
-const sources=["ios-api.h","app-native.h","app-code-hash.h","app-agent.c","app-agent.entitlements.plist","app-service.c","app-bootstrap.c","install-policy.c","build-apps.sh"];
+const sources=["ios-api.h","app-native.h","app-code-hash.h","app-agent.c","app-agent.entitlements.plist","app-service.c","app-network.c","network-probe.h","app-bootstrap.c","install-policy.c","build-apps.sh"];
 const hash=b=>createHash("sha256").update(b).digest("hex");
 const input=Object.fromEntries(sources.map(n=>["tools/ios/guest/"+n,hash(fs.readFileSync(path.join(root,"tools/ios/guest",n)))]));
 if(release){

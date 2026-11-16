@@ -114,7 +114,7 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
         "apple_model": o.apple_model,
         "ios": o.ios && { "kernelcache": file(o.ios.kernelcache), "devicetree": file(o.ios.devicetree),
             "nand": file(o.ios.nand), "ramdisk": file(o.ios.ramdisk), "bootlogo": file(o.ios.bootlogo), "boot_args": o.ios.boot_args,
-            "nand_boot": o.ios.nand_boot },
+            "nand_boot": o.ios.nand_boot, "network": o.ios.network },
         "kernel": file(o.kernel), "dtb": file(o.dtb),
         // (docs/android-images-plan.md I2: the bootloader runs in the worker, beside the disk)
         "android": o.android && { "device": o.android.device, "gpu_mode": o.android.gpu_mode, "selinux": o.android.selinux,

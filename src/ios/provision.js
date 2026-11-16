@@ -26,6 +26,16 @@ export function offline_setup_file()
     };
 }
 
+// RadiosPreferences uses this system-wide SCPreferences file. Create its
+// parent directory with the data volume: committing the native preference
+// cannot create a missing SystemConfiguration directory on first boot.
+export function offline_radio_file()
+{
+    return { path: "/preferences/SystemConfiguration/com.apple.radios.plist", uid: 0, gid: 0, mode: 0o644, dir_mode: 0o755,
+        bytes: ascii('<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>' +
+            "<key>AirplaneMode</key><true/></dict></plist>\n") };
+}
+
 function join(parts)
 {
     const out = new Uint8Array(parts.reduce((length, bytes) => length + bytes.length, 0));

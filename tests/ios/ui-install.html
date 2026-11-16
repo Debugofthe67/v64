@@ -14,6 +14,7 @@ const started=Date.now();const log=s=>document.getElementById("log").textContent
 async function until(fn,what,timeout=1200000){const end=Date.now()+timeout;for(;;){const result=await fn();if(result)return result;if(Date.now()>end)throw Error("Timed out: "+what);await sleep(250);}}
 async function artifact(name,body){const r=await fetch("/__artifact?name="+name,{method:"POST",body});if(!r.ok)throw Error("Cannot save acceptance artifact");}
 let frame,w,d,emulator,serial="",config;
+window.ios_acceptance={get emulator(){return emulator;},get frame(){return frame;},get config(){return config;},get serial(){return serial;}};
 async function open(){
  frame=document.createElement("iframe");frame.src="/index.html?vm="+config.id;document.body.append(frame);
  await new Promise(ok=>frame.onload=ok);w=frame.contentWindow;d=frame.contentDocument;
@@ -54,6 +55,13 @@ try{
   while(cursor<commands.length){
    const command=commands[cursor++];log("Command "+cursor+": "+JSON.stringify(command));
    if(command.op==="capture")await capture(command.name);
+   else if(command.op==="network-ready"){
+    await until(async()=> (await emulator.get_diagnostics()).ios_network?.phase==="ready","native IP tunnel",600000);
+    log("Native IP tunnel ready");await artifact("network.json",JSON.stringify((await emulator.get_diagnostics()).ios_network,null,2));
+   }
+   else if(command.op==="button"){
+    for(let i=0;i<(command.count||1);i++){emulator.ios_send_button(command.button,true);emulator.ios_send_button(command.button,false);}
+   }
    else if(command.op==="wait")await sleep(command.ms);
    else if(command.op==="swipe"){for(let i=0;i<=20;i++){touch([[1,command.x+(command.to-command.x)*i/20,command.y]]);await sleep(50);}touch([]);}
    else if(command.op==="tap"){touch([[1,command.x,command.y]]);await sleep(100);touch([]);}

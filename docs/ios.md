@@ -105,6 +105,38 @@ Build an update with
 The [IPA implementation plan](ios-ipa-install-plan.md) records the acceptance
 results and the real console UI test procedure.
 
+## Networking
+
+New iPhones offer an Internet connection through a virtual IP tunnel. The
+native helper opens iOS 6's `utun` interface and configures IPv4, a default
+route and DNS; packets use the browser's existing Wisp backend. Configure
+the relay in the VM's iPhone settings. The default is
+`wisps://wisp.mercurywork.shop/v86/`; Internet traffic passes through that
+server. Turn the virtual network off to keep the VM offline. The `fetch`
+backend is also available for HTTP endpoints that permit CORS.
+
+This does not emulate a cellular modem or a Wi-Fi access point. Imported
+phones seed the native airplane-mode preference independently of the IP
+tunnel. Guest applications use
+their normal sockets and resolver, including Safari. Old iOS TLS, trust
+stores and WebKit still limit which modern HTTPS sites can be displayed.
+
+The networking helper is included in newly imported NAND images. An older
+VM's on-disk helper does not acquire new code when the website is updated;
+keep that VM and its data, and import a new iPhone to use this helper.
+Changing the relay or disabling networking takes effect at the next power-on.
+The tunnel reconnects after restoring a memory snapshot; existing TCP
+sessions may need to be reloaded. DNS uses the existing DoH backend, with
+Google as a fallback when the default Cloudflare endpoint fails. An
+explicitly configured DoH server is used without a fallback provider.
+
+For owner-firmware acceptance, build the helper with
+`V86_NETWORK_PROBE=1 sh tools/ios/guest/build-apps.sh build/ios-network-probe`,
+prepare a disposable NAND using that directory, and run
+`node tests/ios/network-native.mjs <probe-directory>`. The test requires
+native DNS resolution and an HTTP 200 response from `example.com`.
+Release helpers are built without `V86_NETWORK_PROBE`.
+
 ## Local tools and checks
 
 `tools/ios/ipsw.mjs` checks and extracts the supplied firmware.

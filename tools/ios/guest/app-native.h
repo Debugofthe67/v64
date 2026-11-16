@@ -9,3 +9,4 @@ int app_native_lookup(const char *, struct app_identity *);
 int app_native_launch(const char *,char *,unsigned);
 unsigned long long app_native_free(void);
 int app_service(void);
+void app_network_start(void);

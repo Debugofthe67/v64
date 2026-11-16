@@ -21,6 +21,11 @@ static void update(void)
 static void tap(void *self, void *cmd, void *sender)
 {
     (void)self; (void)cmd; (void)sender; count++;
+#ifdef V86_NETWORK_TEST
+    CFStringRef address=string("http://example.com/");
+    void *url=send1(objc_getClass("NSURL"),"URLWithString:",(void *)address);
+    send1(send0(objc_getClass("UIApplication"),"sharedApplication"),"openURL:",url);CFRelease(address);
+#endif
     ((void (*)(void *,void *,long,void *))objc_msgSend)(defaults,sel_registerName("setInteger:forKey:"),count,counter_key);
     send0(defaults,"synchronize"); update();
     syslog(5,"V86 fixture v%d saved count=%ld",V86_FIXTURE_VERSION,count);
@@ -77,7 +82,13 @@ static Boolean launched(void *self, void *cmd, void *app, void *options)
     defaults=send0(objc_getClass("NSUserDefaults"),"standardUserDefaults");counter_key=(void *)string("v86.counter");
     count=(long)send1(defaults,"integerForKey:",counter_key);update();
     void *button=send1(objc_getClass("UIButton"),"buttonWithType:",(void *)1);frame(button,(Rect){20,95,280,50});
-    CFStringRef title=string("Tap and save");
+    CFStringRef title=string(
+#ifdef V86_NETWORK_TEST
+        "Open Safari network test"
+#else
+        "Tap and save"
+#endif
+    );
     ((void (*)(void *,void *,void *,unsigned))objc_msgSend)(button,sel_registerName("setTitle:forState:"),(void *)title,0);CFRelease(title);
     ((void (*)(void *,void *,void *,void *,unsigned))objc_msgSend)(button,sel_registerName("addTarget:action:forControlEvents:"),self,sel_registerName("tap:"),64);
     send1(view,"addSubview:",button);send1(window,"setRootViewController:",controller);send0(window,"makeKeyAndVisible");

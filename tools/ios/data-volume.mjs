@@ -6,7 +6,7 @@ import { open_volume } from "./hfs_edit.mjs";
 import { write_hfsx_data } from "../../src/ios/hfsx_data.js";
 import { data_capacity } from "../../src/ios/nand_volumes.js";
 import { check_guest_library, has_offline_lockdown, LOCKDOWN_DAEMON } from "../../src/ios/guest_load.js";
-import { offline_setup_file, systembag } from "../../src/ios/provision.js";
+import { offline_setup_file, offline_radio_file, systembag } from "../../src/ios/provision.js";
 
 const [source, output, option, library, ...extra] = process.argv.slice(2);
 if(!source || !output || extra.length || option && (option !== "--gles-library" || !library))
@@ -27,7 +27,7 @@ try
     {
         const system = await open_volume(sourceFD), capacity = data_capacity(system.block_size * system.total_blocks);
         const lockdownd = await system.lookup(LOCKDOWN_DAEMON);
-        if(lockdownd && has_offline_lockdown(await system.contents(lockdownd))) files.push(offline_setup_file());
+        if(lockdownd && has_offline_lockdown(await system.contents(lockdownd))) files.push(offline_setup_file(), offline_radio_file());
         const fd = fs.openSync(temp, "wx+");
         try
         {

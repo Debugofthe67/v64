@@ -43,6 +43,7 @@ export function hardware_rows(c)
         ["Memory", "512 MB"],
         ["Display", "640 × 960" + (c.ios.gles_proxy ? ", WebGPU" : ", boot diagnostics")],
         ["NAND", describe_image(c.ios.nand)],
+        ["Network", c.ios.network ? "Virtual IP tunnel · " + c.ios.network_relay : "Offline"],
     ];
     /** @type {Array<[string, string]>} */
     const rows = [

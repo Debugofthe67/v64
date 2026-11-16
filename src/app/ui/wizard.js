@@ -70,7 +70,7 @@ export function open_wizard(options)
             android: { file: null, gsi: null, debug_ramdisk: null, info: null, error: "", userdata_gib: DEFAULT_USERDATA_GIB,
                 entry: ANDROID_CATALOG.default_entry, checks: {} },
             ios: { name: unique(IOS_NAME), file: /** @type {File | null} */ (null), library: /** @type {File | null} */ (null),
-                checked: false, keys: "", key_file: "", keys_ok: false, acceleration: true, checking: /** @type {AbortController | null} */ (null),
+                checked: false, keys: "", key_file: "", keys_ok: false, acceleration: true, network: true, checking: /** @type {AbortController | null} */ (null),
                 results: /** @type {Array<[string, boolean, string]>} */ ([]) },
             progress: "",
             /** @type {AbortController | null} the import going on (its Cancel) */
@@ -116,6 +116,7 @@ export function open_wizard(options)
                 const config = new_ios_config(state.ios.name.trim() || N90_RESTORE.name,
                     { kind: "browser", path: made || "(made when finished)", size: N90_RESTORE.nand_bytes }, state.ios.acceleration);
                 config.notes = state.notes;
+                if(config.ios) config.ios.network = state.ios.network;
                 return config;
             }
             const p = /** @type {import("../guest_presets.js").Preset} */ (preset(state.preset));
@@ -580,6 +581,10 @@ export function open_wizard(options)
                         i.acceleration = e.target.checked; render();
                     } }), " Use WebGPU for iPhone graphics"),
                     i.acceleration ? h("label.field", null, h("span", null, "Local graphics adapter (optional if installed)"), library, i.library?.name || "") : null,
+                    h("label.check", null, h("input", { type: "checkbox", checked: i.network, onchange: e => {
+                        i.network = e.target.checked;
+                    } }), " Connect to the Internet through a virtual IP tunnel"),
+                    h("p.note", null, "Internet traffic uses the Wisp relay configured in iPhone settings. Cellular and Wi-Fi hardware are not emulated."),
                     h("p.note", null, "Only written NAND blocks and the original system volume for reset use browser storage."),
                 ];
             }
