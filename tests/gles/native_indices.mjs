@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import { GLESHost } from "../../src/gles/gles_host.js";
+import { client, fake_renderer, i32s } from "./lib.mjs";
+const host = new GLESHost({ width: 640, height: 960, dpi: 326 }, fake_renderer());
+const { call } = await client(host).connect();
+const context = (await call("rcCreateContext", 3, 0, 1)).ret;
+assert.ok(context);assert.equal((await call("rcMakeCurrent", context, 0, 0)).ret, 1);
+await call("gles1:glBindBuffer", 0x8893, 7);
+const bytes = Uint8Array.of(99, 0, 2, 0, 1, 0, 4, 0);
+await call("gles1:glBufferData", 0x8893, bytes.length, bytes, 0x88e4);
+const maximum = async (count, type, offset, size = 4) => call("v86ElementIndexMax", count, type, offset, size);
+let r = await maximum(3, 0x1403, 2);assert.equal(r.ret, 1);assert.equal(i32s(r.outs[0])[0], 4);
+await call("gles1:glBufferSubData", 0x8893, 6, 2, Uint8Array.of(1, 0));
+r = await maximum(3, 0x1403, 2);assert.equal(r.ret, 1);assert.equal(i32s(r.outs[0])[0], 2);
+for(const args of [[0,0x1403,0],[4,0x1403,2],[1,0x1403,1],[1,0x1406,0],[1,0x1403,0,3],[0xffffffff,0x1405,0]])
+    assert.equal((await maximum(...args)).ret, 0);
+await call("gles1:glBufferData", 0x8893, 8, null, 0x88e4);
+r = await maximum(2, 0x1405, 0);assert.equal(r.ret, 1);assert.equal(i32s(r.outs[0])[0], 0);
+const saved = host.get_state();host.set_state(saved);
+r = await maximum(2, 0x1405, 0);assert.equal(r.ret, 1);
+await call("gles1:glDeleteBuffers", 1, new Uint8Array(new Uint32Array([7]).buffer));
+assert.equal((await maximum(1, 0x1401, 0)).ret, 0);
+console.log("PASS: native ES1 element-index bounds follow buffer uploads, edits, allocation, restore and deletion");

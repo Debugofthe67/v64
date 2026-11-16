@@ -34,17 +34,19 @@ struct context {
     struct n90_driver driver;    // also the opaque argument of public GL calls
     struct context *next;
     struct group *group;
-    unsigned handle, error;
+    unsigned handle, error, api;
     unsigned framebuffer, frame_dirty;
     unsigned active_texture, texture_limit, textures[N90_TEXTURE_UNITS];
     unsigned unpack_row_bytes, client_storage;
     char *strings[5];
     struct client_attrib attribs[N90_ATTRIBS];
+    unsigned client_texture;
+    struct client_attrib fixed_arrays[4 + N90_TEXTURE_UNITS];
 };
 struct group {
     struct group *next;
     struct binding *bindings;
-    unsigned connection, handle;
+    unsigned connection, handle, api;
     unsigned surface_textures;
 };
 static struct context *contexts;
@@ -65,11 +67,11 @@ static const char *const symbols[] = {
     "gliCopyAttributes", "gliGetVersion", "gliBindViewES", "gliPresentViewES",
 };
 
-static int create_handle(unsigned *connection, unsigned *handle, unsigned share)
+static int create_handle(unsigned *connection, unsigned *handle, unsigned share, unsigned api)
 {
     int c = gles_open();
     if(c < 0) return 0;
-    if(!SEND(c, rc_rcCreateContext, 3, share, 2) || !gles_read(c, handle, 4) || !*handle)
+    if(!SEND(c, rc_rcCreateContext, 3, share, api) || !gles_read(c, handle, 4) || !*handle)
     {
         gles_call(5, 0, 0, c);
         return 0;
@@ -95,6 +97,7 @@ static unsigned invalid_operation(struct context *ctx)
 #include "gli-texture.h"
 #include "gli-query.h"
 #include "gli-uniform.h"
+#include "gli-fixed.h"
 
 static unsigned get_error(struct context *ctx)
 {
@@ -107,6 +110,7 @@ static unsigned get_error(struct context *ctx)
 
 static const char *get_string(struct context *ctx, unsigned name)
 {
+    if(ctx->api == 1 && name == 0x8b8c) { draw_error(ctx,0x500);return 0; }
     unsigned i = name - 0x1f00;
     if(name == 0x8b8c) i = 4;
     if(i >= 5) { if(!ctx->error) ctx->error = 0x500; return 0; }
@@ -123,6 +127,7 @@ static const char *get_string(struct context *ctx, unsigned name)
         free(text);
         return 0;
     }
+    if(name == 0x1f03) native_extensions(text);
     return ctx->strings[i] = text;
 }
 
@@ -148,7 +153,7 @@ static int create_context(void **out, const void *format, struct group *group, d
     if(!g) return ((create_fn)original[6])(out, format, group, primary, alternate, opts);
     struct context *ctx = calloc(1, sizeof(*ctx));
     if(!ctx) return 1;
-    if(!create_handle(&ctx->driver.connection, &ctx->handle, g->handle)) { free(ctx); return 1; }
+    if(!create_handle(&ctx->driver.connection, &ctx->handle, g->handle, g->api)) { free(ctx); return 1; }
     unsigned ok = 0;
     if(!SEND(ctx->driver.connection, rc_rcMakeCurrent, ctx->handle, 0, 0) ||
         !gles_read(ctx->driver.connection, &ok, 4) || !ok)
@@ -158,9 +163,10 @@ static int create_context(void **out, const void *format, struct group *group, d
         return 1;
     }
     ctx->group = g;
+    ctx->api = g->api;
     ctx->driver.ok = 1;
     int texture_limit = 0;
-    if(!integer_value(ctx, 0x8b4d, &texture_limit) || texture_limit < 1 || texture_limit > N90_TEXTURE_UNITS)
+    if(!integer_value(ctx, ctx->api == 1 ? 0x84e2 : 0x8b4d, &texture_limit) || texture_limit < 1 || texture_limit > N90_TEXTURE_UNITS)
     { close_handle(ctx->driver.connection, ctx->handle); free(ctx); return 1; }
     ctx->texture_limit = texture_limit;
     // GLI receives pointers to the function arrays; OpenGLES public
@@ -173,6 +179,7 @@ static int create_context(void **out, const void *format, struct group *group, d
     install_texture_functions(primary);
     install_query_functions(primary);
     install_uniform_functions(primary);
+    if(ctx->api == 1) { install_fixed_scalar_functions(primary); install_fixed_functions(primary); }
     primary[N90_glDeleteShader - 5] = (driver_word)delete_object;
     primary[N90_glGetError - 5] = (driver_word)get_error;
     primary[N90_glGetString - 5] = (driver_word)get_string;
@@ -258,14 +265,15 @@ static unsigned *group_state(void *obj) { return *(unsigned **)((char *)obj + gr
 static void load_group(void *obj, void *sel, const unsigned *format, signed char compute)
 {
     unsigned *state = group_state(obj);
-    if(!state || state[0] != 2 || compute || !route_provider())
+    if(!state || (state[0] != 1 && state[0] != 2) || compute || !route_provider())
     {
         original_load(obj, sel, format, compute);
         return;
     }
     struct group *g = calloc(1, sizeof(*g));
     if(!g) return;
-    if(!create_handle(&g->connection, &g->handle, 0)) { free(g); return; }
+    g->api = state[0];
+    if(!create_handle(&g->connection, &g->handle, 0, g->api)) { free(g); return; }
     memcpy(state + 3, format, 52);
     state[3] = 0;
     state[16] = (unsigned)g;

@@ -1158,10 +1158,11 @@ GLESExecutor.prototype.attribute_values = function(c, a, low, vertices, componen
     let source, base, stride;
     if(a.data)
     {
-        // (client data: tight, element 0 the draw's first: low is 0 for those draws)
+        // ES1 PointerData retains the application's stride and starts at
+        // element zero. ES2's encoder packs each attribute tightly.
         source = a.data;
-        stride = element;
-        base = low * element;
+        stride = c.api === 1 ? a.stride || element : element;
+        base = low * stride;
     }
     else
     {

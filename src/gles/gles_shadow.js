@@ -1195,14 +1195,25 @@ const HANDLERS = {
         if(size < 0) return fail(c, GL.INVALID_VALUE);
         const buffer = bound_buffer(c, target);
         if(!buffer) return REFUSED;
+        // Native ES1 can combine client arrays with an element VBO. Keep
+        // its indices so the native bridge can bound the live array copy.
+        let bytes = null;
+        if(c.api === 1 && shadow.keep_bytes)
+        {
+            try { bytes = new Uint8Array(size); }
+            catch(e) { return fail(c, GL.OUT_OF_MEMORY); }
+            if(data) bytes.set(data.subarray(0, size));
+        }
         buffer.size = size;
         buffer.usage = usage;
+        if(bytes) buffer.bytes = bytes;
     },
     "glBufferSubData": (shadow, c, [target, offset, size, data]) =>
     {
         const buffer = bound_buffer(c, target);
         if(!buffer) return REFUSED;
         if(offset < 0 || size < 0 || offset + size > buffer.size) return fail(c, GL.INVALID_VALUE);
+        if(c.api === 1 && shadow.keep_bytes && buffer.bytes && data) buffer.bytes.set(data.subarray(0, size), offset);
     },
     "glGetBufferParameteriv": (shadow, c, [target, pname, params]) =>
     {

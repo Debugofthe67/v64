@@ -1,6 +1,7 @@
 // Native ES2 pointer arguments are in the guest address space. Flatten
 // the data into emugl's packed wire format before trapping to the host.
 #define N90_MAX_PAYLOAD ((80u << 20) - 32)
+static int send_fixed_arrays(struct context *, unsigned);
 
 static void draw_error(struct context *ctx, unsigned error)
 {
@@ -155,6 +156,7 @@ static void disable_attrib(struct context *ctx, unsigned index)
 // have changed since glVertexAttribPointer. The renderer receives a copy.
 static int send_client_attribs(struct context *ctx, unsigned vertices)
 {
+    if(ctx->api == 1) return send_fixed_arrays(ctx, vertices);
     for(unsigned index = 0; index < N90_ATTRIBS; index++)
     {
         const struct client_attrib *a = &ctx->attribs[index];
@@ -214,6 +216,22 @@ static void draw_elements(struct context *ctx, unsigned mode, int count, unsigne
         // The common indexed VBO path never dereferences the guest pointer.
         for(unsigned i = 0; count && i < N90_ATTRIBS; i++)
             if(ctx->attribs[i].client && ctx->attribs[i].enabled) { draw_error(ctx, 0x502); return; }
+        if(count && ctx->api == 1)
+        {
+            int client = 0;
+            for(unsigned i = 0; i < 4 + ctx->texture_limit; i++)
+                if(ctx->fixed_arrays[i].client && ctx->fixed_arrays[i].enabled) client = 1;
+            if(client)
+            {
+                unsigned maximum = 0, ok = 0;
+                if(!SEND(ctx->driver.connection, v86_ElementIndexMax, count, type, (unsigned)(usize)indices, 4) ||
+                    !gles_read(ctx->driver.connection, &maximum, 4) || !gles_read(ctx->driver.connection, &ok, 4))
+                { ctx->driver.ok = 0; return; }
+                if(!ok) { draw_error(ctx, 0x502); return; }
+                if(maximum == ~0u) { draw_error(ctx, 0x505); return; }
+                if(!send_fixed_arrays(ctx, maximum + 1)) return;
+            }
+        }
         ctx->driver.ok &= SEND(ctx->driver.connection, gles2_glDrawElementsOffset, mode, count, type, (unsigned)(usize)indices);
         if(count) ctx->frame_dirty |= !!ctx->framebuffer;
         return;

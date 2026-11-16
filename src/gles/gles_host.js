@@ -277,6 +277,23 @@ GLESHost.prototype.gl_call = function(conn, command, args, bytes)
 /** renderControl's call, and what the page or the guest waits on */
 GLESHost.prototype.rc_call = function(conn, command, args)
 {
+    if(command.name === "v86ElementIndexMax")
+    {
+        const [count, type, offset, maximum] = args, c = this.shadow.context(conn.context);
+        const buffer = c?.group.buffers.get(c.element_array_buffer);
+        const width = type === 0x1401 ? 1 : type === 0x1403 ? 2 : type === 0x1405 ? 4 : 0;
+        if(!width || !count || !maximum || maximum.size !== 4 || !buffer?.bytes || offset % width ||
+            offset > buffer.size || count > Math.floor((buffer.size - offset) / width)) return 0;
+        const view = new DataView(buffer.bytes.buffer, buffer.bytes.byteOffset, buffer.bytes.byteLength);
+        let value = 0;
+        for(let i = 0; i < count; i++)
+        {
+            const at = offset + i * width;
+            value = Math.max(value, width === 1 ? view.getUint8(at) : width === 2 ? view.getUint16(at, true) : view.getUint32(at, true));
+        }
+        maximum.view.setUint32(0, value, true);
+        return 1;
+    }
     if(command.name === "v86ReadIOSurface")
     {
         const [handle, y, rows, flip, pixels] = args, cb = this.rc.color_buffers.get(handle);

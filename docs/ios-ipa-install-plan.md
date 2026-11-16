@@ -402,3 +402,25 @@ BROWSER_FOCUS=1 TEST_ARTIFACT_DIR=build/ios/ipa-acceptance/acceptance TIMEOUT_MS
 建议实施顺序为 P0 → P1 → P2 / P3 → P4 → P5 → P6 → P7。
 第一个可运行里程碑是“原生安装自制 UIKit IPA 并点击启动”；最终交付必须包含 UI 入口及完整持久化流程，
 不能止于命令行实验或文件上传。
+
+## 9. ARMv6 应用与原生 ES 1.1 路径
+
+2026-11-16：安装器接受未加密 ARMv6 应用，Fat 包优先 ARMv7、其次 ARMv6；保持实际切片架构参与
+改写、签名和信任验证。旧 IPA 的 `Container/` 是沙盒备份，不作为应用内容恢复；包路径、CRC 和
+应用内符号链接仍严格检查。用户原始 PvZ 1.0（build 524）已通过 UI 原生安装，主可执行文件保留 ARMv6。
+
+图形桥接按 EAGLContext 的 API 创建 ES1/ES2 宿主上下文。ES1 补齐矩阵、光照、材质、纹理环境、雾、
+裁剪平面、定点/浮点向量查询与客户端数组入口。客户端数组在绘制时读取，保留交错 stride；VBO 参数
+作为偏移传递。索引 VBO 与客户端数组混用时，宿主从已上传的索引缓冲查询最大索引以限定复制范围。
+原生扩展串过滤 iOS 无法提供的 EGLImage/Android 接口；不声明矩阵调色板。
+
+验证分为三个层次，入口覆盖不能替代行为或一致性验证：
+
+- `tests/ios/gl-fixed-coverage.mjs <本地 dyld cache>`：145 个 ES 1.1 核心入口的原生槽位路由。
+- `tests/ios/gl-scalar.mjs`、`gl-query.mjs`、`gl-fixed.mjs`：通过本地原版 iOS 包装函数检查 ARM 调用约定、
+  独立编码器预期字节、向量长度、查询输出边界、活跃客户端数组、多纹理单元与 VBO 偏移。
+- `make gles-tests` 及 `gles_executor_browser_test.html`：影子状态、索引缓冲边界、快照，以及真实 WebGPU
+  像素检查；包括 ES1 交错顶点/UV、非零 first 和非零索引 VBO 偏移。
+
+尚需独立验证原生 ES1 测试应用及 PvZ 的实际可游玩场景。底层仍存在 `docs/gpu-deviations.md` 中记录的
+点大小、宽线、逻辑运算等渲染差异；核心入口均可路由不表示 Khronos 一致性认证，也不表示这些差异已解决。

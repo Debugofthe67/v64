@@ -10,7 +10,8 @@ const wrappers = gl_wrappers(fs.readFileSync(cache));
 fs.writeFileSync(path.join(out, "gl-slots.h"), gl_slot_header(wrappers));
 if(mode === "--slots-only")
 {
-    fs.writeFileSync(path.join(out, "gl-scalar.h"), scalar_driver(scalar_commands(wrappers)));
+    fs.writeFileSync(path.join(out, "gl-scalar.h"), scalar_driver(scalar_commands(wrappers)) +
+        scalar_driver(scalar_commands(wrappers, "gles1"), "gles1"));
     process.exit(0);
 }
 const asm = [".syntax unified", ".thumb", ".text"];

@@ -420,6 +420,25 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         gl1("glDrawArrays", 4, 0, 6);
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 6, 2), [0, 255, 0, 255]) && near(pixel(window, W, 1, 1), [255, 128, 0, 255]), "a texture modulated by a color array, translated");
+        // Native ES1 keeps interleaved bytes and the original stride. Skip
+        // the sentinel vertex with both first and a nonzero index range.
+        const interleaved = floats([99,99,99,99, 0,0,0.5,0.5, W/2,0,0.5,0.5, W/2,W,0.5,0.5,
+            0,0,0.5,0.5, W/2,W,0.5,0.5, 0,W,0.5,0.5]);
+        gl1("glVertexPointerData", 2, 0x1406, 16, interleaved, interleaved.length);
+        gl1("glTexCoordPointerData", 0, 2, 0x1406, 16, interleaved.subarray(8), interleaved.length-8);
+        gl1("glDisableClientState", 0x8076);
+        gl1("glColor4f", 0, 0, 1, 1);
+        gl1("glDrawArrays", 4, 1, 6);
+        window = await read_pixels(0, 0, W, W);
+        check(near(pixel(window,W,6,2),[0,0,255,255]), "ES1 interleaved client vertices/UV with nonzero first");
+        gl1("glBindBuffer", 0x8893, 90);
+        gl1("glBufferData", 0x8893, 14, new Uint8Array(new Uint16Array([99,1,2,3,4,5,6]).buffer), 0x88E4);
+        gl1("glColor4f", 1, 0, 0, 1);
+        gl1("glDrawElementsOffset", 4, 6, 0x1403, 2);
+        window = await read_pixels(0, 0, W, W);
+        check(near(pixel(window,W,6,2),[255,0,0,255]), "ES1 element VBO with interleaved client arrays and nonzero offset");
+        gl1("glBindBuffer", 0x8893, 0);
+        gl1("glVertexPointerData", 2, 0x1406, 0, floats([0,0,W/2,0,W/2,W,0,0,W/2,W,0,W]), 48);
         // a light: directional, along +z, a white material's diffuse
         gl1("glDisable", 0x0DE1);
         gl1("glDisableClientState", 0x8076);

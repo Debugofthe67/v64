@@ -2186,6 +2186,7 @@ gles-tests: build/v86-gles.js build/glslang.wasm
 	node tests/gles/stream.mjs
 	node tests/gles/render_control.mjs
 	node tests/gles/shadow.mjs
+	node tests/gles/native_indices.mjs
 	node tests/gles/shadow3.mjs
 	node tests/gles/shadow31.mjs
 	node tests/gles/batch.mjs

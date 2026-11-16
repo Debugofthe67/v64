@@ -10,7 +10,7 @@ export const GRAPHICS_SOURCES = [
     ...[
         "build-gles.sh", "eagl.c", "gli-context.c", "gli-photo.c", "gli-gates.s",
         "gles-transport.h", "gles-driver.h", "gli-surface.h", "gli-draw.h",
-        "gli-texture.h", "gli-query.h", "gli-uniform.h", "gles-opcodes.mjs",
+        "gli-texture.h", "gli-query.h", "gli-uniform.h", "gli-fixed.h", "gles-opcodes.mjs",
         "gl-frame-wrappers.mjs", "gl-scalar.mjs",
     ].map(name => "tools/ios/guest/" + name),
     "tools/ios/gl-dispatch.mjs", "src/apple/macho.js",
