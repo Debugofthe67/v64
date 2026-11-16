@@ -62,7 +62,7 @@ export function ff_signature(c, points, textures)
         {
             if(!t) return { enabled: false };
             const e = ff.env[i];
-            const env = { mode: ENV_MODES[e.mode], coordReplace: !!e.coord_replace };
+            const env = { mode: ENV_MODES[e.mode], coordReplace: points && on(0x8861) && !!e.coord_replace };
             if(e.mode === 0x8570)
             {
                 Object.assign(env, { combineRGB: COMBINE[e.combine_rgb], combineAlpha: COMBINE[e.combine_alpha],

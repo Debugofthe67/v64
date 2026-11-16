@@ -109,7 +109,7 @@ Android emulator's host GPU: what Android 7.1's GLES gets that differs from the 
 
 | Id | Topic | How it is done | Difference from the emulator |
 | --- | --- | --- | --- |
-| G-64 | Points | WebGPU's point list | One pixel each: `gl_PointSize`, `glPointSize`, the point parameters and point sprites' size are not applied |
+| G-64 | Points | GLES 1.1 points expand to six corners per point with modelview/projection, distance attenuation, size clamping/rounding, client or VBO point-size arrays and OES point-coordinate replacement. GLES 2+ uses WebGPU's point list | GLES 2+ `gl_PointSize` remains one pixel. ES1 smooth points retain the declared one-pixel smooth range; multisample fade is not reproduced. ES1 expansion currently submits a draw per point |
 | G-65 | Line width | WebGPU's lines | One pixel wide: `glLineWidth` is kept and answered, not applied |
 | G-66 | Depth and stencil apart | A framebuffer with depth and stencil attached as two images is `GL_FRAMEBUFFER_UNSUPPORTED` | WebGPU has one depth-stencil texture; a packed `DEPTH24_STENCIL8_OES` buffer attached to both works |
 | G-67 | Texture formats | GLES 1.1, and GLES 2.0 without glslang: every color texture and color buffer is `rgba8unorm`; 565, 4444, 5551, `LUMINANCE`, `LUMINANCE_ALPHA`, `ALPHA` and BGRA are converted when uploaded, ETC1 decoded. GLES 3.x, and 2.0 with glslang ([gles3-plan.md](gles3-plan.md)): each sized format's WebGPU format; ETC2/EAC and ASTC passed on where the adapter has them | Reads of the 1.1/2.0 path give the 8-bit values; without `texture-compression-etc2` only ETC1 is decoded, without `-astc` ASTC is not drawn |

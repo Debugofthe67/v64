@@ -871,6 +871,7 @@ GLESExecutor.prototype.draw = function(c, mode, first, count, elements)
     }
     const vertices = high - low + 1;
     if(vertices <= 0 || vertices > 1 << 24) return;
+    if(c.api === 1 && mode === GL.POINTS) return this.draw_points1(c, low, vertices, indices);
     // (fans and loops as lists and strips; strips with indices keep u32, which never restarts)
     // (points: WebGPU's, one pixel each; gl_PointSize and glPointSize are not applied, gpu-deviations.md)
     let topology = { [GL.POINTS]: "point-list", [GL.LINES]: "line-list", [GL.LINE_STRIP]: "line-strip", [GL.LINE_LOOP]: "line-strip", [GL.TRIANGLES]: "triangle-list",
@@ -889,7 +890,7 @@ GLESExecutor.prototype.draw = function(c, mode, first, count, elements)
     const index_count = list ? list.length : count;
     if(!index_count) return;
     // (GLES 1.1: the fixed function's shaders for the state; GLES 2.0: the program's)
-    const ff = c.api === 1 ? this.ff_shaders(c, mode === GL.POINTS) : null;
+    const ff = c.api === 1 ? this.ff_shaders(c, false) : null;
     const shaders = ff ? ff.shaders : this.program_shaders(program);
     if(!shaders) return;
     const layout = ff ? this.ff_layout(c, ff.generated, low, vertices) : this.vertex_layout(c, program, low, vertices);
@@ -956,10 +957,11 @@ GLESExecutor.prototype.stencil_faces = function(c, target, mode)
  * the draw_texture rectangle's: no lighting, fog or matrices), cached by
  * their signature
  */
-GLESExecutor.prototype.ff_shaders = function(c, rectangle)
+GLESExecutor.prototype.ff_shaders = function(c, rectangle, points = false)
 {
     const textures = Array.from({ length: UNITS }, (_, i) => unit_texture(c, i));
-    const signature = ff_signature(c, false, textures);
+    const signature = ff_signature(c, points, textures);
+    if(points) signature.pointSprite = true;
     if(rectangle)
     {
         signature.lighting = { enabled: false, lights: [] };
@@ -976,6 +978,18 @@ GLESExecutor.prototype.ff_shaders = function(c, rectangle)
     if(!entry)
     {
         const generated = FF.generate(signature);
+        if(points)
+        {
+            generated.wgslVertex = generated.wgslVertex.replace("gl_point_position(clip,ptSize,corner,glState.viewportParams)",
+                "gles_point_position(clip,ptSize,corner,glState.viewportParams)") + `
+fn gles_point_position(clip:vec4<f32>,size:f32,corner:vec2<f32>,viewport:vec4<f32>)->vec4<f32>{
+ if(clip.w<=0.0||any(abs(clip.xyz)>vec3<f32>(clip.w))){return vec4<f32>(0.0,0.0,0.0,-1.0);}
+ let rounded=clamp(floor(size+0.5),1.0,256.0);
+ let window=viewport.xy+(clip.xy/clip.w*0.5+0.5)*viewport.zw;
+ let centre=select(floor(window)+0.5,floor(window+0.5),u32(rounded)%2u==0u);
+ return vec4<f32>(((centre-viewport.xy+corner*rounded*0.5)/viewport.zw*2.0-1.0)*clip.w,clip.zw);
+}`;
+        }
         const module = code =>
         {
             let m = this.shaders.get(code);
@@ -989,6 +1003,51 @@ GLESExecutor.prototype.ff_shaders = function(c, rectangle)
         this.ff_cache.set(key, entry);
     }
     return { generated: entry.generated, shaders: entry.shaders, textures };
+};
+
+// WebGPU has one-pixel point primitives. ES1 needs sized, attenuated
+// points and OES point-coordinate replacement, so rasterize six corners
+// per point with constant vertex attributes and the existing fixed shader.
+GLESExecutor.prototype.draw_points1 = function(c, low, vertices, indices)
+{
+    const target = this.target_of(c);
+    if(!target) return;
+    const enabled = new Set(c.enabled);
+    enabled.delete(0x0B44);
+    enabled.delete(0x8037);
+    const state = Object.assign({}, c, { enabled, front_face: 0x0901 });
+    const ff = this.ff_shaders(c, false, true);
+    const point = c.ff.arrays.point_size;
+    const sizes = point.enabled ? this.attribute_values(c, point, low, vertices, 1) : null;
+    if(point.enabled && !sizes) return;
+    const order = indices || Array.from({ length: vertices }, (_, i) => low + i);
+    const [vx, vy, vw, vh] = c.viewport;
+    if(vw <= 0 || vh <= 0) return;
+    for(const vertex of order)
+    {
+        const layout = this.ff_layout(c, ff.generated, vertex, 1);
+        if(!layout) return;
+        layout.formats.forEach(f => f.stride = 0);
+        layout.key = "point:" + layout.key;
+        const pipeline = this.pipeline(state, null, ff.shaders, layout, "triangle-list", target, false);
+        if(!pipeline) return;
+        const snapshot = ff_snapshot(c, c.viewport);
+        snapshot.point.size = sizes ? sizes[vertex - low] : c.ff.point.size;
+        if(c.enabled.has(0x0B10)) snapshot.point.sizeMin = snapshot.point.sizeMax = 1;
+        const groups = this.ff_bind_groups(c, ff, pipeline, target, c.viewport, snapshot);
+        const pass = this.begin_pass(target, null);
+        pass.setPipeline(pipeline);
+        for(const [index, group] of groups) pass.setBindGroup(index, group);
+        layout.buffers.forEach((buffer, i) => pass.setVertexBuffer(i, buffer));
+        pass.setViewport(vx, vy, vw, vh, Math.min(...c.depth_range), Math.max(...c.depth_range));
+        if(!this.apply_scissor(pass, c, target)) return;
+        pass.setBlendConstant(c.blend_func.some(f => f === 0x8003 || f === 0x8004) ?
+            { r: c.blend_color[3], g: c.blend_color[3], b: c.blend_color[3], a: c.blend_color[3] } :
+            { r: c.blend_color[0], g: c.blend_color[1], b: c.blend_color[2], a: c.blend_color[3] });
+        if(c.enabled.has(0x0B90)) pass.setStencilReference(c.stencil_func[0][1] & 255);
+        pass.draw(6);
+        this.stats.draws++;
+    }
 };
 
 /** A fixed-function draw's vertex buffers: each input from its client array or its current value */

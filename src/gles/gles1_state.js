@@ -93,7 +93,7 @@ export function new_ff_state()
         fog: { mode: 0x0800, density: 1, start: 0, end: 1, color: [0, 0, 0, 0] },
         alpha_func: 0x0207, alpha_ref: 0,
         clip_planes: Array.from({ length: CLIP_PLANES }, () => [0, 0, 0, 0]),
-        point: { size: 1, min: 0, max: 1, fade: 1, attenuation: [1, 0, 0] },
+        point: { size: 1, min: 0, max: 256, fade: 1, attenuation: [1, 0, 0] },
         logic_op: 0x1503,
     };
 }

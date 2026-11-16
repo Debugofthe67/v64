@@ -468,7 +468,7 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 6, 6), [0, 0, 255, 255]) && near(pixel(window, W, 1, 1), [128, 128, 128, 255], 3), "glDrawTexiOES: the crop rectangle's texel at the window rectangle");
 
-        // ---- points: one pixel each (WebGPU's point list)
+        // ---- ES1 sized points, matrices, arrays and OES point sprites
         gl1("glDisable", 0x0DE1);
         gl1("glClear", 0x4000);
         gl1("glColor4f", 0, 1, 0, 1);
@@ -477,6 +477,48 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         gl1("glEnable", 0x0DE1);
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 4, 4), [0, 255, 0, 255]) && near(pixel(window, W, 1, 1), [0, 0, 0, 255]), "a point: its pixel");
+        gl1("glDisable",0x0DE1);
+        gl1("glClear",0x4000);
+        gl1("glPointSize",4);
+        gl1("glVertexPointerData",2,0x1406,0,floats([2,2]),8);
+        gl1("glTranslatex",2*65536,2*65536,0);
+        gl1("glDrawArrays",0,0,1);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,2,2),[0,255,0,255])&&near(pixel(window,W,5,5),[0,255,0,255])&&
+            near(pixel(window,W,6,6),[0,0,0,255]),"ES1 four-pixel point retains modelview/projection and covers its square");
+        gl1("glLoadIdentity");
+        gl1("glClear",0x4000);
+        gl1("glVertexPointerData",2,0x1406,0,floats([99,99,2.5,2.5,6.5,6.5]),24);
+        gl1("glPointSizePointerData",0x140c,0,new Uint8Array(new Int32Array([65536,3*65536,65536]).buffer),12);
+        gl1("glEnableClientState",0x8b9c);
+        gl1("glDrawElementsData",0,2,0x1401,new Uint8Array([1,2]),2);
+        gl1("glDisableClientState",0x8b9c);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,1,1),[0,255,0,255])&&near(pixel(window,W,3,3),[0,255,0,255])&&
+            near(pixel(window,W,6,6),[0,255,0,255])&&near(pixel(window,W,5,5),[0,0,0,255]),"ES1 indexed fixed point-size array selects each point's size");
+        gl1("glClear",0x4000);
+        gl1("glMatrixMode",0x1701);gl1("glLoadIdentity");gl1("glOrthof",-4,4,-4,4,1,10);gl1("glMatrixMode",0x1700);
+        gl1("glVertexPointerData",3,0x1406,0,floats([0,0,-2]),12);
+        gl1("glPointParameterfv",0x8129,floats([0,0,1]));
+        gl1("glEnable",0xb44);gl1("glCullFace",0x408);gl1("glFrontFace",0x900);
+        gl1("glDrawArrays",0,0,1);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,3,3),[0,255,0,255])&&near(pixel(window,W,4,4),[0,255,0,255])&&
+            near(pixel(window,W,2,2),[0,0,0,255]),"ES1 point attenuation uses eye distance and ignores polygon culling");
+        gl1("glDisable",0xb44);gl1("glFrontFace",0x901);gl1("glPointParameterfv",0x8129,floats([1,0,0]));
+        gl1("glMatrixMode",0x1701);gl1("glLoadIdentity");gl1("glOrthof",0,W,0,W,-1,1);gl1("glMatrixMode",0x1700);
+        gl1("glClear",0x4000);
+        gl1("glBindTexture",0xde1,82);
+        gl1("glTexParameteri",0xde1,0x2800,0x2600);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        gl1("glTexImage2D",0xde1,0,0x1908,2,2,0,0x1908,0x1401,new Uint8Array([255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255]));
+        gl1("glEnable",0xde1);gl1("glEnable",0x8861);
+        gl1("glTexEnvi",0x8861,0x8862,1);gl1("glTexEnvi",0x2300,0x2200,0x1e01);
+        gl1("glVertexPointerData",2,0x1406,0,floats([4,4]),8);
+        gl1("glDrawArrays",0,0,1);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,2,2),[0,0,255,255])&&near(pixel(window,W,5,2),[255,255,255,255])&&
+            near(pixel(window,W,2,5),[255,0,0,255])&&near(pixel(window,W,5,5),[0,255,0,255]),"OES point sprite replaces coordinates across the whole square");
+        gl1("glDisable",0x8861);gl1("glPointSize",1);gl1("glBindTexture",0xde1,81);
 
         // ---- an empty read is answered (no rows to copy)
         const empty = await read_pixels(0, 0, 0, 0);

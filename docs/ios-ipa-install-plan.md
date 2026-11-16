@@ -429,3 +429,7 @@ BROWSER_FOCUS=1 TEST_ARTIFACT_DIR=build/ios/ipa-acceptance/acceptance TIMEOUT_MS
 交错 short 顶点/UV、非零 first、顶点及索引 VBO 混用客户端颜色、向量 DrawTex、原生 glReadPixels
 逐像素检查均通过，页面显示红/蓝/青三个区域与 `ES1 PASS`。新增 `fixed_queries.mjs` 区分枚举与数值的
 定点查询转换，并检查纹理定点形式及删除缓冲后的固定功能数组绑定。
+
+ES1 的点绘制另外实现为逐点六角点展开，保持矩阵/光照/雾，支持大小、距离衰减、定点大小数组和
+OES 点精灵坐标替换。WebGPU 像素测试覆盖点的方形范围、非零索引数组、纹理四象限与多边形剔除独立性。
+ES1 平滑点保持声明的一像素范围，多重采样的淡出行为仍是已记录差异。
