@@ -12,6 +12,11 @@ on:
 permissions:
   contents: read
 
+# Matching guest sources from the merged site PR #3. Keep both jobs on the
+# same revision; topic branches such as refactor may be deleted after merge.
+env:
+  GUEST_GRAPHICS_REVISION: 259fa941e6a5babbd206979a6b9a58506b9e2115
+
 jobs:
   eslint:
     name: eslint
@@ -49,7 +54,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: speedyHKjournalist/retro-gaming-site
-          ref: refactor
+          ref: ${{ env.GUEST_GRAPHICS_REVISION }}
           path: retro-gaming-site
 
       - name: Setup Node.js version
@@ -118,7 +123,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: speedyHKjournalist/retro-gaming-site
-          ref: refactor
+          ref: ${{ env.GUEST_GRAPHICS_REVISION }}
           path: retro-gaming-site
       - uses: actions/setup-node@v6
         with:
@@ -140,6 +145,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup target add wasm32-unknown-unknown
       - name: Browser WebGPU through SwiftShader
+        id: browser
         working-directory: v86
         env:
           GL_CHROME: /usr/bin/google-chrome
@@ -172,7 +178,7 @@ jobs:
             fi
           ' _
       - name: Retain browser evidence
-        if: always()
+        if: always() && (steps.browser.outcome == 'success' || steps.browser.outcome == 'failure')
         uses: actions/upload-artifact@v6
         with:
           name: d3d-browser-results
