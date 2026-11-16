@@ -137,6 +137,11 @@ prepare a disposable NAND using that directory, and run
 native DNS resolution and an HTTP 200 response from `example.com`.
 Release helpers are built without `V86_NETWORK_PROBE`.
 
+The iOS 6 Safari UI was also verified loading `http://example.com/` through
+this tunnel on 2026-11-16. Since there is no associated Wi-Fi or cellular
+radio, Safari can initially show its native airplane-mode data warning;
+dismiss it with OK to continue using the tunnel.
+
 ## Local tools and checks
 
 `tools/ios/ipsw.mjs` checks and extracts the supplied firmware.
