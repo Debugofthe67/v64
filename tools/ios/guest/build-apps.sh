@@ -36,12 +36,13 @@ codesign -f -s - --identifier org.v86.app-bootstrap --digest-algorithm=sha1,sha2
 compile -c "$src/install-policy.c" -o "$out/install-policy.o"
 link -dylib -install_name /usr/lib/libv86install.dylib -o "$out/libv86install.dylib" "$out/install-policy.o"
 codesign -f -s - --identifier org.v86.install-policy --digest-algorithm=sha1,sha256 "$out/libv86install.dylib"
-for variant in Install GLES2 Network; do
+for variant in Install GLES2 Network Volume; do
     app="$out/Payload/V86${variant}Test.app"
     mkdir -p "$app"
     flag=
     if [ "$variant" = GLES2 ]; then flag=-DV86_GLES_TEST; fi
     if [ "$variant" = Network ]; then flag=-DV86_NETWORK_TEST; fi
+    if [ "$variant" = Volume ]; then flag=-DV86_VOLUME_TEST; fi
     compile $flag -DV86_FIXTURE_VERSION="$version" -c "$src/test-app.c" -o "$out/test-$variant.o"
     link -o "$app/V86Test" "$out/test-$variant.o" -lUIKit -lOpenGLES
     cat > "$app/Info.plist" <<PLIST

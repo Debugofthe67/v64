@@ -7,6 +7,40 @@ typedef struct { float x, y, w, h; } Rect;
 extern int UIApplicationMain(int, char **, void *, void *);
 static void *label, *defaults, *counter_key;
 static long count;
+#ifdef V86_VOLUME_TEST
+static int volume_call(unsigned op,const void *data,unsigned length,unsigned connection)
+{
+    register unsigned r0 __asm__("r0")=0x86640000|op;
+    register const void *r1 __asm__("r1")=data;
+    register unsigned r2 __asm__("r2")=length,r3 __asm__("r3")=connection;
+    __asm__ volatile(".word 0xe7f866f4":"+r"(r0):"r"(r1),"r"(r2),"r"(r3):"memory");return (int)r0;
+}
+static void volume_poll(void *self,void *cmd)
+{
+    (void)cmd;
+    dlopen("/System/Library/PrivateFrameworks/Celestial.framework/Celestial",2);
+    void *controller=send0(objc_getClass("AVSystemController"),"sharedAVSystemController");
+    float ring=-1,active=-1;void *category=0;char name[96]="",text[256];
+    CFStringRef ringtone=string("Ringtone");
+    signed char ok=((signed char (*)(void *,void *,float *,void *))objc_msgSend)(controller,
+        sel_registerName("getVolume:forCategory:"),&ring,(void *)ringtone);
+    signed char active_ok=((signed char (*)(void *,void *,float *,void **))objc_msgSend)(controller,
+        sel_registerName("getActiveCategoryVolume:andName:"),&active,&category);
+    if(category)CFStringGetCString(category,name,sizeof(name),0x08000100);
+    snprintf(text,sizeof(text),"Ring: %.4f (%d)\nActive: %.4f (%d)\n%s",(double)ring,ok,(double)active,active_ok,name);
+    CFStringRef value=string(text);send1(label,"setText:",(void *)value);CFRelease(value);CFRelease(ringtone);
+    // A test-owned service records values independently of screen rendering.
+    // Production CPUs do not register this diagnostic service.
+    static int connection=-1;
+    if(connection<1)connection=volume_call(1,"v86.test.volume",15,0);
+    if(connection>0){
+        int n=snprintf(text,sizeof(text),"{\"ring\":%.6f,\"active\":%.6f}",(double)ring,(double)active);
+        if(n>0 && n<(int)sizeof(text) && volume_call(2,text,n,connection)!=n)connection=-1;
+    }
+    ((void (*)(void *,void *,void *,void *,double))objc_msgSend)(self,
+        sel_registerName("performSelector:withObject:afterDelay:"),sel_registerName("pollVolume"),0,0.5);
+}
+#endif
 #ifdef V86_GLES_TEST
 static void *gl_view;
 static void draw(void *);
@@ -92,6 +126,10 @@ static Boolean launched(void *self, void *cmd, void *app, void *options)
     ((void (*)(void *,void *,void *,unsigned))objc_msgSend)(button,sel_registerName("setTitle:forState:"),(void *)title,0);CFRelease(title);
     ((void (*)(void *,void *,void *,void *,unsigned))objc_msgSend)(button,sel_registerName("addTarget:action:forControlEvents:"),self,sel_registerName("tap:"),64);
     send1(view,"addSubview:",button);send1(window,"setRootViewController:",controller);send0(window,"makeKeyAndVisible");
+#ifdef V86_VOLUME_TEST
+    frame(label,(Rect){20,35,280,150});send1(label,"setNumberOfLines:",(void *)3);
+    send1(button,"setHidden:",(void *)1);volume_poll(self,0);
+#endif
 #ifdef V86_GLES_TEST
     void *cls=objc_allocateClassPair(objc_getClass("UIView"),"V86GLView",0);
     // Class methods live on the metaclass, obtained through object_getClass's ABI.
@@ -108,6 +146,9 @@ int main(int argc,char **argv)
     void *pool=objc_autoreleasePoolPush();void *cls=objc_allocateClassPair(objc_getClass("NSObject"),"V86TestDelegate",0);
     class_addMethod(cls,sel_registerName("application:didFinishLaunchingWithOptions:"),(void (*)(void))launched,"c@:@@");
     class_addMethod(cls,sel_registerName("tap:"),(void (*)(void))tap,"v@:@");objc_registerClassPair(cls);
+#ifdef V86_VOLUME_TEST
+    class_addMethod(cls,sel_registerName("pollVolume"),(void (*)(void))volume_poll,"v@:");
+#endif
 #ifdef V86_GLES_TEST
     class_addMethod(cls,sel_registerName("drawFrame"),(void (*)(void))draw_frame,"v@:");
 #endif

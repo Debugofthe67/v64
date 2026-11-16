@@ -100,6 +100,12 @@ Developer builds verify the bundled original helper assets with
 For reproducible local test applications, `make ios-install-fixtures` builds
 `build/ios-install-fixtures/V86InstallTest.ipa` (UIKit and a saved tap counter)
 and `V86GLES2Test.ipa` (the same counter plus a GLES 2.0 triangle).
+`V86NetworkTest.ipa` opens a real Safari HTTP navigation.
+`V86VolumeTest.ipa` displays the native `AVSystemController` ringtone and
+active-category volume. A test-owned `v86.test.volume` backdoor service can
+record these values independently of screen rendering; production CPUs
+do not register that service. This distinguishes lost button edges from
+stale on-screen text or HUD frames.
 Build an update with
 `V86_FIXTURE_VERSION=2 sh tools/ios/guest/build-apps.sh build/ios-install-fixtures-v2`.
 The [IPA implementation plan](ios-ipa-install-plan.md) records the acceptance

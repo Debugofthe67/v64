@@ -14,7 +14,7 @@
     "tools/ios/guest/network-probe.h": "90c3ff11c52475f6f88def023ff9e29c6bacd77f2a9b5e8611421922819491a5",
     "tools/ios/guest/app-bootstrap.c": "365efa127b2a4ad6a5e31cc3f775a7b2ff29dbb108c7309d305503ece6489752",
     "tools/ios/guest/install-policy.c": "9e659915cf1c4ddc843c47e9c5c04fc6c00002e72115a737cb9b1930545c4a4e",
-    "tools/ios/guest/build-apps.sh": "8d6c7eb7402ed460cc4d746d8d7ea95aecf45b60be82f914985cdf2000f2c014"
+    "tools/ios/guest/build-apps.sh": "54b882a9434175f04532ae7ad3264a07abfad9e52e4e11ffc976776f81cdfcf4"
   },
   "files": {
     "v86-app-agent": "ddbbeb709ae3c020c1cdf0421bddbd472900a20a72a4d5dd390ea5c3cf5c79cb",
