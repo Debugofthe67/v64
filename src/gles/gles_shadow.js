@@ -1,4 +1,5 @@
 import { pvrtc_bytes } from "./pvrtc.js";
+import { paletted_layout } from "./paletted.js";
 // The shadow state (docs/gles-proxy-plan.md "影子状态", E2): OpenGL ES 2.0's
 // state machine, written from the GLES 2.0 specification, on the CPU side,
 // so that the guest's queries are answered without waiting for the page:
@@ -20,7 +21,7 @@ import { pvrtc_bytes } from "./pvrtc.js";
 // their fixed-function state is answered from its initial values until E4.
 
 import { GL, CAPS_1, CAPS_2, RENDERBUFFER_FORMATS, etc1_bytes, image_bytes, texel_bytes, texture_format_error, texture_kind } from "./gles_formats.js";
-import { CONFIG_ATTRIBUTES, COMPRESSED_TEXTURE_FORMATS, EGL, GL_STATE, MAX_SIZE } from "./gles_caps.js";
+import { CONFIG_ATTRIBUTES, COMPRESSED_TEXTURE_FORMATS, COMPRESSED_TEXTURE_FORMATS_1, EGL, GL_STATE, MAX_SIZE } from "./gles_caps.js";
 import { compile_shader, link_program } from "./glsl_es.js";
 import { STAGE_OF_GL_TYPE } from "./glslang.js";
 import { es3_rules, glsl_version } from "./glsl_es_rewrite.js";
@@ -679,7 +680,8 @@ GLESShadow.prototype.state_value = function(context, pname)
         case 0x8B8D: return [c.program];
         case 0x0D52: case 0x0D53: case 0x0D54: case 0x0D55: case 0x0D56: case 0x0D57:
             return [this.framebuffer_bits(c)[pname - 0x0D52]];
-        case 0x86A3: return COMPRESSED_TEXTURE_FORMATS;
+        case 0x86A2: return [c.api === 1 ? COMPRESSED_TEXTURE_FORMATS_1.length : COMPRESSED_TEXTURE_FORMATS.length];
+        case 0x86A3: return c.api === 1 ? COMPRESSED_TEXTURE_FORMATS_1 : COMPRESSED_TEXTURE_FORMATS;
     }
     if(c.hints.has(pname) && (c.api === 1 || pname === 0x8192 || pname === 0x8B8B)) return [c.hints.get(pname)];
     if((c.api === 1 ? CAPS_1 : CAPS_2).has(pname)) return [c.enabled.has(pname) ? 1 : 0];
@@ -879,7 +881,7 @@ const HANDLERS = {
     "glGetCompressedTextureFormats": (shadow, c, [count, formats]) =>
     {
         query(shadow);
-        put(formats, COMPRESSED_TEXTURE_FORMATS, "i", "i");
+        put(formats, c.api === 1 ? COMPRESSED_TEXTURE_FORMATS_1 : COMPRESSED_TEXTURE_FORMATS, "i", "e");
     },
     "glGetShaderPrecisionFormat": (shadow, c, [shadertype, precisiontype, range, precision]) =>
     {
@@ -1076,6 +1078,16 @@ const HANDLERS = {
         const t = image_target(c, target);
         if(!t) return REFUSED;
         const pvrtc = internalformat >= 0x8C00 && internalformat <= 0x8C03;
+        if(c.api === 1 && internalformat >= 0x8B90 && internalformat <= 0x8B99)
+        {
+            if(target !== GL.TEXTURE_2D || border) return fail(c, GL.INVALID_OPERATION);
+            if(!image_size_ok(c,target,0,width,height,0)) return REFUSED;
+            const palette = paletted_layout(internalformat,width,height,level);
+            if(!palette || size !== palette.size || !data || data.length < size) return fail(c, GL.INVALID_VALUE);
+            for(const image of palette.images) t.texture.images.set(image.level,
+                {width:image.width,height:image.height,format:internalformat,type:GL.UNSIGNED_BYTE,compressed:true});
+            return undefined;
+        }
         if(!pvrtc && internalformat !== GL.ETC1_RGB8_OES) return fail(c, GL.INVALID_ENUM);
         if(!image_size_ok(c, target, level, width, height, border)) return REFUSED;
         const expected = pvrtc ? pvrtc_bytes(width, height, !!(internalformat & 1)) : etc1_bytes(width, height);

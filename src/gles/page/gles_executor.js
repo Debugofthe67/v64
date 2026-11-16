@@ -1,4 +1,5 @@
 import { decode_pvrtc } from "../pvrtc.js";
+import { decode_paletted, paletted_layout } from "../paletted.js";
 // The GLES executor (docs/gles-proxy-plan.md "执行器", E3): GLES batches
 // (src/gles/gles_batch.js) on WebGPU, on the page. It runs the same state
 // machine as the CPU side (src/gles/gles_shadow.js) over the commands it
@@ -507,6 +508,15 @@ GLESExecutor.prototype.compressed_tex_image = function(c, args, sub = false)
     if(sub) [, , , , width, height, format, , data] = args;
     else [, , format, width, height, , , data] = args;
     const { texture, face } = bound(c, target);
+    if(!sub && c.api === 1 && format >= 0x8B90 && format <= 0x8B99)
+    {
+        const layout = paletted_layout(format,width,height,level);
+        const target_texture = texture && this.write_target(texture,0);
+        if(!target_texture) return;
+        for(const image of decode_paletted(layout,data))
+            if(image.width && image.height) this.upload(target_texture.texture,image.level,0,0,0,image.width,image.height,image.rgba);
+        return;
+    }
     const t = texture && this.write_target(texture, level);
     if(!t || level >= t.levels) return;
     const rgba = format === GL.ETC1_RGB8_OES ? decode_etc1(width, height, data) :

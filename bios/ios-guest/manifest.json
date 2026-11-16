@@ -13,7 +13,7 @@
     "tools/ios/guest/gles-driver.h": "8973b472ab733c10759e2e4912a5f280a8cf01be4c99efbcfa8969fbeb590a0d",
     "tools/ios/guest/gli-surface.h": "94b9a54ec76a73ccaf29e16fc64a41606b5ed791e8542ef3f0b2ce94b84aa4f7",
     "tools/ios/guest/gli-draw.h": "50bec781957d29b5436e86b5f249f103cfdc3f1d5917f305b1738a33b6c3612a",
-    "tools/ios/guest/gli-texture.h": "11091ff02629d0386605a3c89904de941e193a8828172b9e0fd2fcc829d41525",
+    "tools/ios/guest/gli-texture.h": "8c259303df239bf648848e1703b82cdbef8f2c9e0896a0cae303abde35649fbb",
     "tools/ios/guest/gli-query.h": "a95b70d3cf601d65a1aba80c165e05528e69a1967f57785643e8ad9dcf866f63",
     "tools/ios/guest/gli-uniform.h": "73f952d90156e0af6e64ae6098bbca1ec9eef58e7540c9e5f53003c4528216b3",
     "tools/ios/guest/gli-fixed.h": "559ad0b166844ef14c8883e123b18a3d1b3d1aebc04e15a3878c4461bf21297f",
@@ -26,6 +26,6 @@
     "src/gles/gles_wire.js": "2c23c6ddce7bc4fc2aa88ba6c08f03c0964f901debce2993b92afa4046567715"
   },
   "files": {
-    "libv86gles.dylib": "72a4638b0649a8270a135219abf7520fd805bb1270a873b7ee71630cbb8ba544"
+    "libv86gles.dylib": "0c91cae6b37fedc1b88ab7d3b6b200a21e63d218be04fdfe69417637a344d50c"
   }
 }

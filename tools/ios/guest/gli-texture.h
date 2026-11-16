@@ -106,7 +106,8 @@ static void tex_sub_image(struct context *ctx, unsigned target, int level, int x
 static void compressed_image(struct context *ctx, unsigned target, int level, unsigned format, int w, int h,
     int border, int size, const void *data)
 {
-    if(border || size < 0) { draw_error(ctx, 0x501); return; }
+    if(border) { draw_error(ctx,ctx->api == 1 && format >= 0x8b90 && format <= 0x8b99 ? 0x502 : 0x501);return; }
+    if(size < 0) { draw_error(ctx, 0x501); return; }
     const unsigned fields[] = { target, level, format, w, h, border, size };
     texture_packet(ctx, gles2_glCompressedTexImage2D, fields, 7, data, data ? size : 0);
 }

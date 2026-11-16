@@ -468,6 +468,30 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 6, 6), [0, 0, 255, 255]) && near(pixel(window, W, 1, 1), [128, 128, 128, 255], 3), "glDrawTexiOES: the crop rectangle's texel at the window rectangle");
 
+        // ---- ES1 paletted textures: high nibble first and a supplied mip chain
+        gl1("glBindTexture",0xde1,85);
+        gl1("glTexParameteri",0xde1,0x2800,0x2600);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        const palette=new Uint8Array(64+8+2+1);
+        palette.set([255,0,0,255,0,255,0,255,0,0,255,255]);
+        palette.fill(0x01,64,72);palette.fill(0x11,72,74);palette[74]=0x20;
+        gl1("glCompressedTexImage2D",0xde1,-2,0x8b91,4,4,0,palette.length,palette);
+        gl1("glTexParameteriv",0xde1,0x8b9d,new Uint8Array(new Int32Array([0,0,4,4]).buffer));
+        gl1("glDrawTexiOES",0,0,0,8,8);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[255,0,0,255])&&near(pixel(window,W,2,0),[0,255,0,255]),"ES1 palette4 RGBA nibble order renders through DrawTex");
+        gl1("glTexParameteri",0xde1,0x2801,0x2700);
+        gl1("glDrawTexiOES",0,0,0,1,1);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[0,0,255,255]),"ES1 negative-level palette chain supplies the selected mip");
+        const rgbPalette=new Uint8Array(256*3+4);
+        rgbPalette.set([255,0,0],200*3);rgbPalette.set([0,255,0],17*3);rgbPalette.set([200,17,200,17],768);
+        gl1("glBindTexture",0xde1,86);gl1("glTexParameteri",0xde1,0x2800,0x2600);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        gl1("glCompressedTexImage2D",0xde1,0,0x8b95,2,2,0,rgbPalette.length,rgbPalette);
+        gl1("glTexParameteriv",0xde1,0x8b9d,new Uint8Array(new Int32Array([0,0,2,2]).buffer));
+        gl1("glColor4f",1,1,1,0.25);gl1("glDrawTexiOES",0,0,0,8,8);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[255,0,0,64])&&near(pixel(window,W,6,0),[0,255,0,64]),"ES1 palette8 RGB uses byte indices and REPLACE preserves current alpha");
+
         // ---- ES1 logic operations, including primitive ordering
         gl1("glDisable",0xde1);
         gl1("glEnable",0xbf2);gl1("glEnable",0xbe2);gl1("glBlendFunc",0,0);

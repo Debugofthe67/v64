@@ -17,7 +17,8 @@ const OPERANDS = { 0x0300: "SRC_COLOR", 0x0301: "ONE_MINUS_SRC_COLOR", 0x0302: "
 const ALPHA_FUNCS = { 0x0200: "never", 0x0201: "less", 0x0202: "equal", 0x0203: "lequal", 0x0204: "greater", 0x0205: "notequal",
     0x0206: "gequal", 0x0207: "always" };
 const FORMATS = { [GL.RGBA]: "RGBA", [GL.BGRA_EXT]: "RGBA", [GL.RGB]: "RGB", [GL.ETC1_RGB8_OES]: "RGB", [GL.ALPHA]: "ALPHA",
-    [GL.LUMINANCE]: "LUMINANCE", [GL.LUMINANCE_ALPHA]: "LUMINANCE_ALPHA" };
+    [GL.LUMINANCE]: "LUMINANCE", [GL.LUMINANCE_ALPHA]: "LUMINANCE_ALPHA",
+    ...Object.fromEntries(Array.from({length:10},(_,i)=>[0x8B90+i,i%5===0||i%5===2?"RGB":"RGBA"])) };
 
 /** @param {!Array<number>} m @return {boolean} */
 const is_identity = m => m.every((v, i) => v === IDENTITY[i]);

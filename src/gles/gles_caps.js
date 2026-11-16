@@ -3,6 +3,8 @@
 // implementation limits and the state's initial values that queries answer.
 // The executor (E3) and the shadow state (E2) keep to the same numbers.
 
+import { PALETTED_FORMATS } from "./paletted.js";
+
 /** EGL's enums (EGL 1.4, EGL_KHR_image_base, EGL_ANDROID_recordable) */
 export const EGL = {
     NONE: 0x3038, DONT_CARE: -1, TRUE: 1, FALSE: 0,
@@ -168,7 +170,7 @@ const GL_SHADING_LANGUAGE_VERSION = 0x8B8C;
  * checksums, GLES 2.0 at most (docs/gles-proxy-plan.md "协议与生成器").
  */
 const EXTENSIONS = {
-    1: ["GL_OES_EGL_image", "GL_OES_EGL_image_external", "GL_OES_compressed_ETC1_RGB8_texture", "GL_OES_element_index_uint",
+    1: ["GL_OES_EGL_image", "GL_OES_EGL_image_external", "GL_OES_compressed_paletted_texture", "GL_OES_compressed_ETC1_RGB8_texture", "GL_OES_element_index_uint",
         "GL_OES_framebuffer_object", "GL_OES_depth24", "GL_OES_packed_depth_stencil", "GL_OES_rgb8_rgba8", "GL_OES_texture_npot",
         "GL_OES_blend_func_separate", "GL_OES_blend_equation_separate", "GL_OES_blend_subtract",
         "GL_OES_draw_texture", "GL_OES_point_sprite", "GL_OES_point_size_array", "GL_EXT_texture_format_BGRA8888", "GL_EXT_texture_filter_anisotropic", "GL_IMG_texture_compression_pvrtc"],
@@ -216,6 +218,7 @@ export function gl_string(name, api, max_version)
 
 /** The compressed texture formats (GL_COMPRESSED_TEXTURE_FORMATS): ETC1 and PVRTC1 */
 export const COMPRESSED_TEXTURE_FORMATS = [0x8D64, 0x8C00, 0x8C01, 0x8C02, 0x8C03];
+export const COMPRESSED_TEXTURE_FORMATS_1 = [...COMPRESSED_TEXTURE_FORMATS, ...PALETTED_FORMATS];
 
 /**
  * The implementation's limits and the state's initial values, by pname:
