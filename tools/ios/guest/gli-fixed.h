@@ -170,10 +170,18 @@ static void fixed_attachment_query(struct context *c,unsigned t,unsigned a,unsig
 static void fixed_##name(struct context *c,const type *v) { \
     if(!v) {draw_error(c,0x501);return;} \
     unsigned n=5*sizeof(type),*p=draw_packet(c,gles1_##name,12+n);if(!p)return; \
-    p[2]=n;memcpy(p+3,v,n);send_draw_packet(c,p,12+n); }
+    p[2]=n;memcpy(p+3,v,n);send_draw_packet(c,p,12+n);c->frame_dirty|=!!c->framebuffer; }
 FIXED_DRAW_VECTOR(glDrawTexfvOES,float) FIXED_DRAW_VECTOR(glDrawTexivOES,int)
 FIXED_DRAW_VECTOR(glDrawTexxvOES,int) FIXED_DRAW_VECTOR(glDrawTexsvOES,short)
 #undef FIXED_DRAW_VECTOR
+#define FIXED_DRAW_SCALAR(name,type) \
+static __attribute__((pcs("aapcs"))) void fixed_##name(struct context *c,type x,type y,type z,type w,type h) { \
+    struct __attribute__((packed,aligned(4))) {unsigned op,bytes;type v[5];}p={gles1_##name,8+5*sizeof(type),{x,y,z,w,h}}; \
+    if(!gles_send(c->driver.connection,(unsigned *)&p,8+5*sizeof(type)))c->driver.ok=0; \
+    c->frame_dirty|=!!c->framebuffer; }
+FIXED_DRAW_SCALAR(glDrawTexfOES,float) FIXED_DRAW_SCALAR(glDrawTexiOES,int)
+FIXED_DRAW_SCALAR(glDrawTexxOES,int) FIXED_DRAW_SCALAR(glDrawTexsOES,short)
+#undef FIXED_DRAW_SCALAR
 
 static void install_fixed_functions(driver_word *table)
 {
@@ -200,5 +208,6 @@ static void install_fixed_functions(driver_word *table)
     table[N90_glGetFixedv-5]=(driver_word)fixed_get_fixed;
     table[N90_glGetFramebufferAttachmentParameterivOES-5]=(driver_word)fixed_attachment_query;
     F(glDrawTexfvOES) F(glDrawTexivOES) F(glDrawTexxvOES) F(glDrawTexsvOES)
+    F(glDrawTexfOES) F(glDrawTexiOES) F(glDrawTexxOES) F(glDrawTexsOES)
 #undef F
 }

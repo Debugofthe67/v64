@@ -457,3 +457,6 @@ DrawTex 保留片段阶段的雾（距离为零），忽略几何裁剪、剔除
 客户端数组遵循 [emugl 编码器的打包规则](https://github.com/google/gfxstream/blob/main/guest/GLESv1_enc/GLEncoder.cpp)：
 传输原始 stride 元数据，但逐元素紧密打包数据。iOS 原生端处理交错源布局，渲染器与 Android 继续使用同一
 数据约定。查询仍返回原始 stride；独立 ARM 包测试及 GPU 测试同时检查此约定，并覆盖多纹理单元与 COMBINE。
+
+DrawTex 的标量与向量入口都会标记离屏帧缓冲为已修改，使 IOSurface 在 Flush 时同步绘制结果。
+原版 iOS 包装函数测试检查 float/short/int/fixed 标量的 AAPCS 参数和线包长度，并验证脏帧状态。

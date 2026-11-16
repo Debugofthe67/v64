@@ -45,6 +45,14 @@ for(const [i, [name, args, count, output]] of vectorCases.entries())
 }
 for(const name of ["glVertexPointer", "glColorPointer", "glTexCoordPointer", "glClientActiveTexture", "glEnableClientState", "glDisableClientState", "glDrawArrays", "glDrawElements", "glGetPointerv", "glGetIntegerv"])
     names.add(name);
+body.push("if(!ctx.frame_dirty)return 64;");
+for(const [name,type,args] of [["glDrawTexfOES","float",[1.25,2.5,0,4,5]],["glDrawTexsOES","short",[-2,3,0,4,5]],
+    ["glDrawTexiOES","int",[2,3,0,4,5]],["glDrawTexxOES","int",[65536,131072,0,262144,327680]]])
+{
+    names.add(name);declarations.push(`extern __attribute__((pcs("aapcs"))) void ${name}(${Array(5).fill(type).join(",")});`);
+    packet("gles1",name,args);body.push(`ctx.frame_dirty=0;${name}(${args});if(!ctx.frame_dirty)return 63;`);
+}
+body.unshift("ctx.frame_dirty=0;");
 packet("gles1", "glVertexPointerData", [2, 0x1406, 20, new Uint8Array(), 0]);
 packet("gles1", "glColorPointerData", [4, 0x1401, 0, new Uint8Array(), 0]);
 packet("gles1", "glClientActiveTexture", [0x84c1]);
@@ -105,7 +113,7 @@ ${requests}
 static const struct {const unsigned char *req;unsigned n;const unsigned char *reply;unsigned r;} packets[]={${rows}};
 static unsigned sent,reading,read_at,buffer_binding,element_binding;
 static int gles_send(unsigned conn,unsigned *p,unsigned n) {p[1]=n;
-if(conn!=27||sent>=sizeof(packets)/sizeof(*packets)||n!=packets[sent].n||memcmp(p,packets[sent].req,n)) {printf("bad packet %u opcode %u bytes %u\\n",sent,p[0],n);return 0;}
+if(conn!=27||sent>=sizeof(packets)/sizeof(*packets)||n!=packets[sent].n||memcmp(p,packets[sent].req,n)) {printf("bad packet %u opcode %u bytes %u\\n",sent,p[0],n);for(unsigned j=0;j<n&&j<48;j++)printf("%02x",((unsigned char *)p)[j]);puts("");if(sent<sizeof(packets)/sizeof(*packets))for(unsigned j=0;j<packets[sent].n&&j<48;j++)printf("%02x",packets[sent].req[j]);puts("");return 0;}
 if(sent&&read_at!=packets[sent-1].r)return 0;reading=sent++;read_at=0;return 1;}
 static int gles_read(unsigned conn,void *out,unsigned n) {if(conn!=27||!sent||read_at+n>packets[reading].r)return 0;if(n)memcpy(out,packets[reading].reply+read_at,n);read_at+=n;return 1;}
 #define SEND(c,op,...) gles_send(c,(unsigned[]){op,0,__VA_ARGS__},sizeof((unsigned[]){op,0,__VA_ARGS__}))
@@ -120,7 +128,7 @@ extern void glClientActiveTexture(unsigned),glEnableClientState(unsigned),glDisa
 extern void glDrawElements(unsigned,int,unsigned,const void *);
 extern void glGetIntegerv(unsigned,int *);
 static driver_word tls[64],table[N90_GL_TABLE_WORDS];
-int main(void) {struct context ctx={.driver={27,1},.api=1,.texture_limit=4};driver_word p=(driver_word)tls;
+int main(void) {struct context ctx={.driver={27,1},.api=1,.framebuffer=17,.texture_limit=4};driver_word p=(driver_word)tls;
 __asm__ volatile("mcr p15,0,%0,c13,c0,3\\n\\tisb"::"r"(p):"memory");tls[30]=(driver_word)table;table[4]=(driver_word)&ctx;
 install_query_functions(table+5);install_fixed_functions(table+5);install_draw_functions(table+5);
 ${body.join("\n")}
