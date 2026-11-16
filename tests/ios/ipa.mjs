@@ -30,6 +30,20 @@ function archive({ main = executable(), plist = info(), extra = [] } = {})
         { name: "Payload/Fixture.app/Fixture", data: main, store: true }, ...extra]);
 }
 const inspect = b => inspect_ipa((at, n) => b.subarray(at, at + n), b.length);
+function symlink_mode(b, name)
+{
+    const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    for(let at = v.getUint32(b.length - 6, true); v.getUint32(at, true) === 0x02014B50;)
+    {
+        const length = v.getUint16(at + 28, true);
+        if(new TextDecoder().decode(b.subarray(at + 46, at + 46 + length)) === name)
+        {
+            v.setUint16(at + 4, 3 << 8 | 20, true); v.setUint32(at + 38, 0o120755 << 16, true); return b;
+        }
+        at += 46 + length + v.getUint16(at + 30, true) + v.getUint16(at + 32, true);
+    }
+    throw Error("Missing link fixture");
+}
 
 test("binary plist: Python plistlib interoperability, UTF-16, data and safe dictionary keys", () => {
     const b = Buffer.from("YnBsaXN0MDDWAQIDBAUGBwgLDA0OWV9fcHJvdG9fX1VhcnJheVVjb3VudFRkYXRhVGZsYWdUbmFtZVRzYWZlogkKEAEQAhAqQ2FiYwlibUuL1QgVHyUrMDU6P0JERkhMTQAAAAAAAAEBAAAAAAAAAA8AAAAAAAAAAAAAAAAAAABS", "base64");
@@ -92,6 +106,21 @@ test("IPA: CRC failure in resources is detected before preparation", async () =>
     const b = archive({ extra: [{ name: "Payload/Fixture.app/asset.txt", data: enc("known-resource"), store: true }] });
     const at = Buffer.from(b).indexOf("known-resource"); b[at] ^= 1;
     await assert.rejects(inspect(b), /CRC-32/);
+});
+test("IPA: old sandbox backups are verified but excluded, without relaxing application links", async () => {
+    const name = "Container/Library/Preferences/.GlobalPreferences.plist";
+    const backup = () => symlink_mode(archive({ extra: [{ name, data: enc("/private/var/mobile/Library/Preferences/.GlobalPreferences.plist"), store: true },
+        { name: "Container/Documents/save.dat", data: enc("old-save"), store: true }] }), name);
+    const b = backup(), app = await inspect(b);
+    assert.ok(!app.entries.some(e => e.name.startsWith("Container/")));
+    assert.equal(app.report.original_sha256, createHash("sha256").update(b).digest("hex"));
+    const broken = backup(); broken[Buffer.from(broken).indexOf("old-save")] ^= 1;
+    await assert.rejects(inspect(broken), /CRC-32/);
+    const inApp = "Payload/Fixture.app/link";
+    await assert.rejects(inspect(symlink_mode(archive({ extra: [{ name: inApp, data: enc("/private/var/mobile"), store: true }] }), inApp)), /unsafe symbolic link/);
+    const outside = "Other/link";
+    await assert.rejects(inspect(symlink_mode(archive({ extra: [{ name: outside, data: enc("/private/var/mobile"), store: true }] }), outside)), /outside the application/);
+    await assert.rejects(inspect(archive({ extra: [{ name: "Container/../outside", data: enc("bad") }] })), /unsafe archive path/);
 });
 test("Mach-O: selects ARMv7 Fat slice and validates slice bounds", () => {
     const b = new Uint8Array(1536), v = new DataView(b.buffer), arm = executable(), v7s = executable({ subtype: 11 });

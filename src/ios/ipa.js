@@ -9,6 +9,9 @@ export const IPA_LIMITS = Object.freeze({ archive: 2 * 1024 ** 3, expanded: 4 * 
     member: 512 * 1024 ** 2, code: 128 * 1024 ** 2, entries: 100000, plist: 4 * 1024 ** 2 });
 const fail = message => { throw new Error("IPA: " + message); };
 const decode = bytes => new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+// Some old IPA exporters append the previous sandbox as Container/.
+// Inspect its ZIP integrity but never restore that data or follow its links.
+const sandbox_backup = entry => entry.name.startsWith("Container/");
 
 export function ios_version(value)
 {
@@ -59,7 +62,7 @@ export async function inspect_ipa(read, size, progress = () => {})
     const roots = new Set(entries.map(e => /^Payload\/([^/]+\.app)(?:\/|$)/.exec(e.name)?.[1]).filter(Boolean));
     if(roots.size !== 1) fail("expected exactly one Payload/*.app application");
     const root = "Payload/" + [...roots][0], prefix = root + "/";
-    if(entries.some(e => (e.unix_mode & 0o170000) === 0o120000 && (!e.name.startsWith(prefix) || e.name.endsWith("/"))))
+    if(entries.some(e => !sandbox_backup(e) && (e.unix_mode & 0o170000) === 0o120000 && (!e.name.startsWith(prefix) || e.name.endsWith("/"))))
         fail("symbolic link outside the application or with a directory entry name");
     const payloadDirectory = e => e.name === "Payload/" && e.size === 0 &&
         [0, 0o040000].includes(e.unix_mode & 0o170000);
@@ -158,5 +161,5 @@ export async function inspect_ipa(read, size, progress = () => {})
         bundle_id: info.CFBundleIdentifier, executable, version: String(info.CFBundleShortVersionString || info.CFBundleVersion || ""),
         build: String(info.CFBundleVersion || ""), minimum_ios: minimum, architecture: "armv7", size, expanded_size: expanded,
         original_sha256: digest.hex(), code_count: code.length };
-    return { report, entries, info, root, main, code };
+    return { report, entries: entries.filter(e => !sandbox_backup(e)), info, root, main, code };
 }

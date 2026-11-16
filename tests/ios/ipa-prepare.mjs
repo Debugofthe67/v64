@@ -39,6 +39,7 @@ test("preparation produces an inspectable IPA, final hashes, graphics dependency
     const b = make_zip([{ name: "Payload/Test.app/Info.plist", data: info },
         { name: "Payload/Test.app/Test", data: image() },
         { name: "Payload/Test.app/texture.bin", data: Uint8Array.of(1, 2, 3) },
+        { name: "Container/Documents/previous-save.dat", data: Uint8Array.of(4, 5, 6) },
         { name: "Payload/Test.app/embedded.mobileprovision", data: Uint8Array.of(9) }]);
     const original = b.slice(), parts = [];
     const manifest = await prepare_ipa((a, n) => b.subarray(a, a + n), b.length, data => parts.push(data.slice()));
@@ -51,6 +52,7 @@ test("preparation produces an inspectable IPA, final hashes, graphics dependency
     assert.deepEqual(app.main.bytes.subarray(embedded.offset,embedded.offset+embedded.size),info);
     assert.equal(manifest.trusted[0].cdhashes[0], Buffer.from(cdhashes(app.main.bytes)[0]).toString("hex"));
     assert.ok(!app.entries.some(e => e.name.endsWith("embedded.mobileprovision")));
+    assert.ok(!Buffer.from(out).includes(Buffer.from("Container/")), "previous sandbox data is not sent to the native installer");
     const seal = plist_parse(await zip_read(read, app.entries.find(e => e.name.endsWith("_CodeSignature/CodeResources"))));
     assert.deepEqual(Buffer.from(seal.files["texture.bin"]), createHash("sha1").update(Uint8Array.of(1, 2, 3)).digest());
     assert.equal(app.entries.find(e => e.name.endsWith("/Test")).unix_mode, 0o100755);
