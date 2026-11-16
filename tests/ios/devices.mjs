@@ -399,6 +399,47 @@ for(const [pin, name] of N90_BUTTONS.entries())
 }
 console.log("PASS: five N90 active-low button inputs, both GPIO edges and old/new snapshots");
 
+// A CPU Worker can receive every pointer edge before running the guest.
+// Model XNU's interrupt handler sampling/acknowledging each level and its
+// deferred debounce read. Rapid clicks must still produce distinct pairs.
+for(const name of ["volume-up", "volume-down"])
+{
+    gpio.reset(); now = 0;
+    const pin = N90_BUTTONS.indexOf(name), bit = 1 << pin;
+    gpio.write(0x840, bit);
+    for(let i = 0; i < 12; i++)
+    {
+        gpio.queue_button(name, true); gpio.queue_button(name, true);
+        gpio.queue_button(name, false);
+    }
+    assert.equal(gpio.read(pin * 4) & 1, 0, "the first press survives the batched release");
+    now = 1000; gpio.timer(now);
+    assert.equal(gpio.read(pin * 4) & 1, 0, "sampling without IRQ acknowledgement cannot drop the edge");
+    const saved = gpio.get_state(); gpio.reset(); gpio.set_state(saved);
+    const observed = [];
+    for(let i = 0; i < 24; i++)
+    {
+        assert.equal(signals, 1, "each queued transition raises an interrupt");
+        observed.push(gpio.read(pin * 4) & 1);
+        gpio.write(0x880, bit);
+        const before = gpio.read(pin * 4) & 1;
+        now += 49; gpio.timer(now);
+        if(i) assert.equal(gpio.read(pin * 4) & 1, before, "stable across native debounce reads");
+        now += 1; gpio.timer(now);
+    }
+    assert.deepEqual(observed, Array.from({ length: 24 }, (_, i) => i & 1));
+    assert.equal(gpio.buttons & bit, 0);
+    assert.equal(gpio.button_active & bit, 0);
+    assert.equal(signals, 0);
+    // No guest read yet: acknowledging the IRQ alone is not consumption.
+    gpio.queue_button(name, true); gpio.queue_button(name, false);
+    gpio.write(0x880, bit); now += 10000; gpio.timer(now);
+    assert.equal(gpio.read(pin * 4) & 1, 0);
+    gpio.set_state(saved.slice(0, 4));
+    assert.equal(gpio.button_active, 0, "old snapshots have no synthetic backlog");
+}
+console.log("PASS: batched volume clicks retain sampled/debounced press-release pairs and snapshot backlog");
+
 const { AppleH2FMI } = await import("../../src/apple/h2fmi.js");
 // Shorten only slices following an actual firmware poll of outstanding
 // host I/O. Once the read completes, resume at the normal budget.

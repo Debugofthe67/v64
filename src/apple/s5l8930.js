@@ -38,7 +38,7 @@ export function create_n90_devices(cpu, bus, screen, buffer)
     const light = new AppleCT700(() => gpio.pulse(37));
     gpio.inputs.set(37, () => !light.asserted());
     bus.register("ios-orientation", angle => accelerometer.set_orientation(angle));
-    bus.register("ios-button", event => gpio.set_button(event[0], event[1]));
+    bus.register("ios-button", event => gpio.queue_button(event[0], event[1]));
     const clcd = new AppleCLCD(cpu, display, vic);
     const nand = buffer ? new AppleNAND(cpu, buffer) : null;
     const iop = new AppleIOP(cpu);
@@ -114,7 +114,12 @@ export class AppleGPIO
     constructor(cpu, vic)
     {
         this.vic = vic;
+        this.clock = cpu.clock;
         this.buttons = 0;
+        this.button_active = 0;
+        this.button_sampled = 0;
+        this.button_due = new Float64Array(N90_BUTTONS.length);
+        this.button_queue = N90_BUTTONS.map(() => []);
         this.pins = new Uint32Array(22 * 8);
         this.mask = new Uint32Array(6);
         this.pending = new Uint32Array(6);
@@ -154,6 +159,50 @@ export class AppleGPIO
         this.pulse(pin);
     }
 
+    // Browser input can arrive in one Worker turn, before XNU has run its
+    // GPIO interrupt and debounce work. Preserve those edges instead of
+    // replacing a press with its release before the guest ever samples it.
+    queue_button(name, pressed)
+    {
+        const pin = N90_BUTTONS.indexOf(name);
+        if(pin < 0 || typeof pressed !== "boolean") return;
+        const bit = 1 << pin, queue = this.button_queue[pin];
+        const last = queue.length ? !!queue[queue.length - 1] : !!(this.buttons & bit);
+        if(last === pressed) return;
+        if(this.button_active & bit)
+        {
+            // Bound input backlog, retaining the final physical state even
+            // when an automated sender overwhelms an unresponsive guest.
+            if(queue.length < 256) queue.push(+pressed);
+            else queue[queue.length - 1] = +pressed;
+        }
+        else this.start_button(pin, pressed);
+    }
+
+    start_button(pin, pressed)
+    {
+        const bit = 1 << pin;
+        this.button_active |= bit;
+        this.button_sampled &= ~bit;
+        this.button_due[pin] = Infinity;
+        this.set_button(N90_BUTTONS[pin], pressed);
+    }
+
+    timer(now)
+    {
+        let next = 100;
+        for(let pin = 0; pin < N90_BUTTONS.length; pin++)
+        {
+            const bit = 1 << pin;
+            if(!(this.button_active & this.button_sampled & bit) || this.pending[0] & bit) continue;
+            if(now < this.button_due[pin]) { next = Math.min(next, this.button_due[pin] - now); continue; }
+            const queue = this.button_queue[pin];
+            this.button_active &= ~bit;
+            if(queue.length) this.start_button(pin, !!queue.shift());
+        }
+        return next;
+    }
+
     read(offset)
     {
         if(offset < this.pins.byteLength)
@@ -162,7 +211,18 @@ export class AppleGPIO
             // These five active-low wires are inputs. Programming a pin's
             // mode does not press a physical button.
             const level = this.buttons & 1 << pin ? 0 : 1;
-            if(pin < N90_BUTTONS.length) return (this.pins[pin] & ~1) | level;
+            if(pin < N90_BUTTONS.length)
+            {
+                const bit = 1 << pin;
+                if(this.button_active & bit && !(this.button_sampled & bit))
+                {
+                    this.button_sampled |= bit;
+                    // Machine time, rather than a page setTimeout: pausing or
+                    // a busy Worker must not shorten the native debounce gap.
+                    this.button_due[pin] = this.clock.now() + 50;
+                }
+                return (this.pins[pin] & ~1) | level;
+            }
             const input = this.inputs.get(pin);
             return input ? (this.pins[pin] & ~1) | +input() : this.pins[pin];
         }
@@ -195,11 +255,26 @@ export class AppleGPIO
         this.update_irq();
     }
 
-    reset() { this.buttons = 0; this.pins.fill(0); this.mask.fill(0xFFFFFFFF); this.pending.fill(0); this.update_irq(); }
-    get_state() { return [this.pins.slice(), this.mask.slice(), this.pending.slice(), this.buttons]; }
+    reset()
+    {
+        this.buttons = this.button_active = this.button_sampled = 0;
+        this.button_due = new Float64Array(N90_BUTTONS.length);
+        this.button_queue = N90_BUTTONS.map(() => []);
+        this.pins.fill(0); this.mask.fill(0xFFFFFFFF); this.pending.fill(0); this.update_irq();
+    }
+    get_state()
+    {
+        return [this.pins.slice(), this.mask.slice(), this.pending.slice(), this.buttons,
+            this.button_active, this.button_sampled, this.button_due.slice(), this.button_queue.map(q => Uint8Array.from(q))];
+    }
     set_state(state)
     {
         this.buttons = (state[3] || 0) & 31;
+        this.button_active = (state[4] || 0) & 31;
+        this.button_sampled = (state[5] || 0) & this.button_active;
+        this.button_due.fill(0);
+        if(state[6]) this.button_due.set(state[6]);
+        this.button_queue = N90_BUTTONS.map((_, pin) => Array.from(state[7]?.[pin] || []));
         this.pins.set(state[0]);
         this.mask.fill(0xFFFFFFFF);
         this.pending.fill(0);
