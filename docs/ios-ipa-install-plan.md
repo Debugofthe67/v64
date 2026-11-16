@@ -463,3 +463,16 @@ DrawTex 的标量与向量入口都会标记离屏帧缓冲为已修改，使 IO
 
 原生 `V86GLES1Test.ipa` 另外验证带边界哨兵的矩阵原始位查询，以及调色板压缩纹理上传后自动生成
 mip 并缩小采样；从新建测试 NAND 通过 UI 安装运行，原生像素断言通过并显示 `ES1 PASS`。
+
+2026-11-17：使用 `9d1354998` 的原生适配库完成上述 PvZ 通关后，通过控制台 Power off 关闭虚机，
+再从同一 OPFS NAND 全新启动，不加载内存快照。原生安装查询仍为 PvZ 1.0，游戏菜单显示
+`WELCOME BACK, Est!` 与 Adventure `1-2`；进入后显示恢复当前关卡的 Continue 对话框，
+点击继续并成功种下一株向日葵，僵尸与阳光继续更新。
+此轮运行的 EL0/EL1 未定义指令均为零，GLES unknown/malformed/failed/errors 均为空。
+后续 `2c2b69b1d` 的离屏 DrawTex 脏帧修复由原版 iOS 包装函数测试单独验证。
+
+回归结果：`make ios-tests`、`make gles-tests`、`make app-check`、原生 145 核心入口路由、130 标量 ABI、
+向量/查询/客户端数组测试通过；真实 WebGPU 的 ES1/ES2 执行器通过 177 项检查，ES3 执行器通过
+107 项检查。安装器 UI 和 iPhone 创建向导定向测试通过；这不代表全部第三方应用或 Khronos 测试集通过。
+本轮临时原始 NAND、packed NAND、HFS 副本与被替代的独立浏览器测试盘已删除，保留最终验收虚机和
+本地截图/日志，不删除此前已有的用户虚机、固件和检查点。
