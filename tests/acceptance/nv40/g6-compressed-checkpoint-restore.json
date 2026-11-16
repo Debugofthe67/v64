@@ -1,0 +1,54 @@
+{
+  "stage": "G6 compressed native checkpoint restore without a temporary raw RAM file",
+  "behavior": "Raw RAM takes precedence. When absent, decode .state.zst to bounded memory and verify original decoded size/SHA plus paired disk overlays and guest geometry before VM restoration. Release decoded input after restore.",
+  "validation": [
+    "Unit regressions cover raw preference, exact compressed bytes, no temporary raw file, wrong size/SHA, truncated archives, bounded decompression, corrupted raw and missing Node zstd capability.",
+    "Real original native XP 93.71/3DMark06 pre-run GUI restored 1464808072 decoded bytes from a 650667581-byte archive, with paired overlays verified; NVIDIA started1/problem0 and 1024x768 display.",
+    "No guest, driver, clock or watchdog changes."
+  ],
+  "realRestore": {
+    "logicalState": "build/nv40-xp-mark06-feature-batch-native/checkpoint-native-feature7-batch6-selected-before-run.state",
+    "rawFileExists": false,
+    "archiveBytes": 650667581,
+    "decoded": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark06-feature-batch-native/checkpoint-native-feature7-batch6-selected-before-run.state",
+      "bytes": 1464808072,
+      "sha256": "00c75a0f0fc1c4ec65e9bb9a6cba4ca8a44b50d43a9a5ed0594d470a2bf37074"
+    },
+    "output": "build/nv40-xp-mark06-feature13-idle-verified"
+  },
+  "evidence": [
+    {
+      "file": "tests/lib/geforce_checkpoint.mjs",
+      "bytes": 3136,
+      "sha256": "86f64edeb9d4676776fbec76faeda8a282e7ef1abfce07a7c77d63f199f14801"
+    },
+    {
+      "file": "tests/devices/geforce_checkpoint.mjs",
+      "bytes": 5046,
+      "sha256": "7a04e9dfabbca626327de136849750a11f7bc50be3e78b0b412e469fd59a768d"
+    },
+    {
+      "file": "tests/devices/geforce_guest.mjs",
+      "bytes": 69216,
+      "sha256": "4f40e0d61bd689e4d5331eda89704b6e7acd557241cac3064c4bff694d5ec8de"
+    },
+    {
+      "file": "build/nv40-compressed-checkpoint-unit.log",
+      "bytes": 133,
+      "sha256": "f396fde261208f1eec3cd14b8f944af4df0a3d12aabe0975d10ac436515e8faa"
+    },
+    {
+      "file": "build/nv40-xp-mark06-feature13-idle-verified/NV.TXT",
+      "bytes": 932,
+      "sha256": "fe86c12bf1ff2c3f2175d6b3ac2e19fb4b112df010a4fd92b21d5bfc985456a3"
+    }
+  ],
+  "historicalSourceQualification": {
+    "file": "tests/devices/geforce_guest.mjs",
+    "commit": "8504f95d42f37ca238490c570dcca43111c02e6f",
+    "sha256": "4f40e0d61bd689e4d5331eda89704b6e7acd557241cac3064c4bff694d5ec8de",
+    "gitBlob": "06f31b68ecae9c158e82370b3e82be4d6831b396",
+    "meaning": "Source SHA records the executed historical source at this Git revision. Later authorized source edits do not mutate the retained run artifacts."
+  }
+}

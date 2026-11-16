@@ -1,3 +1,4 @@
+import { decode_pvrtc } from "../pvrtc.js";
 // GLES 3.x's draws on the page (docs/gles3-plan.md L3): what a context of
 // api 3 does on the GPU, as methods of the GLES executor (gles_executor.js
 // installs them). Its programs are glslang's (the CPU side links them and
@@ -921,6 +922,12 @@ export const GLES3 = {
             for(let k = 0; k < depth; k++) this.decode_compressed3(gpu, level, [x, y, layer + k], [width, height], data.subarray(k * blocks, (k + 1) * blocks));
             return;
         }
+        if(c.api === 2 && !three && internal >= 0x8C00 && internal <= 0x8C03)
+        {
+            this.upload3(gpu, level, [x, y, layer], [width, height, 1],
+                decode_pvrtc(width, height, data, !!(internal & 1), !!(internal & 2)));
+            return;
+        }
         // (without WebGPU's ETC2: ETC1's blocks decoded; the others' not yet, nor ASTC without its feature)
         if(internal !== 0x8D64 && internal !== 0x9274) return void this.note3("ETC2/EAC or ASTC without WebGPU's compression feature");
         const blocks = Math.ceil(width / 4) * Math.ceil(height / 4) * 8;
@@ -1254,7 +1261,7 @@ export const GLES3 = {
     /** A renderbuffer's texture, of its format and samples */
     make_renderbuffer3(rb)
     {
-        if(!rb.width || !rb.height || rb.image) return;
+        if(!rb.width || !rb.height || rb.image || rb.color_buffer) return;
         const info = format_info(rb.format);
         const format = info ? info.webgpu : RENDERBUFFER_WEBGPU[rb.format] || COLOR_FORMAT;
         if(!RENDERABLE.has(format)) return void this.note3("a renderbuffer of a format WebGPU draws no " + format);
@@ -1392,6 +1399,7 @@ export const GLES3 = {
         {
             const rb = c.group.renderbuffers.get(a.name);
             if(rb && rb.image) return color_buffer(this.image_texture(rb.image));
+            if(rb && rb.color_buffer) return color_buffer(this.color_buffer_texture(rb.color_buffer));
             if(!rb || !rb.gpu) return null;
             return { texture: rb.gpu.texture, view: rb.gpu.view, format: rb.gpu.format, mip: 0, layer: 0, samples: rb.gpu.samples, width: rb.width,
                 height: rb.height, no_alpha: alpha_less(rb.format, rb.gpu.format) };
@@ -3310,8 +3318,8 @@ export const GLES3 = {
         const level0 = texture.images.get(0);
         if(level0 && (level0.image || level0.color_buffer))
         {
-            const t = level0.image ? this.image_texture(level0.image) : this.color_buffer_texture(level0.color_buffer);
-            if(!t || tex.sample !== "float" || tex.dimension !== "2d" || target.textures.has(t.texture)) return fallback();
+            const t = level0.image ? this.image_texture(level0.image, true) : this.color_buffer_texture(level0.color_buffer, true);
+            if(!t || tex.sample !== "float" || tex.dimension !== "2d" || target.textures.has(t.texture) || target.textures.has(t.source)) return fallback();
             return { view: t.texture.createView(), sample_type: "float", filtering: true };
         }
         const gpu = this.gpu_texture3(texture);
@@ -3432,15 +3440,17 @@ export const GLES3 = {
         const lod_min = Math.min(32, Math.max(0, state.min_lod === undefined ? -1000 : state.min_lod));
         const lod_max = Math.min(32, Math.max(lod_min, state.max_lod === undefined ? 1000 : state.max_lod));
         const compare = comparison ? COMPARE[state.compare_func || 0x0203] : undefined;
-        const key = [min, mag, state.wrap_s, state.wrap_t, state.wrap_r, lod_min, lod_max, filtering, compare].join("|");
+        const anisotropy = filtering ? Math.min(16, Math.max(1, Math.ceil(state.anisotropy || 1))) : 1;
+        const key = [min, mag, state.wrap_s, state.wrap_t, state.wrap_r, lod_min, lod_max, filtering, compare, anisotropy].join("|");
         let sampler = this.samplers.get(key);
         if(!sampler)
         {
             const linear = f => filtering && (f === LINEAR || f === 0x2701 || f === 0x2703);
             sampler = this.device.createSampler(Object.assign({
                 addressModeU: WRAPS[state.wrap_s] || "repeat", addressModeV: WRAPS[state.wrap_t] || "repeat", addressModeW: WRAPS[state.wrap_r] || "repeat",
-                magFilter: filtering && mag === LINEAR ? "linear" : "nearest", minFilter: linear(min) ? "linear" : "nearest",
-                mipmapFilter: filtering && (min === 0x2702 || min === 0x2703) ? "linear" : "nearest", lodMinClamp: lod_min, lodMaxClamp: lod_max,
+                magFilter: anisotropy > 1 || filtering && mag === LINEAR ? "linear" : "nearest", minFilter: anisotropy > 1 || linear(min) ? "linear" : "nearest",
+                mipmapFilter: anisotropy > 1 || filtering && (min === 0x2702 || min === 0x2703) ? "linear" : "nearest", lodMinClamp: lod_min, lodMaxClamp: lod_max,
+                maxAnisotropy: anisotropy,
             }, compare ? { compare } : {}));
             this.samplers.set(key, sampler);
         }

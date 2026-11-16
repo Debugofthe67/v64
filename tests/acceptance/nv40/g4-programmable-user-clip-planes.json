@@ -1,0 +1,112 @@
+{
+  "date": "2026-11-14",
+  "scope": "G4 NV40 six programmable user clip planes; original full 05 and fixed IQ remain pending.",
+  "nativeTrigger": {
+    "run": "build/nv40-xp-mark05-l8-cold-full",
+    "firstFaultSeconds": 1775.8747211250002,
+    "reason": "NV40 raster state is not connected",
+    "control1478": "0x2",
+    "outputMask1FF4": "0x4040",
+    "map1FD0": "0x3c3b3a",
+    "plane0": "TBUF14.z, positive distance retained",
+    "observation": "Three captured native failures include color-writing and colorless/depth-only programs. All three now lower, compile and link with their original output-control bits."
+  },
+  "implementation": [
+    "Decode six two-bit plane controls; reject invalid modes and reserved bits. Decode two three-selector TBUF component maps at 1FD0/1FD4 and respect the clip output mask.",
+    "Route signed TBUF clip distances through two private perspective interpolators. Fragment discard follows the shared D3D9 backend user-clipping approach; unused lanes are positive. Guest fragment input 15 remains unsupported.",
+    "Clip routes enter the exact shader translation cache key. Indexed TBUF writes retain registers consumed by enabled clip routes."
+  ],
+  "nativePrograms": [
+    {
+      "index": 0,
+      "elapsed": 1775.8747211250002,
+      "clips": [
+        [
+          0,
+          14,
+          2,
+          1
+        ]
+      ],
+      "control": 33554496,
+      "enable": 1,
+      "vertexCompiled": true,
+      "fragmentCompiled": true,
+      "linked": true
+    },
+    {
+      "index": 1,
+      "elapsed": 1785.658903792,
+      "clips": [
+        [
+          0,
+          14,
+          2,
+          1
+        ]
+      ],
+      "control": 67108864,
+      "enable": 1,
+      "vertexCompiled": true,
+      "fragmentCompiled": true,
+      "linked": true
+    },
+    {
+      "index": 2,
+      "elapsed": 1790.805090292,
+      "clips": [
+        [
+          0,
+          1,
+          2,
+          1
+        ]
+      ],
+      "control": 33554432,
+      "enable": 0,
+      "vertexCompiled": true,
+      "fragmentCompiled": true,
+      "linked": true
+    }
+  ],
+  "validation": [
+    "State test: independent selectors, signs, output masks and invalid controls",
+    "Shader test: 173 WGSL modules validated, both private clip groups linked; guest FP input15 still explicitly rejected",
+    "Complete real Chrome WebGPU render suite: six planes, both signs, opposed planes across both groups, unequal homogeneous W and output-mask changes, plus existing rendering/order/readback cases",
+    "Release Closure build: 0 errors, 0 warnings"
+  ],
+  "fullNativeRerun": {
+    "run": "build/nv40-xp-mark05-clip-cold-full",
+    "source": "build/nv40-xp-mark05-context-mirrors/checkpoint-native-path-ready.state",
+    "status": "Original default three game plus two CPU tests restarted from the same cold-boot pre-benchmark state. Still running; not accepted as complete.",
+    "priorPostFaultSnapshot": "build/nv40-xp-mark05-user-clip produced no new draws and is not evidence of native recovery."
+  },
+  "limits": "This implements interpolated clip-distance rejection through the existing fragment path. No new multisample coverage, geometry-clipping conformance, benchmark completion or image/performance acceptance is claimed.",
+  "sources": [
+    "https://github.com/envytools/envytools/blob/master/hwtest/pgraph_class_kelvin.cc",
+    "https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Emu/RSX/gcm_enums.h",
+    "https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Emu/RSX/Core/RSXDrawCommands.cpp"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark05-l8-cold-full/draw-faults.json",
+      "bytes": 778680,
+      "sha256": "3319f1eb0ea474be436742171bcff3b9c7657c1cedbe655838da024f872f5a4f"
+    },
+    {
+      "file": "build/nv40-native-user-clip-lowering.json",
+      "bytes": 776,
+      "sha256": "8524dfd89948cbfff5d7a017bffb3f6be0d956261cb5872191555156d0bf5746"
+    },
+    {
+      "file": "build/nv40-clip-gpu.log",
+      "bytes": 5567,
+      "sha256": "7eddf9396d307faf3ce46d027b5426112df07fa4bf7a4ef354e03ad394686c72"
+    },
+    {
+      "file": "build/nv40-clip-shader.log",
+      "bytes": 106,
+      "sha256": "a73953d96545a239297bd0f4fd0d2effcaec17dcf917b1a7cb48e8cb6659edf0"
+    }
+  ]
+}

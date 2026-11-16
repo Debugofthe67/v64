@@ -1,0 +1,78 @@
+{
+  "status": "source-saturation-fixed; original05 image recapture in progress",
+  "cause": "NV40 SRC1 DWORD bits19..21,22..24,25..27 encode independent source0/1/2 precision modifiers. Modifier4 saturates the operand before ABS/negation; driver folds MOV_sat into a following source modifier. Earlier compiler/CPU suspicion was not the root cause.",
+  "primarySources": [
+    {
+      "url": "https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Emu/RSX/Program/RSXFragmentProgram.h",
+      "detail": "SRC1 three-bit source precision fields; value4 SAT"
+    },
+    {
+      "url": "https://github.com/RPCS3/rpcs3/blob/master/rpcs3/Emu/RSX/Program/FragmentProgramDecompiler.cpp",
+      "detail": "GetSRC modifier ordering and input ranges; mode5 hardware-observed no-op"
+    }
+  ],
+  "implementation": [
+    "decode each source precision independently; ignore branch control words",
+    "apply source saturation independently from output SAT, before ABS/negation",
+    "range-clamp modes1/2/3, preserve mode0/5, reject6/7",
+    "disable raw MOV bypass when a source conversion is required; retain relative input addressing"
+  ],
+  "regression": {
+    "decoder": "new assertion failed before fix, passes after",
+    "realGPU": "Original 93.71 folded MOV_sat/ADD reproducer failed before fix; all NV40 rendering tests pass after. Independent MAD source0/1/2, NaN-to-zero, ABS/negation, half-register MOV and range/no-op controls included.",
+    "wgslModules": 188,
+    "releaseBuild": "0 errors, 0 warnings"
+  },
+  "nativeControl": {
+    "source": "build/nv40-xp-fresh-9371-saturation/checkpoint-native-fresh-9371-saturation-failure.state.bundle.json",
+    "output": "build/nv40-xp-source-precision-saturation-fixed",
+    "driver": "Original official 93.71, unchanged",
+    "cpu": "WP-fixed release core, normal guest clock",
+    "programDraws": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "results": [
+      "ff4080bf",
+      "ff4080bf",
+      "ff404000",
+      "ff404000"
+    ],
+    "failures": 0,
+    "allCreateDrawReadbackLockHRESULTs": 0,
+    "rawMachineCodeUnchanged": true,
+    "decodedFoldedSourcePrecision": 4,
+    "resultSha256": "1158c632fa12ccc67e31816a14c37d8f97a2925c3ae5334903ee5f376921b94e",
+    "checkpoint": "build/nv40-xp-source-precision-saturation-fixed/checkpoint-native-source-precision-probe-all-four-pass.state.bundle.json"
+  },
+  "originalMaterialReplay": {
+    "report": "build/nv40-gt3-source-precision-fixed-pixel-control.json",
+    "balloon6792Vertices": {
+      "pixelBGRA": [
+        27,
+        33,
+        33,
+        255
+      ],
+      "referenceBGRA": [
+        27,
+        33,
+        33,
+        255
+      ],
+      "oldNativeBGRA": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    "note": "Original captured shader re-decoded from actual instruction/inline-constant words. No shader-bit patch. Other material and full-frame differences remain under review."
+  },
+  "limits": [
+    "Original full-frame05 recapture and image gate remain open.",
+    "06 HDR and Win98 black scanout/UI timeout remain separate open defects."
+  ]
+}

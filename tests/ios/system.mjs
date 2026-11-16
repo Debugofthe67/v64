@@ -1,0 +1,192 @@
+// Direct NAND boot, with no recovery disk. The kernel must pick the BSD
+// root device from the system partition published by LwVM.
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { process_list } from "./process-list.mjs";
+import { V86 } from "../../src/main.js";
+
+const [firmware, image, ...args] = process.argv.slice(2);
+if(!firmware || !image) throw new Error("usage: system.mjs firmware-directory flash.img [--debug-kernel kernel] [--mounts|--processes|--keybag|--graphics|--contexts|--surfaces|--windows|--draw|--screen|--panel-power]");
+let debugKernel;
+if(args[0] === "--debug-kernel")
+{
+    args.shift();
+    debugKernel = args.shift();
+    if(!debugKernel || debugKernel.startsWith("--")) throw new Error("expected a local debug kernel");
+}
+const gate = args.shift();
+if(args.length || (gate && !["--mounts", "--processes", "--keybag", "--graphics", "--contexts", "--surfaces", "--windows", "--draw", "--screen", "--panel-power"].includes(gate))) throw new Error("unknown system boot gate");
+const draw = gate === "--draw", windows = gate === "--windows", surfaces = draw || windows || gate === "--surfaces", contexts = surfaces || gate === "--contexts";
+const panelPower = gate === "--panel-power", screen = gate === "--screen" || panelPower;
+const graphics = gate === "--graphics" || contexts || screen;
+const checkProcesses = graphics || gate === "--processes" || gate === "--keybag";
+const renderer = surfaces || screen ? await (await import("../gles/chrome_renderer.mjs")).chrome_renderer() : null;
+const file = name => ({ url: path.resolve(firmware, name) });
+const started = performance.now();
+const emulator = new V86({
+    machine_type: "s5l8930", graphics_adapter: "none", log_level: 0, autostart: false,
+    gles_backdoor: graphics,
+    // The in-process adapter queries renderControl during startup.
+    graphics_adapter_renderer_channel: renderer || (graphics ? { post() {}, listen() {} } : null),
+    wasm_path: fileURLToPath(new URL("../../build/v86-arm64.wasm", import.meta.url)),
+    ios: { kernelcache: debugKernel ? { url: path.resolve(debugKernel) } : file("kernelcache.n90.macho"), devicetree: file("DeviceTree.n90ap.bin"),
+        nand: { url: path.resolve(image), size: fs.statSync(image).size } },
+});
+try
+{
+    let serial = "";
+    emulator.add_listener("serial0-output-byte", byte => { serial += String.fromCharCode(byte); });
+    await new Promise((ok, fail) => {
+        emulator.add_listener("emulator-loaded", ok);
+        emulator.add_listener("emulator-error", fail);
+    });
+    const root = "BSD root: disk0s1s1, major ";
+    const end = performance.now() + (screen ? 2700000 : graphics ? 1200000 : debugKernel || gate ? 600000 : 180000);
+    const launchd = "launchd[1] has started up";
+    const marker = gate ? "/dev/disk0s1s2 on /private/var (hfs, local, nodev, nosuid" : debugKernel ? launchd : root;
+    const cpu = emulator.v86.cpu;
+    const required = ["lockdownd", "configd", "mediaserverd"];
+    let names = [], processesReady = !checkProcesses, nextSample = 0;
+    let keybagReady = gate !== "--keybag" && !graphics, graphicsReady = !graphics, nextLogCheck = 0;
+    let screenReady = !screen, nextScreenCheck = 0;
+    let panelPhase = "first frame", firstFrameSeconds = 0, releaseButton = null, releaseAt = 0;
+    let wakeCount = 0, darkSince = null;
+    const press = button => {
+        emulator.ios_send_button(button, true);
+        releaseButton = button;
+        releaseAt = cpu.clock.now() + 120;
+    };
+    // keybagd formats the syslog entry using its thread ID and caller name.
+    // The constant in the Mach-O contains only the bare message.
+    const message = Buffer.from(" main: System Keybag loaded");
+    cpu.clock.resume();
+    while((!serial.includes(marker) || !processesReady || !keybagReady || !graphicsReady || !screenReady) &&
+        !serial.includes("Userspace shutdown begun") && !serial.includes("panic(cpu") && performance.now() < end)
+    {
+        for(let i = 0; i < 24; i++) cpu.run_cores();
+        if(releaseButton && cpu.clock.now() >= releaseAt)
+        {
+            emulator.ios_send_button(releaseButton, false);
+            releaseButton = null;
+        }
+        if(!processesReady && serial.includes(marker) && performance.now() >= nextSample)
+        {
+            nextSample = performance.now() + 100;
+            names = process_list(cpu);
+            processesReady = names.some(p => p.pid === 1 && p.name === "launchd") &&
+                required.every(name => names.some(p => p.name === name));
+        }
+        if((!keybagReady || !graphicsReady) && processesReady && performance.now() >= nextLogCheck)
+        {
+            nextLogCheck = performance.now() + 2000;
+            const ram = Buffer.from(cpu.mem8.buffer, cpu.mem8.byteOffset, cpu.mem8.length);
+            if(!graphicsReady)
+            {
+                names = process_list(cpu);
+                graphicsReady = ["backboardd", "SpringBoard"].every(name => names.some(p => {
+                    if(p.name !== name) return false;
+                    const lifecycle = "V86 GLI lifecycle and shared shader pid " + p.pid;
+                    if(contexts) assert.ok(!ram.includes(Buffer.from(lifecycle + " failed")), name + " failed its EAGL lifecycle check");
+                    if(surfaces)
+                    {
+                        const checks = draw ? ["IOSurface pixels", "shader triangle", "framebuffer publish", "texture upload"] :
+                            windows ? ["IOSurface pixels", "native window", "CAEAGLLayer"] : ["IOSurface pixels"];
+                        for(const which of checks)
+                        {
+                            const marker = Buffer.from("V86 " + which + " pid " + p.pid + " step ");
+                            const at = ram.indexOf(marker);
+                            if(at < 0) return false;
+                            const step = ram.toString("ascii", at + marker.length, at + marker.length + 3);
+                            assert.match(step, /^0\D/, name + " " + which + " stopped at " + step);
+                        }
+                    }
+                    return ram.includes(Buffer.from("V86 EAGL attached pid " + p.pid + " display 640x960")) &&
+                        (!contexts || ram.includes(Buffer.from(lifecycle + " passed")));
+                }));
+            }
+            for(let at = keybagReady ? -1 : ram.indexOf(message); at >= 0; at = ram.indexOf(message, at + 1))
+            {
+                if(at >= 8 && /^[a-f0-9]{8}$/.test(ram.toString("latin1", at - 8, at)))
+                {
+                    keybagReady = true;
+                    break;
+                }
+            }
+        }
+        if(!screenReady && graphicsReady && performance.now() >= nextScreenCheck)
+        {
+            nextScreenCheck = performance.now() + 500;
+            const panel = cpu.devices.apple_clcd, pixels = panel.rgba, colors = new Set();
+            let black = true;
+            for(let i = 0; i < pixels.length; i += 97 * 4)
+            {
+                const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+                if(r || g || b) black = false;
+                if(r !== g || g !== b) colors.add(r << 16 | g << 8 | b);
+            }
+            if(panelPhase === "display off")
+            {
+                if(!releaseButton && !panel.panel_on && black)
+                {
+                    darkSince ??= cpu.clock.now();
+                    if(cpu.clock.now() - darkSince >= 1000)
+                    {
+                        panelPhase = "wake frame";
+                        press("home");
+                    }
+                }
+                else darkSince = null;
+            }
+            else if(!releaseButton && panel.panel_on && colors.size >= 300 && process_list(cpu).some(p => p.name === "SpringBoard"))
+            {
+                if(panelPhase === "first frame")
+                    firstFrameSeconds = Math.round((performance.now() - started) / 1000);
+                else wakeCount++;
+                if(panelPower && wakeCount < 2)
+                {
+                    panelPhase = "display off";
+                    darkSince = null;
+                    press("power");
+                }
+                else screenReady = true;
+            }
+        }
+        await new Promise(ok => setImmediate(ok));
+    }
+    assert.ok(serial.includes("FTL_Open            [OK]") &&
+        serial.includes("loaded configuration for 2 partitions") && serial.includes(root) && serial.includes(marker) &&
+        processesReady && keybagReady && graphicsReady && !serial.includes("Userspace shutdown begun") && !serial.includes("panic(cpu"), serial.slice(-2600));
+    assert.ok(screenReady, "The original SpringBoard did not complete LCD acceptance at " + panelPhase);
+    if(panelPower) assert.ok(serial.includes("AppleARMBacklight::start: Found the CLCD service"));
+    if(gate)
+    {
+        assert.ok(serial.includes(launchd) && serial.includes("/dev/disk0s1s1 on / (hfs, local, read-only"));
+        assert.ok(serial.includes("** /dev/rdisk0s1s1") && serial.includes("** /dev/rdisk0s1s2"));
+        if(checkProcesses)
+        {
+            for(const p of names.filter(p => p.pid === 1 || required.includes(p.name)))
+                console.log(p.pid + " " + p.name);
+        }
+        if(graphics)
+        {
+            for(const p of names.filter(p => ["backboardd", "SpringBoard"].includes(p.name)))
+                console.log(p.pid + " " + p.name);
+            if(draw) console.log("PASS: original EAGL programs drew vertex-buffer and indexed client-array triangles into every shared surface pixel in both processes");
+            if(draw) console.log("PASS: switching away from the compositor's FBO publishes every BGRA pixel to native IOSurface memory");
+            if(draw) console.log("PASS: native padded RGBA uploads and complete PVRTC image replacements read back exactly");
+            if(windows) console.log("PASS: native EAGL window rotation and CAEAGLLayer publication with verified BGRA pixels");
+            if(screen) console.log(`PASS: SpringBoard produced a color frame on the actual LCD scanout after ${firstFrameSeconds} s`);
+            if(panelPower) console.log("PASS: Power blanked the native panel and Home restored the original color scanout in two cycles");
+            if(surfaces) console.log("PASS: native EAGL renderbuffer and texture attachments share all 64x48 WebGPU pixels in both system processes");
+            if(contexts) console.log("PASS: both system processes created shared EAGL contexts, switched between them, shared a shader, queried the host renderer and released their contexts");
+            console.log("PASS: backboardd and SpringBoard loaded the N90 EAGL adapter and queried the host display");
+        }
+        if(gate === "--keybag" || graphics) console.log("PASS: keybagd logged that the system keybag loaded");
+        console.log("PASS: launchd checked the LwVM slices and mounted the read-only system and writable data volumes");
+    }
+    else console.log(debugKernel ? "PASS: the local debug kernel ran the system volume’s launchd as PID 1 from NAND" :
+        "PASS: the original kernel reads LwVM from NAND and selects disk0s1s1 as BSD root");
+}
+finally { try { await emulator.destroy(); } finally { renderer?.close(); } }

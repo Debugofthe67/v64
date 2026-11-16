@@ -2397,6 +2397,16 @@ pub unsafe fn do_page_walk(
             high = page_table_entry as u32 & 0xFFFFF000;
             global = page_table_entry & PAGE_TABLE_GLOBAL_MASK == PAGE_TABLE_GLOBAL_MASK
         }
+
+        // CR0.WP=0 overrides read-only protection for supervisor writes only.
+        // This TLB shares its writable bit across privilege levels. A kernel
+        // write to a read-only user page must therefore cache a supervisor-only
+        // entry; a later user read rewalks and installs a read-only user entry.
+        // Otherwise CPL3 can reuse the kernel's writable fill and bypass #PF
+        // (including copy-on-write) without any page-table change.
+        if for_writing && kernel_write_override && !allow_write {
+            allow_user = false;
+        }
     }
 
     if side_effects && tlb_data[page as usize] == 0 {
@@ -2438,7 +2448,7 @@ pub unsafe fn do_page_walk(
         true
     };
     let info_bits = TLB_VALID
-        | if for_writing { 0 } else { TLB_READONLY }
+        | if for_writing && !memory::shadow_write_protected(high) { 0 } else { TLB_READONLY }
         | if allow_user { 0 } else { TLB_NO_USER }
         | if is_in_mapped_range { TLB_IN_MAPPED_RANGE } else { 0 }
         | if global && 0 != cr4 & CR4_PGE { TLB_GLOBAL } else { 0 }
@@ -2505,7 +2515,12 @@ pub unsafe fn fill_ia32e_tlb(
     }
     let has_code = !extended && jit::page_needs_notification(Page::page_of(backing));
     let info = TLB_VALID
-        | if access == Access::Write { 0 } else { TLB_READONLY }
+        | if access == Access::Write && !memory::shadow_write_protected(backing) {
+            0
+        }
+        else {
+            TLB_READONLY
+        }
         | if user { 0 } else { TLB_NO_USER }
         | if access == Access::Execute { 0 } else { TLB_IA32E_DATA }
         | if has_code { TLB_HAS_CODE } else { 0 };
@@ -2600,6 +2615,8 @@ pub unsafe fn trigger_pagefault(addr: i32, present: bool, write: bool, user: boo
 }
 
 pub fn tlb_set_has_code(physical_page: Page, has_code: bool) {
+    #[cfg(feature = "ir-test-hooks")]
+    let has_code = has_code || crate::write_watch::watched(physical_page.to_u32());
     for i in 0..unsafe { valid_tlb_entries_count } {
         let page = unsafe { valid_tlb_entries[i as usize] };
         let entry = unsafe { tlb_data[page as usize] };
@@ -2629,6 +2646,9 @@ pub fn tlb_set_has_code_multiple(physical_pages: &HashSet<Page>, has_code: bool)
             );
             if physical_pages.contains(&tlb_physical_page) {
                 unsafe {
+                    #[cfg(feature = "ir-test-hooks")]
+                    let has_code =
+                        has_code || crate::write_watch::watched(tlb_physical_page.to_u32());
                     tlb_data[page as usize] =
                         if has_code { entry | TLB_HAS_CODE } else { entry & !TLB_HAS_CODE }
                 }

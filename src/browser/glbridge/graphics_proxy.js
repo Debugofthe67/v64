@@ -36,6 +36,17 @@
         return url.href;
     }
 
+    // glslang for the GL shadow's GLSL answers (build/glbridge/glslang.wasm):
+    // options.glslang is its bytes, a compiled module, or a URL
+    async function loadGlslang(options) {
+        let source = options.glslang;
+        if (source === undefined && bundleScript) source = new URL("glslang.wasm", bundleScript).href;
+        if (!source) return null;
+        if (source instanceof WebAssembly.Module) return source;
+        if (typeof source === "string") source = await (await fetch(source)).arrayBuffer();
+        return WebAssembly.compile(source);
+    }
+
     function reportUnavailable(options, error) {
         if (typeof options.onError === "function") options.onError(error);
         else console.error("[v86gl] graphics unavailable; VGA remains active", error);
@@ -69,7 +80,7 @@
             }
             bridge.placeLayers();
         };
-        const executors = () => [bridge.glExecutor, bridge.d3d8Executor, bridge.d3d9Executor].filter(Boolean);
+        const executors = () => [bridge.glExecutor, bridge.d3d9Executor].filter(Boolean);
         let screenTaken = false;
         const attachHost = async () => {
             await compositor.attach(global.V86GPUHost.acquire(screen, options.hostOptions));
@@ -106,7 +117,7 @@
             await retireExecutors(executors());
             for (const handle of Array.from(bridge.d3d9SwapChainCanvases.keys()))
                 bridge.removeD3D9SwapChain(handle);
-            bridge.glExecutor = bridge.d3d8Executor = bridge.d3d9Executor = null;
+            bridge.glExecutor = bridge.d3d9Executor = null;
         };
         // A fresh device: nothing of the old timeline's GPU objects survives. The compositor moves with it and
         // the screen is drawn again from the device.
@@ -134,14 +145,12 @@
             bridge.glJournalBytes = 0;
             bridge.glJournalOverflow = false;
             if (!restoring) bridge.pendingBatches = [];
-            bridge.d3d8OwnerSessionKey = bridge.d3d9OwnerSessionKey = null;
+            bridge.d3d9OwnerSessionKey = null;
             bridge.glSurface = bridge.emptySurface();
-            bridge.d3d8Surface = bridge.emptySurface();
             bridge.d3d9Surface = bridge.emptySurface();
             bridge.failed = null;
             await replaceDevice();
             bridge.installGLExecutor();
-            bridge.installD3D8Executor();
             bridge.installD3D9Executor();
             try {
                 await attachHost();
@@ -201,6 +210,10 @@
         // Bumped whenever the guest's timeline is replaced: readbacks of
         // batches from before are dropped
         let epoch = 0;
+        // GL's inline answers alias the command arena, reused at the next
+        // submission. D3D's dedicated response slots have a different lifetime.
+        let inlineLease = null;
+        let inlineBatchId = 0;
         // Across threads batches are handled one at a time
         let work = Promise.resolve();
         const stats = { graphics_batches: 0, graphics_bytes: 0, graphics_pending: 0, graphics_peak_pending: 0 };
@@ -211,11 +224,45 @@
             channel.post({ type: "available", value });
         };
 
+        // What the GL executor's adapter backs, for the device's GL shadow
+        // (gl_caps.js); sent once the adapter is up
+        const sendCapabilities = () => {
+            const gl = bridge && !bridge.failed && bridge.glExecutor;
+            if (channel && gl && typeof gl.capabilities === "function")
+                channel.post({ type: "capabilities", value: gl.capabilities() });
+        };
+        // The device's startup barrier keeps compile/link/queries on the CPU
+        // even when fetching the front end takes longer than creating WebGPU.
+        const sendGlslang = () => loadGlslang(options).then(module => {
+            if (channel) channel.post(module ? { type: "glslang", module } :
+                { type: "glslang", error: "no compiler module was supplied" });
+        }).catch(error => {
+            if (channel) channel.post({ type: "glslang", error: error.message });
+        });
+
+        // The arena's owner is gone: a journaled pseudo-batch ends every
+        // session it submitted, behind its last batch
+        const onReleased = message => {
+            const batchEpoch = epoch;
+            const event = { bytes: global.V86GLNetworkBridge.ownerReleasedRecord(message.ownerToken), released: true,
+                writeGuestMemory() {}, isMemoryValid: () => false };
+            if (!channel.remote) {
+                bridge.pushPCIBatch(event);
+                return;
+            }
+            work = work.then(() => {
+                if (batchEpoch === epoch) return bridge.pushPCIBatch(event);
+            }).catch(error => console.error("[v86gl] ending the owner's sessions failed", error));
+        };
+
         const onBatch = message => {
             const batchEpoch = epoch;
+            const lease = message.continuation ? (message.id === inlineBatchId ? inlineLease : {}) : inlineLease = {};
+            if (!message.continuation) inlineBatchId = message.id;
             const generation = message.generation;
             const event = {
                 frameId: message.frameId,
+                ...(message.ownerToken ? { ownerToken: message.ownerToken } : {}),
                 flags: message.flags,
                 commandCount: message.commandCount,
                 bytes: message.bytes,
@@ -226,15 +273,73 @@
                 submitCount: message.submitCount,
                 handled: false,
                 isMemoryValid: () => batchEpoch === epoch && !bridge.destroyed,
-                writeGuestMemory: (offset, bytes) => {
+                isInlineMemoryValid: () => !message.generated && lease === inlineLease && batchEpoch === epoch && !bridge.destroyed,
+                writeGuestMemory: (offset, bytes, inline) => {
                     if (batchEpoch !== epoch) return;
+                    if (message.generated && inline !== false) throw new Error("CPU-generated graphics records cannot write inline guest replies");
+                    if (inline && lease !== inlineLease) return;
                     const data = channel.remote ? new Uint8Array(bytes).slice() : bytes;
-                    channel.post({ type: "write", generation, offset, bytes: data },
+                    channel.post({ type: "write", generation, offset: offset + (inline ? message.inlineOffset || 0 : 0), bytes: data,
+                        ...(inline ? { inlineId: message.id } : {}) },
                         channel.remote ? [data.buffer] : undefined);
                 },
+                onVertexCapture: result => {
+                    if (batchEpoch !== epoch || bridge.destroyed) return;
+                    const values = result.values && new Float32Array(result.values);
+                    channel.post({ type: "gl_vertex_result", generation, job: result.job, first: result.first, error: result.error, values },
+                        channel.remote && values ? [values.buffer] : undefined);
+                },
+                onProgramLink: result => {
+                    if (batchEpoch !== epoch || bridge.destroyed) return;
+                    channel.post({ type: "gl_program_link_result", generation, ...result });
+                },
+            };
+            const pushAccepted = () => {
+                if (!message.segments) return bridge.pushPCIBatch(event);
+                let end = 0;
+                for (const segment of message.segments) {
+                    if (segment.bytes !== undefined) {
+                        if (!(segment.bytes instanceof Uint8Array) || !segment.bytes.length ||
+                            segment.offset !== undefined || segment.length !== undefined)
+                            throw new Error("invalid CPU-generated graphics segment");
+                        continue;
+                    }
+                    if (!Number.isSafeInteger(segment.offset) || !Number.isSafeInteger(segment.length) ||
+                        segment.offset < end || segment.length <= 0 || segment.offset + segment.length > message.bytes.length)
+                        throw new Error("invalid CPU-validated graphics segment");
+                    end = segment.offset + segment.length;
+                }
+                for (let index = 0; index < message.segments.length; ++index) {
+                    const segment = message.segments[index], flags = index === message.segments.length - 1 ? event.flags : event.flags & ~1;
+                    if (segment.bytes) bridge.pushPCIBatch({ ...event,
+                        bytes: segment.bytes, batchAddr: 0, flags,
+                        isInlineMemoryValid: () => false,
+                        writeGuestMemory: (at, bytes, inline) => {
+                            if (inline !== false) throw new Error("CPU-generated graphics records cannot write inline guest replies");
+                            return event.writeGuestMemory(at, bytes, false);
+                        },
+                    });
+                    else {
+                        const { offset, length } = segment;
+                        bridge.pushPCIBatch({ ...event,
+                            flags,
+                            bytes: event.bytes.subarray(offset, offset + length), batchAddr: event.batchAddr + offset,
+                            responseBase: event.responseBase - offset,
+                            writeGuestMemory: (at, bytes, inline) => event.writeGuestMemory(at + offset, bytes, inline),
+                        });
+                    }
+                }
+                if (!message.segments.length && event.flags & 1) bridge.pushPCIBatch({ ...event, bytes: new Uint8Array() });
             };
             if (!channel.remote) {
-                bridge.pushPCIBatch(event);
+                pushAccepted();
+                const pressure = bridge.graphicsJournal && bridge.graphicsJournal.waitForSpace();
+                if (pressure) {
+                    pressure.catch(error => console.error("[v86gl] graphics history failed", error)).then(() => {
+                        if (batchEpoch === epoch) channel.post({ type: "done", id: message.id });
+                    });
+                    return;
+                }
                 channel.post({ type: "done", id: message.id });
                 return;
             }
@@ -243,13 +348,14 @@
             ++stats.graphics_batches;
             stats.graphics_bytes += message.bytes.byteLength;
             stats.graphics_peak_pending = Math.max(stats.graphics_peak_pending, ++stats.graphics_pending);
+            // A batch that fails is lost on its own; the renderer stays
+            // available (the executors report what failed)
             work = work.then(async () => {
                 if (batchEpoch !== epoch) return;
-                bridge.pushPCIBatch(event);
+                pushAccepted();
                 await bridge.waitForSubmittedBatches();
             }).catch(error => {
-                reportUnavailable(options, error);
-                setAvailable(false);
+                console.error("[v86gl] a graphics batch failed", error);
             }).then(() => {
                 --stats.graphics_pending;
                 if (batchEpoch === epoch) channel.post({ type: "done", id: message.id });
@@ -283,18 +389,27 @@
                 });
                 channel.listen(message => {
                     if (message.type === "batch") onBatch(message);
+                    else if (message.type === "released") onReleased(message);
                 });
-                setAvailable(true);
-                return bridge.ready.then(() => setAvailable(!bridge.failed));
+                channel.post({ type: "initializing", value: true });
+                return Promise.all([bridge.ready.then(sendCapabilities), sendGlslang()])
+                    .finally(() => {
+                        setAvailable(!bridge.failed);
+                        channel.post({ type: "initializing", value: false });
+                    });
             },
             screen_changed() {
                 bridge.screenChanged();
             },
             // Settles when every batch received so far is acknowledged
-            idle() {
-                return work;
+            async idle() {
+                // A GPU result may enqueue another continuation while the
+                // work being awaited is completing. Include that new work.
+                let observed;
+                do { observed = work; await observed; } while (observed !== work);
             },
             async prepare_save() {
+                await plugin.idle();
                 await bridge.prepareSaveState();
                 return bridge.serializeCheckpoint();
             },
@@ -315,7 +430,9 @@
             },
             async reset() {
                 ++epoch;
+                if (channel) channel.post({ type: "machine_reset" });
                 await bridge.reset();
+                sendCapabilities();
                 setAvailable(!bridge.failed);
             },
             async destroy() {

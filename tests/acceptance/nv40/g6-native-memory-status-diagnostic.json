@@ -1,0 +1,47 @@
+{
+  "date": "2026-11-15",
+  "scope": "Optional native read-only Win9x/XP memory/process diagnostic; no original benchmark hooks or timing changes.",
+  "command": "D:\\NVCHECK.EXE /memory",
+  "run": "build/nv40-win98-mark03-wp-nosaver-cold-full",
+  "guest": "Cold booted Win98SE,256MiB RAM,81.98 started/problem0; sampled at desktop before native benchmark launch.",
+  "values": {
+    "MEMORY_LOAD_PERCENT": 22,
+    "TOTAL_PHYSICAL": 267931648,
+    "AVAILABLE_PHYSICAL": 160538624,
+    "TOTAL_PAGEFILE": 267124736,
+    "AVAILABLE_PAGEFILE": 267124736,
+    "TOTAL_VIRTUAL": 2143289344,
+    "AVAILABLE_VIRTUAL": 2139750400,
+    "C_CLUSTER_BYTES": 32768,
+    "C_AVAILABLE_CLUSTERS": 8152,
+    "C_TOTAL_CLUSTERS": 65390
+  },
+  "processCount": 35,
+  "threadCount": 23,
+  "outputSHA256": "ada056e83e404d55b8258f86129f55ca3dc59d739505029322e5d903d4391ad0",
+  "behavior": [
+    "GlobalMemoryStatus and C GetDiskFreeSpace report original native values.",
+    "Toolhelp32 snapshots bounded to128processes/512threads; no process/thread context changes or suspension.",
+    "The file CRC32 ReadFile/read-only MapView diagnostic stays unchanged.",
+    "Optional NV_FILECHECK_BINARY places the independent MZ helper on cold tools disk as NVCHECK.EXE, preserving original NVPROBE and NVUI.",
+    "Read-only harness CPU samples now include modulo32 instruction counters for adjacent-window diagnosis."
+  ],
+  "validation": [
+    "Freestanding MinGW -Wall -Wextra -Werror build passes.",
+    "Original Win98 kernel resolves every import and completes native memory/process output with END.",
+    "Original driver probe independently reports NVIDIA GeForce6800GT started1/problem0.",
+    "Harness syntax and diff checks pass."
+  ],
+  "limits": [
+    "Desktop availability does not prove peak GT2 memory availability.",
+    "This diagnostic does not resolve the original Win98 GT2 wait or establish full03 acceptance."
+  ],
+  "nativePreRunSetup": {
+    "screenSaver": "None already selected in originalWin98 DisplayProperties",
+    "monitorPowerOffBefore": "After15mins in originalPowerManagementProperties",
+    "monitorPowerOffAfter": "Never selected and applied through original nativeUI",
+    "native03Selection": "Four GT,2/2CPU,5/5feature,0/3sound;1024x768. Actual mouse closesTip and invokesRun.",
+    "originalDATRange": "ReadFile and read-only mapping both return expected CRC32d98897c1 for offset1108ECF5 length2AB38 before launch.",
+    "causality": "The power setting is an observed environmental risk. It has not been proved to cause the previous GT2 wait."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "date": "2026-11-15",
+  "scope": "Correct real ATA parallel-port command interrupt ordering. This is not claimed as the Win98 IDE Code10 or file-cache-corruption root cause.",
+  "failure": "The old port handler executed the new ATA command before lowering IRQ. A synchronous IDENTIFY/data-ready/error completion could assert INTRQ and immediately have it withdrawn by that same command write.",
+  "change": "Lower the previous IRQ before clearing command error flags and dispatching the new command; leave the new completion asserted until normal status acknowledgement.",
+  "reference": "https://github.com/qemu/qemu/blob/v9.2.0/hw/ide/core.c (ide_ioport_write, ATA_IOPORT_WR_COMMAND: lower IRQ before ide_bus_exec_cmd)",
+  "validation": {
+    "regression": "tests/devices/ide_command_irq.js uses real ATA/ATAPI ports and the real Rust8259 via machine_io_read8/write8. Old source fails IDENTIFY with level IRQ14 pending0 instead of64.",
+    "green": "Source/debug and release pass both channels, edge/level routing, IDENTIFY, synchronous FLUSH/error, synchronous PIO payload, alternate-status non-acknowledgement, regular-status deassertion and nIEN suppression.",
+    "regressions": "Source/release task-file progress and large-disk tests pass; source image-error/writeback tests pass; all33 release AHCI tests pass.",
+    "build": "Release libv86 Closure:0errors/0warnings; debug Wasm rebuild and source tests pass.",
+    "native": "Cold Win98 with repaired ISA loader still reports IDE child Code10 after the IRQ change. This real interrupt bug is fixed, while startup and03 cached-source investigations remain open."
+  }
+}

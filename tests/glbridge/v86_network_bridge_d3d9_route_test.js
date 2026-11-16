@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const P = require("../../src/browser/glbridge/d3d9-webgpu/d9wg_protocol.js");
 
 require("../../src/browser/glbridge/v86_network_bridge.js");
 const { V86WebGPUCompositor } = require("../../src/browser/glbridge/webgpu_compositor.js");
@@ -40,12 +41,7 @@ const d3d9Layer = bridge.d3d9Canvas.layer, glLayer = bridge.glCanvas.layer;
 const placed = layer => [layer.x, layer.y, layer.width, layer.height, layer.visible];
 
 bridge.lastPresentedFrameId = 999;
-const d9wg = Buffer.alloc(32);
-d9wg.writeUInt32LE(0x47573944, 0);
-d9wg.writeUInt16LE(1, 4);
-d9wg.writeUInt16LE(3, 6);
-d9wg.writeUInt32LE(0xA0010001, 24);
-d9wg.writeUInt32LE(0x20260806, 28);
+const d9wg = Buffer.from(P.encodeBatch([], { version_minor: 3, session_id_low: 0xA0010001, session_id_high: 0x20260806 }));
 const envelope = Buffer.alloc(8 + d9wg.length);
 envelope.writeUInt16LE(0xFFE1, 0);
 envelope.writeUInt16LE(0xFFFF, 2);
@@ -183,6 +179,20 @@ bridge.hideLayers(true);
 assert.equal(swapChainCanvas.layer.visible, false);
 bridge.removeD3D9SwapChain(7);
 assert.ok(!compositor.layers.includes(swapChainCanvas.layer), "a destroyed swap chain's layer goes");
+
+// Identical chain handles from different sessions/devices own separate layers.
+const chainA = { swapChain: 7, sessionKey: "owner-a", deviceHandle: 1, width: 20, height: 20 };
+const chainB = { ...chainA, sessionKey: "owner-b" };
+const chainC = { ...chainA, deviceHandle: 2 };
+const canvasA = d3d9Options.createSwapChainCanvas(chainA);
+const canvasB = d3d9Options.createSwapChainCanvas(chainB);
+const canvasC = d3d9Options.createSwapChainCanvas(chainC);
+for (const surface of [chainA, chainB, chainC]) bridge.placeD3D9SwapChain(surface);
+d3d9Options.onSwapChainSurface(chainA, "destroy");
+assert.ok(!compositor.layers.includes(canvasA.layer));
+assert.ok(compositor.layers.includes(canvasB.layer) && compositor.layers.includes(canvasC.layer), "foreign chains survive destruction");
+d3d9Options.onSwapChainSurface(chainB, "destroy");
+d3d9Options.onSwapChainSurface(chainC, "destroy");
 
 const beforeReset = guestMemory.slice();
 ++bridge.memoryGeneration;

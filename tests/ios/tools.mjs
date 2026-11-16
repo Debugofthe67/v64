@@ -7,6 +7,9 @@
 
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { effaceable_unit, wipe_info, systembag } from "../../src/ios/provision.js";
 import { AES, SHA1, HMAC_SHA1, from_hex, to_hex } from "../../src/ios/crypto.js";
 import { img3_build, img3_payload, img3_parse } from "../../src/ios/img3.js";
 import { lzss_decompress, complzss_decompress, adler32 } from "../../src/ios/lzss.js";
@@ -469,6 +472,7 @@ test("Mach-O: segments, sections, the entry point, UUID, symbols", () =>
     // LC_SYMTAB: two symbols
     v.setUint32(at, 2, true); v.setUint32(at + 4, 24, true); v.setUint32(at + 8, 0xC00, true); v.setUint32(at + 12, 2, true);
     v.setUint32(at + 16, 0xD00, true); v.setUint32(at + 20, 32, true);
+    v.setUint32(20, at + 24 - 28, true);
     name(0xD01, "_start\0_main\0");
     v.setUint32(0xC00, 1, true); b[0xC04] = 0x0F; b[0xC05] = 1; v.setUint32(0xC08, 0x80001800, true);
     v.setUint32(0xC0C, 8, true); b[0xC10] = 0x0F; b[0xC11] = 1; v.setUint32(0xC14, 0x80001820, true);
@@ -492,6 +496,81 @@ test("key files: format, hex lengths, the root filesystem's 36-byte key", () =>
     assert.throws(() => keys_parse({ ...good, format: "other" }), /v86-ios-keys/);
     assert.throws(() => keys_parse({ ...good, images: { RootFileSystem: { file: "x", key: "22".repeat(32) } } }), /36 bytes/);
     assert.throws(() => keys_parse({ ...good, images: { Kernelcache: { file: "x", iv: "00", key: "11".repeat(32) } } }), /IV/);
+});
+
+test("iPhone 4 keys from The Apple Wiki: row names, IVs and build", () =>
+{
+    const file = (filename, key, iv = []) => ({ filename: [filename], key: [key], iv });
+    const page = "BrightonMaps_10B329_(iPhone3,1)#2304##";
+    const source = {
+        [page + "kernelcache"]: file("kernelcache.release.n90", "12".repeat(32), ["34".repeat(16)]),
+        [page + "rootfs"]: file("root.dmg", "56".repeat(36)),
+        [page + "iboot"]: file("iBoot.img3", "78".repeat(32)),
+    };
+    const keys = keys_parse(JSON.stringify(source));
+    assert.equal(keys.device, "iPhone3,1");
+    assert.equal(keys.build, "10B329");
+    assert.deepEqual(keys.images, {
+        Kernelcache: { file: "kernelcache.release.n90", key: "12".repeat(32), iv: "34".repeat(16) },
+        RootFileSystem: { file: "root.dmg", key: "56".repeat(36), iv: undefined },
+    });
+    assert.throws(() => keys_parse({ [page.replace("iPhone3,1", "iPhone3,3") + "rootfs"]: source[page + "rootfs"] }), /iPhone3,1/);
+    assert.throws(() => keys_parse("<html>"), /not valid JSON/);
+});
+
+// plutil also builds the binary envelopes in the macOS data-volume tool.
+if(process.platform === "darwin") test("N90 systembag: CBC envelope, signature and ten device-wrapped class keys", () =>
+{
+    const parse = input => plist_parse(execFileSync("/usr/bin/plutil", ["-convert", "xml1", "-o", "-", "--", "-"], { input }));
+    const bag = parse(systembag()), { key, iv } = wipe_info();
+    assert.equal(bag._MKBWIPEID, 0x42414731);
+    assert.deepEqual(bag._MKBIV, iv);
+    const plain = Buffer.from(bag._MKBPAYLOAD);
+    new AES(key).cbc(plain, iv, true);
+    const pad = plain.at(-1);
+    assert.ok(pad >= 1 && pad <= 16 && plain.subarray(-pad).every(v => v === pad));
+    function fields(bytes)
+    {
+        const values = [];
+        for(let at = 0; at < bytes.length;)
+        {
+            const n = bytes.readUInt32BE(at + 4);
+            assert.ok(n <= bytes.length - at - 8);
+            values.push([bytes.toString("ascii", at, at + 4), bytes.subarray(at + 8, at + 8 + n)]);
+            at += 8 + n;
+        }
+        return values;
+    }
+    // RFC 3394 inverse using the emulated AES implementation.
+    const cipher = new AES(from_hex("75cbb019857f831fffd9e66d0110f2a9"));
+    function unwrap(bytes)
+    {
+        const r = Buffer.from(bytes), n = r.length / 8 - 1;
+        for(let t = 6 * n; t > 0; t--)
+        {
+            const at = 8 * (1 + (t - 1) % n);
+            const block = Buffer.concat([r.subarray(0, 8), r.subarray(at, at + 8)]);
+            block.writeBigUInt64BE(block.readBigUInt64BE() ^ BigInt(t));
+            cipher.block(block, 0, true);
+            block.copy(r, 0, 0, 8);
+            block.copy(r, at, 8);
+        }
+        assert.deepEqual(r.subarray(0, 8), Buffer.alloc(8, 0xA6));
+        return r.subarray(8);
+    }
+    const signed = Object.fromEntries(fields(Buffer.from(parse(plain.subarray(0, -pad)).KeyBagKeys)));
+    const data = fields(signed.DATA), keys = Object.fromEntries(data);
+    assert.deepEqual(Buffer.from(new HMAC_SHA1(signed.DATA).mac(unwrap(keys.HMCK))), signed.SIGN);
+    const ids = data.filter(([tag]) => tag === "CLAS").map(([, v]) => v.readUInt32BE());
+    assert.deepEqual(ids, [1, 2, 3, 4, 6, 7, 8, 9, 10, 11]);
+    const classKeys = data.filter(([tag]) => tag === "WPKY").map(([, wrapped]) => {
+        const key = Buffer.from(wrapped);
+        assert.equal(key.length, 32);
+        cipher.cbc(key, new Uint8Array(16), true);
+        return key.toString("hex");
+    });
+    assert.deepEqual(classKeys, ids.map(id => createHash("sha256").update("v86/N90/10B329/class" + id).digest("hex")));
+    assert.equal(unwrap(effaceable_unit().subarray(132, 172)).toString("hex"), classKeys[3]);
 });
 
 let failed = 0;

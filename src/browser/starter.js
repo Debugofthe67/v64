@@ -43,6 +43,8 @@ import { PCIeRootPort } from "../pcie_root_port.js";
 import { android_bootloader, ANDROID_DEVICES } from "../android/bootloader.js";
 import { DEFAULT_GLES_VERSION, GLES_VERSIONS, ranchu_gpu_mode } from "../android/devices.js";
 import { PartitionBuffer } from "../android/partition_buffer.js";
+import { read_nand_boot } from "../ios/nand_boot.js";
+import { attach_ios_install_api } from "../ios/install_api.js";
 import { FS } from "../../lib/filesystem.js";
 
 /**
@@ -113,7 +115,7 @@ V86.prototype.create_adapter_renderer = async function(options, host)
     if(remote) return remote;
     const create = globalThis["V86SVGARenderer"];
     const gpu = typeof navigator !== "undefined" && navigator["gpu"];
-    if(this.graphics_adapter !== "vmware_svga" && this.graphics_adapter !== "virtio_gpu" && !this.gles_host || typeof create !== "function" || !gpu) return null;
+    if(this.graphics_adapter !== "vmware_svga" && this.graphics_adapter !== "virtio_gpu" && this.graphics_adapter !== "geforce_6800" && !this.gles_host || typeof create !== "function" || !gpu) return null;
     let adapter = null;
     try
     {
@@ -132,7 +134,7 @@ V86.prototype.create_adapter_renderer = async function(options, host)
     // compositor of its own takes over the screen canvas, as the proxy's
     // does, so that a posted frame is a layer over the screen and is not read
     // back, docs/gles-proxy-plan.md E5; the 2D canvas again if it cannot start)
-    if(!compositor && this.gles_host) compositor = await this.gles_screen_compositor();
+    if(!compositor && this.gles_host && this.machine_type !== "s5l8930") compositor = await this.gles_screen_compositor();
     const layer = compositor ? compositor["createLayer"]("display adapter") : null;
     const renderer_options = layer ? { "canvas": layer["canvas"], "executorOptions": { "host": layer["host"] }, "scanoutLayer": layer } : {};
     if(host)
@@ -630,7 +632,7 @@ V86.prototype.continue_init = async function(emulator, options)
     settings["x87_fast_math"] = options["x87_fast_math"];
     settings["x87_jit_cache"] = options["x87_jit_cache"];
     settings.load_devices = true;
-    settings.memory_size = options.memory_size || 64 * 1024 * 1024;
+    settings.memory_size = options.memory_size || (this.machine_type === "s5l8930" ? 512 : 64) * 1024 * 1024;
     settings.high_memory_size = options.high_memory_size;
     settings.extended_memory_size = options.extended_memory_size;
     settings.extended_memory_cache = options.extended_memory_cache;
@@ -646,7 +648,7 @@ V86.prototype.continue_init = async function(emulator, options)
     settings.uart2 = options.uart2;
     settings.uart3 = options.uart3;
     settings.parallel1 = options.parallel1;
-    settings.cmdline = options.cmdline;
+    settings.cmdline = options.ios ? options.ios.boot_args : options.cmdline;
     settings.preserve_mac_from_state_image = options.preserve_mac_from_state_image;
     settings.mac_address_translation = options.mac_address_translation;
     settings.cpuid_level = options.cpuid_level;
@@ -741,7 +743,7 @@ V86.prototype.continue_init = async function(emulator, options)
     }
     if(!options.disable_mouse)
     {
-        this.mouse_adapter = new MouseAdapter(this.bus, screen_options.container);
+        this.mouse_adapter = new MouseAdapter(this.bus, screen_options.container, this.machine_type === "s5l8930");
     }
 
     // Pointer lock is not needed while the guest uses absolute pointer
@@ -976,6 +978,12 @@ V86.prototype.continue_init = async function(emulator, options)
                 settings.initrd = buffer.buffer;
                 break;
             // machine_type "virt" (src/virt/loader.js)
+            case "ios_nand":
+                settings.ios_nand = buffer;
+                break;
+            case "ios_bootlogo":
+                settings.ios_bootlogo = buffer.buffer;
+                break;
             case "kernel":
                 settings.kernel = buffer.buffer;
                 break;
@@ -1068,7 +1076,7 @@ V86.prototype.continue_init = async function(emulator, options)
 
         if(name === "bios" || name === "vga_bios" || name === "firmware_code" || name === "firmware_vars" || name === "tpm_wasm" || name === "tpm_state" ||
             name === "initial_state" || name === "multiboot" ||
-            name === "bzimage" || name === "initrd" || name === "kernel" || name === "dtb" || name === "android_vendor_ramdisk")
+            name === "bzimage" || name === "initrd" || name === "kernel" || name === "ios_bootlogo" || name === "dtb" || name === "android_vendor_ramdisk")
         {
             // Ignore async for these because they must be available before boot.
             // This should make result.buffer available after the object is loaded
@@ -1106,7 +1114,13 @@ V86.prototype.continue_init = async function(emulator, options)
     }
 
     add_file("bios", options.bios);
-    add_file("vga_bios", options.vga_bios);
+    // A hardware-specific ROM is the adapter's default; an explicitly supplied
+    // ROM remains useful for driver investigation. The path follows bios.url's
+    // page/CWD convention, including in the CPU worker.
+    const adapter_bios = (await graphics_adapter)?.["vga_bios"];
+    const adapter_bios_url = adapter_bios && options["graphics_adapter_bios_base"] ?
+        new URL(adapter_bios, options["graphics_adapter_bios_base"]).href : adapter_bios;
+    add_file("vga_bios", options.vga_bios || (adapter_bios_url ? { url: adapter_bios_url } : undefined));
     if(settings.firmware)
     {
         add_file("firmware_code", options.firmware.code);
@@ -1128,9 +1142,19 @@ V86.prototype.continue_init = async function(emulator, options)
     add_file("initial_state", options.initial_state);
     add_file("multiboot", options.multiboot);
     add_file("bzimage", options.bzimage);
-    add_file("initrd", options.initrd);
-    add_file("kernel", options.kernel);
-    add_file("dtb", options.dtb);
+    if(this.machine_type === "s5l8930")
+    {
+        if(options.kernel || options.dtb || options.initrd) throw new Error("use ios.kernelcache, ios.devicetree and ios.ramdisk on s5l8930");
+        if(!options.initial_state && !options.ios?.nand_boot && (!options.ios?.kernelcache || !options.ios?.devicetree))
+            throw new Error("iPhone boot requires a prepared NAND image, or ios.kernelcache and ios.devicetree");
+        if(options.ios?.nand_boot && (!options.ios.nand || options.ios.kernelcache || options.ios.devicetree))
+            throw new Error("ios.nand_boot requires a NAND image and supplies its own kernel and device tree");
+    }
+    add_file("initrd", options.ios ? options.ios.ramdisk : options.initrd);
+    add_file("kernel", options.ios ? options.ios.kernelcache : options.kernel);
+    if(options.ios?.nand) add_file("ios_nand", options.ios.nand.get ? options.ios.nand : Object.assign({}, options.ios.nand, { async: true }));
+    add_file("ios_bootlogo", options.ios && options.ios.bootlogo);
+    add_file("dtb", options.ios ? options.ios.devicetree : options.dtb);
     add_file("android_vendor_ramdisk", options.android && options.android.vendor_ramdisk);
     // the virt machine's virtio-blk disks: {url or buffer, async, size, id,
     // readonly}; the buffer an ArrayBuffer, a File, or a buffer object of
@@ -1297,6 +1321,16 @@ V86.prototype.continue_init = async function(emulator, options)
         // (a disk written back and another disk of the same file, by
         // another name: src/disk_writeback.js)
         await check_loaded_disks(loaded_disks);
+        if(options.ios?.nand_boot)
+        {
+            const boot = await read_nand_boot((offset, length) => new Promise((resolve, reject) => {
+                settings.ios_nand.get(offset, length, (bytes, error) => error ? reject(error) : resolve(bytes));
+            }));
+            settings.kernel = boot.kernel;
+            settings.dtb = boot.tree;
+            settings.ios_bootlogo = boot.logo;
+            if(boot.install) settings.ios_install_boot = boot;
+        }
         // (a floppy written back is used as it is: a floppy format's size)
         for(const [name, buffer] of loaded_disks)
         {
@@ -1423,7 +1457,7 @@ V86.prototype.continue_init = async function(emulator, options)
                     const node = typeof process !== "undefined" && process.versions && process.versions.node;
                     if(node && !options.gles_glslang_path) glslang = await load_whole_file("gles_glslang_path", "bios/glslang.wasm").catch(() => null);
                     // (GLES 2.0's shaders need no glslang: without it, a GLES 3.x is the error)
-                    if(!glslang && settings.ranchu_gles_version !== "2.0") throw error;
+                    if(!glslang && (settings.ranchu_gles_version || "2.0") !== "2.0") throw error;
                     if(!glslang) console.warn(error.message + ": the GLES host offers GLES 2.0 alone");
                 }
                 if(glslang) settings.gles_prepared = await settings.gles_plugin["prepare"]({ "glslang": glslang });
@@ -1851,10 +1885,10 @@ V86.prototype.restart = async function(reason)
  * controllers, ACPI device and tables) as plain data. For debugging and test
  * reports; the format is not a stable API.
  */
-V86.prototype.get_diagnostics = async function()
+V86.prototype.get_diagnostics = async function(include_steps = false)
 {
-    if(this.worker_controller) return this.worker_controller.rpc("get_diagnostics");
-    return this.v86.cpu.get_diagnostics();
+    if(this.worker_controller) return this.worker_controller.rpc("get_diagnostics", [include_steps]);
+    return this.v86.cpu.get_diagnostics(include_steps);
 };
 
 /**
@@ -2697,6 +2731,35 @@ function root_port_of(emulator, port, caller)
 }
 
 /**
+ * Change one N90 physical button or the mute switch. The guest receives
+ * its normal GPIO edge through AppleM68Buttons.
+ * @param {string} button "home", "power", "volume-up", "volume-down", or "mute"
+ * @param {boolean} pressed
+ */
+V86.prototype.ios_send_button = function(button, pressed)
+{
+    if(!["home", "power", "volume-up", "volume-down", "mute"].includes(button) || typeof pressed !== "boolean")
+    {
+        throw new Error("ios_send_button: expected a button name and a boolean state");
+    }
+    this.bus.send("ios-button", [button, pressed]);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["ios_send_button"] = V86.prototype.ios_send_button;
+
+/**
+ * Rotate the simulated N90's gravity vector, in clockwise degrees from portrait.
+ * @param {number} angle 0, 90, 180, or 270
+ */
+V86.prototype.ios_set_orientation = function(angle)
+{
+    if(![0, 90, 180, 270].includes(angle)) throw new Error("ios_set_orientation: expected 0, 90, 180, or 270 degrees");
+    this.bus.send("ios-orientation", angle);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["ios_set_orientation"] = V86.prototype.ios_set_orientation;
+
+/**
  * Send a sequence of scan codes to the emulated PS2 controller. A list of
  * codes can be found at http://stanislavs.org/helppc/make_codes.html.
  * Do nothing if there is no keyboard controller.
@@ -3354,3 +3417,5 @@ else if(typeof importScripts === "function")
     // web worker
     self["V86"] = V86;
 }
+
+attach_ios_install_api(V86);

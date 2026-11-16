@@ -1,0 +1,123 @@
+{
+  "stage": "G4 native A16 scalar texture lane aliases",
+  "trigger": "Original XP93.71 PS lighting lookup uses texture11, native format0x14, remap0xA9EE and TEX h2.x. Filling unused A16 B/R lanes with1 makes its scalar lookup read a constant; Mesa G routing and related RSX filler values do not establish the other native NV40 aliases.",
+  "change": "Replicate the original UNORM16 scalar into every storage lane before crossbar routing; explicit ZERO/ONE selectors still supply constants. DMA, filtering and full16-bit precision are unchanged.",
+  "originalControl": {
+    "RAM": "build/nv40-xp-mark05-all16-no-saver/checkpoint-native-iq-frame480-ready.state",
+    "settings": "Original05PS frame1,1024x768/None/Optimal/VS3_0/PS3_0",
+    "referenceReproducedSHA256": "56190dd058289f45605580f8b1f932cda1b158c637714f3e9b9bb399ed7b9c2a",
+    "before": {
+      "native": {
+        "file": "build/nv40-xp-mark05-ps-iq-current/iq-artifacts/NV05IQ_PS_0001.BMP",
+        "sha256": "44bdee0c466b22049030c22c3e93ac47fce4d3110ffe01f14526ad9d7dd97c1f"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_PS_0001.BMP",
+        "sha256": "56190dd058289f45605580f8b1f932cda1b158c637714f3e9b9bb399ed7b9c2a"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 563222,
+      "exact_pixel_percent": 28.38261922200521,
+      "mean_absolute_rgb_error": 16.845306820339626,
+      "mean_signed_rgb_error": [
+        21.24371592203776,
+        17.022435506184895,
+        11.574838002522787
+      ],
+      "max_channel_error": 234,
+      "pixel_max_channel_error_percentiles": {
+        "50": 1,
+        "90": 100,
+        "95": 145,
+        "99": 182,
+        "99.9": 212
+      }
+    },
+    "after": {
+      "native": {
+        "file": "build/nv40-xp-mark05-ps-a16-alias-control/iq-artifacts/NV05IQ_PS_0001.BMP",
+        "sha256": "c0db1fb7d9d953f9a3544bed23912e440b093a7c250e6b6cf84187749fdd4ec4"
+      },
+      "reference": {
+        "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_PS_0001.BMP",
+        "sha256": "56190dd058289f45605580f8b1f932cda1b158c637714f3e9b9bb399ed7b9c2a"
+      },
+      "width": 1024,
+      "height": 768,
+      "roi_y": 0,
+      "pixels": 786432,
+      "different_pixels": 497801,
+      "exact_pixel_percent": 36.70132954915365,
+      "mean_absolute_rgb_error": 0.4359330071343316,
+      "mean_signed_rgb_error": [
+        -0.04799524943033854,
+        -0.03801600138346354,
+        -0.027624766031901043
+      ],
+      "max_channel_error": 34,
+      "pixel_max_channel_error_percentiles": {
+        "50": 1,
+        "90": 1,
+        "95": 2,
+        "99": 3,
+        "99.9": 7
+      }
+    },
+    "scope": "Only emulator scalar lane expansion changed in this control; guest,original driver/executable/assets and clocks unchanged."
+  },
+  "validation": [
+    "Updated native0xA9EE UNORM16 routing regression fails on saved old source, passes current source.",
+    "Scalar aliases retain0,1,32768,65535, row padding and DMA bounds. Explicit crossbarZERO/ONE remain independent.",
+    "Real GPU bilinear scalar aliases yieldRGB0.5 with explicitA1; full render/texture/state, real GPU blend/texture/depth/query/snapshot suite and Closure0errors/0warnings pass.",
+    "Fresh original proxyPS reference has the same BMP SHA as the earlier reference; rawD3D9PS3 bytecode and native58-instruction program captured read-only."
+  ],
+  "limits": "PS residualMAD0.43593/max34 remains; this fix does not accept all05images. GT1 and other required fixed frames continue. RelatedRSX mapping is not treated as direct NV40 board evidence.",
+  "sources": [
+    "https://raw.githubusercontent.com/chaotic-cx/mesa-mirror/main/src/gallium/drivers/nouveau/nv30/nv30_format.c"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-a16-scalar-alias-before.log",
+      "bytes": 1427,
+      "sha256": "5f342f274007109a8676b0754b7f87f63ecb1957857f76c218da3a35577c6829"
+    },
+    {
+      "file": "build/nv40-a16-scalar-alias-unit.log",
+      "bytes": 907,
+      "sha256": "c942f6f3c41bfb9394eef8c0835ac88a4dd2afd76e63987a0c8a228230a1ebc1"
+    },
+    {
+      "file": "build/nv40-a16-scalar-alias-gpu.log",
+      "bytes": 6177,
+      "sha256": "de0c20cb9a72906e9aa0446b4e7e42a62666adc45a92619d1b824eecb273d6f5"
+    },
+    {
+      "file": "build/nv40-a16-scalar-alias-closure.log",
+      "bytes": 3020,
+      "sha256": "928cdedd9ef614b44a371f6342106afd0f2aa0671fe80e28dd774fb3f4091174"
+    },
+    {
+      "file": "build/nv40-05-ps-a16-alias-comparison.json",
+      "bytes": 1189,
+      "sha256": "7cf781e0a2e005a033b45c15ab2026abe93183165027c0f7189431b63c9e6cc1"
+    },
+    {
+      "file": "build/nv40-xp-mark05-ps-iq-current/native-ps-programs.json",
+      "bytes": 179518,
+      "sha256": "adaa19ff2942d15a63dc8ef050c4b9accf4faed40e32dc601c288246801e7635"
+    },
+    {
+      "file": "build/nv40-xp-mark05-ps-iq-current/ps-lighting-draws.ndjson",
+      "bytes": 943140,
+      "sha256": "e66382ca63f83e0f9503067b523ee3a7750a76ca468ae1fa5c57b21f785d5ef0"
+    },
+    {
+      "file": "build/nv40-proxy05-ps-lighting/original-ps-shaders.json",
+      "bytes": 48959,
+      "sha256": "1b0847932a3d0632a50c6f10b80bdbf9041560678565c7da7add67529824cbc6"
+    }
+  ]
+}

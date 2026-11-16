@@ -1,0 +1,317 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { NVDMA } from "../../src/graphics_adapters/geforce_6800/nv_dma.js";
+import { NVGraph } from "../../src/graphics_adapters/geforce_6800/nv_graph.js";
+import { NVTrace } from "../../src/graphics_adapters/geforce_6800/nv_trace.js";
+
+const vram = new Uint8Array(2 << 20), ramin = new DataView(vram.buffer, 1 << 20);
+let irq = 0, dirty = 0;
+const device = { vram: () => vram, vram_size: vram.length, registers: new Map([[0x200, 0xFFFFFFFF], [0x400720, 1]]),
+    trace: new NVTrace(), time: () => 0x123456789ABCDE0n, update_irq() { irq++; }, vga: { lfb_region: 1 },
+    machine: { wake() {}, is_bus_master: () => true, mmio_ram_mark_dirty() { dirty++; } } };
+device.dma = new NVDMA(device);
+let graph = new NVGraph(device);
+function word(at, value) { ramin.setUint32(at, value >>> 0, true); }
+function method(channel, instance, at, value) { return graph.method(channel, 3, instance, at, value); }
+word(0x4000, 0x19);
+method(0, 0x4000, 0x300, 0x20001); method(0, 0x4000, 0x304, 0x60005);
+method(1, 0x4000, 0x300, 0x40003);
+assert.equal(graph.object(0, 0x4000).methods.get(0x300), 0x20001);
+assert.equal(graph.object(1, 0x4000).methods.get(0x300), 0x40003, "contexts isolated by channel");
+const saved = graph.get_state(); graph = new NVGraph(device); graph.set_state(saved);
+assert.equal(graph.object(0, 0x4000).methods.get(0x304), 0x60005, "object state survives snapshot");
+word(0x4100, 0x3003); word(0x4104, 31); word(0x4108, 0x8002);
+vram.fill(255, 0x8000, 0x8020);
+method(0, 0x4000, 0x180, 0x410); method(0, 0x4000, 0x104, 1);
+assert.equal(new DataView(vram.buffer).getBigUint64(0x8000, true), device.time());
+assert.deepEqual([...vram.subarray(0x8008, 0x8010)], new Array(8).fill(0));
+assert.equal(device.registers.get(0x400100), 1); assert.equal(device.registers.get(0x400108), 1);
+assert.equal(dirty, 2,"notifier data and its GROBJ writeback both mark VRAM dirty"); assert(irq);
+const legacyNotify=graph.get_state();legacyNotify[0]=4;legacyNotify[1]=legacyNotify[1].map(row=>row.slice(0,5));
+word(0x4004,0xA1000000);graph.set_state(legacyNotify);
+assert.equal(graph.object(0,0x4000).notify_context,0xA1000410,"v4 snapshots recover the notifier instance from the accepted DMA_NOTIFY method");
+assert.equal(ramin.getUint32(0x4004,true),0xA1000410,"v4 migration restores the missing RAMIN side effect before a later SET_OBJECT");
+graph.bind(0,3,0x4000);
+assert.equal(device.registers.get(0x40014C),0xA1000410,"rebinding a migrated object retains its accepted notifier");
+graph.written(0x400100, 1); device.registers.set(0x400100, 0);
+assert.equal(device.registers.get(0x400108), 0, "interrupt acknowledgement clears source");
+graph.notification(graph.object(0,0x4000),16,true);graph.notification(graph.object(0,0x4000),0,true);
+graph.written(0x400100,1);
+assert.equal(device.registers.get(0x400108),0x8000,"ordinary acknowledgement retains pending buffer notification");
+graph.written(0x400100,0x10000);assert.equal(device.registers.get(0x400108),0);
+device.registers.set(0x400100,0);
+// Invalid DMA must leave all sixteen bytes untouched, including the completion word.
+word(0x4104, 7); vram.fill(255, 0x8000, 0x8010);
+method(0, 0x4000, 0x104, 0);
+assert.deepEqual([...vram.subarray(0x8000, 0x8010)], new Array(16).fill(255));
+assert.equal(device.registers.get(0x400108), 0x100); assert.equal(device.registers.get(0x400720), 0);
+assert.equal(method(0, 0x4000, 0x300, 9), false, "fault suspends graph FIFO access");
+graph.written(0x400100, 1); device.registers.set(0x400100, 0); device.registers.set(0x400720, 1);
+method(2, 0x4000, 0x666, 0x1234);
+assert.equal(device.registers.get(0x400704), 2 << 20 | 3 << 16 | 0x666);
+assert.equal(device.registers.get(0x400708), 0x1234);
+assert.equal(device.registers.get(0x400108), 0x40, "unknown method raises ILLEGAL_MTHD");
+assert.equal(graph.faults.at(-1).method,0x666);assert.match(graph.faults.at(-1).reason,/unimplemented/);
+assert.equal(graph.faults.at(-2).source,0x100,"DMA exceptions and method traps share the bounded diagnostic history");
+device.registers.set(0x400720,1);word(0x4104,31);word(0x4108,0x8000);
+method(0,0x4000,0x104,0);
+assert.deepEqual(graph.faults.at(-1).dmaFault,{instance:0x4100,offset:0,length:16,write:true,page:0,pte:0x8000,adjust:0,linear:true,limit:31});
+assert.equal(graph.faults.at(-1).instance,0x4000);assert.equal(graph.faults.at(-1).class_id,0x19);
+assert.deepEqual([...vram.subarray(0x8000,0x8010)],new Array(16).fill(255),"page diagnostic preserves the original atomic DMA fault");
+word(0x4108,0x8002);
+// Reusing an instance for another class must not retain the old clip state.
+word(0x4000, 0x43); assert.equal(graph.object(0, 0x4000).methods.size, 0);
+device.registers.set(0x400324, 17); device.registers.set(0x400328, 0xC001);
+graph.written(0x400328, 0xC001); assert.equal(device.registers.get(0x400324), 18);
+device.registers.set(0x400324, 17); assert.equal(graph.read(0x400328), 0xC001);
+console.log("PASS: NV40 PGRAPH contexts, precise/atomic DMA notifiers, faults, IRQ acknowledgement and snapshot");
+// Real Curie uploads address one vector at a time; the last component advances
+// the pointer. Half an instruction must survive a snapshot without duplication.
+device.registers.set(0x400720,1);device.registers.set(0x400108,0);
+word(0x4200,0x4097);method(0,0x4200,0x1E9C,5);
+method(0,0x4200,0xB80,0x11111111);method(0,0x4200,0xB84,0x22222222);
+for(let unit=0;unit<16;unit++)method(0,0x4200,0xB00+4*unit,0x7DC0);
+for(const value of [0x20,0x100000,5<<15,7<<15])
+    assert.throws(()=>graph.engine3d.method(graph.object(0,0x4200),0xB3C,value),/filter optimization/);
+assert.equal(graph.object(0,0x4200).methods.get(0xB3C),0x7DC0,"invalid filter hints preserve the previous unit state");
+const curieSaved=graph.get_state();graph=new NVGraph(device);graph.set_state(curieSaved);
+for(let unit=0;unit<16;unit++)assert.equal(graph.object(0,0x4200).methods.get(0xB00+4*unit),0x7DC0,"all sixteen native filter hints survive snapshots");
+method(0,0x4200,0xB88,0x33333333);method(0,0x4200,0xB8C,0x44444444);
+method(0,0x4200,0xB90,0x55555555);
+assert.deepEqual([...graph.engine3d.vertex_program(graph.object(0,0x4200),5,2)],
+    [0x11111111,0x22222222,0x33333333,0x44444444,0x55555555,0,0,0]);
+method(0,0x4200,0x1EFC,3);
+for(let i=0;i<4;i++)method(0,0x4200,0x1F10+i*4,0x3F800000+i);
+assert.deepEqual([...graph.engine3d.vertex_constants(graph.object(0,0x4200),3,1)],
+    [0x3F800000,0x3F800001,0x3F800002,0x3F800003]);
+word(0x4104,31);vram.fill(255,0x8000,0x8020);
+method(0,0x4200,0x1A4,0x410);method(0,0x4200,0x1D6C,16);method(0,0x4200,0x1D70,0xDEADBEEF);
+assert.equal(new DataView(vram.buffer).getUint32(0x8010,true),0xDEADBEEF);
+assert.deepEqual([...vram.subarray(0x8014,0x8020)],Array(12).fill(255),"fence writes one DWORD, without a notifier timestamp");
+method(0,0x4200,0x1D74,0x1234ABCD);
+assert.equal(new DataView(vram.buffer).getUint32(0x8010,true),0x1234ABCD,"texture-read semaphore writes the selected DWORD");
+assert.deepEqual([...vram.subarray(0x8014,0x8020)],Array(12).fill(255));
+
+word(0x4104,17);vram.fill(255,0x8010,0x8020);method(0,0x4200,0x1D74,7);
+assert.deepEqual([...vram.subarray(0x8010,0x8020)],Array(16).fill(255),"failed fence leaves all bytes untouched");
+assert.equal(device.registers.get(0x400720),0);
+word(0x4104,31);word(0x4100,0x103003);device.registers.set(0x400720,1);method(0,0x4200,0x1D70,8);
+assert.equal(device.registers.get(0x400720),0,"fence DMA rejects a nonzero page adjustment");
+assert.deepEqual([...vram.subarray(0x8010,0x8020)],Array(16).fill(255));
+device.registers.set(0x400720,1);method(0,0x4200,0x1E9C,0x220);
+assert.equal(device.registers.get(0x400720),0,"upload address bounds fault before modifying code");
+device.registers.set(0x400720,1);method(0,0x4200,0x1808,5);
+assert.equal(device.registers.get(0x400108)&0x40,0x40,"unimplemented drawing stays an explicit method trap");
+console.log("PASS: NV40_3D control state, vector uploads across snapshots and checked four-byte fences");
+device.registers.set(0x400720,1);device.registers.set(0x400108,0);device.registers.set(0x400104,0);device.registers.set(0x40008C,0x100000);
+for(const value of [0,1,3,0xFFFFFFFF])
+{
+    method(2,0x4200,0x100,value);
+    assert.equal(device.registers.get(0x400720),1,"Curie NOP preserves opaque driver data without an error");
+}
+assert.equal(device.registers.get(0x400108),0);
+method(2,0x4200,0x104,2);
+assert.equal(device.registers.get(0x400704),2<<20|3<<16|0x104,"PGRAPH trap uses hardware channel/subchannel fields");
+assert.equal(device.registers.get(0x400108),2);assert.equal(device.registers.get(0x400104),0x2000);
+assert.equal(device.registers.get(0x400720),0,"invalid notify mode still reports DATA_ERROR");
+console.log("PASS: hardware PGRAPH trap fields and Curie NOP driver data");
+device.registers.set(0x400720,1);device.registers.set(0x400148,0x80000000);
+graph.written(0x400148,0x80000000);
+graph.bind(2,3,0x4200);
+assert.equal(device.registers.get(0x400148),0x80004097,"native ISR sees the bound Curie class in CTX_SWITCH_A");
+assert.equal(device.registers.get(0x400158),0x420,"CTX_SWITCH_I identifies the bound RAMIN instance");
+assert.equal(device.registers.get(0x400160+3*4)&0xFFFF,0x4097,"subchannel cache exposes its class");
+assert.equal(device.registers.get(0x4001E0+3*4),0x420,"subchannel cache exposes its instance");
+word(0x4300,0x19);graph.bind(2,4,0x4300);
+method(2,0x4200,0x17D0,0x40000B8F);
+assert.equal(device.registers.get(0x400148)&0xFFFF,0x4097,"trapped method restores its own class after another subchannel ran");
+assert.equal(device.registers.get(0x400158),0x420);
+assert.equal(device.registers.get(0x400144)>>>13&7,3,"CTX_USER names the trapped subchannel");
+assert.equal(device.registers.get(0x400708),0x40000B8F,"unknown Curie software method still raises its real trap");
+word(0x5A00,0x303D);word(0x5A04,31);word(0x5A08,3);
+word(0x5B00,0x30);word(0x5C00,0x4097);word(0x5C04,0xAB000123);
+device.registers.set(0x400720,1);graph.bind(3,5,0x5C00);
+assert.equal(device.registers.get(0x40014C),0xAB000123,"SET_OBJECT loads the complete notifier context word");
+graph.method(3,5,0x5C00,0x180,0x5A0);
+assert.equal(device.registers.get(0x40014C),0xAB0005A0,"native ISR sees the resolved 24-bit notifier instance");
+assert.equal(device.registers.get(0x400180+5*4),0xAB0005A0,"the bound subchannel caches its notifier");
+assert.equal(ramin.getUint32(0x5C04,true),0xAB0005A0,"DMA_NOTIFY writes back its GROBJ word without losing upper flags");
+const notifierSaved=graph.get_state();graph.set_state(notifierSaved);
+word(0x5C04,0xDEAD0000);graph.method(3,5,0x5C00,0x17D0,0x40000027);
+assert.equal(device.registers.get(0x40014C),0xAB0005A0,"loaded notifier survives RAMIN reuse and snapshot restore");
+device.registers.set(0x400720,1);graph.method(3,5,0x5C00,0x180,0x5B0);
+assert.equal(device.registers.get(0x40014C),0xAB000000,"the native null object clears the notifier instance");
+device.registers.set(0x40014C,0xCD0005A0);graph.written(0x40014C,0xCD0005A0);
+graph.method(3,5,0x5C00,0x100,0);
+assert.equal(device.registers.get(0x40014C),0xCD0005A0,"CPU writes to the current notifier context remain visible");
+word(0x5D00,0x19);word(0x5D04,0x5A0);graph.bind(4,6,0x5D00);
+graph.method(4,6,0x5D00,0x104,0);
+assert.equal(new DataView(vram.buffer).getBigUint64(0,true),device.time(),"a notifier preloaded in RAMIN works without a prior DMA_NOTIFY method");
+console.log("PASS: notifier GROBJ writeback, subchannel mirrors, loaded-state snapshots and null bindings");
+const migrationGraph=new NVGraph(device);
+word(0x5E00,0x19);word(0x5F00,0x4097);word(0x5F04,0);
+device.registers.set(0x400720,1);migrationGraph.method(6,0,0x5E00,0x180,0x5A0);
+migrationGraph.method(7,0,0x5E00,0x180,0x5B0);migrationGraph.method(6,1,0x5F00,0x180,0x5A0);
+const ambiguousLegacy=migrationGraph.get_state();ambiguousLegacy[0]=4;ambiguousLegacy[1]=ambiguousLegacy[1].map(row=>row.slice(0,5));
+word(0x5E04,0xEE000000);word(0x5F00,0x43);word(0x5F04,0xDD000000);
+migrationGraph.set_state(ambiguousLegacy);
+assert.equal(ramin.getUint32(0x5E04,true),0xEE000000,"conflicting old channel records cannot invent a shared RAMIN notifier");
+assert.equal(ramin.getUint32(0x5F04,true),0xDD000000,"a slot reused for another class is not repaired from a stale saved object");
+device.registers.set(0x400720,1);
+for(let at=0xB40;at<=0xB64;at+=4)
+{
+    graph.method(3,5,0x5C00,at,0);
+    assert.equal(device.registers.get(0x400720),1,"all ten disabled texture-coordinate controls are accepted");
+    assert.equal(graph.bindings.get("3:5").methods.get(at),0);
+}
+for(const [at,value,reason] of [[0xB60,2,/invalid texture coordinate/],[0xB64,1,/extended texture coordinate/]])
+{
+    graph.method(3,5,0x5C00,at,value);
+    assert.equal(device.registers.get(0x400720),0);assert.match(graph.faults.at(-1).reason,reason);
+    device.registers.set(0x400720,1);
+}
+device.registers.set(0x400720,1);
+// Capture programs when a draw begins, while the driver's BO is still alive.
+// Later releases can overwrite its VRAM without destroying diagnostic input.
+word(0x4400,0x4097);word(0x4300,0x3002);word(0x4304,0x9FFF);word(0x4308,3);
+device.registers.set(0x400720,1);method(0,0x4400,0x1E9C,0);
+[0x401F9C6C,0x0040000D,0x81000000,0x0001EF81].forEach((v,i)=>method(0,0x4400,0xB80+i*4,v));
+method(0,0x4400,0x184,0x430);method(0,0x4400,0x8E4,0x9001);
+[0x01001E81,0x001DC802,0,0,0x3F800000,0,0,0x3F800000].forEach((v,i)=>new DataView(vram.buffer).setUint32(0x9000+i*4,v,true));
+const shaders=graph.engine3d.shaders(graph.object(0,0x4400));
+assert.equal(shaders.vertex.bytecode[0],0xFFFE0300);assert.equal(shaders.fragment.bytecode[0],0xFFFF0300);
+assert.deepEqual([...shaders.fragment.constant_values[0]],[0x3F800000,0,0,0x3F800000]);
+const shaderObject=graph.object(0,0x4400),shaderEngine=graph.engine3d;
+assert(shaderEngine.program(shaderObject).state.some(([at])=>at===0x8E4),"diagnostic programs retain native method state");
+shaderObject.methods[Symbol.iterator]=()=>{throw Error("draw path enumerated all native methods");};
+try {assert.doesNotThrow(()=>shaderEngine.shaders(shaderObject),"drawing does not collect diagnostic method snapshots");}
+finally {delete shaderObject.methods[Symbol.iterator];}
+assert.equal(shaderEngine.shaders(shaderObject).fragment.bytecode,shaders.fragment.bytecode,"unchanged shaders reuse translated bytecode");
+method(0,0x4400,0x1E9C,0);method(0,0x4400,0xB84,0x0040010D);
+assert.notEqual(shaderEngine.shaders(shaderObject).vertex.bytecode,shaders.vertex.bytecode,"vertex instruction bits invalidate the translation key");
+method(0,0x4400,0x1E9C,0);method(0,0x4400,0xB84,0x0040000D);
+assert.equal(shaderEngine.shaders(shaderObject).vertex.bytecode,shaders.vertex.bytecode,"restored vertex words reuse their original translation");
+new DataView(vram.buffer).setUint32(0x9010,0x3F000000,true);
+const changedConstant=shaderEngine.shaders(shaderObject);
+assert.equal(changedConstant.fragment.bytecode,shaders.fragment.bytecode,"inline values do not invalidate normalized code");
+assert.equal(changedConstant.fragment.constant_values[0][0],0x3F000000,"cache hit still uploads the current inline bits");
+new DataView(vram.buffer).setUint32(0x9010,0x3F800000,true);
+new DataView(vram.buffer).setUint32(0x9000,0x20001E81,true);
+assert.notEqual(shaderEngine.shaders(shaderObject).fragment.bytecode,shaders.fragment.bytecode,"instruction mutations invalidate translation");
+new DataView(vram.buffer).setUint32(0x9000,0x01001E81,true);
+assert.equal(shaderEngine.shaders(shaderObject).fragment.bytecode,shaders.fragment.bytecode,"restoring code finds the original entry");
+for(let i=1;i<=140;i++)shaderEngine.shaders(shaderObject,{instruction_limit:i});
+assert.equal(shaderEngine.translated.size,128);assert(shaderEngine.translation_bytes<=8<<20);
+assert(shaderEngine.translation_stats.hits>=3 && shaderEngine.translation_stats.evictions>0);
+console.log("PASS: bounded shader translation cache, current inline constants, instruction invalidation and LRU eviction");
+device.trace.enabled=true;method(0,0x4400,0x1808,6);
+vram.fill(0,0x9000,0x9020);
+const captured=graph.engine3d.programs();assert.equal(captured.length,1);assert.deepEqual(captured[0].errors,[]);
+assert.equal(captured[0].vertex.instructions[0].vector.name,"MOV");
+assert.deepEqual(captured[0].fragment.constants[0],[0x3F800000,0,0,0x3F800000]);
+console.log("PASS: draw-time shader capture survives guest buffer release");
+
+// Query reports publish a complete hardware report, including a precise clock.
+device.registers.set(0x400720,1);word(0x4100,0x3003);word(0x4104,31);word(0x4108,0x8002);
+method(0,0x4200,0x1A8,0x410);method(0,0x4200,0x17C8,2);method(0,0x4200,0x17CC,1);
+graph.object(0,0x4200).methods.set(0x50008,123);
+const querySaved=graph.get_state();graph=new NVGraph(device);graph.set_state(querySaved);
+method(0,0x4200,0x1800,0x01000010);
+assert.equal(new DataView(vram.buffer).getBigUint64(0x8010,true),device.time());
+assert.equal(new DataView(vram.buffer).getUint32(0x8018,true),123);
+assert.equal(new DataView(vram.buffer).getUint32(0x801C,true),0);
+word(0x4104,23);vram.fill(255,0x8010,0x8020);method(0,0x4200,0x1800,0x01000010);
+assert.deepEqual([...vram.subarray(0x8010,0x8020)],Array(16).fill(255),"invalid report DMA writes no partial timestamp/count");
+assert.match(graph.faults.at(-1).reason,/DMA/);
+device.registers.set(0x400720,1);method(0,0x4200,0x17C8,1);
+assert.equal(graph.object(0,0x4200).methods.get(0x50008),0);
+method(0,0x4200,0x17CC,2);assert.equal(device.registers.get(0x400720),0,"query enable is boolean");
+console.log("PASS: NV40 query report layout, precise clock, snapshot counter and atomic DMA failure");
+
+// A flip wait holds later methods until the display interrupt advances READ.
+device.registers.set(0x400720,1);
+method(0,0x4200,0x120,0);method(0,0x4200,0x124,2);method(0,0x4200,0x128,3);
+method(0,0x4200,0x12C,0);assert.equal(graph.flips[1][1],0,"WRITE wraps at modulo");
+method(0,0x4200,0x130,0);assert.equal(graph.busy,true);assert.equal(graph.read(0x400700),0x4000,"flip waits expose SYNC_STALL while the raster engine is idle");
+const flipSaved=graph.get_state();graph=new NVGraph(device);graph.set_state(flipSaved);assert.equal(graph.busy,true);
+graph.written(0x40071C,2);assert.equal(graph.busy,false);assert.equal(graph.flips[1][0],1);
+assert.equal(graph.read(0x40071C),0,"increment strobe does not latch");
+word(0x4500,0x9F);method(0,0x4500,0x120,3);method(0,0x4500,0x124,4);
+assert.deepEqual(graph.flips[1].slice(0,2),[1,0],"BLIT and Curie use separate counters");
+method(0,0x4200,0x128,0);method(0,0x4200,0x124,7);method(0,0x4200,0x12C,0);
+assert.equal(graph.flips[1][1],0,"zero modulo retains the hardware three-bit wrap");
+method(0,0x4200,0x120,8);assert.equal(device.registers.get(0x400720),0,"out-of-range counter faults");
+graph.set_state([1,flipSaved[1],flipSaved[2]]);assert.equal(graph.busy,false,"legacy snapshots start without pending flip waits");
+console.log("PASS: independent flip counters, modulo wrap, ISR wake, pending wait snapshot and v1 migration");
+
+device.registers.set(0x400720,1);word(0x4104,31);
+const queryObject=graph.object(0,0x4200);queryObject.methods.set(0x50008,77);
+method(0,0x4200,0x17C8,2);assert.equal(queryObject.methods.get(0x50008),77,"ZCULL reset is independent of ZPASS");
+method(0,0x4200,0x1EA8,0x202000);method(0,0x4200,0x1EAC,0);method(0,0x4200,0x1804,1);
+for(let type=2;type<=5;type++)
+{
+    vram.fill(255,0x8010,0x8020);method(0,0x4200,0x1800,type<<24|16);
+    assert.equal(new DataView(vram.buffer).getUint32(0x8018,true),0,"no hierarchical cull cache means no tile rejections");
+    assert.equal(new DataView(vram.buffer).getUint32(0x801C,true),0);
+}
+assert.equal(device.registers.get(0x400720),1);
+console.log("PASS: ZCULL control/report selectors and separate report reset groups");
+
+device.registers.set(0x400720,1);device.registers.set(0x32E0,0x1234);
+method(0,0x4200,0x120,2);method(0,0x4200,0x124,1);method(0,0x4200,0x128,3);
+assert.equal(graph.read(0x400710)&0x77700000,0x32100000);
+assert.equal(device.registers.get(0x40032C),0x01001234,"FIFO GRCTX becomes the valid current graph context");
+device.registers.set(0x32E0,0x2345);method(1,0x4200,0x128,4);
+assert.equal(graph.read(0x400710)&0x77700000,0x40000000);
+const contextsSaved=graph.get_state();graph=new NVGraph(device);graph.set_state(contextsSaved);
+device.registers.set(0x32E0,0x1234);method(0,0x4200,0x100,0);
+assert.equal(graph.read(0x400710)&0x77700000,0x32100000,"context switch and snapshot preserve separate counters");
+graph.written(0x400710,0x33200000);assert.deepEqual(graph.flips[1].slice(0,3),[3,2,3]);
+console.log("PASS: SURF_TYPE flip fields and valid per-GRCTX counters across switches and snapshots");
+
+word(0x4600,0x88);device.registers.set(0x400720,1);
+for(const at of [0x184,0x188,0x18C])method(0,0x4600,at,0x410);
+assert.equal(device.registers.get(0x400720),1,"DVD DMA context bindings do not execute a composite");
+method(0,0x4600,0x33C,0);assert.equal(device.registers.get(0x400720),0,"unimplemented DVD composite remains an explicit trap");
+console.log("PASS: NV10 DVD subpicture DMA binding without fabricated drawing completion");
+
+// The driver can freeze/save a context, patch its inactive read counter in
+// RAMIN and restore it. Interpret the transfer descriptors, not a driver offset.
+device.registers.set(0x400720,1);device.registers.set(0x32E0,0x1234);
+graph.flip_offset=-2;graph.program=new Map([[0,0x200008],[1,0x60000A],[2,0x1041C4]]);
+method(0,0x4200,0x120,0);method(0,0x4200,0x124,0);method(0,0x4200,0x128,3);method(0,0x4200,0x130,0);
+assert.equal(graph.busy,true);device.registers.set(0x400784,0x1234);device.registers.set(0x400310,0x20);
+graph.written(0x400304,1);assert.equal(ramin.getUint32(0x12340+32,true)&0x77700000,0x30000000);
+assert.equal(device.registers.get(0x400310)&0x60,0,"completed software transfer clears request flags");
+device.registers.set(0x40032C,0x1234);word(0x12340+32,0x31000000);
+assert.equal(graph.busy,false,"inactive RAMIN READ patch releases its pending flip wait");
+device.registers.set(0x400310,0x40);graph.written(0x400304,1);
+assert.deepEqual(graph.flips[1].slice(0,3),[1,0,3]);
+console.log("PASS: decoded context transfer layout, inactive RAMIN flip patch and request acknowledgement");
+
+// Loaded hardware context is independent of subsequent RAMIN reuse. A fresh
+// SET_OBJECT reads the replacement, while another subchannel keeps the old one.
+word(0x4700,0x19);device.registers.set(0x400720,1);
+graph.bind(0,2,0x4700);graph.bind(0,3,0x4700);
+graph.method(0,2,0x4700,0x300,0x20001);
+word(0x4700,0);graph.method(0,2,0x4700,0x304,0x40003);
+assert.equal(device.registers.get(0x400720),1,"RAMIN overwrite cannot change a loaded clip class");
+word(0x4700,0x43);graph.bind(0,2,0x4700);graph.method(0,2,0x4700,0x300,0xCC);
+graph.method(0,3,0x4700,0x304,0x60005);
+assert.equal(device.registers.get(0x400720),1,"one rebind does not invalidate another loaded subchannel");
+const cachedState=graph.get_state();graph=new NVGraph(device);graph.set_state(cachedState);
+assert.equal(graph.bindings.get("0:2").class_id,0x43);
+assert.equal(graph.bindings.get("0:3").class_id,0x19);
+assert.equal(graph.bindings.get("0:3").methods.get(0x304),0x60005);
+assert.equal(graph.bindings.get("0:2"),graph.object(0,0x4700),"snapshot preserves shared current-object identity");
+word(0x4700,0);graph.method(0,3,0x4700,0x304,0x80007);
+assert.equal(device.registers.get(0x400720),1,"cached old class survives snapshot and further RAMIN reuse");
+graph.set_state([3,...cachedState.slice(1,6)]);
+assert.equal(graph.bindings.size,0,"old graph snapshots have no explicit subchannel cache");
+device.fifo={channels:new Map([[0,{bindings:Uint32Array.of(0,0,0x4700,0,0,0,0,0)}]])};
+graph.set_state([3,...cachedState.slice(1,6)]);
+assert.equal(graph.bindings.get("0:2").class_id,0x19,"old snapshot migrates cached object from saved RAMFC binding");
+word(0x4700,0);graph.method(0,2,0x4700,0x304,0xA0009);
+assert.equal(device.registers.get(0x400720),1,"old snapshot cache migration uses saved class, not recycled RAMIN");
+delete device.fifo;
+console.log("PASS: loaded subchannel classes survive RAMIN reuse, independent rebind and snapshot");

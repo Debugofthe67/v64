@@ -1,0 +1,142 @@
+{
+  "date": "2026-11-15",
+  "scope": "G4 original XP2001 full21 exported IQ versus existing D3D8 proxy fixed-frame reference. This records residuals; it does not accept the IQ gate.",
+  "command": "python3 tests/devices/geforce_iq_compare.py build/nv40-xp-mark2001-native-fresh-all21-artifacts build/d3d-review/stage6-2001-first --native-suffix NV01A --reference-suffix S6MK01 --cases 4 --output build/nv40-xp-mark2001-native-fresh-all21-artifacts/comparison-detailed.json",
+  "validation": [
+    "Independent earlier BMP comparator agrees exactly on every case, pixel count, mean absolute error, maximum error and exact-pixel percentage.",
+    "Known one-pixel, padded 24-bit BMP pair verifies top-down/bottom-up orientation, 64-row-equivalent metadata exclusion, channel order and signed error. Truncated rows are rejected."
+  ],
+  "images": [
+    {
+      "case": 1,
+      "native": {
+        "file": "build/nv40-xp-mark2001-native-fresh-all21-artifacts/Quality_IQ01I_NV01A.bmp",
+        "sha256": "f13f563718d83dbe007e9c1707d72d654fe55cf7bf538fa6ebc31538e0e90155"
+      },
+      "reference": {
+        "file": "build/d3d-review/stage6-2001-first/Quality_IQ01I_S6MK01.bmp",
+        "sha256": "cba857b827c194764f1b08fa0355ef6ae9ac7ad79dc6ef1916c6f89b936a7781"
+      },
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "pixels": 786432,
+      "different_pixels": 233571,
+      "exact_pixel_percent": 70.29991149902344,
+      "mean_absolute_rgb_error": 0.6814456515842013,
+      "mean_signed_rgb_error": [
+        0.009848276774088541,
+        0.00382232666015625,
+        0.004731496175130208
+      ],
+      "max_channel_error": 199,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 3,
+        "95": 5,
+        "99": 12,
+        "99.9": 27
+      }
+    },
+    {
+      "case": 2,
+      "native": {
+        "file": "build/nv40-xp-mark2001-native-fresh-all21-artifacts/Quality_IQ02I_NV01A.bmp",
+        "sha256": "1a8cfe301248f13d459191b7f43396130400d01056d42122a0f1cc39f04a4167"
+      },
+      "reference": {
+        "file": "build/d3d-review/stage6-2001-first/Quality_IQ02I_S6MK01.bmp",
+        "sha256": "5473b68ee1ffb636c94fdf7be14db3d91f4e6f6c844d5d4c9619a36377268657"
+      },
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "pixels": 786432,
+      "different_pixels": 213499,
+      "exact_pixel_percent": 72.85219828287761,
+      "mean_absolute_rgb_error": 0.5910407172309028,
+      "mean_signed_rgb_error": [
+        -0.007153828938802083,
+        -0.014939626057942709,
+        -0.005095163981119792
+      ],
+      "max_channel_error": 64,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 1,
+        "95": 3,
+        "99": 16,
+        "99.9": 35
+      }
+    },
+    {
+      "case": 3,
+      "native": {
+        "file": "build/nv40-xp-mark2001-native-fresh-all21-artifacts/Quality_IQ03I_NV01A.bmp",
+        "sha256": "973dbd17784d7efe2134fe12d7372ca69f6c2820c6aa1f505da7f32fb4a9a9cb"
+      },
+      "reference": {
+        "file": "build/d3d-review/stage6-2001-first/Quality_IQ03I_S6MK01.bmp",
+        "sha256": "e7b45e69d89f62348c74971f436b5cf20f5c243eb5c8671e11b9d5ba63b3998f"
+      },
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "pixels": 786432,
+      "different_pixels": 192264,
+      "exact_pixel_percent": 75.5523681640625,
+      "mean_absolute_rgb_error": 0.2840491400824653,
+      "mean_signed_rgb_error": [
+        0.003368377685546875,
+        -0.0014635721842447917,
+        -0.004610697428385417
+      ],
+      "max_channel_error": 150,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 1,
+        "95": 2,
+        "99": 6,
+        "99.9": 19
+      }
+    },
+    {
+      "case": 4,
+      "native": {
+        "file": "build/nv40-xp-mark2001-native-fresh-all21-artifacts/Quality_IQ04I_NV01A.bmp",
+        "sha256": "1e4cb6fa7abb75c154584fcfa63f34004ee4c90777f99f72e18f12f07d1fac2b"
+      },
+      "reference": {
+        "file": "build/d3d-review/stage6-2001-first/Quality_IQ04I_S6MK01.bmp",
+        "sha256": "0498f41a8b44bad7b9139e4fa1da7763efdf5dad6ebabfe807fe37a837e87321"
+      },
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "pixels": 786432,
+      "different_pixels": 374639,
+      "exact_pixel_percent": 52.362187703450516,
+      "mean_absolute_rgb_error": 1.9014566209581163,
+      "mean_signed_rgb_error": [
+        0.09694290161132812,
+        0.10952123006184895,
+        -0.04843012491861979
+      ],
+      "max_channel_error": 159,
+      "pixel_max_channel_error_percentiles": {
+        "50": 0,
+        "90": 8,
+        "95": 13,
+        "99": 29,
+        "99.9": 59
+      }
+    }
+  ],
+  "visualReview": "All four native/proxy rendered frames inspected side by side with 8x amplified RGB difference previews. Car Chase, Dragothic, Lobby and Nature retain matching scene geometry, textures, characters and visible effects. Residuals concentrate in texture detail and geometry edges; Nature has the largest residuals.",
+  "limits": [
+    "The proxy is a D3D8-level reference, not a capture of NV40 silicon. Agreement of scene structure is qualitative evidence only.",
+    "Nature pixel maximum-channel error is <=8 for 90% of pixels, <=29 for99%, with a159 maximum. No global threshold is invented to hide outliers.",
+    "The cause of residual sampling/precision differences is not established. Original images, benchmark, driver and result files are unchanged.",
+    "G3/G4 image gates remain open. Functional full21 result and normal shutdown are recorded separately in g4-xp-9371-2001-native-all21.json."
+  ]
+}

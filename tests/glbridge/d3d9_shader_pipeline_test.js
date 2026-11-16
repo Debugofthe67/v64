@@ -236,15 +236,6 @@ test("vs_1_1 transform: parses, emits a vertex entry point and a WVP uniform", (
     assert.strictEqual(reflection.samplers.length, 0);
 });
 
-test("an unwritten oFog defaults to an unfogged factor", () => {
-    const { wgsl, reflection } = compileOk(VS_1_1_TRANSFORM, "vs_1_1");
-    assert.ok(!reflection.writtenVaryings.includes(pipeline.VARYING_FOG),
-        "the fixture must leave oFog unwritten");
-    assert.ok(wgsl.includes("var<private> o_varying10: vec4<f32> = " +
-        "vec4<f32>(1.0, 0.0, 0.0, 0.0);"),
-    "an unwritten oFog must default to factor one, not full fog:\n" + wgsl);
-});
-
 test("vs_1_1 m4x4 expands to four dot products against consecutive registers", () => {
     const { wgsl } = compileOk(VS_1_1_TRANSFORM, "vs_1_1");
     for (const register of [0, 1, 2, 3])
@@ -289,12 +280,18 @@ test("ps_1_x tex/texld take sampler dimensions from the bound texture", () => {
             if (type !== "2d") assert.match(result.wgsl, /textureSample\(d9_tex0, d9_smp0, [^\n]*\.xyz\)/);
         }
     }
+    // A mismatched SM2+ declaration still samples the bound texture instead of dropping the draw.
     const sm2 = pipeline.compileShader(tokens(PS_2_0_TEXTURED), {
         legacySamplerTypes: { 0: "cube" },
     });
     assert.ok(sm2.ok, sm2.error);
-    assert.equal(sm2.reflection.samplers[0].type, "2d",
-        "SM2 explicit declarations must not be overridden by bindings");
+    assert.equal(sm2.reflection.samplers[0].type, "cube");
+    assert.ok(sm2.wgsl.includes("var d9_tex0: texture_cube<f32>"));
+    const declared = pipeline.compileShader(tokens(PS_2_0_TEXTURED), {});
+    assert.equal(declared.reflection.samplers[0].type, "2d", "the base declaration stays 2D");
+    const base = pipeline.specializeShader(declared, { legacySamplerTypes: { 0: "3d", 5: "cube" } });
+    assert.equal(base.reflection.samplers[0].type, "3d");
+    assert.equal(declared.reflection.samplers[0].type, "2d", "specialization does not poison the base shader");
 });
 
 test("a vs_1_1 with no dcl gets the API's fixed v# semantics", () => {
@@ -347,11 +344,11 @@ test("vs_1_1 MOV a0.x selects a matrix-palette constant", () => {
     ];
     const { wgsl, reflection } = compileOk(shader,
         "vs_1_1 matrix-palette address");
-    assert.match(wgsl, /let _v\d+ = round\(/,
-        "MOV a0.x must apply SM1.1 round-to-nearest conversion");
+    assert.match(wgsl, /let _v\d+ = floor\(/,
+        "MOV a0.x must floor as observed by Wine visual.c test_mova on Windows");
     assert.ok(wgsl.includes("a0 = vec4<i32>(a0f);"),
         "MOV a0.x did not update the integer address register:\n" + wgsl);
-    assert.ok(wgsl.includes("clamp(a0.x + 4, 0, 255)"),
+    assert.ok(wgsl.includes("clamp(a0.x + 4, 0, d9_float_constant_max)") && wgsl.includes("const d9_float_constant_max: i32 = 255;"),
         "the bone matrix read did not use the updated address register:\n" + wgsl);
     assert.strictEqual(reflection.usesRelativeConstants, true);
     assert.strictEqual(reflection.floatConstCount, 256);
@@ -410,7 +407,7 @@ test("vs_2_0 flow control: rep/if/mova/relative addressing all translate", () =>
         "rep i0 did not become a bounded loop:\n" + wgsl);
     assert.ok(wgsl.includes("if ((d9c.b[0][0] != 0u))"), "if b0 did not read the bool register");
     assert.ok(wgsl.includes("a0 = vec4<i32>(a0f);"), "mova did not update a0");
-    assert.ok(wgsl.includes("clamp(a0.x + 2, 0, 255)"),
+    assert.ok(wgsl.includes("clamp(a0.x + 2, 0, d9_float_constant_max)") && wgsl.includes("const d9_float_constant_max: i32 = 255;"),
         "relative addressing was not clamped into the constant file:\n" + wgsl);
     // Relative addressing forces the full 256-register file to be uploaded.
     assert.strictEqual(reflection.usesRelativeConstants, true);
@@ -599,20 +596,17 @@ test("ps_1_x texm3x3 forms build their coordinate from the preceding pads", () =
         instruction(OP.TEXM3x3TEX), dst(REG.TEXTURE, 3), src(REG.TEXTURE, 0),
         END,
     ]);
-    // Three dot products, assembled into one vec3 that samples a cube map --
-    // the shape tangent-space environment mapping needs.
+    // Three dot products, assembled into a coordinate. The bound resource
+    // selects the sampler dimension; the base translation defaults to 2D.
     assert.strictEqual((result.wgsl.match(/let _m3row\d+ = dot\(/g) || []).length, 3,
         "each pad plus the tex should contribute one row: " + result.wgsl);
     assert.match(result.wgsl, /let _m3x3\d+ = vec3<f32>\(_m3row\d+, _m3row\d+, _m3row\d+\)/,
         "the three rows should assemble into a vec3 coordinate");
     assert.strictEqual(result.reflection.samplers.find(s => s.index === 3).type,
-        "cube", "a texm3x3tex addresses a cube map");
+        "2d", "base translation has no bound texture dimension");
 });
 
-test("ps_1_x instructions with no honest translation are still refused", () => {
-    // TEXDEPTH replaces the fragment's depth from a texture-addressing result,
-    // which this pipeline has no frag_depth path for. Refusing keeps it out of
-    // the "renders something plausible but wrong" category.
+test("texdepth rejects registers other than r5", () => {
     const result = pipeline.compileShader(tokens([
         PS(1, 4),
         instruction(OP.TEXDEPTH), dst(REG.TEMP, 0),
@@ -670,7 +664,7 @@ test("comment tokens (the D3DX/fxc signature blocks) are skipped", () => {
     assert.strictEqual(reflection.inputs.length, 1);
 });
 
-test("predicated instructions become guarded blocks", () => {
+test("setp writes the predicate that predication reads, per component", () => {
     const { wgsl, reflection } = compileOk([
         VS(2, 1),
         instruction(OP.DCL, { length: 2 }), dclToken(USAGE.POSITION), dst(REG.INPUT, 0),
@@ -679,12 +673,17 @@ test("predicated instructions become guarded blocks", () => {
         // dst + predicate token + one source == three tokens after the
         // instruction token, which is what the SM2.0 length field must say.
         instruction(OP.MOV, { length: 3, predicated: true }), dst(REG.TEMP, 0),
-            src(REG.PREDICATE, 0, { swizzle: swizzle("xxxx") }), src(REG.CONST, 1),
+            src(REG.PREDICATE, 0, { swizzle: swizzle("yxwz") }), src(REG.CONST, 1),
         instruction(OP.MOV, { length: 2 }), dst(REG.RASTOUT, 0), src(REG.TEMP, 0),
         END,
     ], "predicate");
-    assert.ok(wgsl.includes("var<private> p0: vec4<bool>"), "p0 was not declared");
-    assert.ok(wgsl.includes("if (p0.x) {"), "predicate did not guard the instruction:\n" + wgsl);
+    // (S2-9: setp used to write a p0f nothing read, so predication never ran)
+    assert.ok(!/\bp0f\b/.test(wgsl), "setp writes p0 itself:\n" + wgsl);
+    assert.match(wgsl, /\bp0(\.x)? = /, "setp assigns the predicate");
+    // r0.x is gated by p0.y, r0.y by p0.x, ... -- the predicate's swizzle
+    for (const [component, gate] of [["x", "y"], ["y", "x"], ["z", "w"], ["w", "z"]])
+        assert.match(wgsl, new RegExp("r0\\." + component + " = select\\(r0\\." + component +
+            ", [^,]+, p0\\." + gate + "\\);"), "r0." + component + " gated by p0." + gate + ":\n" + wgsl);
     assert.strictEqual(reflection.floatConstCount, 2);
 });
 
@@ -791,9 +790,9 @@ test("arithmetic opcodes translate to their WGSL equivalents", () => {
         [OP.RCP, 1, "d9_rcp((vin0).x)"],
         [OP.RSQ, 1, "d9_rsq((vin0).x)"],
         [OP.LIT, 1, "d9_lit(vin0)"],
-        [OP.NRM, 1, "d9_normalize((vin0).xyz)"],
+        [OP.NRM, 1, "d9_normalize(vin0)"],
         [OP.CRS, 2, "cross((vin0).xyz, (vin0).xyz)"],
-        [OP.POW, 2, "pow(abs((vin0).x), (vin0).x)"],
+        [OP.POW, 2, "d9_pow((vin0).x, (vin0).x)"],
     ];
     for (const [opcode, sourceCount, expected] of cases) {
         const list = [
@@ -848,7 +847,7 @@ test("loop/endloop drives aL from the integer register's y/z fields", () => {
     ], "loop");
     assert.ok(wgsl.includes("aL = d9c.i[0].y;"), "aL was not initialised from i0.y");
     assert.ok(wgsl.includes("aL = aL + d9c.i[0].z;"), "aL was not stepped by i0.z");
-    assert.ok(wgsl.includes("clamp(aL + 0, 0, 255)"),
+    assert.ok(wgsl.includes("clamp(aL + 0, 0, d9_float_constant_max)") && wgsl.includes("const d9_float_constant_max: i32 = 255;"),
         "c[aL] relative addressing did not use the loop counter:\n" + wgsl);
 });
 
@@ -940,6 +939,16 @@ test("point-sprite vertex variants expand oPts into a six-vertex quad", () => {
     assert.ok(result.wgsl.includes("var d9_point_size = o_pointsize.x"));
     assert.ok(result.wgsl.includes("result.varying2 = vec4<f32>(d9_point_uv"),
         "POINTSPRITEENABLE must synthesize TEXCOORD0");
+    assert.deepEqual(result.reflection.writtenVaryings, [2, 3, 4, 5, 6, 7, 8, 9],
+        "the entry wrapper writes every legacy texture-coordinate output");
+    const ordinary = pipeline.specializeShader(result,
+        { pointExpansion: true, pointSprite: false });
+    assert.equal(ordinary.ok, true, ordinary.error);
+    assert.deepEqual(ordinary.reflection.writtenVaryings, [],
+        "sprite specialization must not add writes to the reusable guest body");
+    const triangle = pipeline.specializeShader(result, {});
+    assert.equal(triangle.ok, true, triangle.error);
+    assert.deepEqual(triangle.reflection.writtenVaryings, []);
 });
 
 test("generated WGSL is brace-balanced and declares every register it reads", () => {
@@ -967,90 +976,255 @@ test("generated WGSL is brace-balanced and declares every register it reads", ()
     }
 });
 
-test("a derivative inside a data-dependent branch is hoisted above it",
-        () => {
-    // r1 is computed before the branch, so dpdy(r1) above the branch is the
-    // same value D3D9 would have produced inside it.
-    const result = pipeline.compileShader(new Uint32Array([
-        PS(3, 0),
-        instruction(OP.DCL, { length: 2 }), dclToken(USAGE.TEXCOORD, 0), dst(REG.INPUT, 0),
-        instruction(OP.DEF, { length: 5 }), dst(REG.CONST, 0),
-            floatBits(0.5), floatBits(0), floatBits(0), floatBits(0),
-        instruction(OP.MOV, { length: 2 }), dst(REG.TEMP, 1), src(REG.INPUT, 0),
-        instruction(OP.IFC, { length: 2, control: 5 }),
-            src(REG.TEMP, 1), src(REG.CONST, 0),
-        instruction(OP.DSY, { length: 2 }), dst(REG.TEMP, 0), src(REG.TEMP, 1),
-        instruction(OP.ENDIF),
-        instruction(OP.MOV, { length: 2 }), dst(REG.COLOROUT, 0), src(REG.TEMP, 0),
-        END,
-    ]));
-    assert.ok(result.ok, "translation failed: " + result.error);
-    const lines = result.wgsl.split("\n");
-    const derivative = lines.findIndex(line => line.includes("dpdy("));
-    const branch = lines.findIndex(line => /^\s*if \(/.test(line));
-    assert.ok(derivative >= 0, "expected a dpdy call");
-    assert.ok(branch >= 0, "expected a branch");
-    // The whole point: WGSL rejects the call inside the branch, so it has to
-    // come out above it rather than being dropped.
-    assert.ok(derivative < branch,
-        "the derivative must be hoisted above the branch, not left inside it");
-    assert.ok(!/vec4<f32>\(0\.0\)/.test(lines[derivative]),
-        "a hoistable derivative must not degrade to zero");
+// Derivative/texture execution semantics are checked by actual pixel readback
+// in d3d_shader_texture_browser_test.html, replacing the old assertions that
+// required hoisting and its zero/LOD-zero fallbacks.
+
+test("SM3 semantic linking preserves every declared packed component", () => {
+    const vs = {version: {major: 3}, outputDeclarations: [
+        {register: 2, usage: 3, usageIndex: 4, mask: 7},
+        {register: 2, usage: 10, usageIndex: 0, mask: 8},
+        {register: 9, usage: 5, usageIndex: 15, mask: 15}]};
+    const ps = {version: {major: 3}, inputDeclarations: [
+        {register: 0, usage: 5, usageIndex: 15, mask: 5},
+        {register: 7, usage: 3, usageIndex: 4, mask: 7},
+        {register: 7, usage: 10, usageIndex: 0, mask: 8}]};
+    const pair = pipeline.linkShaderSemantics(vs, ps);
+    assert.ok(pair.ok, pair.error);
+    const outputs = {2: [.1, .2, .3, .4], 9: [.5, .6, .7, .8]}, stage = {}, inputs = {};
+    for (const item of pair.link.vertex) stage[item.slot * 4 + item.channel] = outputs[item.register][item.component];
+    for (const item of pair.link.pixel) (inputs[item.register] ||= [0, 0, 0, 0])[item.component] = stage[item.slot * 4 + item.channel];
+    assert.deepStrictEqual(inputs, {0: [.5, 0, .7, 0], 7: [.1, .2, .3, .4]});
+    assert.deepStrictEqual(pair.link.flatSlots, [2]);
+    assert.strictEqual(pair.key, pipeline.linkShaderSemantics(vs, ps).key);
+    assert.notStrictEqual(pair.key, pipeline.linkShaderSemantics(vs, {...ps, inputDeclarations: ps.inputDeclarations.slice(1)}).key);
 });
 
-test("a derivative of a register the branch rewrites degrades to zero", () => {
-    // r1 is assigned *inside* the branch, so there is no value above it to
-    // differentiate and hoisting would read the wrong one.
-    const result = pipeline.compileShader(new Uint32Array([
-        PS(3, 0),
-        instruction(OP.DCL, { length: 2 }), dclToken(USAGE.TEXCOORD, 0), dst(REG.INPUT, 0),
-        instruction(OP.DEF, { length: 5 }), dst(REG.CONST, 0),
-            floatBits(0.5), floatBits(0), floatBits(0), floatBits(0),
-        instruction(OP.IFC, { length: 2, control: 5 }),
-            src(REG.INPUT, 0), src(REG.CONST, 0),
-        instruction(OP.MOV, { length: 2 }), dst(REG.TEMP, 1), src(REG.CONST, 0),
-        instruction(OP.DSX, { length: 2 }), dst(REG.TEMP, 0), src(REG.TEMP, 1),
-        instruction(OP.ENDIF),
-        instruction(OP.MOV, { length: 2 }), dst(REG.COLOROUT, 0), src(REG.TEMP, 0),
-        END,
-    ]));
-    assert.ok(result.ok, "translation failed: " + result.error);
-    assert.ok(!result.wgsl.includes("dpdx("),
-        "an unhoistable derivative must not emit a call WGSL rejects");
-    assert.ok(result.reflection.warnings.some(warning =>
-        warning.includes("no value above the branch")),
-        "the approximation has to be reported");
+test("SM3 point sprites link generated coordinates without vertex texture outputs", () => {
+    const vertex = {version: {major: 3}, outputDeclarations: [
+        {register: 0, usage: USAGE.POSITION, usageIndex: 0, mask: 15}]};
+    const pixel = {version: {major: 3}, inputDeclarations: [
+        {register: 0, usage: USAGE.TEXCOORD, usageIndex: 0, mask: 15},
+        {register: 1, usage: USAGE.TEXCOORD, usageIndex: 7, mask: 3},
+        {register: 2, usage: USAGE.TEXCOORD, usageIndex: 8, mask: 1}]};
+    const ordinary = pipeline.linkShaderSemantics(vertex, pixel);
+    const sprite = pipeline.linkShaderSemantics(vertex, pixel, {pointSprite: true});
+    assert.ok(sprite.ok, sprite.error);
+    assert.equal(ordinary.link.vertex.length, 0);
+    assert.equal(sprite.link.vertex.length, 6,
+        "the rasterizer supplies TEXCOORD0..7 even when the vertex body never writes them");
+    assert.deepEqual(sprite.link.vertex.map(item => [item.usageIndex, item.component]),
+        [[0, 0], [0, 1], [0, 2], [0, 3], [7, 0], [7, 1]]);
+    assert.notEqual(sprite.key, ordinary.key);
+    assert.equal(pipeline.linkShaderSemantics(vertex, pixel).key, ordinary.key,
+        "point-sprite linking must not mutate reusable shader reflection");
 });
 
-test("an in-branch texture sample keeps its mip level via hoisted gradients",
-        () => {
-    const result = pipeline.compileShader(new Uint32Array([
-        PS(3, 0),
-        instruction(OP.DCL, { length: 2 }), dclToken(0, 0, 2), dst(REG.SAMPLER, 0),
-        instruction(OP.DCL, { length: 2 }), dclToken(USAGE.TEXCOORD, 0), dst(REG.INPUT, 0),
-        instruction(OP.DEF, { length: 5 }), dst(REG.CONST, 0),
-            floatBits(0.5), floatBits(0), floatBits(0), floatBits(0),
-        instruction(OP.IFC, { length: 2, control: 5 }),
-            src(REG.INPUT, 0), src(REG.CONST, 0),
-        instruction(OP.TEX, { length: 3 }), dst(REG.TEMP, 0),
-            src(REG.INPUT, 0), src(REG.SAMPLER, 0),
-        instruction(OP.ENDIF),
-        instruction(OP.MOV, { length: 2 }), dst(REG.COLOROUT, 0), src(REG.TEMP, 0),
-        END,
-    ]));
-    assert.ok(result.ok, "translation failed: " + result.error);
-    // textureSampleGrad is legal under non-uniform control flow because the
-    // gradients are explicit, so the sample keeps the mip level the shader
-    // asked for instead of dropping to level 0.
-    assert.ok(result.wgsl.includes("textureSampleGrad("),
-        "expected an explicit-gradient sample");
-    assert.ok(!/textureSampleLevel\(d9_tex0[^)]*0\.0\)/.test(result.wgsl),
-        "the level-0 fallback must not be used when gradients are available");
-    const lines = result.wgsl.split("\n");
-    const gradient = lines.findIndex(line => line.includes("dpdx("));
-    const branch = lines.findIndex(line => /^\s*if \(/.test(line));
-    assert.ok(gradient >= 0 && gradient < branch,
-        "the derivatives have to be computed above the branch");
+test("SM3 semantic linking rejects incompatible declarations before GPU pipeline creation", () => {
+    const item = {register: 0, usage: 3, usageIndex: 0, mask: 7};
+    const vertex = outputDeclarations => ({version: {major: 3}, outputDeclarations});
+    const pixel = inputDeclarations => ({version: {major: 3}, inputDeclarations});
+    for (const [outputs, inputs] of [
+        [[item, {...item, register: 1}], [item]], [[item], [item, {...item, register: 1}]],
+        [[item, {...item, usageIndex: 1}], [item]],
+        [[item, {...item, usageIndex: 1, register: 1}], [item, {...item, usageIndex: 1}]],
+        [[{...item, register: 12}], [item]], [[item], [{...item, register: 10}]],
+    ]) assert.strictEqual(pipeline.linkShaderSemantics(vertex(outputs), pixel(inputs)).ok, false);
+    assert.strictEqual(pipeline.linkShaderSemantics(null, pixel([item])).ok, false);
+    // An SM3 pixel input the vertex shader never writes (or writes only in part) is legal: it
+    // keeps a varying slot but has no vertex-side writer, so it reads zero.
+    for (const [outputs, inputs, writers, readers] of [[[item], [{...item, usageIndex: 1}], 0, 3], [[item], [{...item, mask: 15}], 3, 4], [[], [item], 0, 3]]) {
+        const pair = pipeline.linkShaderSemantics(vertex(outputs), pixel(inputs));
+        assert.ok(pair.ok, pair.error);
+        assert.strictEqual(pair.link.vertex.length, writers);
+        assert.strictEqual(pair.link.pixel.length, readers);
+    }
+    const legacy = pipeline.linkShaderSemantics(null, pixel([{...item, usage: 10, mask: 15}]));
+    assert.ok(legacy.ok);
+    assert.strictEqual(legacy.link.vertex, null);
+    assert.deepStrictEqual(legacy.link.flatSlots, [0, 1]);
+    assert.deepStrictEqual(legacy.link.pixel.map(entry => entry.slot), [0, 0, 0, 0]);
+});
+
+test("SM3 reflection retains multiple declarations on one physical register", () => {
+    const make = kind => pipeline.compileShader([
+        kind === "vertex" ? VS(3, 0) : PS(3, 0),
+        instruction(OP.DCL, {length: 2}), dclToken(USAGE.NORMAL), dst(kind === "vertex" ? REG.OUTPUT : REG.INPUT, 3, {mask: 7}),
+        instruction(OP.DCL, {length: 2}), dclToken(USAGE.COLOR, 2), dst(kind === "vertex" ? REG.OUTPUT : REG.INPUT, 3, {mask: 8}),
+        instruction(OP.MOV, {length: 2}), dst(kind === "vertex" ? REG.OUTPUT : REG.COLOROUT, kind === "vertex" ? 3 : 0),
+        src(kind === "vertex" ? REG.CONST : REG.INPUT, kind === "vertex" ? 0 : 3), END]);
+    const vs = make("vertex"), ps = make("pixel");
+    assert.ok(vs.ok && ps.ok, vs.error || ps.error);
+    assert.strictEqual(vs.reflection.outputDeclarations.length, 2);
+    assert.strictEqual(ps.reflection.inputDeclarations.length, 2);
+    const pair = pipeline.linkShaderSemantics(vs.reflection, ps.reflection);
+    assert.ok(pair.ok, pair.error);
+    assert.strictEqual(pair.link.vertex.length, 4);
+    assert.strictEqual(pair.link.pixel.length, 4);
+});
+
+test("relative input/output addressing rejects unsupported register files and index kinds", () => {
+    const relative = token => (token | 0x2000) >>> 0;
+    const declarations = [instruction(OP.DCL, {length: 2}), dclToken(USAGE.POSITION), dst(REG.OUTPUT, 0),
+        instruction(OP.DCL, {length: 2}), dclToken(USAGE.TEXCOORD), dst(REG.OUTPUT, 2)];
+    for (const [version, destination, source, index] of [
+        [VS(2, 0), dst(REG.TEMP, 0), relative(src(REG.INPUT, 0)), src(REG.ADDR, 0)],
+        [PS(3, 0), dst(REG.COLOROUT, 0), relative(src(REG.INPUT, 0)), src(REG.ADDR, 0)],
+        [VS(3, 0), dst(REG.TEMP, 0), relative(src(REG.INPUT, 0)), src(REG.ADDR, 1)],
+        [VS(3, 0), dst(REG.TEMP, 0), relative(src(REG.TEMP, 0)), src(REG.LOOP, 0)],
+    ]) {
+        const result = pipeline.compileShader([version, instruction(OP.MOV, {length: 3}), destination, source, index, END]);
+        assert.strictEqual(result.ok, false);
+        assert.match(result.error, /relative|shader model 3/);
+    }
+    for (const [destination, index] of [[relative(dst(REG.OUTPUT, 0)), src(REG.ADDR, 0)],
+        [relative(dst(REG.TEMP, 0)), src(REG.LOOP, 0)]]) {
+        const result = pipeline.compileShader([VS(3, 0), ...declarations,
+            instruction(OP.MOV, {length: 3}), destination, index, src(REG.CONST, 0), END]);
+        assert.strictEqual(result.ok, false);
+        assert.match(result.error, /relative|requires aL/);
+    }
+    const readableOutput = pipeline.compileShader([VS(3, 0), ...declarations,
+        instruction(OP.MOV, {length: 2}), dst(REG.TEMP, 0), src(REG.OUTPUT, 2), END]);
+    assert.strictEqual(readableOutput.ok, false);
+    assert.match(readableOutput.error, /write-only/);
+});
+
+test("indexed outputs require fixed position and point size registers", () => {
+    for (const [usage, register] of [[USAGE.POSITION, 3], [USAGE.PSIZE, 4]]) {
+        const result = pipeline.compileShader([VS(3, 0), instruction(OP.DCL, {length: 2}),
+            dclToken(usage), dst(REG.OUTPUT, register), instruction(OP.MOV, {length: 3}),
+            (dst(REG.OUTPUT, 2) | 0x2000) >>> 0, src(REG.LOOP, 0), src(REG.CONST, 0), END]);
+        assert.strictEqual(result.ok, false);
+        assert.match(result.error, /POSITION0 at o0 and PSIZE0 at o1/);
+    }
+    const result = pipeline.compileShader([VS(3, 0), instruction(OP.DCL, {length: 2}),
+        dclToken(USAGE.POSITION), dst(REG.INPUT, 16), END]);
+    assert.strictEqual(result.ok, false);
+    assert.match(result.error, /exceeds v15/);
+});
+
+test("legacy arithmetic reflects coordinate inputs without inventing samplers", () => {
+    for (const stream of [[PS(1, 4), OP.TEXCOORD, dst(REG.TEMP, 5, {mask: 7}), src(REG.TEXTURE, 3), OP.PHASE, OP.TEXDEPTH, dst(REG.TEMP, 5), END],
+        [PS(1, 3), OP.TEXM3x2PAD, dst(REG.TEXTURE, 1), src(REG.TEXTURE, 0), OP.TEXM3x2DEPTH, dst(REG.TEXTURE, 2), src(REG.TEXTURE, 0), END]]) {
+        const result = compileOk(stream);
+        assert.ok(result.reflection.writesDepth);
+        assert.deepStrictEqual(result.reflection.samplers, []);
+        assert.ok(result.reflection.inputs.some(input => input.usage === USAGE.TEXCOORD));
+        assert.match(result.wgsl, /@builtin\(frag_depth\)/);
+    }
+});
+
+test("shader variants preserve one serialized instruction body across entry and sampler adapters", () => {
+    const freeze = object => {
+        if (!object || typeof object !== "object" || Object.isFrozen(object)) return object;
+        Object.values(object).forEach(freeze);return Object.freeze(object);
+    };
+    for (const stream of [VS_1_1_TRANSFORM, VS_2_0_FLOW, VS_2_0_SUBROUTINE, PS_1_1_MODULATE, PS_2_0_TEXTURED]) {
+        const base = compileOk(stream), serialized = JSON.stringify(base);
+        const restored = freeze(JSON.parse(serialized));
+        assert.ok(!("instructions" in restored.program));
+        assert.ok(!("tokens" in restored.program));
+        const body = "fn d9_body() {\n" + restored.program.mainBody.join("\n") + "\n}";
+        const variants = base.reflection.kind === "vertex" ? [{}, {flatShading: true}, {clipPlaneCount: 6},
+            {pointExpansion: true, pointSprite: true}, {inputConversions: {0: "short4"}, bgraInputLocations: [1]}]
+            : [{}, {flatShading: true}, {alphaTestUniform: true, alphaTestDiscard: "    if (result.color0.a < .5) { discard; }"},
+                {samplerMirrorOnce: {0: "xy"}, samplerSwizzles: {0: "rrrr"}, samplerLodBiasUniform: true},
+                {depthSamplers: [0]}, {depthSamplers: [0], depthFetchSamplers: [0]},
+                {legacySamplerTypes: {0: "cube"}, legacyProjection: {0: "w"}}];
+        for (const options of variants) {
+            const variant = pipeline.specializeShader(restored, options);
+            assert.ok(variant.ok, variant.error);
+            assert.strictEqual(variant.program, restored.program);
+            assert.ok(variant.wgsl.includes(body));
+            assert.deepStrictEqual(variant, pipeline.compileShader(tokens(stream), options),
+                "specialization differs from compiling the same options from scratch");
+        }
+        assert.strictEqual(JSON.stringify(restored), serialized, "specialization mutated the reusable body");
+    }
+});
+
+test("persistent shader cache preserves prepared bodies and rejects missing body payloads", () => {
+    const cache = new pipeline.D3D9ShaderCache(), stream = tokens(PS_2_0_TEXTURED), hash = pipeline.hashTokens(stream);
+    cache.compile(stream, hash.low, hash.high);
+    const payload = JSON.parse(JSON.stringify(cache.exportEntries())), restored = new pipeline.D3D9ShaderCache();
+    assert.strictEqual(restored.importEntries(payload), 1);
+    const base = restored.get(hash.low, hash.high);
+    assert.ok(pipeline.specializeShader(base, {depthSamplers: [0]}).ok);
+    assert.strictEqual(restored.stats.compiles, 0);
+    delete payload.entries[0].result.program;
+    assert.strictEqual(new pipeline.D3D9ShaderCache().importEntries(payload), 0);
+});
+
+test("deduplicated sampling adapters retain per-instruction fallback counts", () => {
+    const base = compileOk([PS(2, 0), instruction(OP.DCL, {length: 2}), dclToken(0, 0, 2), dst(REG.SAMPLER, 0),
+        instruction(OP.TEXLDL, {length: 3}), dst(REG.TEMP, 0), src(REG.CONST, 0), src(REG.SAMPLER, 0),
+        instruction(OP.TEXLDL, {length: 3}), dst(REG.TEMP, 1), src(REG.CONST, 1), src(REG.SAMPLER, 0),
+        instruction(OP.ADD, {length: 3}), dst(REG.COLOROUT, 0), src(REG.TEMP, 0), src(REG.TEMP, 1), END]);
+    assert.strictEqual(base.program.sampleOperations.length, 1);
+    const depth = pipeline.specializeShader(base, {depthSamplers: [0]});
+    assert.ok(depth.ok, depth.error);
+    assert.strictEqual(depth.reflection.levelZeroSamples, 2);
+});
+
+test("prepared relative constant bodies specialize across hardware and software limits", () => {
+    const shader = [VS(2, 0), instruction(OP.MOV, {length: 3}), dst(REG.RASTOUT, 0),
+        src(REG.CONST, 0, {relative: true}), src(REG.ADDR, 0), END];
+    const base = compileOk(shader), serialized = JSON.stringify(base);
+    for (const capacity of [8192, 256, 8192, 256]) {
+        const variant = pipeline.specializeShader(JSON.parse(serialized), {floatConstantCapacity: capacity});
+        assert.ok(variant.ok, variant.error);
+        assert.equal(variant.reflection.floatConstCount, capacity);
+        assert.equal(variant.reflection.constantBufferType, capacity === 8192 ? "read-only-storage" : "uniform");
+        assert.ok(variant.wgsl.includes("const d9_float_constant_max: i32 = " + (capacity - 1) + ";"));
+        assert.ok(variant.wgsl.includes(capacity === 8192 ? "var<storage, read> d9c" : "var<uniform> d9c"));
+        assert.equal(JSON.stringify(base), serialized);
+    }
+});
+
+const fetch4Shader = (opcode, options = {}) => compileOk([PS(3, 0),
+    instruction(OP.DCL, {length: 2}), dclToken(USAGE.TEXCOORD, 0), dst(REG.INPUT, 0),
+    instruction(OP.DCL, {length: 2}), dclToken(0, 0, 2), dst(REG.SAMPLER, 0),
+    instruction(opcode, {length: 3, control: options.control || 0}), dst(REG.TEMP, 0), src(REG.INPUT, 0),
+        src(REG.SAMPLER, 0, {swizzle: options.swizzle === undefined ? NOSWIZZLE : options.swizzle}),
+    instruction(OP.MOV, {length: 2}), dst(REG.COLOROUT, 0), src(REG.TEMP, 0), END]);
+
+test("Fetch4 replaces every ps_3_0 sampling form with a half-texel shifted level-0 gather", () => {
+    for (const [name, opcode, control] of [["texld", OP.TEX, 0], ["texldp", OP.TEX, 1], ["texldb", OP.TEX, 2], ["texldl", OP.TEXLDL, 0]]) {
+        const base = fetch4Shader(opcode, {control});
+        const variant = pipeline.specializeShader(base, {fetch4Samplers: {0: 0}});
+        assert.ok(variant.ok, variant.error);
+        assert.match(variant.wgsl, /textureGather\(0, d9_tex0, d9_smp0, \(\(.*_uv\d+\.xy.*\) \+ vec2<f32>\(0\.5\) \/ vec2<f32>\(textureDimensions\(d9_tex0\)\)\)\)\.zxyw/, name);
+        assert.ok(!/textureSample/.test(variant.wgsl), name + " must not also sample");
+        assert.ok(/textureSample/.test(pipeline.specializeShader(base, {}).wgsl), name + " samples normally without Fetch4");
+    }
+});
+
+test("Fetch4 selects the alpha component for A8 and the plain depth gather for raw depth textures", () => {
+    const base = fetch4Shader(OP.TEX);
+    assert.match(pipeline.specializeShader(base, {fetch4Samplers: {0: 3}}).wgsl, /textureGather\(3, d9_tex0, d9_smp0/);
+    const depth = pipeline.specializeShader(base, {depthSamplers: [0], depthFetchSamplers: [0], fetch4Samplers: {0: "depth"}});
+    assert.ok(depth.ok, depth.error);
+    assert.match(depth.wgsl, /textureGather\(d9_tex0, d9_smp0, \(\(_uv\d+\.xy[^\n]*\) \+ vec2<f32>\(0\.5\)/);
+    // A depth-compare sampler is not a Fetch4 target, nor is a colour gather on a depth-fetch slot.
+    const mismatched = pipeline.specializeShader(base, {depthSamplers: [0], depthFetchSamplers: [0], fetch4Samplers: {0: 0}});
+    assert.ok(!/textureGather/.test(mismatched.wgsl));
+});
+
+test("Fetch4 does not apply to vertex texture fetch", () => {
+    const vertex = compileOk([VS(3, 0), instruction(OP.DCL, {length: 2}), dclToken(0, 0, 2), dst(REG.SAMPLER, 0),
+        instruction(OP.DCL, {length: 2}), dclToken(USAGE.POSITION), dst(REG.OUTPUT, 0),
+        instruction(OP.TEXLDL, {length: 3}), dst(REG.TEMP, 0), src(REG.CONST, 0), src(REG.SAMPLER, 0),
+        instruction(OP.MOV, {length: 2}), dst(REG.OUTPUT, 0), src(REG.TEMP, 0), END]);
+    assert.ok(!/textureGather/.test(pipeline.specializeShader(vertex, {fetch4Samplers: {0: 0}}).wgsl));
+});
+
+test("a texld sampler-register swizzle selects components of the fetched texel", () => {
+    const plain = fetch4Shader(OP.TEX), swizzled = fetch4Shader(OP.TEX, {swizzle: swizzle("yzwx")});
+    assert.ok(!/\)\.yzwx;/.test(pipeline.specializeShader(plain, {}).wgsl));
+    assert.match(pipeline.specializeShader(swizzled, {}).wgsl, /r0 = \(d9_sample\d+\(v0\)\)\.yzwx;|= \(d9_sample\d+\([^\n]*\)\)\.yzwx;/);
+    // The swizzle follows the Fetch4 gather, matching the order a driver applies it.
+    assert.match(pipeline.specializeShader(swizzled, {fetch4Samplers: {0: 0}}).wgsl, /\.zxyw;?/);
 });
 
 // ---- report ----

@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-14",
+  "scope": "G6 native GPU resource-cache measurement; not a benchmark result, timeout fix or performance acceptance.",
+  "change": "Count resource hits, misses, LRU evictions and first-image upload bytes. Resource capacity remains 64; rendering, ordering and cache policy are unchanged.",
+  "nativeProbe": {
+    "source": "build/nv40-xp-mark06-batching-default/checkpoint-active-black-frame-investigation.state",
+    "vramMiB": 256,
+    "seconds": 152,
+    "gpu": {
+      "batches": 771,
+      "draws": 2701,
+      "bytes": 2010654608,
+      "readbacks": 2384,
+      "failures": 0,
+      "uploads": 1860,
+      "uploadBytes": 1436023096,
+      "resourceHits": 9408,
+      "resourceMisses": 196,
+      "resourceEvictions": 132,
+      "coldUploadBytes": 832197944
+    },
+    "graphFaults": [],
+    "imageUnchanged": true,
+    "gameImageUnchanged": true
+  },
+  "finding": "The first 62 resources fit. Later accesses produce 132 evictions in 2701 draws, with 832197944 first-image upload bytes. This establishes turnover but does not prove it causes the original driver timeout. First-image bytes include required initial images, not only redundant texture reuploads. A changed policy needs bounded storage and an equal-work comparison.",
+  "evidence": {
+    "file": "build/nv40-xp-mark06-resource-cache-64/trace.json",
+    "sha256": "11237158936dfcad8b6b40b1a4090e865344dde76f85b234c6519d34f0e84d5a"
+  },
+  "validation": [
+    "Render unit suite",
+    "Closure release build: 0 errors, 0 warnings",
+    "Original native 06 replay: zero renderer and PGRAPH faults"
+  ]
+}

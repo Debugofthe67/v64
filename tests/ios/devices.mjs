@@ -1,0 +1,867 @@
+// Peripheral contracts used during the 10B329 bootstrap; no Apple images.
+import assert from "node:assert/strict";
+import { AppleVIC } from "../../src/apple/vic.js";
+import { AppleTimer } from "../../src/apple/timer.js";
+import { AppleCLCD } from "../../src/apple/clcd.js";
+import { AppleCDMA } from "../../src/apple/cdma.js";
+import { AppleI2C } from "../../src/apple/i2c.js";
+import { AppleIOP } from "../../src/apple/iop.js";
+import { AppleGPIO, N90_BUTTONS } from "../../src/apple/s5l8930.js";
+import { AppleUART } from "../../src/apple/uart.js";
+import { AppleI2S } from "../../src/apple/audio.js";
+import { AppleSPI } from "../../src/apple/spi.js";
+
+let now = 0, signals = 0;
+const ports = new Map(), output = [], inputs = new Map();
+const cpu = {
+    clock: { now: () => now },
+    wm: { exports: { a32_set_interrupt_lines: (irq, fiq) => { signals = +irq + 2 * fiq; } } },
+    io: { register_mmio: (address, size, port) => ports.set(address, port) },
+};
+const bus = { register: (event, receive) => inputs.set(event, receive), send: (_, byte) => output.push(byte) };
+const spiLevels = [false, false], shifted = [];
+const spi0 = new AppleSPI(cpu, 0, level => spiLevels[0] = level);
+const spi1 = new AppleSPI(cpu, 1, level => spiLevels[1] = level, byte => { shifted.push(byte); return byte ^ 0x55; });
+const spiPort = ports.get(0x82100000);
+spiPort.write(0, 4, 0x0d); // enabled, both FIFOs reset
+spiPort.write(4, 4, 0x4018); // configured, transfer disabled
+for(let i = 0; i < 16; i++) spiPort.write(0x10, 4, i);
+assert.equal(spiPort.read(8), 16 << 6);
+assert.deepEqual(shifted, []);
+spiPort.write(4, 4, 0x4038); // PIO transfer, interrupts masked
+assert.equal(spiPort.read(8), 16 << 11);
+assert.equal(spiLevels[1], false);
+spiPort.write(4, 4, 0x21c1b8); // native receive/transmit interrupt enables
+assert.equal(spiLevels[1], true);
+for(let i = 0; i < 16; i++) assert.equal(spiPort.read(0x20), i ^ 0x55);
+assert.equal(spiLevels[1], false);
+assert.deepEqual(shifted, Array.from({ length: 16 }, (_, i) => i));
+// More than one FIFOful, with receive-side backpressure and a snapshot.
+for(let i = 0; i < 32; i++) spiPort.write(0x10, 4, i + 16);
+assert.equal(spiPort.read(8), (16 << 6) | (16 << 11));
+spiPort.write(8, 4, 0x40000f);
+assert.equal(spiPort.read(8), (16 << 6) | (16 << 11)); // status acknowledgement is not a FIFO reset
+const spiSaved = spi1.get_state();
+for(let i = 0; i < 32; i++) assert.equal(spiPort.read(0x20), (i + 16) ^ 0x55);
+assert.equal(spiLevels[1], false);
+spi1.set_state(spiSaved);
+assert.equal(spiLevels[1], true);
+for(let i = 0; i < 32; i++) assert.equal(spiPort.read(0x20), (i + 16) ^ 0x55);
+spiPort.write(0x10, 4, 9);
+spiPort.write(0, 4, 0);
+assert.equal(spiLevels[1], false);
+assert.equal(spiPort.read(8), 1 << 11);
+spiPort.write(0, 4, 0x0d);
+assert.equal(spiPort.read(8), 0);
+assert.equal(spiPort.read(0x20), 0xff);
+assert.equal(spi0.read(0), 0);
+spi0.write(0, 1); spi0.write(4, 0x1b8); spi0.write(0x10, 0x12);
+assert.equal(spi0.read(0x20), 0xff); // unconnected slave
+spi1.reset();
+assert.deepEqual(spiLevels, [false, false]);
+console.log("PASS: independent SPI FIFOs, full-duplex PIO, masked/level interrupts, backpressure and in-flight snapshot");
+const vic = new AppleVIC(cpu), timer = new AppleTimer(cpu, vic);
+new AppleUART(cpu, bus);
+const uart = ports.get(0x82500000), pmgr = ports.get(0xBF100000), intc = ports.get(0xBF200000);
+uart.write(0x20, 1, 65);
+assert.deepEqual(output, [65]);
+inputs.get("serial0-input")(90);
+assert.equal(uart.read(0x10), 7);
+assert.equal(uart.read(0x24), 90);
+assert.equal(uart.read(0x10), 6);
+
+// The native gas-gauge client opens uart5 and reads UCON. All six
+// auxiliary ports expose independent registers, without a console peer.
+for(let port = 1; port <= 6; port++)
+{
+    const device = new AppleUART(cpu, bus, port);
+    const aux = ports.get(0x82500000 + port * 0x100000);
+    aux.write(4, 4, port);
+    aux.write(0x20, 1, 0x7f);
+    assert.equal(aux.read(0x10), 6);
+    const state = device.get_state();
+    device.reset();
+    assert.equal(aux.read(4), 0);
+    device.set_state(state);
+    assert.equal(aux.read(4), port);
+}
+assert.equal(uart.read(4), 0);
+assert.deepEqual(output, [65]);
+
+intc.write(0x10, 4, 1 << 6);
+intc.write(0x118, 4, 0xABC);
+pmgr.write(0x2008, 4, 48000);
+pmgr.write(0x2010, 4, 1);
+now++;
+assert.equal(pmgr.read(0x2000), 24000);
+assert.equal(timer.timer(), 1);
+assert.equal(signals, 0);
+now++;
+timer.timer();
+assert.equal(signals, 1);
+assert.equal(intc.read(0), 1 << 6);
+assert.equal(intc.read(0xF00), 0xABC);
+assert.equal(signals, 0);
+intc.write(0xF00, 4, 0);
+assert.equal(signals, 1);
+pmgr.write(0x2010, 4, 2);
+assert.equal(signals, 0);
+intc.write(0x1000C, 4, 1 << 31);
+intc.write(0x10010, 4, 1 << 31);
+intc.write(0x10018, 4, 1 << 31);
+assert.equal(signals, 2);
+const saved = vic.get_state();
+vic.reset();
+assert.equal(signals, 0);
+vic.set_state(saved);
+assert.equal(signals, 2);
+intc.write(0x1001C, 4, 1 << 31);
+assert.equal(signals, 0);
+console.log("PASS: N90 UART, timer deadline, VIC IRQ/FIQ, acknowledge and restore");
+
+new AppleCDMA(cpu);
+const dma = ports.get(0x87000000);
+dma.write(4, 4, 0x20);
+assert.equal(dma.read(0x14), 0x20);
+dma.write(12, 4, 0x20);
+assert.equal(dma.read(0x14), 0);
+dma.write(0x100C, 4, 200);
+dma.write(0x1000, 4, 2);
+assert.equal(dma.read(0x100C), 0);
+pmgr.write(0x1014, 4, 0xA05);
+assert.equal(pmgr.read(0x1014), 0xA55);
+
+const controls = new AppleI2C(cpu, 0x83200000, 19, vic, true);
+const i2c = ports.get(0x83200000);
+intc.write(0x10, 4, 1 << 19);
+i2c.write(0, 4, 0x74);
+i2c.write(8, 4, 0x30);
+i2c.write(0x10, 4, 7);
+i2c.write(0x18, 4, 1);
+i2c.write(0x24, 4, 4);
+assert.equal(signals, 1);
+assert.equal(i2c.read(0x20), 8);
+i2c.write(0x0C, 4, 0x10);
+assert.equal(signals, 0);
+i2c.write(0, 4, 0x33);
+i2c.write(0x24, 4, 4);
+assert.equal(i2c.read(0x0C), 0x20);
+console.log("PASS: CDMA gating, PMGR acknowledgement, I2C completion and missing slave");
+
+// Mikey's native reset and configuration requests must complete on bus zero.
+// A missing headset cannot be created by writing the hardware sense register.
+i2c.write(0x0C, 4, 0x30);
+i2c.write(0, 4, 0x39);
+i2c.write(0x10, 4, 1);
+i2c.write(0x20, 1, 0x80);
+i2c.write(0x24, 4, 5);
+assert.equal(signals, 1);
+assert.equal(i2c.read(0x0C), 0x10);
+i2c.write(0x0C, 4, 0x10);
+assert.equal(signals, 0);
+i2c.write(0x10, 4, 0x84);
+i2c.write(0x18, 4, 2);
+for(const byte of [0x21, 0x62]) i2c.write(0x20, 1, byte);
+i2c.write(0x24, 4, 5);
+i2c.write(0x24, 4, 4);
+assert.equal(i2c.read(0x20), 0x21);
+const mikeyState = controls.get_state();
+assert.equal(i2c.read(0x20), 0x62);
+controls.reset();
+controls.set_state(mikeyState);
+assert.equal(i2c.read(0x20), 0x62, "restore a partially drained read FIFO");
+i2c.write(0x18, 4, 1);
+i2c.write(0x10, 4, 12);
+i2c.write(0x20, 1, 0xff);
+i2c.write(0x24, 4, 5);
+i2c.write(0x24, 4, 4);
+assert.equal(i2c.read(0x20), 0, "no headset or remote button is connected");
+i2c.write(0x10, 4, 1);
+i2c.write(0x20, 1, 0x80);
+i2c.write(0x24, 4, 5);
+i2c.write(0x24, 4, 4);
+assert.equal(i2c.read(0x20), 0, "software reset self-clears");
+i2c.write(0x10, 4, 4);
+i2c.write(0x24, 4, 4);
+assert.equal(i2c.read(0x20), 0, "reset discards previous configuration");
+controls.set_state(mikeyState.slice(0, 3));
+assert.equal(controls.mikey.read(4), 0, "old snapshots reset the newly added slave");
+const otherControls = new AppleI2C(cpu, 0x83400000, 21, vic, false);
+otherControls.write(0, 0x39);
+otherControls.write(0x18, 1);
+otherControls.write(0x24, 4);
+assert.equal(otherControls.regs[3], 0x20, "Mikey is absent from the other I2C bus");
+controls.reset();
+console.log("PASS: native Mikey control transactions, absent headset, reset and compatible snapshots");
+
+// The CS42L61 driver reads three ID bytes with the register auto-increment
+// flag. Configuration writes cannot alter those hardware identification bits.
+i2c.write(0, 4, 0x4a);
+i2c.write(0x10, 4, 0x81);
+i2c.write(0x18, 4, 3);
+for(let i = 0; i < 3; i++) i2c.write(0x20, 1, 0xff);
+i2c.write(0x24, 4, 5);
+i2c.write(0x24, 4, 4);
+assert.deepEqual(Array.from({ length: 3 }, () => i2c.read(0x20)), [0x42, 0xa6, 0x10]);
+i2c.write(0x10, 4, 0x85);
+i2c.write(0x18, 4, 2);
+for(const byte of [0x70, 0x80]) i2c.write(0x20, 1, byte);
+i2c.write(0x24, 4, 5);
+const codecState = controls.get_state();
+controls.reset();
+controls.set_state(codecState);
+i2c.write(0x24, 4, 4);
+assert.deepEqual([i2c.read(0x20), i2c.read(0x20)], [0x70, 0x80]);
+assert.equal(controls.mikey.read(5), 0, "codec and Mikey have independent registers");
+controls.set_state(codecState.slice(0, 4));
+assert.equal(controls.codec.read(5), 0, "older snapshots reset codec configuration");
+assert.equal(controls.codec.read(1), 0x42);
+controls.reset();
+console.log("PASS: codec identification burst, protected ID bytes, configuration and old/new snapshots");
+
+const audioPorts = [];
+for(let n = 0; n < 3; n++)
+{
+    const controller = new AppleI2S(cpu, n), port = ports.get(0x84500000 + n * 0x1000);
+    audioPorts.push(port);
+    assert.equal(port.read(0x400), 2);
+    port.write(0x408, 4, 0);
+    port.write(0x434, 4, 0);
+    port.write(0x400, 4, 0x30);
+    assert.equal(port.read(0x400), 0x32, "native stop sequence observes clock acknowledgement");
+    port.write(0x400, 4, 0x33);
+    port.write(0x404, 4, 0x3000081 + n);
+    assert.equal(port.read(0x400), 0x31, "halt bit is a hardware input");
+    const state = controller.get_state();
+    controller.reset();
+    assert.equal(port.read(0x400), 2);
+    controller.set_state(state);
+    assert.equal(port.read(0x404), 0x3000081 + n);
+    assert.equal(port.read(0x400), 0x31);
+    port.write(0x400, 4, 0x30);
+}
+assert.equal(audioPorts[0].read(0x404), 0x3000081);
+console.log("PASS: three isolated I2S control banks, clock stop acknowledgement and snapshots");
+
+
+const hub = { add_source() {}, set_mode() {}, set_size_graphical() {}, update_buffer() {} };
+cpu.ram_offset = () => -1;
+const panel = new AppleCLCD(cpu, hub, vic);
+const display = ports.get(0x89000000);
+const dsim = ports.get(0x89500000);
+assert.equal(dsim.read(0x10) & 0x7F, 0x7F);
+dsim.write(0x18, 4, 0); // stop video before the panel's short DCS display-off packet
+dsim.write(0x34, 4, 0x2805);
+assert.equal(dsim.read(0) & 0x10F, 0x10F, "the enabled lanes return to their stop state");
+dsim.write(0x14, 4, 0x8A);
+assert.equal(dsim.read(0) & 0x3FF, 0x2F0, "all five lanes acknowledge ULPS entry");
+dsim.write(0x14, 4, 0x8F);
+assert.equal(dsim.read(0) & 0x3FF, 0x10F, "exit is acknowledged even while entry is asserted");
+dsim.write(0x14, 4, 0x8A);
+dsim.write(0x14, 4, 0x80);
+assert.equal(dsim.read(0) & 0x3FF, 0x10F, "all five lanes leave ULPS and return to stop");
+dsim.write(0x14, 4, 0x8A);
+dsim.write(0x14, 4, 0);
+assert.equal(dsim.read(0) & 0x3FF, 0x2F0, "deasserting the request leaves the lanes asleep");
+dsim.write(0x04, 4, 1);
+assert.equal(dsim.read(0) & 0x3FF, 0x10F, "controller reset returns the lanes to stop for the next wake");
+vic.reset();
+intc.write(0x10010, 4, 1 << 10);
+intc.write(0x10128, 4, 0x8000002A);
+display.write(0x1028, 4, 1);
+panel.on_vblank();
+assert.equal(signals, 1);
+assert.equal(intc.read(0xF00), 0x8000002A);
+assert.equal(display.read(0x102C), 1);
+display.write(0x102C, 4, 1);
+intc.write(0x10F00, 4, 0);
+intc.write(0xF00, 4, 0);
+assert.equal(signals, 0);
+panel.on_vblank();
+assert.equal(signals, 1);
+console.log("PASS: CLCD retrace through chained VIC1, guest status acknowledgement and next frame");
+
+panel.reset();
+display.write(0x1028, 4, 1);
+const lcd_fifo = value => display.write(0x103C, 4, value);
+lcd_fifo(0x80050009); // five words, completion tag 9
+lcd_fifo(0x00011038); lcd_fifo(0x200);
+lcd_fifo(0x00024050); lcd_fifo(0x000A0014);
+const partial = panel.get_state(); panel.reset(); panel.set_state(partial);
+assert.equal(display.read(0x1038), 0x100);
+panel.on_vblank();
+assert.equal(display.read(0x1048), 0, "an incomplete command cannot complete at retrace");
+lcd_fifo(0x028003C0);
+const queued = panel.get_state(); panel.reset(); panel.set_state(queued);
+assert.equal(display.read(0x1038), 0x100, "the complete batch waits for retrace");
+panel.on_vblank();
+assert.equal(display.read(0x1038), 0x200);
+assert.equal(display.read(0x4050), 0x000A0014);
+assert.equal(display.read(0x4054), 0x028003C0);
+assert.equal(display.read(0x1048), 9);
+assert.equal(display.read(0x102C), 0x101);
+display.write(0x102C, 4, 1);
+assert.equal(display.read(0x102C), 0x100, "the filter's retrace acknowledgement preserves completion status");
+display.write(0x102C, 4, 0x100);
+assert.equal(display.read(0x102C), 0);
+assert.equal(display.read(0x1044), 0, "the command FIFO has no queued words after synchronous draining");
+lcd_fifo(0x8003000A); lcd_fifo(0x00014044); lcd_fifo(0x40010000); // incomplete final run
+panel.on_vblank(); assert.equal(display.read(0x1048), 9);
+display.write(0x1050, 4, 1);
+display.write(0x1034, 4, 0xFFFE);
+lcd_fifo(0xA0020000); lcd_fifo(0x00014044); lcd_fifo(0x40010000);
+const scheduled = panel.get_state(); panel.reset(); panel.set_state(scheduled);
+panel.on_vblank();
+assert.equal(display.read(0x1034), 0xFFFF);
+assert.equal(display.read(0x1048), 9, "a scheduled batch waits for the requested retrace");
+assert.notEqual(display.read(0x4044), 0x40010000);
+panel.on_vblank();
+assert.equal(display.read(0x1034), 0, "the hardware retrace counter is 16-bit");
+assert.equal(display.read(0x1048), 0);
+assert.equal(display.read(0x4044), 0x40010000);
+assert.equal(display.read(0x102C) & 0x100, 0x100);
+panel.reset(); panel.set_state(queued.slice(0, 4));
+assert.equal(panel.command, null); assert.equal(panel.commands.length, 0);
+console.log("PASS: CLCD tagged register batches, retrace completion, filter/action status and partial/queued snapshots");
+
+// ADC completion arrives through PMU status byte 2, GPIO 13, then VIC3.
+vic.reset();
+const gpio = new AppleGPIO(cpu, vic);
+const adc = new AppleI2C(cpu, 0x83200000, 19, vic, true, null, () => gpio.pulse(13));
+intc.write(0x30010, 4, 1 << 20);
+adc.write(0, 0x74);
+adc.write(0x10, 0x30);
+adc.write(0x18, 1);
+adc.write(0x20, 0x12);
+adc.write(0x24, 5);
+assert.equal(signals, 0);
+gpio.write(0x840, 1 << 13);
+assert.equal(signals, 1);
+assert.equal(gpio.read(0xC00), 1);
+assert.equal(gpio.read(0x880), 1 << 13);
+const pendingGPIO = gpio.get_state();
+gpio.write(0x880, 1 << 13);
+assert.equal(signals, 0);
+gpio.set_state(pendingGPIO);
+assert.equal(signals, 1);
+gpio.write(0x880, 1 << 13);
+adc.write(0x10, 1);
+adc.write(0x18, 6);
+adc.write(0x24, 4);
+assert.equal(adc.fifo[1], 0x20);
+adc.write(0x24, 4);
+assert.equal(adc.fifo[1], 0);
+console.log("PASS: PMU ADC status, masked GPIO event, VIC3 delivery and snapshot restore");
+
+let rtc_seconds = 0x12345678;
+const rtc = new AppleI2C({ ...cpu, clock: { wall_time: () => rtc_seconds * 1000 } },
+    0x83700000, 19, vic, true);
+const rtc_port = ports.get(0x83700000);
+const rtc_transfer = (reg, bytes) => {
+    rtc.write(0, 0x74); rtc.write(0x10, reg); rtc.write(0x18, 4);
+    if(bytes) bytes.forEach(byte => rtc.write(0x20, byte));
+    rtc.write(0x24, bytes ? 5 : 4);
+    if(!bytes) return Array.from({ length: 4 }, () => rtc_port.read(0x20));
+};
+assert.deepEqual(rtc_transfer(0x4C), [0x78, 0x56, 0x34, 0x12]);
+rtc_seconds++;
+assert.deepEqual(rtc_transfer(0x4C), [0x79, 0x56, 0x34, 0x12]);
+rtc_transfer(0x84, [5, 4, 3, 2]);
+const rtc_state = rtc.get_state();
+rtc.reset(); assert.deepEqual(rtc_transfer(0x84), [5, 4, 3, 2]);
+rtc_transfer(0x84, [0, 0, 0, 0]);
+rtc.set_state(rtc_state); assert.deepEqual(rtc_transfer(0x84), [5, 4, 3, 2]);
+console.log("PASS: D1815 seconds counter, persistent clock offset, reset and restore");
+
+// Button state is external to writable GPIO configuration. Both
+// transitions latch events, with held keys preserved by a snapshot.
+for(const [pin, name] of N90_BUTTONS.entries())
+{
+    gpio.reset();
+    assert.equal(gpio.read(pin * 4) & 1, 1);
+    gpio.write(pin * 4, 0);
+    assert.equal(gpio.read(pin * 4) & 1, 1);
+    gpio.write(0x840, 1 << pin);
+    gpio.set_button(name, true);
+    assert.equal(gpio.read(pin * 4) & 1, 0);
+    assert.equal(signals, 1);
+    const held = gpio.get_state();
+    gpio.write(0x880, 1 << pin);
+    gpio.set_button(name, true);
+    assert.equal(signals, 0);
+    gpio.set_button(name, false);
+    assert.equal(gpio.read(pin * 4) & 1, 1);
+    assert.equal(signals, 1);
+    gpio.set_state(held);
+    assert.equal(gpio.read(pin * 4) & 1, 0);
+    gpio.set_state(held.slice(0, 3));
+    assert.equal(gpio.read(pin * 4) & 1, 1);
+}
+console.log("PASS: five N90 active-low button inputs, both GPIO edges and old/new snapshots");
+
+const { AppleH2FMI } = await import("../../src/apple/h2fmi.js");
+// Shorten only slices following an actual firmware poll of outstanding
+// host I/O. Once the read completes, resume at the normal budget.
+const budgets = [], hostOps = new Map([[0, {}]]);
+const pollingCPU = { io: { register_mmio() {} }, wm: { exports: {
+    a32_iop_remap() {},
+    a32_iop_slice(budget) { budgets.push(budget); if(hostOps.size) iop.wait_for_io(hostOps); return true; },
+} } };
+const iop = new AppleIOP(pollingCPU);
+iop.running = true;
+iop.wait_for_io(hostOps); // a read by the application CPU
+assert.equal(iop.run(), false, "pending host I/O yields rather than busy-polling");
+assert.equal(iop.run(), false);
+hostOps.clear();
+assert.equal(iop.run(), true, "the IOP remains runnable after exhausting its budget");
+assert.deepEqual(budgets, [4096, 32, 4096]);
+let iop_wakes = 0;
+pollingCPU.stop_idling = () => iop_wakes++;
+iop.vic.signal(true, false);
+iop.vic.signal(true, false);
+assert.equal(iop_wakes, 1, "a new IOP interrupt wakes the machine, a held level does not reschedule it");
+iop.vic.signal(false, false);
+iop.vic.signal(false, true);
+assert.equal(iop_wakes, 2);
+
+const fmi = new AppleH2FMI(cpu, 0x81200000);
+const ids = new Uint8Array(256);
+ids.set([0xEC, 0xD7, 0x94, 0x72]);
+fmi.configure(ids, 0);
+const seq = ports.get(0x81240000), fifo = ports.get(0x81200000);
+seq.write(12, 4, 1);
+seq.write(0x14, 4, 0x90);
+seq.write(0x10, 4, 9);
+assert.equal(seq.read(0x44), 9);
+seq.write(0x44, 4, 9);
+assert.equal(seq.read(0x44), 0);
+fifo.write(4, 4, 3);
+assert.equal(fifo.read(12), 2);
+assert.equal(fifo.read(0x14), 0x7294D7EC);
+assert.equal(fifo.read(0x14), 0);
+seq.write(12, 4, 2);
+seq.write(0x10, 4, 9);
+assert.equal(fifo.read(0x14), 0xFFFFFFFF);
+console.log("PASS: H2FMI chip select, READ ID, absent CE and completion acknowledgement");
+
+let presented, displayUpdates = 0;
+const frameBytes = 640 * 960 * 4, displayRAM = new Uint8Array(frameBytes * 2);
+cpu.mem8 = displayRAM;
+cpu.ram_offset = () => 0;
+hub.update_buffer = layers => { presented = layers[0].pixels.data; displayUpdates++; };
+const backlight = new AppleI2C(cpu, 0x83200000, 19, vic, true, level => panel.set_backlight(level));
+const screenStates = [];
+cpu.bus = { send(name, state) { if(name === "ios-screen-state") screenStates.push(state); } };
+displayRAM.set([0x20, 0x40, 0x80, 0]);
+panel.on_vblank();
+assert.equal(presented, undefined, "retrace does not scan an unrequested framebuffer");
+panel.render();
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [128, 64, 32, 255]);
+displayRAM.set([0x21, 0x41, 0x81, 0]);
+panel.on_vblank();
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [128, 64, 32, 255]);
+panel.render();
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [129, 65, 33, 255], "a requested frame sees intervening guest stores");
+const updatesBeforeTag = displayUpdates;
+lcd_fifo(0x8002002A); lcd_fifo(0x00014044); lcd_fifo(0x40010000);
+panel.on_vblank(); panel.render();
+assert.equal(display.read(0x1048), 42, "an unchanged surface still completes its native tag");
+assert.equal(displayUpdates, updatesBeforeTag, "a tag does not force a full recolor and upload");
+displayRAM.set([0x56, 0x34, 0x12, 0], frameBytes);
+cpu.ram_offset = base => base === 0x40020000 ? frameBytes : 0;
+lcd_fifo(0x8002002B); lcd_fifo(0x00014044); lcd_fifo(0x40020000);
+panel.on_vblank(); panel.render();
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [0x12, 0x34, 0x56, 255], "a changed scanout base compares the new pixels");
+assert.equal(displayUpdates, updatesBeforeTag + 1);
+cpu.ram_offset = () => 0;
+displayRAM.set([0x20, 0x40, 0x80, 0]);
+backlight.write(0, 0x74);
+backlight.write(0x10, 0x68);
+backlight.write(0x18, 1);
+backlight.write(0x20, 0);
+backlight.write(0x24, 5);
+panel.render();
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [0, 0, 0, 255]);
+assert.equal(screenStates.at(-1).awake, false);
+backlight.write(0x20, 0x15);
+backlight.write(0x24, 5);
+panel.render();
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [128, 64, 32, 255]);
+assert.equal(screenStates.at(-1).awake, true);
+console.log("PASS: PMU backlight off/on changes displayed pixels and preserves guest VRAM");
+
+displayRAM.fill(0); panel.render(1000);
+const blackUpdates = displayUpdates;
+displayRAM.set([0x56, 0x34, 0x12, 0]);
+panel.render(1010);
+assert.equal(displayUpdates, blackUpdates, "an unchanged black panel probes at 10 Hz");
+panel.render(1100);
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [0x12, 0x34, 0x56, 255], "CPU pixels become visible within 100 ms");
+displayRAM.fill(0); panel.render(1200);
+const post = new Uint8Array(frameBytes); post.set([0x70, 0x50, 0x30, 255]);
+cpu.write_blob_physical = (bytes, physical) => displayRAM.set(bytes, cpu.ram_offset(physical, bytes.length));
+panel.present(post, 640, 960); panel.render(1201);
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [0x70, 0x50, 0x30, 255], "a real GPU post bypasses the black-panel probe delay");
+console.log("PASS: unchanged CLCD tags, changed scanout base and bounded black-panel probing");
+
+dsim.write(0x34, 4, 0x2805);
+const sleepingPanel = panel.get_state();
+panel.reset(); panel.set_state(sleepingPanel);
+cpu.ram_offset = () => -1; // iOS tears down the scanout window during sleep
+panel.render();
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [0, 0, 0, 255]);
+cpu.ram_offset = () => 0;
+displayRAM.set([0x64, 0x52, 0x38, 0]);
+dsim.write(0x34, 4, 0x2905);
+panel.render();
+assert.deepEqual(Array.from(presented.subarray(0, 4)), [0x38, 0x52, 0x64, 255]);
+console.log("PASS: DSI display-off clears the unmapped panel after restore and display-on repaints it");
+
+// The real IOP starts CDMA before the boot-page transfer but after the
+// full-page transfer request. Both orders see the same descriptor/data.
+const memory = new Uint8Array(4096), received = [];
+const controllerCPU = {
+    io: { register_mmio() {} }, mem8: memory,
+    ram_offset: (a, n) => a >= 0 && a + n <= memory.length ? a : -1,
+    write_blob_physical: (bytes, a) => memory.set(bytes, a),
+    read_blob_physical: (a, n) => memory.subarray(a, a + n),
+};
+const channelDMA = new AppleCDMA(controllerCPU, (n, level) => received.push([n, level]));
+let completeRead;
+const media = { read(bus, ce, row, done) {
+    assert.deepEqual([bus, ce, row], [0, 0, 0x10203]);
+    completeRead = done;
+} };
+const flashPort = new AppleH2FMI(controllerCPU, 0x81200000, 0, media, () => {}, channelDMA);
+flashPort.configure(ids, 0);
+const descriptor = new DataView(memory.buffer);
+descriptor.setUint32(0x104, 0x103, true);
+descriptor.setUint32(0x108, 0x200, true);
+descriptor.setUint32(0x10C, 4, true);
+const issue = () => {
+    flashPort.write(0x100C, 1);
+    flashPort.write(0x1018, 0x02030002);
+    flashPort.write(0x101C, 1);
+    flashPort.write(0x1014, 0x3000);
+    flashPort.write(0x1010, 11);
+};
+const arm = () => {
+    channelDMA.write(0x5008, 0x81200014);
+    channelDMA.write(0x500C, 4);
+    channelDMA.write(0x5014, 0x100);
+    channelDMA.write(0x5000, 0x1C0009);
+};
+for(const early of [true, false])
+{
+    flashPort.reset();
+    issue();
+    assert.equal(flashPort.read(0x1044), 0);
+    completeRead(Uint8Array.of(0, 1, 11, 22, 33, 44));
+    assert.equal(flashPort.read(0x1044), 11);
+    memory.fill(0, 0x200, 0x204);
+    if(early) arm();
+    flashPort.write(4, 3);
+    if(!early) arm();
+    assert.deepEqual(Array.from(memory.subarray(0x200, 0x204)), [11, 22, 33, 44]);
+    assert.equal(channelDMA.read(0x5000), 0x80008);
+    assert.deepEqual(received.at(-1), [5, true]);
+    channelDMA.write(0x5000, 0x80000);
+    assert.deepEqual(received.at(-1), [5, false]);
+}
+issue();
+flashPort.reset();
+completeRead(Uint8Array.of(99));
+assert.equal(flashPort.read(0x1044), 0, "stale read cannot complete after reset");
+console.log("PASS: NAND row/column, async completion, both CDMA request orders and reset during read");
+
+// The firmware sends data and spare bytes via separate scatterlists, then
+// acknowledges command delivery before polling the selected NAND chip.
+let programmed = null, finishProgram, erasedRow;
+media.program = (bus, ce, row, page, done) => {
+    assert.deepEqual([bus, ce, row], [0, 0, 0x10203]);
+    programmed = page;
+    finishProgram = done;
+};
+media.erase = (bus, ce, row, done) => { erasedRow = row; done(); };
+flashPort.reset();
+issue();
+completeRead(Uint8Array.of(0, 1, 90, 91, 92, 93));
+flashPort.write(0x1044, 11);
+flashPort.write(4, 3);
+flashPort.write(4, 6); // IOP resets both FIFOs before arming the program channels
+arm();
+assert.equal(channelDMA.read(0x500C), 4, "a previous read must not consume the next program descriptor");
+flashPort.write(0x100C, 1);
+flashPort.write(0x1018, 0x02030002);
+flashPort.write(0x101C, 1);
+flashPort.write(0x1014, 0x80);
+flashPort.write(0x1010, 9);
+assert.equal(flashPort.read(0x1044), 9);
+flashPort.write(0x1044, 9);
+flashPort.write(0, 0xF5);
+flashPort.write(4, 5);
+channelDMA.write(0x6008, 0x81200018);
+channelDMA.write(0x600C, 4);
+channelDMA.write(0x6014, 0x100);
+channelDMA.write(0x6000, 9);
+flashPort.write(0x1014, 0x1000);
+flashPort.write(0x1010, 2);
+assert.deepEqual(Array.from(programmed.subarray(0, 6)), [255, 255, 11, 22, 33, 44]);
+assert.deepEqual(Array.from(programmed.subarray(8192, 8196)), [11, 22, 33, 44]);
+assert.equal(flashPort.read(0x1044), 2);
+flashPort.write(0x1044, 2);
+flashPort.write(0x1014, 0x70);
+flashPort.write(0x1010, 0x50);
+assert.equal(flashPort.read(0x1048), 0x80, "program is still busy after the sequencer interrupt");
+flashPort.write(0x1044, 0x20);
+finishProgram();
+assert.equal(flashPort.read(0x1044), 0, "host completion must not repeat the sequencer interrupt");
+flashPort.write(0x1010, 0x50);
+assert.equal(flashPort.read(0x1048), 0xC0);
+flashPort.write(0x1044, 0x20);
+flashPort.write(0x1018, 0x10200);
+flashPort.write(0x1014, 0xD060);
+flashPort.write(0x1010, 11);
+assert.equal(erasedRow, 0x10200);
+assert.equal(flashPort.read(0x1044), 11);
+console.log("PASS: NAND program payload, spare DMA, confirm, asynchronous completion and block erase");
+
+// A page can end halfway through a descriptor. Restoring at that point
+// must resume at the saved byte and interrupt only after the final page.
+descriptor.setUint32(0x100, 0x120, true);
+descriptor.setUint32(0x104, 3, true);
+descriptor.setUint32(0x10C, 6, true);
+descriptor.setUint32(0x124, 0x103, true);
+descriptor.setUint32(0x128, 0x220, true);
+descriptor.setUint32(0x12C, 2, true);
+channelDMA.write(0x500C, 8);
+channelDMA.write(0x5014, 0x100);
+channelDMA.write(0x5000, 9);
+const port = 0x81200014;
+channelDMA.transfer(port, Uint8Array.of(1, 2, 3, 4), true);
+assert.equal(channelDMA.read(0x500C), 4);
+assert.equal(channelDMA.read(0x5000), 9);
+const dmaState = channelDMA.get_state();
+channelDMA.reset();
+channelDMA.set_state(dmaState);
+channelDMA.transfer(port, Uint8Array.of(5, 6, 7, 8), true);
+assert.equal(channelDMA.read(0x5000), 0x80008);
+assert.deepEqual([...memory.subarray(0x200, 0x206), ...memory.subarray(0x220, 0x222)], [1, 2, 3, 4, 5, 6, 7, 8]);
+console.log("PASS: CDMA burst resumes inside a scatterlist descriptor after snapshot restore");
+
+// The IOP refills a descriptor list when it receives the completion IRQ
+// with bytes still outstanding. Place that boundary inside one FIFO read.
+flashPort.reset();
+issue();
+completeRead(Uint8Array.of(0, 0, 15, 16, 17, 18));
+descriptor.setUint32(0x104, 0x103, true);
+descriptor.setUint32(0x108, 0x200, true);
+descriptor.setUint32(0x10C, 2, true);
+arm();
+flashPort.write(4, 3);
+assert.equal(channelDMA.read(0x5000), 0x80008);
+assert.equal(channelDMA.read(0x500C), 2);
+assert.deepEqual([...memory.subarray(0x200, 0x202)], [15, 16]);
+flashPort.set_state(flashPort.get_state());
+channelDMA.set_state(channelDMA.get_state());
+descriptor.setUint32(0x108, 0x220, true);
+channelDMA.write(0x5000, 0x80000);
+channelDMA.write(0x5000, 9);
+assert.deepEqual([...memory.subarray(0x220, 0x222)], [17, 18]);
+assert.equal(channelDMA.read(0x500C), 0);
+assert.equal(channelDMA.read(0x5000), 0x80008);
+console.log("PASS: NAND CDMA list refill interrupts preserve residual count and FIFO position across restore");
+
+// A fast spare channel must not advance the IOP to another NAND row
+// while the data channel is stopped for its descriptor refill interrupt.
+flashPort.reset();
+flashPort.write(0, 0xF5);
+issue();
+const fullRow = new Uint8Array(8192 + 436);
+fullRow.set([21, 22, 23, 24], 2);
+completeRead(fullRow);
+channelDMA.write(0x600C, 2);
+channelDMA.write(0x6000, 9);
+flashPort.write(4, 3);
+assert.equal(channelDMA.read(0x600C), 0);
+assert.equal(flashPort.read(0xC) & 2, 0, "read completion waits for the data channel");
+channelDMA.write(0x500C, 2);
+channelDMA.write(0x5000, 9);
+assert.equal(flashPort.read(0xC) & 2, 2);
+console.log("PASS: spare completion waits for NAND data DMA before retiring the read");
+
+// Reads on separate CEs may overlap. Switching back before draining the
+// FIFO must select that chip's row even after saving and restoring.
+const callbacks = [];
+const banks = new AppleH2FMI(controllerCPU, 0x81200000, 0, {
+    read(bus, ce, row, done) { callbacks[ce] = done; },
+}, () => {}, channelDMA);
+const twoIds = new Uint8Array(256);
+twoIds[0] = twoIds[8] = 0xEC;
+banks.configure(twoIds, 0);
+for(const mask of [1, 2])
+{
+    banks.write(0x100C, mask);
+    banks.write(0x1014, 0x3000);
+    banks.write(0x1010, 11);
+}
+callbacks[1](Uint8Array.of(22, 0, 0, 0));
+callbacks[0](Uint8Array.of(11, 0, 0, 0));
+const bankState = banks.get_state();
+banks.reset();
+banks.set_state(bankState);
+for(const [mask, byte] of [[2, 22], [1, 11]])
+{
+    banks.write(0x100C, mask);
+    assert.equal(banks.read(0x14), byte);
+}
+console.log("PASS: interleaved chip read registers survive out-of-order completions and restore");
+
+// A chip can prepare its next page while another chip's stream is
+// waiting for a DMA descriptor. Retain the FIFO source across restore.
+channelDMA.reset();
+descriptor.setUint32(0x108, 0x200, true);
+descriptor.setUint32(0x10C, 4, true);
+banks.write(0, 0xF5);
+banks.write(0x100C, 1);
+banks.write(4, 3);
+banks.write(0x100C, 2);
+banks.write(0x1014, 0x3000);
+banks.write(0x1010, 11);
+callbacks[1](Uint8Array.of(99, 98, 97, 96));
+banks.set_state(banks.get_state());
+arm();
+assert.deepEqual([...memory.subarray(0x200, 0x204)], [11, 0, 0, 0], "descriptor must drain the armed chip");
+assert.equal(banks.read(0x14), 0x60616263, "the newly prepared chip remains available");
+console.log("PASS: chip prefetch preserves the active NAND DMA stream");
+
+// An erase on CE1 can overlap an array read on CE0. NAND STATUS is
+// chip-local; completing one operation must not discard the other one's IRQ.
+let finishErase;
+banks.nand.erase = (_bus, _ce, _row, done, fail) => { finishErase = { done, fail }; };
+banks.reset();
+banks.write(0x100C, 1);
+banks.write(0x1014, 0x3000);
+banks.write(0x1010, 11);
+banks.write(0x1014, 0x70);
+assert.equal(banks.read(0x1024) & 0x40, 0, "CE0 stays busy until its read completes");
+banks.write(0x100C, 2);
+assert.equal(banks.read(0x1024), 0xC0, "CE1 is independently ready");
+banks.write(0x1014, 0xD060);
+banks.write(0x1010, 9);
+assert.equal(banks.read(0x1044), 0, "erase does not release the sequencer while its host block is pending");
+callbacks[0](Uint8Array.of(31, 0, 0, 0));
+assert.equal(banks.read(0x1044), 11);
+banks.write(0x1044, 11);
+banks.write(0x1014, 0x70);
+assert.equal(banks.read(0x1024) & 0x40, 0, "CE1 is still erasing");
+finishErase.fail();
+assert.equal(banks.read(0x1044), 9, "erase retires exactly once, even on failure");
+banks.write(0x1044, 9);
+assert.equal(banks.read(0x1024), 0xC1);
+const failedState = banks.get_state();
+banks.reset();
+banks.set_state(failedState);
+assert.equal(banks.read(0x1024), 0xC1);
+banks.write(0x100C, 1);
+assert.equal(banks.read(0x1024), 0xC0);
+banks.write(0x1014, 0);
+assert.equal(banks.read(0x14), 31);
+console.log("PASS: overlapping read and erase keep separate ready, fail and completion state per NAND chip");
+
+// Boot-page programs do not use CDMA. 10B329 polls the TX FIFO before
+// writing three 512-byte sectors, acknowledging each one independently.
+flashPort.reset();
+flashPort.write(0, 0xF0);
+flashPort.write(0x100C, 1);
+flashPort.write(0x1018, 0x02030000);
+flashPort.write(0x101C, 1);
+flashPort.write(0x1014, 0x80);
+flashPort.write(0x1010, 9);
+for(let sector = 0; sector < 3; sector++)
+{
+    flashPort.write(4, 5);
+    assert.equal(flashPort.read(0x1C) & 0x18, 0x18);
+    for(let word = 0; word < 128; word++)
+    {
+        if(sector === 1 && word === 99)
+        {
+            const state = flashPort.get_state();
+            flashPort.reset();
+            flashPort.set_state(state);
+        }
+        flashPort.write(0x14, sector * 128 + word);
+    }
+    assert.equal(flashPort.read(0x1C) & 0x18, 0);
+    assert.equal(flashPort.read(0xC) & 2, 2);
+    flashPort.write(0xC, 2);
+}
+flashPort.write(0x1014, 0x1000);
+flashPort.write(0x1010, 2);
+for(let i = 0; i < 384; i++)
+    assert.equal(new DataView(programmed.buffer, programmed.byteOffset).getUint32(i * 4, true), i);
+assert.ok(programmed.subarray(1536).every(b => b === 255));
+finishProgram();
+console.log("PASS: PIO boot-page programming, individual FIFO sectors and snapshot during a sector");
+
+// The guest AES driver first configures both channels without START and
+// then reads each control register back to set START. Both AP IRQs fire.
+const aesPorts = new Map(), aesIrqs = [];
+const pair = new AppleCDMA({ ...controllerCPU, io: { register_mmio(base, len, port) { aesPorts.set(base, port); } } },
+    (n, level) => aesIrqs.push([n, level]));
+const aesPort = aesPorts.get(0x87800000), cdmaPort = aesPorts.get(0x87000000);
+const wr = (offset, value) => cdmaPort.write(offset, 4, value);
+function pairTransfer(config, key, iv, input)
+{
+    for(let i = 0; i < 4; i++) aesPort.write(0x1010 + 4 * i, 4, iv.readUInt32LE(i * 4));
+    for(let i = 0; i < key.length; i += 4) aesPort.write(0x1020 + i, 4, key.readUInt32LE(i));
+    aesPort.write(0x1000, 4, config);
+    memory.set(input, 0x400);
+    for(const [n, addr, mode] of [[1, 0x400, 0x188], [2, 0x600, 0x88]])
+    {
+        const d = 0x300 + n * 16;
+        descriptor.setUint32(d, 0, true);
+        descriptor.setUint32(d + 4, n === 1 ? 0x30103 : 0x103, true);
+        descriptor.setUint32(d + 8, addr, true);
+        descriptor.setUint32(d + 12, input.length, true);
+        wr(n * 4096, 2);
+        wr(n * 4096 + 20, d);
+        wr(n * 4096, mode);
+        wr(n * 4096 + 12, input.length);
+        assert.equal(pair.read(n * 4096), mode);
+    }
+    wr(0x1000, pair.read(0x1000) | 1);
+    assert.equal(pair.read(0x100C), input.length);
+    wr(0x2000, pair.read(0x2000) | 1);
+    assert.deepEqual(aesIrqs.slice(-2), [[1, true], [2, true]]);
+    for(const n of [1, 2])
+    {
+        assert.ok(pair.read(n * 4096) & 0x80000);
+        assert.equal(pair.read(n * 4096 + 12), 0);
+    }
+    return Buffer.from(memory.subarray(0x600, 0x600 + input.length));
+}
+const blockIV = Buffer.from("000102030405060708090a0b0c0d0e0f", "hex");
+const blockKey = Buffer.from("2b7e151628aed2a6abf7158809cf4f3c", "hex");
+const clear = Buffer.from("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51", "hex");
+const encrypted = Buffer.from("7649abac8119b246cee98e9b12e9197d5086cb9b507219ee95db113a917678b2", "hex");
+assert.deepEqual(pairTransfer(0x130100, blockKey, blockIV, clear), encrypted);
+assert.deepEqual(pairTransfer(0x120100, blockKey, blockIV, encrypted), clear);
+const uid835 = pairTransfer(0x030100, Buffer.alloc(0), Buffer.alloc(16), Buffer.alloc(16, 1));
+assert.equal(uid835.toString("hex"), "75cbb019857f831fffd9e66d0110f2a9");
+console.log("PASS: paired CDMA AES-CBC encrypt/decrypt, fixed N90 UID derivation and both completion interrupts");
+
+let nativeOff = 0;
+const offPMU = new AppleI2C(cpu,0x83200000,19,vic,true,null,null,null,()=>nativeOff++);
+function offRegister(value)
+{
+    offPMU.write(0,0x74); offPMU.write(0x10,0x12); offPMU.write(0x18,1);
+    offPMU.write(0x20,value); offPMU.write(0x24,5);
+}
+offRegister(0x10); assert.equal(nativeOff,0);
+offRegister(0x11); assert.equal(nativeOff,1);
+offRegister(0x11); assert.equal(nativeOff,1,"a held OOCSHDWN bit does not request power twice");
+const offState=offPMU.get_state();offPMU.reset();offPMU.set_state(offState);
+assert.equal(nativeOff,1,"restoring registers does not replay a hardware write");
+offPMU.reset();offRegister(0x11);assert.equal(nativeOff,2);
+console.log("PASS: D1815 native shutdown edge, ordinary control writes and snapshot without replay");

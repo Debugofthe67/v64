@@ -103,6 +103,14 @@ GLESHost.prototype.reset = function()
     this.stats = { batches: 0, bytes: 0, records: 0, refused: 0, reads: 0, throttled: 0, frames: 0, cpu_ms: 0 };
     /** @type {!Map<string, number>} refused calls by name and the error they left */
     this.refused = new Map();
+    // Queries can also set a GL error. Keep the first failures with scalar
+    // arguments so a compositor's later glGetError is diagnosable. Never
+    // retain guest uploads or unbounded history.
+    this.errors = [];
+    // Host diagnostics, deliberately outside the snapshot. A native frame
+    // is a successful contiguous read of the entire drawable, not a VBL
+    // interrupt, a read of its last row, or an rAF callback.
+    this.iosurface_reads = new WeakMap();
     if(this.renderer) this.renderer.post({ "type": "reset" });
 };
 
@@ -199,7 +207,11 @@ function is_query(name)
  */
 GLESHost.prototype.gl_call = function(conn, command, args, bytes)
 {
+    const context = this.shadow.context(conn.context), previous_error = context?.error;
     const { ret, keep } = this.shadow.call(conn.context, command, args);
+    if(context && !previous_error && context.error && this.errors.length < 32)
+        this.errors.push({ context: conn.context, command: command.name, error: context.error,
+            args: args.slice(0, 8).map(value => typeof value === "number" ? value : null) });
     if(command.name === "glReadPixels" || command.name === "glReadnPixelsEXT")
     {
         if(!keep) return ret;
@@ -265,6 +277,30 @@ GLESHost.prototype.gl_call = function(conn, command, args, bytes)
 /** renderControl's call, and what the page or the guest waits on */
 GLESHost.prototype.rc_call = function(conn, command, args)
 {
+    if(command.name === "v86ReadIOSurface")
+    {
+        const [handle, y, rows, flip, pixels] = args, cb = this.rc.color_buffers.get(handle);
+        const owner = conn.puid === null ? "c" + conn.id : "p" + conn.puid;
+        if(!cb || !cb.iosurface || !cb.refs.has(owner) || flip > 1 || !rows ||
+            y > cb.height || rows > cb.height - y || pixels.size !== cb.width * rows * 4) return 0;
+        const request = this.request(pixels, true);
+        const started = performance.now();
+        this.record(GLES.IOSURFACE_READ, [handle, y, rows, flip, request.id]);
+        this.flush();
+        return request.done.then(ok => {
+            let meter = this.iosurface_reads.get(cb);
+            if(!meter) this.iosurface_reads.set(cb, meter = { frames: 0, strips: 0, bytes: 0, readback_ms: 0, next_y: 0 });
+            meter.readback_ms += performance.now() - started;
+            if(!ok) { meter.next_y = 0; return 0; }
+            meter.strips++;
+            meter.bytes += pixels.size;
+            if(y === 0) { meter.next_y = 0; meter.connection = conn.id; meter.flip = flip; }
+            if(y !== meter.next_y || conn.id !== meter.connection || flip !== meter.flip)
+                meter.next_y = 0;
+            else if((meter.next_y += rows) === cb.height) { meter.frames++; meter.next_y = 0; }
+            return 1;
+        });
+    }
     if(command.name === "rcReadColorBuffer")
     {
         const [color_buffer, x, y, width, height, format, type, pixels] = args;
@@ -289,6 +325,19 @@ GLESHost.prototype.rc_call = function(conn, command, args)
     }
     if(this.writer.size() > FLUSH_BYTES) this.flush();
     return ret;
+};
+
+/** Bounded counters for live native drawables; no GL calls or readbacks. */
+GLESHost.prototype.performance = function()
+{
+    const drawables = [];
+    for(const [handle, cb] of this.rc.color_buffers)
+    {
+        const meter = this.iosurface_reads.get(cb);
+        if(meter) drawables.push({ handle, width: cb.width, height: cb.height,
+            frames: meter.frames, strips: meter.strips, bytes: meter.bytes, readback_ms: meter.readback_ms });
+    }
+    return { drawables };
 };
 
 /** renderControl's objects and frames: the shadow state follows, the page gets records */
@@ -384,9 +433,10 @@ GLESHost.prototype.throttle = function(value)
  * A read the page answers: its id, and the promise of its answer (the
  * bytes into `out`, zeros if the page has none)
  * @param {!Object} out an OutBuffer
+ * @param {boolean=} status resolve to whether the complete reply arrived
  * @return {{id: number, done: !Promise}}
  */
-GLESHost.prototype.request = function(out)
+GLESHost.prototype.request = function(out, status = false)
 {
     const id = this.next_request++;
     this.stats.reads++;
@@ -394,7 +444,7 @@ GLESHost.prototype.request = function(out)
     const done = new Promise(resolve => this.requests.set(id, bytes =>
     {
         if(bytes) out.data.set(bytes.subarray(0, out.size));
-        resolve(undefined);
+        resolve(status ? !!bytes && bytes.length === out.size : undefined);
     }));
     return { id, done };
 };
@@ -492,7 +542,7 @@ GLESHost.prototype.get_state = function()
         shadow: this.shadow.get_state(),
         next_connection: this.next_connection, next_puid: this.next_puid, connections: this.connections, processes: this.processes,
         closed_counts: this.closed_counts, closed_unknown: this.closed_unknown, closed_malformed: this.closed_malformed,
-        closed_failed: this.closed_failed, stats: this.stats, refused: this.refused,
+        closed_failed: this.closed_failed, stats: this.stats, refused: this.refused, errors: this.errors,
     }, { classes: SHADOW_CLASSES, skip: shadow_skip });
     const page = this.page_state;
     this.page_state = null;
@@ -514,7 +564,7 @@ GLESHost.prototype.set_state = function(state)
     Object.assign(this.rc, saved.rc);
     this.shadow.set_state(saved.shadow);
     for(const key of ["next_connection", "next_puid", "connections", "processes", "closed_counts", "closed_unknown", "closed_malformed",
-        "closed_failed", "stats", "refused"])
+        "closed_failed", "stats", "refused", "errors"])
     {
         if(saved[key] !== undefined) this[key] = saved[key];
     }
@@ -551,6 +601,6 @@ GLESHost.prototype.summary = function()
         connections: this.connections, open_connections: this.streams.size, processes: this.processes,
         counts: sorted(counts), unknown: sorted(unknown), malformed: sorted(malformed), failed: sorted(failed), broken, dropped_bytes,
         render_control: this.rc.summary(), batches: Object.assign({ submitted: this.submitted, completed: this.completed }, this.stats),
-        shaders: this.shadow.stats, refused: sorted(this.refused),
+        shaders: this.shadow.stats, refused: sorted(this.refused), errors: this.errors.slice(),
     };
 };

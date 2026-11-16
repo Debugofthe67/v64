@@ -1,0 +1,55 @@
+{
+  "date": "2026-11-15",
+  "scope": "G4 RG16F fragment texture support exposed by the first original06 HDR draw. Full default-six and IQ gates remain pending.",
+  "nativeFirstFault": {
+    "run": "build/nv40-xp-mark06-default6-no-saver",
+    "elapsedSeconds": 5094.075439167,
+    "draws": 174358,
+    "gpuFailures": 0,
+    "reason": "NV40 texture format is not connected: 31",
+    "drawMethod": "Curie END1808; PGRAPH stops with source100/status4000, so zero renderer failures alone does not indicate a healthy run.",
+    "textureUnits": [
+      {
+        "unit": 10,
+        "format": "0xbbf2a",
+        "pitch": 8192,
+        "crossbar": "0xaae4"
+      },
+      {
+        "unit": 11,
+        "format": "0xbbf2a",
+        "pitch": 8192,
+        "crossbar": "0xaae4"
+      }
+    ],
+    "failureBundle": "build/nv40-xp-mark06-default6-no-saver/checkpoint-hdr-format31-failure.state.bundle.json",
+    "capturedDrawSHA256": "c4f68741b827c6e316a3ad2a5b7e6f4f929e2b3349fefaf6f2644c5e72aad5d2"
+  },
+  "formatReference": {
+    "canonical": "https://gitlab.freedesktop.org/mesa/mesa/-/blob/main/src/gallium/drivers/nouveau/nv30/nv30_format.c",
+    "sourceMirror": "https://github.com/chaotic-cx/mesa-mirror/blob/main/src/gallium/drivers/nouveau/nv30/nv30_format.c",
+    "sourceSHA256": "c217ab19b392c8e8def446d0b59ecb18c3bbf62d444679dc61a291e078d915a3",
+    "definition": "NV40_3D_TEX_FORMAT_FORMAT_RG16F=00001f00; PIPE_FORMAT_R16G16_FLOAT uses two half components and a crossbar with literalB0/A1."
+  },
+  "change": [
+    "Read four guest bytes per texel,retain paired half storage lanes through the component crossbar,and upload checked RGBA16F without converting through UNORM or Float32.",
+    "Reuse checked linear/Morton/cube/volume addressing,padded mip layouts and exact-byte cache; account eight uploaded host bytes per texel.",
+    "Apply the existing float gamma restriction and bypass TEX BX2 for RG16F,including constant remaps."
+  ],
+  "validation": {
+    "before": "New texture test fails on old source with unconnected format31.",
+    "unit": "Padded base/mip reads,distinct X/Y,negative zero,subnormal,HDR,Inf/NaN payload bits,crossbar zero/one/invalid selectors,and DMA range failure pass.",
+    "realGPU": "Complete native NV40 GPU regression passes,including half/full exports,paired/default and Nouveau remaps,BX2 bypass,bilinear interpolation with HDR/negative input,and minimum-LOD selection of a padded mip.",
+    "other": "Texture/render/state/graph/BC policy and175 WGSL shader modules pass; plugin Closure0errors/0warnings."
+  },
+  "continuation": {
+    "run": "build/nv40-xp-mark06-rg16f-default6-resume",
+    "source": "Healthy coherent100000-draw checkpoint from the same original default-six run,with screen saver/monitor power already disabled; matching OS/game overlays verified.",
+    "policy": "Original driver/benchmark/guest RAM and interrupt state are not patched to skip the failure. Restart from the pre-fault checkpoint with the new emulator implementation."
+  },
+  "limits": [
+    "This establishes format support and reproduces the first fault; it is not a completed native HDR/default-six result.",
+    "One earlier live debug snapshot read graph.busy,whose getter can refresh derived flip state; that snapshot is not treated as read-only or performance evidence.The native first fault was recorded before that inspection.",
+    "Parallel and resumed runs do not provide the final independent native FPS measurement."
+  ]
+}

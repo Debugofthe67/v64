@@ -61,6 +61,8 @@ mod jitrt;
 mod leb;
 #[cfg_attr(feature = "aarch64", allow(dead_code))]
 mod page;
+#[cfg(all(not(feature = "aarch64"), feature = "ir-test-hooks"))]
+mod write_watch;
 // (the page tiers' neutral code generation: the A64 page tier is J2)
 #[cfg_attr(feature = "aarch64", allow(dead_code))]
 mod pagegen;

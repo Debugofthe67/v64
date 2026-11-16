@@ -65,9 +65,9 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
             await device.queue.onSubmittedWorkDone();
             check(!executor.stats.errors.length, "no executor errors: " + executor.stats.errors.join("; "));
         };
-        const read_color_buffer = async (handle, w, h) => {
+        const read_color_buffer = async (handle, w, h, format = 0x1908, type = 0x1401) => {
             const id = request++;
-            record(GLES.COLOR_BUFFER_READ, handle, 0, 0, w, h, 0x1908, 0x1401, id);
+            record(GLES.COLOR_BUFFER_READ, handle, 0, 0, w, h, format, type, id);
             await run();
             return answers.get(id);
         };
@@ -172,6 +172,24 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 3, 3), [138, 138, 138, 255]), "an ETC1 block decoded");
 
+        // PVRTC1 stays compressed across the guest transport; host expansion
+        // must upload and replace the real GPU image, including tiny mips.
+        for(const format of [0x8C00, 0x8C01, 0x8C02, 0x8C03])
+        {
+            const data = new Uint32Array(8);
+            for(let i = 1; i < 8; i += 2) data[i] = 0xFC00FC00;
+            gl("glCompressedTexImage2D", 0x0DE1, 0, format, 4, 4, 0, data.byteLength, new Uint8Array(data.buffer));
+            gl("glTexParameterf", 0x0DE1, 0x84FE, 2);
+            gl("glDrawArrays", 0x0006, 0, 4);
+            window = await read_pixels(0, 0, W, W);
+            check(near(pixel(window, W, 3, 3), [255, 0, 0, 255]), "PVRTC " + format + " real GPU red upload");
+            for(let i = 1; i < 8; i += 2) data[i] = 0x83E083E0;
+            gl("glCompressedTexSubImage2D", 0x0DE1, 0, 0, 0, 4, 4, format, data.byteLength, new Uint8Array(data.buffer));
+            gl("glDrawArrays", 0x0006, 0, 4);
+            window = await read_pixels(0, 0, W, W);
+            check(near(pixel(window, W, 3, 3), [0, 255, 0, 255]), "PVRTC " + format + " real GPU full replacement");
+        }
+
         // ---- render to a texture; read it; sample it
         gl("glBindTexture", 0x0DE1, 21);
         gl("glTexParameteri", 0x0DE1, 0x2801, 0x2600);
@@ -225,6 +243,28 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         writer.command(GLES.COLOR_BUFFER_UPDATE, [50, 0, 0, 4, 4, 0x1908, 0x1401, bytes.length], bytes);
         const back = await read_color_buffer(50, 4, 4);
         check(back.every((v, i) => v === bytes[i]), "a color buffer reads back what was written");
+        const bgra = await read_color_buffer(50, 4, 4, 0x80e1);
+        check(bgra.every((v, i) => v === bytes[(i & ~3) + [2, 1, 0, 3][i & 3]]), "BGRA color-buffer reads preserve every pixel and alpha");
+        check(await read_color_buffer(50, 4, 4, 0x1908, 0x8363) === null, "unsupported color-buffer packing fails explicitly");
+        check((await read_color_buffer(50, 4, 4)).every((v, i) => v === bytes[i]), "BGRA packing leaves GPU storage unchanged");
+        for(const flip of [0, 1])
+        {
+            const id = request++;
+            record(GLES.IOSURFACE_READ, 50, 1, 2, flip, id);
+            await run();
+            const native = answers.get(id);
+            check(native && native.length === 32 && native.every((v, i) =>
+            {
+                const row = 1 + (flip ? 1 - (i / 16 | 0) : i / 16 | 0);
+                return v === bytes[row * 16 + (i % 16 & ~3) + [2, 1, 0, 3][i & 3]];
+            }), "native BGRA readback subrectangle, reversed rows=" + flip);
+        }
+        {
+            const id = request++;
+            record(GLES.IOSURFACE_READ, 50, 3, 2, 0, id);
+            await run();
+            check(answers.get(id) === null, "native readback rejects a rectangle outside its surface");
+        }
         record(GLES.IMAGE_CREATE, 60, 0, 0x3140, 50);
         const ext_text = "#extension GL_OES_EGL_image_external : require\nprecision mediump float; uniform samplerExternalOES tex; varying vec2 v_uv; " +
             "void main() { gl_FragColor = texture2D(tex, v_uv); }";

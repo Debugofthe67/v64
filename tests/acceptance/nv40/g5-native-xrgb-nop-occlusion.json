@@ -1,0 +1,69 @@
+{
+  "stage": "G5 effective format channels for native colorless occlusion draws",
+  "native": {
+    "os": "Windows 98 SE",
+    "driver": "81.98",
+    "benchmark": "Original 3DMark03, full eleven-test selection",
+    "drawsBeforeFault": 199986,
+    "failure": "NV40 fragment color output is not written",
+    "fragmentWords": [
+      1,
+      0,
+      0,
+      0
+    ],
+    "methods": {
+      "0x208": "0x144 (X8R8G8B8)",
+      "0x324": "0x01000000 (alpha only)",
+      "0x304": 0,
+      "0xA74": 1,
+      "0xA70": 0
+    },
+    "interpretation": "NOP END has no color output, but XRGB has no writable alpha. This draw legitimately needs depth/query effects only."
+  },
+  "change": [
+    "Use effective per-format channels for shader color requirements, GPU write masks and dirty attachment tracking.",
+    "Preserve strict rejection for meaningful color writes and alpha testing.",
+    "Keep XRGB destination alpha opaque during multiple draws in a single GPU batch."
+  ],
+  "validation": [
+    "New native NOP-only regression fails on old source with the original color-output error.",
+    "Real GPU visible query counts 64; depth-rejected query adds zero; guest color/depth remain unchanged with zero attachment downloads.",
+    "ARGB alpha-only and XRGB alpha-test cases still reject an unwritten output.",
+    "Two XRGB draws stay in one GPU batch and destination-alpha blending produces exact green255.",
+    "Entire real GPU render suite, unit render, texture, state, DMA and graph tests pass. Closure reports zero errors/warnings."
+  ],
+  "limits": "Native Win98 full eleven-test continuation and final IQ/performance gates remain pending; this fixture is a reproduced fix, not full-run acceptance.",
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dformat",
+    "https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3drenderstatetype",
+    "https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx9-graphics-reference-asm-ps-registers-output-color"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-win98-mark03-memory512-isa-irq-cold/draw-faults.json",
+      "bytes": 228411,
+      "sha256": "111899cbc9ee78311e103168025dbb174121f3d01fc98ee9e6303fc4983994b4"
+    },
+    {
+      "file": "build/nv40-xrgb-nop-before.log",
+      "bytes": 1556,
+      "sha256": "06ada58bef5e2c040fe239ba82d0599218aa3a1ae3e3ad0062b14da95391e4d9"
+    },
+    {
+      "file": "build/nv40-xrgb-nop-alpha-gpu.log",
+      "bytes": 6137,
+      "sha256": "b1d9a431d553d99e55cdfd12e793b73a0e94d9b998f2fa2423ff6f78763f50e0"
+    },
+    {
+      "file": "build/nv40-xrgb-nop-unit.log",
+      "bytes": 95,
+      "sha256": "22897543f5914fffc623ba01f5b67f6b1e7fa050e7b8d13b7346ade243901c63"
+    },
+    {
+      "file": "build/nv40-xrgb-nop-closure.log",
+      "bytes": 3020,
+      "sha256": "928cdedd9ef614b44a371f6342106afd0f2aa0671fe80e28dd774fb3f4091174"
+    }
+  ]
+}

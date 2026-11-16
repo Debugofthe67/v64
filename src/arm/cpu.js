@@ -11,7 +11,12 @@ import { set_jit_switches } from "../jit_switches.js";
 import { relaxed_fma_fused } from "../cpu.js";
 import { view, Bitmap } from "../lib.js";
 import { v86 } from "../main.js";
+import { create_n90_devices, N90_DEVICE_ORDER } from "../apple/s5l8930.js";
+import { draw_n90_logo } from "../apple/bootlogo.js";
+import { N90_VIDEO } from "../apple/clcd.js";
+import { load_n90_kernel } from "../apple/boot.js";
 import { MachineClock } from "../machine_clock.js";
+import { check_disk_state } from "../disk_writeback.js";
 import { check_machine_options } from "../machine_options.js";
 import { CORE_STATE_RANGES, STATE_OFFSETS } from "./state_layout.js";
 import { VirtDeviceSpace } from "../virt/io.js";
@@ -26,6 +31,7 @@ import { PL011 } from "../virt/pl011.js";
 import { PL031 } from "../virt/pl031.js";
 import { GoldfishFb, GoldfishEvents, GoldfishBattery, GoldfishAudio, GoldfishPipe } from "../virt/goldfish.js";
 import { BackdoorA32, BACKDOOR_NOT_HANDLED } from "./backdoor_a32.js";
+import { IOSInstallService } from "../ios/install_service.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -47,7 +53,7 @@ import { ParallelMachine } from "../parallel/machine.js";
 import { COMMAND_RELOAD, COMMAND_RESET } from "../parallel/control.js";
 
 /** The devices in a snapshot's state[4], in this order */
-const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe"];
+const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe", ...N90_DEVICE_ORDER];
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
 const STATE_MAX_SINGLE_BUFFER = 0x7FFFFFFF;
@@ -224,7 +230,7 @@ A64CPU.prototype.translate_user = function(address, write)
 A64CPU.prototype.init = function(settings, device_bus)
 {
     const { machine_type, cpu_profile } = check_machine_options(settings);
-    if(machine_type !== "virt" && machine_type !== "ranchu")
+    if(machine_type !== "virt" && machine_type !== "ranchu" && machine_type !== "s5l8930")
     {
         throw new Error("The ARM CPU runs machine_type \"virt\" or \"ranchu\"");
     }
@@ -249,14 +255,28 @@ A64CPU.prototype.init = function(settings, device_bus)
     this.gic_v2 = ranchu && this.cpu_type === "arm32";
     this.wm.exports["a64_gic_set_version"]?.(this.gic_v2 ? 2 : 3);
     if(!this.wm.exports["a64_set_cores"](cores)) throw new Error("the GIC's frames overlap a device");
-    if(settings.cpu_clock) this.clock = new MachineClock(Object.assign({ now: v86.microtick }, settings.cpu_clock));
+    const clock_options = settings.cpu_clock;
+    if(clock_options) this.clock = new MachineClock(Object.assign({ now: v86.microtick }, clock_options));
     // The display adapter's plugin descriptor (P7.1: virtio-gpu without VGA); none with graphics_adapter: "none"
     this.graphics_adapter_descriptor = settings.graphics_adapter;
     const adapter = this.graphics_adapter_descriptor;
     this.create_memory(memory_size, adapter ? Math.max(DEVICE_MEMORY_SIZE,
-        adapter["device_memory_size"]?.({ "test": settings.graphics_adapter_test }) || 0) : 0);
+        adapter["device_memory_size"]?.({ "test": settings.graphics_adapter_test }) || 0) : machine_type === "s5l8930" ? 1 << 20 : 0);
     this.configure_extended_memory(settings.extended_memory_size || 0, settings.extended_memory_cache);
     this.device_bus = device_bus;
+    if(machine_type === "s5l8930")
+    {
+        this.devices = create_n90_devices(this, device_bus, settings.screen, settings.ios_nand);
+        this.init_gles_backdoor(settings, { "width": N90_VIDEO.width, "height": N90_VIDEO.height, "dpi": 326 },
+            (rgba, width, height) => this.devices.apple_clcd.present(rgba, width, height));
+        this.virtio_devices = [];
+        this.shared_spi_sources = new Map();
+        this.virtio_transport = "none";
+        this.booted = false;
+        this.boot_files = settings.kernel ? { kernel: settings.kernel, dtb: settings.dtb, initrd: settings.initrd, cmdline: settings.cmdline, logo: settings.ios_bootlogo } : null;
+        if(this.boot_files) this.load_boot_files();
+        return;
+    }
     this.devices = {
         "pl011": new PL011(this, device_bus),
         "pl031": ranchu ? new PL031(this, RANCHU_RTC, 32 + RANCHU_SPI.rtc) : new PL031(this),
@@ -445,21 +465,7 @@ A64CPU.prototype.init = function(settings, device_bus)
             "qemu.sf.lcd_density": String(display.dpi), "qemu.hw.mainkeys": "0",
         }, settings.ranchu_properties), gles ? (name, wake, ...saved) => gles.device["service"](name, wake, ...saved) : undefined);
     }
-    // arm32's GLES backdoor (gles_backdoor: docs/gles-proxy-plan.md "iOS 传输"):
-    // the GLES host's services for user code, no screen of its own (its
-    // posts are not shown; the test reads its pixels back)
-    if(settings.gles_backdoor && settings.gles_plugin)
-    {
-        this.devices.gles = this.devices.gles || new PluginDevice(/** @type {?} */ (this), GLES_PLUGINS, settings.gles_plugin, -1, {}, {
-            "display": { "width": 800, "height": 600, "dpi": 160 },
-            "renderer": settings.graphics_adapter_renderer || null,
-            "present": () => {},
-            "prepared": settings.gles_prepared || null,
-            "max_version": settings.ranchu_gles_version || "2.0",
-        });
-        const gles = this.devices.gles;
-        this.devices.backdoor = new BackdoorA32(this, (name, wake, ...saved) => gles.device["service"](name, wake, ...saved));
-    }
+    this.init_gles_backdoor(settings, { "width": 800, "height": 600, "dpi": 160 }, () => {});
     // the boot core starts at the kernel (P4.6: the device tree in x0, P4.2)
     this.booted = false;
     /** @type {Object} what the machine boots, loaded again at a reset */
@@ -468,6 +474,57 @@ A64CPU.prototype.init = function(settings, device_bus)
     {
         // (kept: a reset loads them again, P4.6)
         this.boot_files = { kernel: settings.kernel, initrd: settings.initrd, cmdline: settings.cmdline, dtb: settings.dtb, cores };
+        this.load_boot_files();
+    }
+};
+
+// The guest library uses the same GLES service and connection snapshots on both ARM boards.
+A64CPU.prototype.init_gles_backdoor = function(settings, display, present)
+{
+    let gles = null;
+    if(settings.gles_backdoor && settings.gles_plugin)
+    {
+        this.devices.gles = this.devices.gles || new PluginDevice(/** @type {?} */ (this), GLES_PLUGINS, settings.gles_plugin, -1, {}, {
+            "display": display,
+            "renderer": settings.graphics_adapter_renderer || null,
+            "present": present,
+            "prepared": settings.gles_prepared || null,
+            "max_version": settings.ranchu_gles_version || "2.0",
+        });
+        gles = this.devices.gles;
+    }
+    if(this.machine_type === "s5l8930" && settings.ios_install_boot)
+        this.devices.ios_install = new IOSInstallService(this.device_bus, settings.ios_install_boot);
+    const install = this.devices.ios_install;
+    if(gles || install)
+        this.devices.backdoor = new BackdoorA32(this, (name, wake, ...saved) =>
+            install?.service(name) || gles?.device["service"](name, wake, ...saved) || null);
+};
+
+A64CPU.prototype.load_boot_files = function()
+{
+    if(!this.boot_files) return;
+    if(this.machine_type === "s5l8930")
+    {
+        const f = this.boot_files;
+        const handoff = load_n90_kernel(this.mem8, new Uint8Array(f.kernel), new Uint8Array(f.dtb),
+            f.initrd ? new Uint8Array(f.initrd) : null, f.cmdline, !!this.devices.apple_nand, !!this.devices.gles, !!this.devices.ios_install);
+        this.wm.exports["a64_bus_written"](0, handoff.memory_end - VIRT_RAM_BASE);
+        this.devices.ios_install?.set_arena(handoff.install_arena);
+        this.devices.apple_fmi0.configure(handoff.chip_ids, 0);
+        this.devices.apple_fmi1.configure(handoff.chip_ids, 1);
+        if(f.logo)
+        {
+            const offset = N90_VIDEO.base - VIRT_RAM_BASE;
+            draw_n90_logo(new Uint32Array(this.mem8.buffer, this.mem8.byteOffset + offset, N90_VIDEO.width * N90_VIDEO.height),
+                new Uint8Array(f.logo));
+            this.wm.exports["a64_bus_written"](offset, N90_VIDEO.height * N90_VIDEO.stride);
+            this.devices.apple_clcd.render();
+        }
+        this.boot(handoff.entry, handoff.r0);
+    }
+    else
+    {
         const { entry, x0 } = load_linux(this, this.boot_files);
         this.boot(entry, x0);
     }
@@ -480,7 +537,7 @@ A64CPU.prototype.init = function(settings, device_bus)
  */
 A64CPU.prototype.boot = function(entry, x0)
 {
-    if(this.cpu_type === "arm32")
+    if(this.cpu_type === "arm32" && this.machine_type !== "s5l8930")
     {
         // (a 32-bit kernel: SVC mode, r0 0, r1 ~0 (a device tree, not a board), r2 the device tree)
         this.wm.exports["a32_boot"](entry >>> 0, x0 >>> 0);
@@ -637,11 +694,20 @@ A64CPU.prototype.run_machine_core = function()
     this.in_cpu = true;
     try
     {
+        const iop = this.devices.apple_iop;
+        const iop_busy = iop?.run();
+        this.devices.apple_amc?.poll();
+        this.devices.apple_i2s0?.poll();
+        this.devices.apple_i2s1?.poll();
+        this.devices.apple_i2s2?.poll();
         const devices = this.run_hardware_timers(null, this.clock.now());
         const next = Math.min(run(this.clock.now()), devices);
         // (PSCI SYSTEM_RESET: the machine resets and boots again, P4.8)
         if(this.wm.exports["a64_take_reset_request"]()) this.reboot_internal("restart");
-        return next;
+        // The application core can be in WFI while the ARM7 still handles
+        // its flash request. Sleeping for the AP's timer then throttles
+        // an independent runnable processor (and every NAND transaction).
+        return iop_busy || iop?.running && (iop.irq || iop.fiq) ? 0 : next;
     }
     finally
     {
@@ -714,6 +780,9 @@ A64CPU.prototype.state_block_of = function(core)
 A64CPU.prototype.run_hardware_timers = function(acpi, now)
 {
     const display = this.devices.display ? this.devices.display.timer(now) : 100;
+    if(this.devices.apple_timer) return Math.min(display, this.devices.apple_timer.timer(),
+        this.devices.apple_accelerometer?.timer(now) ?? 100, this.devices.apple_gyroscope?.timer(now) ?? 100,
+        this.devices.apple_compass?.timer(now) ?? 100, this.devices.apple_light_sensor?.timer(now) ?? 100);
     const sound = this.virtio_sound ? this.virtio_sound.timer(now) : 100;
     const audio = this.devices["goldfish_audio"] ? this.devices["goldfish_audio"].timer(now) : 100;
     return Math.min(100, display, sound, audio, this.devices["pl031"] ? this.devices["pl031"].timer() : 100);
@@ -795,8 +864,7 @@ A64CPU.prototype.reboot_internal = function(reason)
     for(const { device } of this.virtio_devices) device.reset();
     if(this.boot_files)
     {
-        const { entry, x0 } = load_linux(this, this.boot_files);
-        this.boot(entry, x0);
+        this.load_boot_files();
     }
     else
     {
@@ -1138,6 +1206,7 @@ A64CPU.prototype.get_state = function(skip_memory = false)
     state[14] = this.devices.gles ? this.devices.gles.get_state() : null;
     // the GLES backdoor's connections (gles_backdoor)
     state[15] = this.devices.backdoor ? this.devices.backdoor.get_state() : null;
+    state[16] = this.devices.ios_install ? this.devices.ios_install.get_state() : null;
     // (the machine clock: the system counter goes on from where it was, as on x86, src/cpu.js)
     state[95] = this.clock.get_state();
     // extended RAM's pages (P8.5: its contents are records of the snapshot stream)
@@ -1199,6 +1268,14 @@ A64CPU.prototype.validate_state = function(state)
         throw new Error("The snapshot is from " + machine + " layout " + identity[1] + " with CPU profile " + identity[2] +
             "; this machine is layout " + layout + ", " + this.profile);
     }
+    if(this.machine_type === "s5l8930" && !!state[4]?.[DEVICE_ORDER.indexOf("apple_nand")] !== !!this.devices.apple_nand)
+    {
+        throw new Error("snapshot and machine must use the same N90 NAND configuration");
+    }
+    if(this.devices.apple_nand)
+    {
+        check_disk_state("ios_nand", this.devices.apple_nand.buffer, state[4][DEVICE_ORDER.indexOf("apple_nand")][0]);
+    }
     if(state[0] !== this.memory_size[0])
     {
         throw new Error("The snapshot has " + state[0] + " bytes of RAM, this machine " + this.memory_size[0]);
@@ -1234,6 +1311,8 @@ A64CPU.prototype.validate_state = function(state)
     {
         throw new Error("The snapshot is from a machine with ranchu_gpu \"host\", this one has \"guest\"");
     }
+    if(this.devices.ios_install) this.devices.ios_install.check_state(state[16]);
+    else if(state[16]) throw new Error("The snapshot requires iPhone IPA installation support");
 };
 
 A64CPU.prototype.set_state = function(state, skip_memory = false)
@@ -1245,7 +1324,11 @@ A64CPU.prototype.set_state = function(state, skip_memory = false)
     if(state[95]) this.clock.set_state(state[95]);
     state[2].forEach((saved, core) => this.each_core(() => this.load_core_state(saved, core), core));
     if(!this.parallel) this.wm.exports["a64_switch_core"](state[3] || 0);
-    (state[4] || []).forEach((device_state, i) => { if(device_state && this.devices[DEVICE_ORDER[i]]) this.devices[DEVICE_ORDER[i]].set_state(device_state); });
+    const device_states = state[4] || [];
+    device_states.forEach((device_state, i) => { if(device_state && this.devices[DEVICE_ORDER[i]]) this.devices[DEVICE_ORDER[i]].set_state(device_state); });
+    // Devices appended since this snapshot start in their reset state,
+    // including when restoring over a machine that has already used them.
+    for(const name of DEVICE_ORDER.slice(device_states.length)) this.devices[name]?.reset?.();
     if(state[5]) this.machine_state_bytes(0).set(state[5]);
     if(state[6]) { this.machine_state_bytes(1).set(state[6]); this.wm.exports["a64_psci_restored"](); }
     if(state[7]) [this.booted, this.boot_entry, this.boot_x0] = state[7];
@@ -1264,6 +1347,7 @@ A64CPU.prototype.set_state = function(state, skip_memory = false)
     this.shared_spi_sources = new Map((state[11] || []).map(([intid, sources]) => [intid, new Set(sources)]));
     this.devices.graphics_adapter && this.devices.graphics_adapter.set_state(state[12]);
     // (the backdoor's connections before the GLES host's state, as the pipe's channels)
+    this.devices.ios_install?.set_state(state[16]);
     if(this.devices.backdoor) this.devices.backdoor.set_state(state[15] || [1, []]);
     this.devices.gles && this.devices.gles.set_state(state[14]);
     this.wm.exports["a64_restored"]();
@@ -1332,9 +1416,10 @@ A64CPU.prototype.zstd_free_ctx = function(ctx) { return this.wm.exports["zstd_fr
 A64CPU.prototype.zstd_read = function(ctx, length) { return this.wm.exports["zstd_read"](ctx, length); };
 A64CPU.prototype.zstd_read_free = function(ptr, length) { return this.wm.exports["zstd_read_free"](ptr, length); };
 
-A64CPU.prototype.get_diagnostics = function()
+A64CPU.prototype.get_diagnostics = function(include_steps = false)
 {
     const exports = this.wm.exports;
+    const nand = this.devices?.apple_nand;
     const power = ["on", "off", "on-pending"];
     const psci = this.machine_state_bytes(1);
     const cores = this.each_core(core => {
@@ -1348,11 +1433,16 @@ A64CPU.prototype.get_diagnostics = function()
             // (AArch32's modes: User is EL0, the others PL1)
             "el": word(STATE_OFFSETS.pstate) & 0x10 ? +((word(STATE_OFFSETS.pstate) & 0xF) !== 0) : word(STATE_OFFSETS.pstate) >> 2 & 3,
             "retired_instructions": this.retired_instructions(core),
+            "fpcr": word(STATE_OFFSETS.fpcr) >>> 0,
+            "fpsr": word(STATE_OFFSETS.fpsr) >>> 0,
             "halt_count": worker ? this.parallel.core_counters(core).waits :
                 exports["core_statistics_get"] ? exports["core_statistics_get"](core, 3) : 0,
         };
     });
     return {
+        "host_time": performance.now(),
+        "clock": Object.assign({ "mode": this.clock.mode, "rate": this.clock.rate,
+            "now_ms": this.clock.now(), "paused": this.clock.paused }, this.clock.get_diagnostics()),
         "cpu_type": this.cpu_type,
         "machine_type": this.machine_type,
         "active_core": exports["a64_current_core"](),
@@ -1365,6 +1455,15 @@ A64CPU.prototype.get_diagnostics = function()
         "retired": exports["core_statistics_get"] ? exports["core_statistics_get"](0, 0) : 0,
         "undefined": this.undefined_instructions(),
         "page_tier": this.page_tier_stats(),
+        ...(this.machine_type === "s5l8930" ? { "graphics": {
+            "native": this.devices.gles?.device["performance"]?.() || null,
+            "panel": this.devices.apple_clcd ? Object.assign({
+                "awake": this.devices.apple_clcd.panel_on && this.devices.apple_clcd.backlight > 0,
+                "backlight": this.devices.apple_clcd.backlight,
+            }, this.devices.apple_clcd.performance) : null,
+        } } : {}),
+        ...(include_steps ? { "steps": this.step_stats(25) } : {}),
+        ...(nand ? { "nand": { "bytes_read": nand.bytes_read, "bytes_written": nand.bytes_written } } : {}),
     };
 };
 
@@ -1388,6 +1487,7 @@ A64CPU.prototype.page_tier_stats = function()
     const result = { "live": stat(100), "code_page_writes": stat(101), "resets": stat(102), "pages_compiled": stat(103),
         "most_compiles": stat(104), "helpers": stat(106), "evictions": stat(107), "compile_ms": stat(108),
         "asid_tag_switches": stat(109), "asid_tag": stat(110), "live_code_bytes": stat(111),
+        "uncached_accesses": stat(112),
         "table_free_low": this.wm.exports["jit_wasm_table_free_low"](),
         // (diagnostics: why the access cache refused fills, pages.rs REFUSED_*)
         "refused": { "crossing": stat(120), "translation": stat(121), "not_writable": stat(122), "watched": stat(123),

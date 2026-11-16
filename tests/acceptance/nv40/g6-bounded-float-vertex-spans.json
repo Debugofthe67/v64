@@ -1,0 +1,70 @@
+{
+  "stage": "G6 bounded linear VRAM float vertex spans",
+  "scope": "Exact CPU vertex preparation optimization, not native FPS or completed benchmark acceptance.",
+  "change": [
+    "Dense FLOAT1..4 attributes backed by linear VRAM share one checked, copied source span, at most 4 MiB and four times the indexed attribute payload.",
+    "Direct DWORD loads preserve all IEEE float payload bits and missing-component defaults; no float conversion or persistent guest data cache.",
+    "Paged/system-memory DMA, zero stride and sparse spans retain the original per-vertex path."
+  ],
+  "regression": [
+    "Pre-change implementation fails the new one-span check (4 reads versus 1).",
+    "48 combinations of FLOAT1..4, overlapping/unaligned strides, signed base vertex, duplicates, raw NaN/negative-zero/infinity payloads.",
+    "Inclusive limit/read permission rejection preserves source bytes.",
+    "Legal paged and physical-memory draws skip an inaccessible intermediate page; reading the bounding span is explicitly shown to fail.",
+    "State/graph/texture/DMA suites, entire real WebGPU render suite, Closure 0 errors/warnings."
+  ],
+  "microbenchmark": {
+    "rounds": 7,
+    "iterations": 8,
+    "gc": "Explicit GC before each measured round, outside CPU/wall counters.",
+    "cases": [
+      {
+        "name": "indices16",
+        "resultSHA256": "294b965d73a383973166585b5e64f2aa380761377e2f4fce8f0e3dda300e1604",
+        "baselineNodeCpuMs": 5.641,
+        "currentNodeCpuMs": 6.279
+      },
+      {
+        "name": "indices32",
+        "resultSHA256": "04f710e0c093318709a3684290c6cd1a9ca75c256934b630c6c3297bc80847bd",
+        "baselineNodeCpuMs": 4.914,
+        "currentNodeCpuMs": 5.658
+      },
+      {
+        "name": "indexed-float-color-current",
+        "resultSHA256": "5007245196c0ad2d84a6abb864dc5e3fb452864dc6648b60f67c568d9e56b4a2",
+        "baselineNodeCpuMs": 54.288,
+        "currentNodeCpuMs": 32.191
+      },
+      {
+        "name": "inline-float-current",
+        "resultSHA256": "48ac10226aac2e3f28ce69e8ed9f1541fefc14775bdece8dd953e67737cb0e7b",
+        "baselineNodeCpuMs": 32.494,
+        "currentNodeCpuMs": 32.298
+      }
+    ],
+    "interpretation": "Indexed float/color/current workload improves 54.29 to 32.19 ms. Unchanged index controls vary by about 12-15%; unchanged inline control is 32.49/32.30 ms. Concurrent microbenchmarks are not native performance gates."
+  },
+  "evidence": [
+    {
+      "file": "build/nv40-vertex-span-before.log",
+      "bytes": 659,
+      "sha256": "43c594f49ffd2c3192e754f536a979a98becb2b74cc547cc7ff599b38b01b689"
+    },
+    {
+      "file": "build/nv40-vertex-span-comparison-gc.json",
+      "bytes": 13217,
+      "sha256": "58189dc9a925ac9aeb8147b24fceb227c1cd529926b860e9210131541e9b0736"
+    },
+    {
+      "file": "build/nv40-vertex-span-gpu.log",
+      "bytes": 5972,
+      "sha256": "c8c9277b797fef6d4beb136f0ec5a0b3ffc9ce35f35860775ef5764fb4361f94"
+    },
+    {
+      "file": "build/nv40-vertex-span-closure.log",
+      "bytes": 3020,
+      "sha256": "928cdedd9ef614b44a371f6342106afd0f2aa0671fe80e28dd774fb3f4091174"
+    }
+  ]
+}

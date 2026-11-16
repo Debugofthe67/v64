@@ -273,6 +273,8 @@ export const STATICS = {
     // current core, the machine's core count, the yield flag of this
     // instance, guest RAM's base
     "aarch64/isa_hooks.rs": { CURRENT_CORE: "machine", CORE_COUNT: "machine", CORE_YIELD: "scratch" },
+    // Pending host scheduling hint, consumed before returning from a CPU slice.
+    "aarch64/backdoor.rs": { HOST_YIELD: "scratch" },
     // the address space (P1.5): RAM's size, the regions, the map's generation,
     // guest memory, the status of the last read or write from JavaScript
     "aarch64/root.rs": { TEST_RETIRED: "debug" },
@@ -315,7 +317,7 @@ export const STATICS = {
     // (cores in workers: a kick ended the run, their count; a WFE's deadline;
     // the highest counter value any core read)
     "aarch64/smp.rs": { SAVED: "core", EVENTS: "machine", ROUND: "machine", MONITORS: "machine", MONITOR_GRANULE: "machine",
-        KICKED: "debug", KICKED_NOW: "scratch", WFE_UNTIL: "core" },
+        KICKED: "debug", KICKED_NOW: "scratch", WFE_UNTIL: "core", IOP_NATIVE: "debug" },
     "aarch64/timer.rs": { EVENT_STREAM_LAST: "core", COUNTER_LAST: "machine" },
     // the A64 page tier (J2): its switches, functions and code pages, the
     // access caches and chaining tables per core (derived from the TLBs),
@@ -337,8 +339,10 @@ export const STATICS = {
         HELPER_DONE: "scratch",
         // (the access caches' refused fills by reason; the a64_reserved_fill and a64_step_stats switches; the
         // step counters' sampling, each instance's own)
-        REFUSED: "debug", RESERVED_FILL_REFUSED: "machine", STEP_STATS: "machine", STEP_SAMPLED: "debug" },
+        REFUSED: "debug", RESERVED_FILL_REFUSED: "machine", STEP_STATS: "machine", STEP_SAMPLED: "debug",
+        UNCACHED_ACCESSES: "debug" },
     "aarch64/decode.rs": { BUFFER: "debug" },
+    "aarch64/video.rs": { SOURCE: "scratch", SHADOW: "cache" },
     // PSCI: the cores' power states and pending CPU_ON starts, a SYSTEM_OFF
     // or SYSTEM_RESET request
     "aarch64/psci.rs": { POWER: "machine", START: "machine", REQUEST: "machine", SNAPSHOT: "scratch" },
@@ -346,7 +350,9 @@ export const STATICS = {
     // device took them, the words handed out; cores in workers: the map's
     // sequence, odd while it changes, and the one this instance copied)
     "aarch64/bus.rs": { BUS: "machine", MEM8: "machine", MEM8_SIZE: "machine", MAP_CHANGED: "machine", STATUS: "scratch", LAST_WRITE: "debug",
-        DEVICE_START: "machine", DEVICE_DIRTY: "machine", DEVICE_TAKEN: "scratch", MAP_SEQ: "machine", WORKER_SEQ: "cache" },
+        DEVICE_START: "machine", DEVICE_DIRTY: "machine", DEVICE_TAKEN: "scratch", MAP_SEQ: "machine", WORKER_SEQ: "cache",
+        // Device-owned IO-processor alias window, restored by apple/iop.js.
+        IOP_BASE: "machine", IOP_SIZE: "machine" },
     // (extended RAM, P8.5: the instructions run from it)
     "aarch64/extended.rs": { RETIRED: "debug" },
     "cpu/apic.rs": { APICS: "core", APIC_AUX: "core", CURRENT_CORE: "machine", CORE_COUNT: "machine", CORE_EVENTS: "machine", NMI_PENDING: "machine", SMI_PENDING: "machine" },
@@ -380,9 +386,12 @@ export const STATICS = {
     // the chipset's SMRAM control (Q35 MCH: G_SMRAME, D_OPEN) and TSEG; per
     // instance: the TSEG generation its fast RAM limit reflects
     "cpu/smm.rs": { SMRAM_CONTROL: "machine", TSEG: "machine", TSEG_SEEN: "cache" },
-    "cpu/memory.rs": { mem8: "machine", ram_fast_limit: "machine" },
+    // The chipset's PAM shadow-write mask is reapplied by PCI restore.
+    "cpu/memory.rs": { mem8: "machine", ram_fast_limit: "machine", PAM_WRITE_MASK: "machine" },
     // device memory regions (frame buffers) and where they are mapped
     "cpu/mmio_ram.rs": { TABLE: "machine", TEST_TABLE: "debug" },
+    // Host-only backing-page diagnostics, present solely with ir-test-hooks.
+    "write_watch.rs": { PAGES: "debug", RECORDS: "debug", TOTAL: "debug" },
     "cpu/pic.rs": { PIC: "machine", PORT_WRITTEN: "machine" },
     // SoftFloat's state around one SSE instruction (saved and restored)
     "cpu/simd_fp.rs": { softfloat_roundingMode: "scratch", softfloat_exceptionFlags: "scratch" },

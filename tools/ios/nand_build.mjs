@@ -1,0 +1,61 @@
+// S4 physical medium. Page dumps are data followed by OOB. The sparse
+// output initially contains only the explicitly supplied physical pages.
+//   nand_build.mjs blank|bootstrap|format new.img [bus:ce:row:page.bin ...]
+//   nand_build.mjs volumes new.img system.hfs data.hfs
+import { write_bootstrap_pages, write_ftl_pages } from "../../src/ios/nand_layout.js";
+import { write_volumes } from "../../src/ios/nand_volumes.js";
+import fs from "node:fs";
+import path from "node:path";
+import { NAND_BYTES, NAND_PAGE, NAND_SLOT, nand_offset } from "../../src/apple/nand.js";
+
+const [command, output, ...pages] = process.argv.slice(2);
+if(!["blank", "bootstrap", "format", "volumes"].includes(command) || !output) throw new Error("use blank, bootstrap, format or volumes with a new output image");
+if(command === "volumes" && pages.length !== 2) throw new Error("usage: nand_build.mjs volumes new.img system.hfs data.hfs");
+const dir = fs.mkdtempSync(path.join(path.dirname(path.resolve(output)), ".n90-nand-"));
+const temporary = path.join(dir, "image");
+const written = new Set();
+const read = fd => (at, length) => {
+    const bytes = new Uint8Array(length);
+    return bytes.subarray(0, fs.readSync(fd, bytes, 0, length, at));
+};
+try
+{
+    const fd = fs.openSync(temporary, "wx");
+    try
+    {
+        fs.ftruncateSync(fd, NAND_BYTES);
+        const put = (bus, ce, row, raw) => {
+            const at = nand_offset(bus, ce, row);
+            if(at < 0 || written.has(at)) throw new Error("invalid or duplicate page at " + [bus, ce, row].join(":"));
+            if(raw.length !== NAND_PAGE) throw new Error("expected data and spare bytes in the page");
+            const slot = Buffer.alloc(NAND_SLOT);
+            for(let i = 0; i < raw.length; i++) slot[i] = ~raw[i];
+            let done = 0;
+            while(done < slot.length) done += fs.writeSync(fd, slot, done, slot.length - done, at + done);
+            written.add(at);
+        };
+        if(command !== "blank") write_bootstrap_pages(put);
+        if(command === "format") write_ftl_pages(put);
+        if(command === "volumes")
+        {
+            const sys = fs.openSync(pages[0], "r");
+            try
+            {
+                const data = fs.openSync(pages[1], "r");
+                try { await write_volumes(put, read(sys), read(data)); }
+                finally { fs.closeSync(data); }
+            }
+            finally { fs.closeSync(sys); }
+        }
+        for(const arg of command === "volumes" ? [] : pages)
+        {
+            const m = /^(\d+):(\d+):(\d+):(.+)$/.exec(arg);
+            if(!m) throw new Error("invalid physical page " + arg);
+            put(Number(m[1]), Number(m[2]), Number(m[3]), fs.readFileSync(m[4]));
+        }
+    }
+    finally { fs.closeSync(fd); }
+    fs.linkSync(temporary, output);
+}
+finally { fs.rmSync(dir, { recursive: true, force: true }); }
+console.log("Created four-chip N90 NAND with " + written.size + " populated physical pages");

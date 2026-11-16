@@ -2,10 +2,9 @@
 //
 // The guest DLL (glbridge/d3d9proxy/d3d9_proxy.c) keeps COM objects, shadow
 // state, Lock/Unlock memory and batching inside Windows XP. This host owns
-// only WebGPU resources and immutable cache objects, mirroring the D3D8
-// path's division of responsibility (see ../d3d8-webgpu/d3d8_executor.js)
-// but as an independent protocol/implementation: D9WG has its own opcode
-// numbering, resource handle namespace and payload shapes (d3d9_protocol.h).
+// only WebGPU resources and immutable cache objects. D9WG has its own opcode
+// numbering, resource handle namespace and payload shapes (d3d9_protocol.h);
+// d3d8.dll and ddraw.dll translate onto it.
 //
 // M1 scope: batch decode, a resource table for vertex/index buffers, 2D
 // textures and vertex declarations, WebGPU device lifecycle, and the
@@ -52,6 +51,35 @@
 
     const shaderPipeline = global.D3D9ShaderPipeline ||
         (typeof require === "function" ? require("./d3d9_shader_pipeline.js") : null);
+    // The protocol's opcodes, constants and payload layouts (d9wg_protocol.js)
+    const D9WG = global.D9WGProtocol ||
+        (typeof require === "function" ? require("./d9wg_protocol.js") : null);
+    const wire = global.D9WGWire ||
+        (typeof require === "function" ? require("./d9wg_wire.js") : null);
+    if (!wire) throw new Error("d3d9_executor.js requires d9wg_wire.js to be loaded first");
+    const { D9WGStreamError } = wire;
+    const OPAQUE_COLOR_FORMATS = new Set([20, 22, 23, 24, 27, 30, 33]);
+    const formats = global.D9WGFormats ||
+        (typeof require === "function" ? require("./d9wg_formats.js") : null);
+    if (!formats) throw new Error("d3d9_executor.js requires d9wg_formats.js to be loaded first");
+    const {
+        D3DFMT_A8R8G8B8, D3DFMT_INDEX32, D3DFMT_NULL, srgbSiblingOf, isCompressedFormat, compressedBlockBytes,
+        blockAlignedCopyExtent, bcNeedsExpansion, expandBCBlocks, isFourCCDepthFormat, isPalettizedFormat, gpuBytesPerTexel, fullMipLevelCount, autoGenMipsSupported, autoGenDefaultFilter,
+        isRenderableGPUFormat, isFloat32GPUFormat, isBlendableGPUFormat, formatToGPU, d3dBytesPerTexel,
+        packGPUReadbackRow, expandRowToGPU, samplingSwizzle, fetch4Channel
+    } = formats;
+    const Uploads = global.D9WGUploads ||
+        (typeof require === "function" ? require("./d9wg_uploads.js") : null);
+    if (!Uploads) throw new Error("d3d9_executor.js requires d9wg_uploads.js to be loaded first");
+    const surfaceFactory = global.D9WGSurfaceOps ||
+        (typeof require === "function" ? require("./d9wg_surface_ops.js") : null);
+    if (!surfaceFactory) throw new Error("d3d9_executor.js requires d9wg_surface_ops.js to be loaded first");
+    const resourceFactory = global.D9WGResources ||
+        (typeof require === "function" ? require("./d9wg_resources.js") : null);
+    if (!resourceFactory) throw new Error("d3d9_executor.js requires d9wg_resources.js to be loaded first");
+    const stateFactory = global.D9WGState ||
+        (typeof require === "function" ? require("./d9wg_state.js") : null);
+    if (!stateFactory) throw new Error("d3d9_executor.js requires d9wg_state.js to be loaded first");
     if (!shaderPipeline)
         throw new Error("d3d9_executor.js requires d3d9_shader_pipeline.js to " +
             "be loaded first");
@@ -97,125 +125,124 @@
         } catch (error) { return null; }
     })();
 
-    const D9WG_MAGIC = 0x47573944; // "D9WG"
-    const D9WG_VERSION_MAJOR = 1;
-    const D9WG_VERSION_MINOR = 7;
-    // The oldest guest proxy this host still decodes. 1.3 payloads are simply
-    // shorter than 1.4 ones; see the version check in executeBatch().
-    const D9WG_VERSION_MIN_MINOR = 3;
+    const DEFAULT_DIAGNOSTICS_URL = DEFAULT_SHADER_WORKER_URL &&
+        new URL("d9wg_diagnostics.js" + new URL(DEFAULT_SHADER_WORKER_URL).search,
+            DEFAULT_SHADER_WORKER_URL).href;
+    const DIAGNOSTIC_REPORTS = ["dumpSmallTextures","dumpShaders","dumpPipelineStates","blackScreenReport"];
+    let diagnosticsLoad = null;
+
+    const D9WG_MIN_PAYLOAD = wire.MIN_PAYLOAD;
     const D9WG_DMA_BYTES = 16 * 1024 * 1024;
-    const D9WG_RESPONSE_REGION_BYTES = 4 * 1024 * 1024;
+    const D9WG_RESPONSE_REGION_BYTES = D9WG.C.D9WG_RESPONSE_REGION_BYTES;
     const D9WG_RESPONSE_REGION_OFFSET =
         D9WG_DMA_BYTES - D9WG_RESPONSE_REGION_BYTES;
-    const D9WG_QUERY_REGION_BYTES = 16 * 1024;
+    const D9WG_QUERY_REGION_BYTES = D9WG.C.D9WG_QUERY_REGION_BYTES;
     // Liveness counter the guest watches while it spins on a readback; see the
     // comment on D9WG_HEARTBEAT_OFFSET in d3d9_protocol.h.
-    const D9WG_HEARTBEAT_BYTES = 16;
-    const D9WG_HEARTBEAT_OFFSET =
-        D9WG_RESPONSE_REGION_BYTES - D9WG_HEARTBEAT_BYTES;
-    const D9WG_RESPONSE_OK = 1;
-    const D9WG_RESPONSE_FAILED = 2;
-    const D9WG_BATCH_HEADER_BYTES = 32;
-    const D9WG_COMMAND_HEADER_BYTES = 16;
-    const D9WG_BATCH_FLAG_PRESENT = 1 << 0;
-    const D9WG_FEATURE_SHADER_MODEL_2 = 1 << 0;
-    const D9WG_FEATURE_SHADER_MODEL_3 = 1 << 1;
+    const D9WG_HEARTBEAT_BYTES = D9WG.C.D9WG_HEARTBEAT_BYTES;
+    const D9WG_HEARTBEAT_OFFSET = D9WG.C.D9WG_HEARTBEAT_OFFSET;
+    const D9WG_RESPONSE_OK = D9WG.C.D9WG_RESPONSE_OK;
+    const D9WG_RESPONSE_FAILED = D9WG.C.D9WG_RESPONSE_FAILED;
+    const D9WG_BATCH_HEADER_BYTES = D9WG.STRUCTS.BatchHeader.size;
+    const D9WG_COMMAND_HEADER_BYTES = D9WG.STRUCTS.CommandHeader.size;
+    const D9WG_BATCH_FLAG_PRESENT = D9WG.C.D9WG_BATCH_FLAG_PRESENT;
+    const D9WG_FEATURE_SHADER_MODEL_2 = D9WG.C.D9WG_FEATURE_SHADER_MODEL_2;
+    const D9WG_FEATURE_SHADER_MODEL_3 = D9WG.C.D9WG_FEATURE_SHADER_MODEL_3;
 
-    const OP_HELLO = 1;
-    const OP_CREATE_DEVICE = 2;
-    const OP_RESET = 3;
-    const OP_PRESENT = 4;
-    const OP_CLEAR = 5;
-    const OP_BEGIN_SCENE = 6;
-    const OP_END_SCENE = 7;
-    const OP_CREATE_BUFFER = 0x100;
-    const OP_UPDATE_BUFFER = 0x101;
-    const OP_DESTROY_RESOURCE = 0x103;
-    const OP_STRETCH_RECT = 8;
-    const OP_COLOR_FILL = 9;
-    const OP_UPDATE_SURFACE = 10;
-    const OP_GUEST_LOG = 11;
-    const OP_READBACK_SURFACE = 12;
-    const OP_SESSION_END = 13;
+    const OP_HELLO = D9WG.OP.HELLO;
+    const OP_CREATE_DEVICE = D9WG.OP.CREATE_DEVICE;
+    const OP_RESET = D9WG.OP.RESET;
+    const OP_PRESENT = D9WG.OP.PRESENT;
+    const OP_CLEAR = D9WG.OP.CLEAR;
+    const OP_BEGIN_SCENE = D9WG.OP.BEGIN_SCENE;
+    const OP_END_SCENE = D9WG.OP.END_SCENE;
+    const OP_CREATE_BUFFER = D9WG.OP.CREATE_BUFFER;
+    const OP_UPDATE_BUFFER = D9WG.OP.UPDATE_BUFFER;
+    const OP_DESTROY_RESOURCE = D9WG.OP.DESTROY_RESOURCE;
+    const OP_STRETCH_RECT = D9WG.OP.STRETCH_RECT;
+    const OP_COLOR_FILL = D9WG.OP.COLOR_FILL;
+    const OP_GUEST_LOG = D9WG.OP.GUEST_LOG;
+    const OP_READBACK_SURFACE = D9WG.OP.READBACK_SURFACE;
+    const OP_SESSION_END = D9WG.OP.SESSION_END;
     const GUEST_LOG_SEVERITY_INFO = 0;
     const GUEST_LOG_SEVERITY_FAILED = 2;
-    const OP_CREATE_TEXTURE_2D = 0x110;
-    const OP_CREATE_TEXTURE_CUBE = 0x111;
-    const OP_CREATE_TEXTURE_VOLUME = 0x112;
-    const OP_UPDATE_TEXTURE = 0x113;
-    const OP_SET_SCISSOR_RECT = 0x205;
-    const OP_SET_RENDER_TARGET = 0x20F;
-    const OP_SET_DEPTH_STENCIL_SURFACE_LEVEL = 0x21E;
-    const OP_SET_PALETTE = 0x21F;
-    const OP_SET_CURRENT_TEXTURE_PALETTE = 0x220;
-    const OP_GENERATE_MIPS = 0x221;
-    const OP_SET_TEXTURE_LOD = 0x222;
-    const OP_SET_GAMMA_RAMP = 0x223;
-    const OP_CREATE_SWAP_CHAIN = 0x224;
-    const OP_DESTROY_SWAP_CHAIN = 0x225;
-    const OP_PRESENT_SWAP_CHAIN = 0x226;
+    const OP_CREATE_TEXTURE_2D = D9WG.OP.CREATE_TEXTURE_2D;
+    const OP_CREATE_TEXTURE_CUBE = D9WG.OP.CREATE_TEXTURE_CUBE;
+    const OP_CREATE_TEXTURE_VOLUME = D9WG.OP.CREATE_TEXTURE_VOLUME;
+    const OP_UPDATE_TEXTURE = D9WG.OP.UPDATE_TEXTURE;
+    const OP_SET_SCISSOR_RECT = D9WG.OP.SET_SCISSOR_RECT;
+    const OP_SET_RENDER_TARGET = D9WG.OP.SET_RENDER_TARGET;
+    const OP_SET_DEPTH_STENCIL_SURFACE_LEVEL = D9WG.OP.SET_DEPTH_STENCIL_SURFACE_LEVEL;
+    const OP_SET_PALETTE = D9WG.OP.SET_PALETTE;
+    const OP_SET_CURRENT_TEXTURE_PALETTE = D9WG.OP.SET_CURRENT_TEXTURE_PALETTE;
+    const OP_GENERATE_MIPS = D9WG.OP.GENERATE_MIPS;
+    const OP_SET_TEXTURE_LOD = D9WG.OP.SET_TEXTURE_LOD;
+    const OP_SET_GAMMA_RAMP = D9WG.OP.SET_GAMMA_RAMP;
+    const OP_CREATE_SWAP_CHAIN = D9WG.OP.CREATE_SWAP_CHAIN;
+    const OP_DESTROY_SWAP_CHAIN = D9WG.OP.DESTROY_SWAP_CHAIN;
+    const OP_PRESENT_SWAP_CHAIN = D9WG.OP.PRESENT_SWAP_CHAIN;
     // D9WGSetDepthStencilSurface.depth_texture_handle sentinel: the device's own
     // auto depth-stencil surface. It needs a value distinct from 0 because
     // SetDepthStencilSurface(NULL) -- which really does turn depth testing off
     // -- also has no texture handle, and an app that renders to a texture and
     // then restores the back buffer's depth surface must be able to say which
     // of the two it means.
-    const D9WG_AUTO_DEPTH_STENCIL_HANDLE = 0xFFFFFFFF;
-    const OP_CREATE_VERTEX_DECLARATION = 0x120;
-    const OP_CREATE_VERTEX_SHADER = 0x121;
-    const OP_CREATE_PIXEL_SHADER = 0x122;
-    const OP_CREATE_QUERY = 0x123;
-    const OP_SET_RENDER_STATE = 0x200;
-    const OP_SET_SAMPLER_STATE = 0x201;
-    const OP_SET_TEXTURE_STAGE_STATE = 0x202;
-    const OP_SET_TEXTURE = 0x203;
-    const OP_SET_VIEWPORT = 0x204;
-    const OP_SET_TRANSFORM = 0x206;
-    const OP_SET_MATERIAL = 0x207;
-    const OP_SET_LIGHT = 0x208;
-    const OP_LIGHT_ENABLE = 0x209;
-    const OP_SET_STREAM_SOURCE = 0x20A;
-    const OP_SET_STREAM_SOURCE_FREQ = 0x20B;
-    const OP_SET_INDICES = 0x20C;
-    const OP_SET_VERTEX_DECLARATION = 0x20D;
-    const OP_SET_FVF = 0x20E;
-    const OP_SET_CURSOR_PROPERTIES = 0x21A;
-    const OP_SET_CURSOR_POSITION = 0x21B;
-    const OP_SHOW_CURSOR = 0x21C;
-    const OP_WINDOW_STATE = 0x21D;
-    const D9WG_WINDOW_IS_WINDOW = 1 << 0;
-    const D9WG_WINDOW_VISIBLE = 1 << 1;
-    const D9WG_WINDOW_ICONIC = 1 << 2;
-    const D9WG_WINDOW_FOREGROUND = 1 << 3;
-    const D9WG_WINDOW_FULLSCREEN = 1 << 4;
-    const D9WG_WINDOW_NO_SURFACE = 1 << 5;
+    const D9WG_AUTO_DEPTH_STENCIL_HANDLE = D9WG.C.D9WG_AUTO_DEPTH_STENCIL_HANDLE;
+    const OP_CREATE_VERTEX_DECLARATION = D9WG.OP.CREATE_VERTEX_DECLARATION;
+    const OP_CREATE_VERTEX_SHADER = D9WG.OP.CREATE_VERTEX_SHADER;
+    const OP_CREATE_PIXEL_SHADER = D9WG.OP.CREATE_PIXEL_SHADER;
+    const OP_CREATE_QUERY = D9WG.OP.CREATE_QUERY;
+    const OP_SET_RENDER_STATE = D9WG.OP.SET_RENDER_STATE;
+    const OP_SET_SAMPLER_STATE = D9WG.OP.SET_SAMPLER_STATE;
+    const OP_SET_TEXTURE_STAGE_STATE = D9WG.OP.SET_TEXTURE_STAGE_STATE;
+    const OP_SET_TEXTURE = D9WG.OP.SET_TEXTURE;
+    const OP_SET_VIEWPORT = D9WG.OP.SET_VIEWPORT;
+    const OP_SET_TRANSFORM = D9WG.OP.SET_TRANSFORM;
+    const OP_SET_MATERIAL = D9WG.OP.SET_MATERIAL;
+    const OP_SET_LIGHT = D9WG.OP.SET_LIGHT;
+    const OP_LIGHT_ENABLE = D9WG.OP.LIGHT_ENABLE;
+    const OP_SET_STREAM_SOURCE = D9WG.OP.SET_STREAM_SOURCE;
+    const OP_SET_STREAM_SOURCE_FREQ = D9WG.OP.SET_STREAM_SOURCE_FREQ;
+    const OP_SET_INDICES = D9WG.OP.SET_INDICES;
+    const OP_SET_VERTEX_DECLARATION = D9WG.OP.SET_VERTEX_DECLARATION;
+    const OP_SET_FVF = D9WG.OP.SET_FVF;
+    const OP_SET_CURSOR_PROPERTIES = D9WG.OP.SET_CURSOR_PROPERTIES;
+    const OP_SET_CURSOR_POSITION = D9WG.OP.SET_CURSOR_POSITION;
+    const OP_SHOW_CURSOR = D9WG.OP.SHOW_CURSOR;
+    const OP_WINDOW_STATE = D9WG.OP.WINDOW_STATE;
+    const D9WG_WINDOW_IS_WINDOW = D9WG.C.D9WG_WINDOW_IS_WINDOW;
+    const D9WG_WINDOW_VISIBLE = D9WG.C.D9WG_WINDOW_VISIBLE;
+    const D9WG_WINDOW_ICONIC = D9WG.C.D9WG_WINDOW_ICONIC;
+    const D9WG_WINDOW_FOREGROUND = D9WG.C.D9WG_WINDOW_FOREGROUND;
+    const D9WG_WINDOW_FULLSCREEN = D9WG.C.D9WG_WINDOW_FULLSCREEN;
+    const D9WG_WINDOW_NO_SURFACE = D9WG.C.D9WG_WINDOW_NO_SURFACE;
     // Other windows cover all of it (d3d9_protocol.h): hidden as far as the
     // picture goes, though the window is up
-    const D9WG_WINDOW_OCCLUDED = 1 << 6;
+    const D9WG_WINDOW_OCCLUDED = D9WG.C.D9WG_WINDOW_OCCLUDED;
     // Other windows cover part of it: the parts that show follow the record
     // (D9WGWindowRegion in d3d9_protocol.h)
-    const D9WG_WINDOW_REGION = 1 << 7;
-    const D9WG_WINDOW_STATE_BYTES = 40;
-    const D9WG_WINDOW_REGION_MAX_RECTS = 32;
-    const OP_SET_VERTEX_SHADER = 0x211;
-    const OP_SET_PIXEL_SHADER = 0x212;
-    const OP_SET_VERTEX_SHADER_CONSTANT_F = 0x213;
-    const OP_SET_VERTEX_SHADER_CONSTANT_I = 0x214;
-    const OP_SET_VERTEX_SHADER_CONSTANT_B = 0x215;
-    const OP_SET_PIXEL_SHADER_CONSTANT_F = 0x216;
-    const OP_SET_PIXEL_SHADER_CONSTANT_I = 0x217;
-    const OP_SET_PIXEL_SHADER_CONSTANT_B = 0x218;
-    const OP_SET_CLIP_PLANE = 0x219;
-    const OP_DRAW_PRIMITIVE = 0x300;
-    const OP_DRAW_INDEXED_PRIMITIVE = 0x301;
-    const OP_DRAW_PRIMITIVE_UP = 0x302;
+    const D9WG_WINDOW_REGION = D9WG.C.D9WG_WINDOW_REGION;
+    const D9WG_WINDOW_STATE_BYTES = D9WG.STRUCTS.WindowState.size;
+    const D9WG_WINDOW_REGION_MAX_RECTS = D9WG.C.D9WG_WINDOW_REGION_MAX_RECTS;
+    const OP_SET_VERTEX_SHADER = D9WG.OP.SET_VERTEX_SHADER;
+    const OP_SET_PIXEL_SHADER = D9WG.OP.SET_PIXEL_SHADER;
+    const OP_SET_VERTEX_SHADER_CONSTANT_F = D9WG.OP.SET_VERTEX_SHADER_CONSTANT_F;
+    const OP_SET_VERTEX_SHADER_CONSTANT_I = D9WG.OP.SET_VERTEX_SHADER_CONSTANT_I;
+    const OP_SET_VERTEX_SHADER_CONSTANT_B = D9WG.OP.SET_VERTEX_SHADER_CONSTANT_B;
+    const OP_SET_PIXEL_SHADER_CONSTANT_F = D9WG.OP.SET_PIXEL_SHADER_CONSTANT_F;
+    const OP_SET_PIXEL_SHADER_CONSTANT_I = D9WG.OP.SET_PIXEL_SHADER_CONSTANT_I;
+    const OP_SET_PIXEL_SHADER_CONSTANT_B = D9WG.OP.SET_PIXEL_SHADER_CONSTANT_B;
+    const OP_SET_CLIP_PLANE = D9WG.OP.SET_CLIP_PLANE;
+    const OP_DRAW_PRIMITIVE = D9WG.OP.DRAW_PRIMITIVE;
+    const OP_DRAW_INDEXED_PRIMITIVE = D9WG.OP.DRAW_INDEXED_PRIMITIVE;
+    const OP_DRAW_PRIMITIVE_UP = D9WG.OP.DRAW_PRIMITIVE_UP;
 
     const D3DSTREAMSOURCE_INDEXEDDATA = 0x40000000;
     const D3DSTREAMSOURCE_INSTANCEDATA = 0x80000000;
     const D3DSTREAMSOURCE_FREQUENCY_MASK = 0x3fffffff;
-    const OP_DRAW_INDEXED_PRIMITIVE_UP = 0x303;
-    const OP_BEGIN_QUERY = 0x400;
-    const OP_END_QUERY = 0x401;
+    const OP_DRAW_INDEXED_PRIMITIVE_UP = D9WG.OP.DRAW_INDEXED_PRIMITIVE_UP;
+    const OP_BEGIN_QUERY = D9WG.OP.BEGIN_QUERY;
+    const OP_END_QUERY = D9WG.OP.END_QUERY;
 
     const RESOURCE_BUFFER_VERTEX = 1;
     const RESOURCE_BUFFER_INDEX = 2;
@@ -264,75 +291,6 @@
     // over constants that have already been recorded.
     const UNIFORM_RING_BYTES = 16 * 1024 * 1024;
 
-    const D3DFMT_R8G8B8 = 20;
-    const D3DFMT_A8R8G8B8 = 21;
-    const D3DFMT_X8R8G8B8 = 22;
-    const D3DFMT_R5G6B5 = 23;
-    const D3DFMT_X1R5G5B5 = 24;
-    const D3DFMT_A1R5G5B5 = 25;
-    const D3DFMT_A4R4G4B4 = 26;
-    const D3DFMT_R3G3B2 = 27;
-    const D3DFMT_A8 = 28;
-    const D3DFMT_A8R3G3B2 = 29;
-    const D3DFMT_X4R4G4B4 = 30;
-    const D3DFMT_A2B10G10R10 = 31;
-    const D3DFMT_A8B8G8R8 = 32;
-    const D3DFMT_X8B8G8R8 = 33;
-    const D3DFMT_G16R16 = 34;
-    const D3DFMT_A2R10G10B10 = 35;
-    const D3DFMT_A16B16G16R16 = 36;
-    const D3DFMT_L8 = 50;
-    const D3DFMT_A8L8 = 51;
-    const D3DFMT_A4L4 = 52;
-    const D3DFMT_V8U8 = 60;
-    const D3DFMT_L6V5U5 = 61;
-    const D3DFMT_X8L8V8U8 = 62;
-    const D3DFMT_Q8W8V8U8 = 63;
-    const D3DFMT_V16U16 = 64;
-    const D3DFMT_W11V11U10 = 65;
-    const D3DFMT_A2W10V10U10 = 67;
-    const D3DFMT_L16 = 81;
-    const D3DFMT_R16F = 111;
-    const D3DFMT_G16R16F = 112;
-    const D3DFMT_A16B16G16R16F = 113;
-    const D3DFMT_R32F = 114;
-    const D3DFMT_G32R32F = 115;
-    const D3DFMT_A32B32G32R32F = 116;
-    const D3DFMT_CxV8U8 = 117;
-    const D3DFMT_P8 = 41;
-    const D3DFMT_A8P8 = 40;
-    const D3DFMT_Q16W16V16U16 = 110;
-    // Packed 4:2:2. One 32-bit block carries two pixels which share their
-    // chroma; only the luma (or green) differs between them.
-    const D3DFMT_UYVY = 0x59565955;      // 'UYVY'
-    const D3DFMT_YUY2 = 0x32595559;      // 'YUY2'
-    const D3DFMT_R8G8_B8G8 = 0x47424752; // 'RGBG'
-    const D3DFMT_G8R8_G8B8 = 0x42475247; // 'GRGB'
-    // ATI's depth-as-texture FOURCCs. Unlike a D24X8 texture, which a D3D9
-    // driver samples as a hardware shadow-map comparison, these return the
-    // stored depth itself -- an app picks one precisely because it wants the
-    // raw value to do its own filtering with.
-    const D3DFMT_DF16 = 0x36314644;      // 'DF16'
-    const D3DFMT_DF24 = 0x34324644;      // 'DF24'
-    const D3DFMT_INTZ = 0x5A544E49;      // 'INTZ'
-    // ATI's 3Dc pair, which are BC4 and BC5 under their pre-DX10 names. A
-    // normal map keeping only X and Y and reconstructing Z in the shader beats
-    // DXT5 for normals by enough that 2005-2007 titles ship art in it. WebGPU
-    // exposes exactly these two under texture-compression-bc, so this is a
-    // rename rather than a translation.
-    const D3DFMT_ATI1N = 0x31495441;     // 'ATI1'
-    const D3DFMT_ATI2N = 0x32495441;     // 'ATI2'
-    // A render target whose contents nothing ever reads, so a depth-only pass
-    // does not have to allocate a colour buffer it will not use.
-    const D3DFMT_NULL = 0x4C4C554E;      // 'NULL'
-    const D3DFMT_DXT1 = 0x31545844;
-    const D3DFMT_DXT2 = 0x32545844;
-    const D3DFMT_DXT3 = 0x33545844;
-    const D3DFMT_DXT4 = 0x34545844;
-    const D3DFMT_DXT5 = 0x35545844;
-    const D3DFMT_INDEX16 = 101;
-    const D3DFMT_INDEX32 = 102;
-
     const D3DUSAGE_RENDERTARGET = 0x1;
     const D3DUSAGE_DEPTHSTENCIL = 0x2;
     const D3DUSAGE_AUTOGENMIPMAP = 0x400;
@@ -341,7 +299,8 @@
     // resolved through a palette, rather than expanded to RGBA on the CPU,
     // because DirectDraw blits P8 into P8 and a later palette change must
     // still change those pixels' colour.
-    const D9WG_USAGE_DDRAW_INDEXED = 0x80000000;
+    const D9WG_USAGE_DDRAW_INDEXED = D9WG.C.D9WG_USAGE_DDRAW_INDEXED;
+    const D9WG_USAGE_DDRAW_XRGB_BITS = D9WG.C.D9WG_USAGE_DDRAW_XRGB_BITS;
     const D3DMULTISAMPLE_NONE = 0;
     const D3DMULTISAMPLE_4_SAMPLES = 4;
 
@@ -481,13 +440,14 @@
     // of one matrix per vertex chosen by BLENDINDICES.x with weight 1.
     const D3DVBF_DISABLE = 0;
     const D3DVBF_TWEENING = 255;
+    const D3DRS_TWEENFACTOR = 170;
     const D3DVBF_0WEIGHTS = 256;
     // D3D9's fixed function blends at most four matrices per vertex, which is
     // what fill_caps() reports as MaxVertexBlendMatrices.
     const MAX_BLEND_MATRICES = 4;
 
     // D3DLIGHTTYPE
-    const D3DLIGHT_POINT = 1, D3DLIGHT_SPOT = 2, D3DLIGHT_DIRECTIONAL = 3;
+    const D3DLIGHT_POINT = 1, D3DLIGHT_SPOT = 2, D3DLIGHT_DIRECTIONAL = 3, D3DLIGHT_PARALLELPOINT = 4;
     // D3DMATERIALCOLORSOURCE
     const D3DMCS_MATERIAL = 0, D3DMCS_COLOR1 = 1, D3DMCS_COLOR2 = 2;
     // fill_caps() reports MaxActiveLights = 8.
@@ -663,6 +623,9 @@
     // Float bits in a DWORD. WebGPU samplers carry no LOD bias, so this one is
     // applied at the sample call instead -- see lodBiasFor().
     const D3DSAMP_MIPMAPLODBIAS = 8;
+    // MAKEFOURCC('G','E','T','4'): written to D3DSAMP_MIPMAPLODBIAS to enable
+    // AMD's Fetch4 on that sampler.
+    const D3DFETCH4_ENABLE = 0x34544547;
     // The floor on which mip level may be sampled, as a level index. WebGPU
     // spells the same restriction as a LOD clamp, so both this and the
     // per-texture SetLOD become lodMinClamp -- see samplerFor().
@@ -697,9 +660,11 @@
         D3DSAMP_BORDERCOLOR,
         D3DSAMP_MAGFILTER, D3DSAMP_MINFILTER, D3DSAMP_MIPFILTER,
         D3DSAMP_MAXANISOTROPY, D3DSAMP_SRGBTEXTURE,
+        62, 63, // NV40 private fractional min/max LOD, f32 bits
     ]);
 
     const CONSUMED_RENDER_STATES = new Set([
+        D9WG.C.D9WG_NV_RS_COLOR_BLEND_MASK,
         D3DRS_ZENABLE, D3DRS_ZWRITEENABLE, D3DRS_ALPHATESTENABLE, D3DRS_ALPHAREF,
         D3DRS_ALPHAFUNC, D3DRS_SRCBLEND, D3DRS_DESTBLEND, D3DRS_CULLMODE,
         D3DRS_ZFUNC, D3DRS_ALPHABLENDENABLE, D3DRS_COLORWRITEENABLE,
@@ -766,11 +731,16 @@
     const BUFFER_USAGE_VERTEX = 0x20;
     const BUFFER_USAGE_INDEX = 0x10;
     const BUFFER_USAGE_UNIFORM = 0x40;
+    const BUFFER_USAGE_STORAGE = 0x80;
     const BUFFER_USAGE_COPY_SRC = 0x4;
     const BUFFER_USAGE_COPY_DST = 0x8;
     const BUFFER_USAGE_MAP_READ = 0x1;
     const BUFFER_USAGE_QUERY_RESOLVE = 0x200;
     const MAP_MODE_READ = 0x1;
+    // SetTexture/SetSamplerState stage of vertex texture sampler s0 (s1..s3 follow)
+    const D3DVERTEXTEXTURESAMPLER0 = 257;
+    // GPUQuerySet count limit (WebGPU spec, not an adapter limit)
+    const MAX_QUERY_SET_COUNT = 4096;
     const TEXTURE_USAGE_COPY_SRC = 0x1;
     const TEXTURE_USAGE_COPY_DST = 0x2;
     const SHADER_STAGE_VERTEX = 0x1;
@@ -838,70 +808,13 @@
         return FLOAT_BITS_F32[0];
     }
 
-    // D3DSAMP_MIPMAPLODBIAS, also float bits in a DWORD.
-    //
-    // WebGPU samplers have no LOD bias at all, so the only place to apply one
-    // is the sample call -- textureSampleBias -- which means the value lands in
-    // the shader rather than in the sampler. Baking it as a literal (rather
-    // than reading it from a uniform) keeps it out of the per-draw uniform
-    // writers on both the fixed-function and translated paths, at the price of
-    // one pipeline variant per distinct bias.
-    //
-    // Quantising to 1/16 of a mip level is what bounds that price: a title that
-    // animates the bias continuously would otherwise mint a pipeline per frame,
-    // and 1/16 is far finer than the difference is visible at. The range clamp
-    // matches D3D9's own, which no hardware exceeded.
-    const LOD_BIAS_STEPS = 16;
+    // Mipmap bias is a per-draw float uniform, clamped to the supported
+    // sampling range. It no longer needs quantization to bound shader variants.
     const LOD_BIAS_LIMIT = 16;
     function lodBiasFor(dword) {
         const bias = floatFromDWORD(dword);
         if (!Number.isFinite(bias) || bias === 0) return 0;
-        return Math.round(Math.max(-LOD_BIAS_LIMIT,
-            Math.min(LOD_BIAS_LIMIT, bias)) * LOD_BIAS_STEPS) / LOD_BIAS_STEPS;
-    }
-
-    // The "-srgb" sibling of a GPU format, or null when there is none. A view
-    // can only use a format listed in the texture's viewFormats at creation, so
-    // this has to be known up front rather than at bind time.
-    function srgbSiblingOf(gpuFormat) {
-        return {
-            "bgra8unorm": "bgra8unorm-srgb",
-            "rgba8unorm": "rgba8unorm-srgb",
-            "bc1-rgba-unorm": "bc1-rgba-unorm-srgb",
-            "bc2-rgba-unorm": "bc2-rgba-unorm-srgb",
-            "bc3-rgba-unorm": "bc3-rgba-unorm-srgb",
-        }[gpuFormat] || null;
-    }
-
-    function isCompressedFormat(format) {
-        return format === D3DFMT_DXT1 || format === D3DFMT_DXT2 ||
-            format === D3DFMT_DXT3 || format === D3DFMT_DXT4 ||
-            format === D3DFMT_DXT5 ||
-            format === D3DFMT_ATI1N || format === D3DFMT_ATI2N;
-    }
-
-    // Bytes per 4x4 block for the block-compressed formats. BC1 and BC4 carry
-    // one 8-byte block; everything else here carries two.
-    function compressedBlockBytes(format) {
-        return (format === D3DFMT_DXT1 || format === D3DFMT_ATI1N) ? 8 : 16;
-    }
-
-    // WebGPU measures a block-compressed copy in whole texel blocks: copySize
-    // must be a multiple of the BCn 4x4 block, and a mip level's *physical*
-    // extent is its logical size rounded up to that grid. So the tail of a DXT
-    // mip chain has to be written as a full 4x4 block even though its logical
-    // size is 2x2 or 1x1. Passing the logical size makes writeTexture fail
-    // validation, and because that failure surfaces as an uncaptured device
-    // error rather than an exception, the level silently keeps whatever the
-    // texture was created with -- hundreds of "copySize.width (1) is not a
-    // multiple of compressed texture format block width (4)" errors while Kart
-    // Rider loaded its UI atlases, with no other symptom than the smallest mips
-    // sampling as garbage.
-    //
-    // Callers pass a block-aligned origin, which WebGPU requires independently,
-    // so rounding the extent up cannot run past the physical mip extent.
-    function blockAlignedCopyExtent(size, compressed) {
-        return compressed ? Math.ceil(size / 4) * 4 : size;
+        return Math.max(-LOD_BIAS_LIMIT, Math.min(LOD_BIAS_LIMIT, bias));
     }
 
     // The pixel rect a draw may touch: the D3D9 viewport (which clips, unlike
@@ -926,739 +839,6 @@
         right = Math.max(left, Math.min(right, targetWidth));
         bottom = Math.max(top, Math.min(bottom, targetHeight));
         return { x: left, y: top, width: right - left, height: bottom - top };
-    }
-
-    // The FOURCC depth formats. They live in a D3D9 texture like any other
-    // format, but their storage is the depth buffer's, so they take the depth
-    // path rather than formatToGPU.
-    function isFourCCDepthFormat(format) {
-        return format === D3DFMT_DF16 || format === D3DFMT_DF24 ||
-            format === D3DFMT_INTZ;
-    }
-
-    function isPalettizedFormat(format) {
-        return format === D3DFMT_P8 || format === D3DFMT_A8P8;
-    }
-
-    // Two pixels per 32-bit block, sharing chroma.
-    function isPackedPairFormat(format) {
-        return format === D3DFMT_UYVY || format === D3DFMT_YUY2 ||
-            format === D3DFMT_R8G8_B8G8 || format === D3DFMT_G8R8_G8B8;
-    }
-
-    function isHalfFloatExpansionFormat(format) {
-        return format === D3DFMT_Q16W16V16U16 ||
-            format === D3DFMT_L6V5U5 || format === D3DFMT_X8L8V8U8 ||
-            format === D3DFMT_V16U16 || format === D3DFMT_W11V11U10 ||
-            format === D3DFMT_A2W10V10U10 ||
-            format === D3DFMT_L16 || format === D3DFMT_CxV8U8 ||
-            format === D3DFMT_A2B10G10R10 || format === D3DFMT_G16R16 ||
-            format === D3DFMT_A2R10G10B10 ||
-            format === D3DFMT_A16B16G16R16 || format === D3DFMT_R16F ||
-            format === D3DFMT_G16R16F ||
-            format === D3DFMT_A16B16G16R16F;
-    }
-
-    function gpuBytesPerTexel(format) {
-        if (isHalfFloatExpansionFormat(format)) return 8;
-        if (format === D3DFMT_G32R32F) return 8;
-        if (format === D3DFMT_A32B32G32R32F) return 16;
-        return 4;
-    }
-
-    // A command whose payload contradicts the batch framing -- a blob that
-    // reaches past the end of the record, a length field larger than the bytes
-    // behind it. Unlike a command that merely fails, this means the producer
-    // and the consumer disagree about the byte layout, so nothing else in the
-    // batch can be trusted either and the whole thing is abandoned. Everything
-    // that is not one of these is contained to its own command; see the
-    // dispatch loop in executeBatch().
-    class D9WGStreamError extends Error {}
-
-    // WebGPU wants the level count; D3D9 texture sizes are not always powers of
-    // two, and the chain runs until both dimensions reach one.
-    function fullMipLevelCount(width, height) {
-        let levels = 1;
-        let w = width, h = height;
-        while (w > 1 || h > 1) {
-            if (w > 1) w >>= 1;
-            if (h > 1) h >>= 1;
-            ++levels;
-        }
-        return levels;
-    }
-
-    function isRenderableGPUFormat(format) {
-        return format === "rgba8unorm" || format === "rgba16float" ||
-            format === "r32float" || format === "rg32float" ||
-            format === "rgba32float" ||
-            // The NULL FOURCC target's stand-in. It is renderable by
-            // definition -- being a render target nothing reads is its whole
-            // purpose -- and r8unorm is the cheapest format that can be one.
-            format === "r8unorm" ||
-            // Protocol 1.7: the storage a DirectDraw palettised surface uses.
-            // It has to be an attachment because a 2D title's whole frame is
-            // built by blitting P8 sprites into a P8 back buffer.
-            format === "r8uint";
-    }
-
-    function isFloat32GPUFormat(format) {
-        return format === "r32float" || format === "rg32float" ||
-            format === "rgba32float";
-    }
-
-    function isBlendableGPUFormat(format, features) {
-        return !isFloat32GPUFormat(format) ||
-            !!(features && features.float32Blendable);
-    }
-
-    function formatToGPU(format) {
-        switch (format) {
-        case D3DFMT_R8G8B8:
-        case D3DFMT_A8R8G8B8:
-        case D3DFMT_X8R8G8B8:
-        case D3DFMT_X1R5G5B5:
-        case D3DFMT_A1R5G5B5:
-        case D3DFMT_A4R4G4B4:
-        case D3DFMT_R3G3B2:
-        case D3DFMT_A8R3G3B2:
-        case D3DFMT_X4R4G4B4:
-        case D3DFMT_A8B8G8R8:
-        case D3DFMT_X8B8G8R8:
-        case D3DFMT_R5G6B5:
-        case D3DFMT_L8:
-        case D3DFMT_A8:
-        case D3DFMT_A8L8:
-        case D3DFMT_A4L4:
-        case D3DFMT_P8:
-        case D3DFMT_A8P8:
-        case D3DFMT_UYVY:
-        case D3DFMT_YUY2:
-        case D3DFMT_R8G8_B8G8:
-        case D3DFMT_G8R8_G8B8:
-        case D3DFMT_INDEX16:
-        case D3DFMT_INDEX32:
-            // All of these are CPU-expanded to tightly-packed RGBA8 on
-            // upload (see expandRowToGPU), matching the D3D8 path's
-            // approach: WebGPU has no native 16-bit BGR/BGRA formats.
-            return "rgba8unorm";
-        case D3DFMT_V8U8:
-        case D3DFMT_Q8W8V8U8:
-            return "rgba8snorm";
-        case D3DFMT_L6V5U5:
-        case D3DFMT_X8L8V8U8:
-        case D3DFMT_V16U16:
-        case D3DFMT_W11V11U10:
-        case D3DFMT_A2W10V10U10:
-        case D3DFMT_L16:
-        case D3DFMT_CxV8U8:
-        case D3DFMT_A2B10G10R10:
-        case D3DFMT_G16R16:
-        case D3DFMT_A2R10G10B10:
-        case D3DFMT_A16B16G16R16:
-        case D3DFMT_Q16W16V16U16:
-        case D3DFMT_R16F:
-        case D3DFMT_G16R16F:
-        case D3DFMT_A16B16G16R16F:
-            // Mixed signed/unsigned bump formats, CxV8U8's reconstructed
-            // component, and high-precision L16 cannot be represented by one
-            // normalized 8-bit WebGPU format without losing their semantics.
-            // Half-float preserves the sampled values closely.
-            return "rgba16float";
-        case D3DFMT_R32F:
-            return "r32float";
-        case D3DFMT_G32R32F:
-            return "rg32float";
-        case D3DFMT_A32B32G32R32F:
-            return "rgba32float";
-        case D3DFMT_DXT1:
-            return "bc1-rgba-unorm";
-        case D3DFMT_DXT2:
-        case D3DFMT_DXT3:
-            return "bc2-rgba-unorm";
-        case D3DFMT_DXT4:
-        case D3DFMT_DXT5:
-            return "bc3-rgba-unorm";
-        case D3DFMT_ATI1N:
-            return "bc4-r-unorm";
-        case D3DFMT_ATI2N:
-            return "bc5-rg-unorm";
-        case D3DFMT_NULL:
-            // Nothing reads it, so the cheapest renderable format is the right
-            // one: the size still has to match the depth attachment the pass
-            // is really aiming at, but the per-texel cost does not.
-            return "r8unorm";
-        default:
-            return null;
-        }
-    }
-
-    const HALF_BITS_BUFFER = new ArrayBuffer(4);
-    const HALF_BITS_F32 = new Float32Array(HALF_BITS_BUFFER);
-    const HALF_BITS_U32 = new Uint32Array(HALF_BITS_BUFFER);
-
-    function floatToHalfBits(value) {
-        HALF_BITS_F32[0] = value;
-        const bits = HALF_BITS_U32[0];
-        const sign = (bits >>> 16) & 0x8000;
-        let exponent = (bits >>> 23) & 0xff;
-        let mantissa = bits & 0x7fffff;
-        if (exponent === 0xff)
-            return sign | (mantissa ? 0x7e00 : 0x7c00);
-        exponent = exponent - 127 + 15;
-        if (exponent >= 31) return sign | 0x7c00;
-        if (exponent <= 0) {
-            if (exponent < -10) return sign;
-            const normalized = mantissa | 0x800000;
-            const shift = 14 - exponent;
-            let halfMantissa = normalized >>> shift;
-            const remainderMask = (1 << shift) - 1;
-            const remainder = normalized & remainderMask;
-            const halfway = 1 << (shift - 1);
-            if (remainder > halfway ||
-                    (remainder === halfway && (halfMantissa & 1)))
-                ++halfMantissa;
-            return sign | halfMantissa;
-        }
-        let halfMantissa = mantissa >>> 13;
-        const remainder = mantissa & 0x1fff;
-        if (remainder > 0x1000 ||
-                (remainder === 0x1000 && (halfMantissa & 1))) {
-            ++halfMantissa;
-            if (halfMantissa === 0x400) {
-                halfMantissa = 0;
-                if (++exponent >= 31) return sign | 0x7c00;
-            }
-        }
-        return sign | (exponent << 10) | halfMantissa;
-    }
-
-    function writeHalf(dest, offset, value) {
-        const bits = floatToHalfBits(value);
-        dest[offset] = bits & 0xff;
-        dest[offset + 1] = bits >>> 8;
-    }
-
-    function halfBitsToFloat(bits) {
-        const sign = (bits & 0x8000) ? -1 : 1;
-        const exponent = (bits >>> 10) & 0x1f;
-        const mantissa = bits & 0x3ff;
-        if (!exponent)
-            return mantissa ? sign * Math.pow(2, -14) * mantissa / 1024
-                : sign === -1 ? -0 : 0;
-        if (exponent === 0x1f)
-            return mantissa ? NaN : sign * Infinity;
-        return sign * Math.pow(2, exponent - 15) * (1 + mantissa / 1024);
-    }
-
-    function d3dBytesPerTexel(format) {
-        switch (format) {
-        case D3DFMT_R5G6B5:
-        case D3DFMT_X1R5G5B5:
-        case D3DFMT_A1R5G5B5:
-        case D3DFMT_A4R4G4B4:
-        case D3DFMT_R16F:
-            return 2;
-        case D3DFMT_A8R8G8B8:
-        case D3DFMT_X8R8G8B8:
-        case D3DFMT_A2B10G10R10:
-        case D3DFMT_A2R10G10B10:
-        case D3DFMT_G16R16F:
-        case D3DFMT_R32F:
-            return 4;
-        case D3DFMT_A16B16G16R16F:
-        case D3DFMT_G32R32F:
-            return 8;
-        case D3DFMT_A32B32G32R32F:
-            return 16;
-        default:
-            return 0;
-        }
-    }
-
-    function packGPUReadbackRow(format, gpuFormat, source, sourceOffset,
-            width, destination, destinationOffset) {
-        const sourceView = new DataView(source.buffer,
-            source.byteOffset, source.byteLength);
-        const destinationView = new DataView(destination.buffer,
-            destination.byteOffset, destination.byteLength);
-        const sourceBpp = gpuFormat === "rgba16float" ? 8
-            : gpuFormat === "rg32float" ? 8
-            : gpuFormat === "rgba32float" ? 16 : 4;
-        const destinationBpp = d3dBytesPerTexel(format);
-        const clamp = value => Math.max(0, Math.min(1,
-            Number.isFinite(value) ? value : 0));
-        const unorm = (value, maximum) =>
-            Math.round(clamp(value) * maximum);
-        for (let x = 0; x < width; ++x) {
-            const sourceAt = sourceOffset + x * sourceBpp;
-            const destinationAt = destinationOffset + x * destinationBpp;
-            let r, g, b, a;
-            if (gpuFormat === "rgba16float") {
-                r = halfBitsToFloat(sourceView.getUint16(sourceAt, true));
-                g = halfBitsToFloat(sourceView.getUint16(sourceAt + 2, true));
-                b = halfBitsToFloat(sourceView.getUint16(sourceAt + 4, true));
-                a = halfBitsToFloat(sourceView.getUint16(sourceAt + 6, true));
-            } else if (gpuFormat === "r32float") {
-                r = sourceView.getFloat32(sourceAt, true); g = b = 0; a = 1;
-            } else if (gpuFormat === "rg32float") {
-                r = sourceView.getFloat32(sourceAt, true);
-                g = sourceView.getFloat32(sourceAt + 4, true); b = 0; a = 1;
-            } else if (gpuFormat === "rgba32float") {
-                r = sourceView.getFloat32(sourceAt, true);
-                g = sourceView.getFloat32(sourceAt + 4, true);
-                b = sourceView.getFloat32(sourceAt + 8, true);
-                a = sourceView.getFloat32(sourceAt + 12, true);
-            } else if (gpuFormat === "bgra8unorm" ||
-                    gpuFormat === "bgra8unorm-srgb") {
-                b = source[sourceAt] / 255; g = source[sourceAt + 1] / 255;
-                r = source[sourceAt + 2] / 255; a = source[sourceAt + 3] / 255;
-            } else {
-                r = source[sourceAt] / 255; g = source[sourceAt + 1] / 255;
-                b = source[sourceAt + 2] / 255; a = source[sourceAt + 3] / 255;
-            }
-            switch (format) {
-            case D3DFMT_A8R8G8B8:
-            case D3DFMT_X8R8G8B8:
-                destination[destinationAt] = unorm(b, 255);
-                destination[destinationAt + 1] = unorm(g, 255);
-                destination[destinationAt + 2] = unorm(r, 255);
-                destination[destinationAt + 3] = format === D3DFMT_A8R8G8B8
-                    ? unorm(a, 255) : 0xff;
-                break;
-            case D3DFMT_R5G6B5:
-                destinationView.setUint16(destinationAt,
-                    (unorm(r, 31) << 11) | (unorm(g, 63) << 5) |
-                    unorm(b, 31), true);
-                break;
-            case D3DFMT_X1R5G5B5:
-            case D3DFMT_A1R5G5B5:
-                destinationView.setUint16(destinationAt,
-                    ((format === D3DFMT_X1R5G5B5 ? 1 : unorm(a, 1)) << 15) |
-                    (unorm(r, 31) << 10) | (unorm(g, 31) << 5) |
-                    unorm(b, 31), true);
-                break;
-            case D3DFMT_A4R4G4B4:
-                destinationView.setUint16(destinationAt,
-                    (unorm(a, 15) << 12) | (unorm(r, 15) << 8) |
-                    (unorm(g, 15) << 4) | unorm(b, 15), true);
-                break;
-            case D3DFMT_A2B10G10R10:
-                destinationView.setUint32(destinationAt,
-                    (unorm(r, 1023) | (unorm(g, 1023) << 10) |
-                    (unorm(b, 1023) << 20) | (unorm(a, 3) << 30)) >>> 0,
-                    true);
-                break;
-            case D3DFMT_A2R10G10B10:
-                destinationView.setUint32(destinationAt,
-                    (unorm(b, 1023) | (unorm(g, 1023) << 10) |
-                    (unorm(r, 1023) << 20) | (unorm(a, 3) << 30)) >>> 0,
-                    true);
-                break;
-            case D3DFMT_R16F:
-                destinationView.setUint16(destinationAt,
-                    floatToHalfBits(r), true);
-                break;
-            case D3DFMT_G16R16F:
-                destinationView.setUint16(destinationAt,
-                    floatToHalfBits(r), true);
-                destinationView.setUint16(destinationAt + 2,
-                    floatToHalfBits(g), true);
-                break;
-            case D3DFMT_A16B16G16R16F:
-                destinationView.setUint16(destinationAt,
-                    floatToHalfBits(r), true);
-                destinationView.setUint16(destinationAt + 2,
-                    floatToHalfBits(g), true);
-                destinationView.setUint16(destinationAt + 4,
-                    floatToHalfBits(b), true);
-                destinationView.setUint16(destinationAt + 6,
-                    floatToHalfBits(a), true);
-                break;
-            case D3DFMT_R32F:
-                destinationView.setFloat32(destinationAt, r, true);
-                break;
-            case D3DFMT_G32R32F:
-                destinationView.setFloat32(destinationAt, r, true);
-                destinationView.setFloat32(destinationAt + 4, g, true);
-                break;
-            case D3DFMT_A32B32G32R32F:
-                destinationView.setFloat32(destinationAt, r, true);
-                destinationView.setFloat32(destinationAt + 4, g, true);
-                destinationView.setFloat32(destinationAt + 8, b, true);
-                destinationView.setFloat32(destinationAt + 12, a, true);
-                break;
-            default:
-                throw new Error("unsupported render-target readback format " +
-                    format);
-            }
-        }
-    }
-
-    function signedNormalized(value, bitCount) {
-        const signBit = 1 << (bitCount - 1);
-        const fullRange = 1 << bitCount;
-        const signed = value & signBit ? value - fullRange : value;
-        return signed === -signBit ? -1 : signed / (signBit - 1);
-    }
-
-    // Expands one source row to the WebGPU format returned by formatToGPU().
-    // Ordinary colour/luminance formats become RGBA8 UNORM, signed bump maps
-    // become RGBA8 SNORM, and mixed/high-precision formats become RGBA16F.
-    // BCn formats bypass this routine and stay block-compressed end-to-end.
-    // BT.601 studio-swing YCbCr, which is what D3D9's 4:2:2 formats carry --
-    // they exist for video frames, and a video decoder writes 16..235 luma.
-    // Treating it as full range washes blacks out to dark grey, which is
-    // exactly the kind of "close enough to look intentional" error that never
-    // gets noticed.
-    function yuvToRGB(y, u, v, out) {
-        const c = y - 16, d = u - 128, e = v - 128;
-        out[0] = Math.min(255, Math.max(0, (298 * c + 409 * e + 128) >> 8));
-        out[1] = Math.min(255, Math.max(0,
-            (298 * c - 100 * d - 208 * e + 128) >> 8));
-        out[2] = Math.min(255, Math.max(0, (298 * c + 516 * d + 128) >> 8));
-    }
-
-    const YUV_SCRATCH = new Int32Array(3);
-
-    // The 4:2:2 and RGBG/GRGB formats describe two pixels per 32-bit block, so
-    // they cannot be expanded one texel at a time from an index alone: texel i
-    // needs the block containing i and its position within it. `palette` is the
-    // 256-entry Uint8Array (RGBA) a palettized format indexes into, or null.
-    function expandPairedRowToGPU(format, source, sourceOffset, count, dest,
-            destOffset) {
-        for (let i = 0; i < count; ++i) {
-            const block = sourceOffset + (i >> 1) * 4;
-            const second = (i & 1) !== 0;
-            const out = destOffset + i * 4;
-            let r, g, b;
-            switch (format) {
-            case D3DFMT_YUY2: { // Y0 U Y1 V
-                yuvToRGB(source[block + (second ? 2 : 0)], source[block + 1],
-                    source[block + 3], YUV_SCRATCH);
-                r = YUV_SCRATCH[0]; g = YUV_SCRATCH[1]; b = YUV_SCRATCH[2];
-                break;
-            }
-            case D3DFMT_UYVY: { // U Y0 V Y1
-                yuvToRGB(source[block + (second ? 3 : 1)], source[block],
-                    source[block + 2], YUV_SCRATCH);
-                r = YUV_SCRATCH[0]; g = YUV_SCRATCH[1]; b = YUV_SCRATCH[2];
-                break;
-            }
-            case D3DFMT_R8G8_B8G8: // R G0 B G1: the pair shares R and B
-                r = source[block];
-                g = source[block + (second ? 3 : 1)];
-                b = source[block + 2];
-                break;
-            default:               // D3DFMT_G8R8_G8B8 -- G0 R G1 B
-                r = source[block + 1];
-                g = source[block + (second ? 2 : 0)];
-                b = source[block + 3];
-                break;
-            }
-            dest[out] = r; dest[out + 1] = g; dest[out + 2] = b;
-            dest[out + 3] = 0xff;
-        }
-    }
-
-    function expandRowToGPU(format, source, sourceOffset, count, dest,
-            destOffset, palette) {
-        if (format === D3DFMT_R32F || format === D3DFMT_G32R32F ||
-                format === D3DFMT_A32B32G32R32F) {
-            const bytes = count * gpuBytesPerTexel(format);
-            dest.set(source.subarray(sourceOffset, sourceOffset + bytes), destOffset);
-            return;
-        }
-        if (isPackedPairFormat(format)) {
-            expandPairedRowToGPU(format, source, sourceOffset, count, dest,
-                destOffset);
-            return;
-        }
-        if (isPalettizedFormat(format)) {
-            const stride = format === D3DFMT_A8P8 ? 2 : 1;
-            for (let i = 0; i < count; ++i) {
-                const at = sourceOffset + i * stride;
-                // D3DFMT_A8P8 is little-endian [index, alpha]; the palette's
-                // own alpha is overridden by the per-texel one.
-                const entry = (palette ? source[at] : 0) * 4;
-                const out = destOffset + i * 4;
-                if (palette) {
-                    dest[out] = palette[entry];
-                    dest[out + 1] = palette[entry + 1];
-                    dest[out + 2] = palette[entry + 2];
-                    dest[out + 3] = stride === 2
-                        ? source[at + 1] : palette[entry + 3];
-                } else {
-                    // No palette has been set yet. Opaque white keeps the draw
-                    // neutral instead of painting the scene with whatever the
-                    // uninitialised entries happened to be.
-                    dest[out] = dest[out + 1] = dest[out + 2] = 0xff;
-                    dest[out + 3] = stride === 2 ? source[at + 1] : 0xff;
-                }
-            }
-            return;
-        }
-        for (let i = 0; i < count; ++i) {
-            let r, g, b, a;
-            if (isHalfFloatExpansionFormat(format)) {
-                let u, v, w, q;
-                if (format === D3DFMT_CxV8U8) {
-                    const at = sourceOffset + i * 2;
-                    u = signedNormalized(source[at], 8);
-                    v = signedNormalized(source[at + 1], 8);
-                    w = Math.sqrt(Math.max(0, 1 - u * u - v * v));
-                    q = 1;
-                } else if (format === D3DFMT_L16) {
-                    const at = sourceOffset + i * 2;
-                    const luminance = (source[at] |
-                        (source[at + 1] << 8)) / 65535;
-                    u = v = w = luminance;
-                    q = 1;
-                } else if (format === D3DFMT_R16F) {
-                    const at = sourceOffset + i * 2;
-                    const out = destOffset + i * 8;
-                    dest[out] = source[at];
-                    dest[out + 1] = source[at + 1];
-                    writeHalf(dest, out + 2, 0);
-                    writeHalf(dest, out + 4, 0);
-                    writeHalf(dest, out + 6, 1);
-                    continue;
-                } else if (format === D3DFMT_G16R16F) {
-                    const at = sourceOffset + i * 4;
-                    const out = destOffset + i * 8;
-                    dest[out] = source[at];
-                    dest[out + 1] = source[at + 1];
-                    dest[out + 2] = source[at + 2];
-                    dest[out + 3] = source[at + 3];
-                    writeHalf(dest, out + 4, 0);
-                    writeHalf(dest, out + 6, 1);
-                    continue;
-                } else if (format === D3DFMT_A16B16G16R16F) {
-                    const at = sourceOffset + i * 8;
-                    const out = destOffset + i * 8;
-                    dest.set(source.subarray(at, at + 8), out);
-                    continue;
-                } else if (format === D3DFMT_G16R16 ||
-                        format === D3DFMT_A16B16G16R16) {
-                    const at = sourceOffset + i *
-                        (format === D3DFMT_G16R16 ? 4 : 8);
-                    const readUNorm16 = offset =>
-                        (source[offset] | (source[offset + 1] << 8)) / 65535;
-                    u = readUNorm16(at);
-                    v = readUNorm16(at + 2);
-                    w = format === D3DFMT_A16B16G16R16 ?
-                        readUNorm16(at + 4) : 0;
-                    q = format === D3DFMT_A16B16G16R16 ?
-                        readUNorm16(at + 6) : 1;
-                } else if (format === D3DFMT_A2B10G10R10 ||
-                        format === D3DFMT_A2R10G10B10) {
-                    const at = sourceOffset + i * 4;
-                    const value = (source[at] | (source[at + 1] << 8) |
-                        (source[at + 2] << 16) |
-                        (source[at + 3] << 24)) >>> 0;
-                    const c0 = (value & 0x3ff) / 1023;
-                    const c1 = ((value >>> 10) & 0x3ff) / 1023;
-                    const c2 = ((value >>> 20) & 0x3ff) / 1023;
-                    u = format === D3DFMT_A2B10G10R10 ? c0 : c2;
-                    v = c1;
-                    w = format === D3DFMT_A2B10G10R10 ? c2 : c0;
-                    q = (value >>> 30) / 3;
-                } else if (format === D3DFMT_L6V5U5) {
-                    const value = source[sourceOffset + i * 2] |
-                        (source[sourceOffset + i * 2 + 1] << 8);
-                    u = signedNormalized(value & 0x1f, 5);
-                    v = signedNormalized((value >>> 5) & 0x1f, 5);
-                    w = ((value >>> 10) & 0x3f) / 63;
-                    q = 1;
-                } else if (format === D3DFMT_X8L8V8U8) {
-                    const at = sourceOffset + i * 4;
-                    u = signedNormalized(source[at], 8);
-                    v = signedNormalized(source[at + 1], 8);
-                    w = source[at + 2] / 255;
-                    q = 1;
-                } else if (format === D3DFMT_V16U16) {
-                    const at = sourceOffset + i * 4;
-                    const rawU = source[at] | (source[at + 1] << 8);
-                    const rawV = source[at + 2] | (source[at + 3] << 8);
-                    u = signedNormalized(rawU, 16);
-                    v = signedNormalized(rawV, 16);
-                    w = q = 1;
-                } else if (format === D3DFMT_Q16W16V16U16) {
-                    const at = sourceOffset + i * 8;
-                    const read = offset => signedNormalized(
-                        source[offset] | (source[offset + 1] << 8), 16);
-                    u = read(at);
-                    v = read(at + 2);
-                    w = read(at + 4);
-                    q = read(at + 6);
-                } else if (format === D3DFMT_W11V11U10) {
-                    // The one D3D8 bump format whose channels are not a whole
-                    // number of bits alike: U is 10 bits at 0-9, V is 11 at
-                    // 10-20, W is 11 at 21-31, and all three are signed.
-                    const at = sourceOffset + i * 4;
-                    const value = (source[at] | (source[at + 1] << 8) |
-                        (source[at + 2] << 16) |
-                        (source[at + 3] << 24)) >>> 0;
-                    u = signedNormalized(value & 0x3ff, 10);
-                    v = signedNormalized((value >>> 10) & 0x7ff, 11);
-                    w = signedNormalized((value >>> 21) & 0x7ff, 11);
-                    q = 1;
-                } else {
-                    const at = sourceOffset + i * 4;
-                    const value = (source[at] | (source[at + 1] << 8) |
-                        (source[at + 2] << 16) |
-                        (source[at + 3] << 24)) >>> 0;
-                    u = signedNormalized(value & 0x3ff, 10);
-                    v = signedNormalized((value >>> 10) & 0x3ff, 10);
-                    w = signedNormalized((value >>> 20) & 0x3ff, 10);
-                    q = (value >>> 30) / 3;
-                }
-                const out = destOffset + i * 8;
-                writeHalf(dest, out, u);
-                writeHalf(dest, out + 2, v);
-                writeHalf(dest, out + 4, w);
-                writeHalf(dest, out + 6, q);
-                continue;
-            }
-            switch (format) {
-            case D3DFMT_R8G8B8: {
-                const at = sourceOffset + i * 3;
-                b = source[at]; g = source[at + 1]; r = source[at + 2];
-                a = 0xff;
-                break;
-            }
-            case D3DFMT_A8R8G8B8:
-            case D3DFMT_X8R8G8B8: {
-                const value = source[sourceOffset + i * 4] |
-                    (source[sourceOffset + i * 4 + 1] << 8) |
-                    (source[sourceOffset + i * 4 + 2] << 16) |
-                    (source[sourceOffset + i * 4 + 3] << 24);
-                b = value & 0xff; g = (value >>> 8) & 0xff;
-                r = (value >>> 16) & 0xff;
-                a = format === D3DFMT_A8R8G8B8 ? (value >>> 24) & 0xff : 0xff;
-                break;
-            }
-            case D3DFMT_R5G6B5: {
-                const value = source[sourceOffset + i * 2] |
-                    (source[sourceOffset + i * 2 + 1] << 8);
-                r = ((value >>> 11) & 0x1f) * 255 / 31;
-                g = ((value >>> 5) & 0x3f) * 255 / 63;
-                b = (value & 0x1f) * 255 / 31;
-                a = 0xff;
-                break;
-            }
-            case D3DFMT_X1R5G5B5:
-            case D3DFMT_A1R5G5B5: {
-                const value = source[sourceOffset + i * 2] |
-                    (source[sourceOffset + i * 2 + 1] << 8);
-                r = ((value >>> 10) & 0x1f) * 255 / 31;
-                g = ((value >>> 5) & 0x1f) * 255 / 31;
-                b = (value & 0x1f) * 255 / 31;
-                a = format === D3DFMT_A1R5G5B5 ?
-                    ((value >>> 15) & 0x1) * 255 : 0xff;
-                break;
-            }
-            case D3DFMT_A4R4G4B4: {
-                const value = source[sourceOffset + i * 2] |
-                    (source[sourceOffset + i * 2 + 1] << 8);
-                r = ((value >>> 8) & 0xf) * 255 / 15;
-                g = ((value >>> 4) & 0xf) * 255 / 15;
-                b = (value & 0xf) * 255 / 15;
-                a = ((value >>> 12) & 0xf) * 255 / 15;
-                break;
-            }
-            case D3DFMT_R3G3B2: {
-                const value = source[sourceOffset + i];
-                r = ((value >>> 5) & 0x7) * 255 / 7;
-                g = ((value >>> 2) & 0x7) * 255 / 7;
-                b = (value & 0x3) * 255 / 3;
-                a = 0xff;
-                break;
-            }
-            case D3DFMT_A8R3G3B2: {
-                const at = sourceOffset + i * 2;
-                const value = source[at];
-                r = ((value >>> 5) & 0x7) * 255 / 7;
-                g = ((value >>> 2) & 0x7) * 255 / 7;
-                b = (value & 0x3) * 255 / 3;
-                a = source[at + 1];
-                break;
-            }
-            case D3DFMT_X4R4G4B4: {
-                const value = source[sourceOffset + i * 2] |
-                    (source[sourceOffset + i * 2 + 1] << 8);
-                r = ((value >>> 8) & 0xf) * 17;
-                g = ((value >>> 4) & 0xf) * 17;
-                b = (value & 0xf) * 17;
-                a = 0xff;
-                break;
-            }
-            case D3DFMT_A8B8G8R8:
-            case D3DFMT_X8B8G8R8: {
-                const at = sourceOffset + i * 4;
-                r = source[at]; g = source[at + 1]; b = source[at + 2];
-                a = format === D3DFMT_A8B8G8R8 ? source[at + 3] : 0xff;
-                break;
-            }
-            case D3DFMT_L8:
-                r = g = b = source[sourceOffset + i];
-                a = 0xff;
-                break;
-            case D3DFMT_A8:
-                // A8 is the sole D3D9 format whose missing colour channels
-                // default to zero rather than one.
-                r = g = b = 0;
-                a = source[sourceOffset + i];
-                break;
-            case D3DFMT_A8L8: {
-                const at = sourceOffset + i * 2;
-                r = g = b = source[at]; a = source[at + 1];
-                break;
-            }
-            case D3DFMT_A4L4: {
-                const value = source[sourceOffset + i];
-                r = g = b = (value & 0xf) * 17;
-                a = (value >>> 4) * 17;
-                break;
-            }
-            case D3DFMT_V8U8: {
-                const at = sourceOffset + i * 2;
-                r = source[at]; g = source[at + 1]; b = a = 0x7f;
-                break;
-            }
-            case D3DFMT_Q8W8V8U8: {
-                const at = sourceOffset + i * 4;
-                r = source[at]; g = source[at + 1];
-                b = source[at + 2]; a = source[at + 3];
-                break;
-            }
-            case D3DFMT_INDEX16: {
-                /*
-                 * INDEX16/32 are buffer formats, not standard D3D colour
-                 * formats, but old capability scanners also try them as
-                 * textures. Preserve the little-endian index bytes in RGBA
-                 * instead of inventing a lossy colour conversion: shaders can
-                 * reconstruct the exact value after multiplying by 255.
-                 */
-                const at = sourceOffset + i * 2;
-                r = source[at]; g = source[at + 1]; b = 0; a = 0xff;
-                break;
-            }
-            case D3DFMT_INDEX32: {
-                const at = sourceOffset + i * 4;
-                r = source[at]; g = source[at + 1];
-                b = source[at + 2]; a = source[at + 3];
-                break;
-            }
-            default:
-                r = g = b = a = 0;
-                break;
-            }
-            dest[destOffset + i * 4] = r | 0;
-            dest[destOffset + i * 4 + 1] = g | 0;
-            dest[destOffset + i * 4 + 2] = b | 0;
-            dest[destOffset + i * 4 + 3] = a | 0;
-        }
     }
 
     // Row-major multiply: out[row][col] = sum_k a[row][k] * b[k][col]. This is
@@ -1686,14 +866,53 @@
     // n' = n * (M^-1)^T for the transformed geometry to keep its perpendicular
     // relationship, and for a 3x3 that expression reduces to the cofactor
     // matrix divided by the determinant -- no explicit inverse or transpose
-    // needed. Only the upper 3x3 participates: a normal has w = 0, so the
-    // translation row can never reach it.
+    // needed for affine transforms. Projective transforms require the full
+    // inverse even though the input normal has w = 0.
     //
     // A singular matrix (a degenerate scale, which engines do produce for
     // collapsed geometry) has no inverse; falling back to identity keeps the
     // draw legal and unlit rather than filling the buffer with NaN, which would
     // propagate into the position and make the whole mesh vanish.
+    function inverseTranspose4(m) {
+        const rows = Array.from({length: 4}, (_, r) =>
+            [...m.slice(r * 4, r * 4 + 4), ...Array.from({length: 4}, (_, c) => +(r === c))]);
+        for (let c = 0; c < 4; ++c) {
+            let pivot = c;
+            for (let r = c + 1; r < 4; ++r)
+                if (Math.abs(rows[r][c]) > Math.abs(rows[pivot][c])) pivot = r;
+            const value = rows[pivot][c];
+            if (!value || !Number.isFinite(value)) return null;
+            [rows[c], rows[pivot]] = [rows[pivot], rows[c]];
+            for (let k = 0; k < 8; ++k) rows[c][k] /= value;
+            for (let r = 0; r < 4; ++r) if (r !== c) {
+                const scale = rows[r][c];
+                for (let k = 0; k < 8; ++k) rows[r][k] -= scale * rows[c][k];
+            }
+        }
+        return Float32Array.from({length: 16}, (_, i) => rows[i % 4][4 + Math.floor(i / 4)]);
+    }
+
+    function legacyLightingMatrices(world, view) {
+        const inverseView = inverseTranspose4(view) || IDENTITY4x4;
+        const eye = [3, 7, 11].map(index => inverseView[15] ? inverseView[index] / inverseView[15] : 0);
+        const position = Float32Array.from(world), normal = new Float32Array(16);
+        position[3] = position[7] = position[11] = 0;
+        position[15] = normal[15] = 1;
+        for (let row = 0; row < 3; ++row) {
+            const base = row * 4, length = Math.hypot(world[base], world[base + 1], world[base + 2]);
+            for (let c = 0; c < 3; ++c)
+                normal[base + c] = length > 0 && Number.isFinite(length) ? world[base + c] / length : 0;
+            position[12 + row] -= eye[row];
+        }
+        return {position, normal, eye};
+    }
+
     function inverseTranspose3x3(m) {
+        // A projective world/view transform couples the translation and W
+        // terms into the inverse. Keep the ordinary affine fast path below.
+        if (m[3] || m[7] || m[11] || m[15] !== 1) {
+            return inverseTranspose4(m) || new Float32Array(IDENTITY4x4);
+        }
         const a = m[0], b = m[1], c = m[2];
         const d = m[4], e = m[5], f = m[6];
         const g = m[8], h = m[9], i = m[10];
@@ -1741,1195 +960,28 @@
             : [0, 0, 1];
     }
 
-    // What D3D9 lights with when the app never called SetMaterial. Not all
-    // zeroes: a zero diffuse would render the mesh black, which looks like a
-    // bug in the lighting rather than like missing state.
-    const DEFAULT_MATERIAL = {
-        diffuse: [1, 1, 1, 1], ambient: [1, 1, 1, 1],
-        specular: [0, 0, 0, 0], emissive: [0, 0, 0, 0], power: 0,
-    };
+    // Retail D3D9 initializes every material component to zero.
+    const DEFAULT_MATERIAL = stateFactory.materialDefaults();
 
-    // The inter-stage contract shared with translated shaders. Both stages
-    // always agree on it, whichever of the four VS/PS combinations a draw
-    // uses (see the file header).
-    const VARYING_COUNT = shaderPipeline.VARYING_COUNT;
-    const VARYING_COLOR0 = shaderPipeline.VARYING_COLOR0;
-    // D3DRS_SHADEMODE. D3DSHADE_FLAT takes the colour of the primitive's first
-    // vertex instead of interpolating, which is exactly WGSL's
-    // @interpolate(flat) -- whose default sampling is `first`, the same
-    // provoking vertex D3D9 uses.
-    //
-    // It applies to the two colour varyings only. Texture coordinates and fog
-    // keep interpolating under flat shading in D3D9, and a title that flat
-    // shades a textured surface expects the texture to still follow the
-    // surface. D3DSHADE_PHONG is in the enum but no D3D9 device ever
-    // implemented it; D3D9 treats it as GOURAUD, and so does this.
-    const D3DSHADE_FLAT = 1, D3DSHADE_GOURAUD = 2;
-    function varyingDeclaration(slot, flatShading) {
-        const flat = flatShading &&
-            (slot === VARYING_COLOR0 || slot === shaderPipeline.VARYING_COLOR1);
-        return "    @location(" + slot + ")" +
-            (flat ? " @interpolate(flat)" : "") +
-            " varying" + slot + ": vec4<f32>,";
-    }
-    const VARYING_TEXCOORD0 = shaderPipeline.VARYING_TEXCOORD0;
+    const presentFactory = global.D9WGPresent ||
+        (typeof require === "function" ? require("./d9wg_present.js") : null);
+    if (!presentFactory) throw new Error("d3d9_executor.js requires d9wg_present.js");
 
-    // Vertex attribute locations the fixed-function vertex stage consumes.
-    // These are assigned by *semantic*, not by the element's position in the
-    // declaration array. M1 assigned them by iteration order and hardcoded
-    // position/colour/texcoord as locations 0/1/2 in the WGSL, which agreed
-    // only for declarations that happened to list the elements in that
-    // order; a declaration with TEXCOORD before COLOR silently fed the
-    // texcoord bytes into the colour attribute.
-    // M3 widened this from three locations to twelve: fixed-function lighting
-    // reads NORMAL, the specular material source can read COLOR1, and a
-    // multi-stage cascade can reference all eight coordinate sets rather than
-    // only TEXCOORD0.
-    const FF_LOCATION_POSITION = 0;
-    const FF_LOCATION_COLOR0 = 1;
-    const FF_LOCATION_COLOR1 = 2;
-    const FF_LOCATION_NORMAL = 3;
-    const FF_LOCATION_TEXCOORD0 = 4; // .. 11 for TEXCOORD0..7
-    const FF_LOCATION_PSIZE = 12;
-    // M7 added two more: fixed-function vertex blending reads the skinning
-    // usages the declaration validator has always accepted.
-    const FF_LOCATION_BLENDWEIGHT = 13;
-    const FF_LOCATION_BLENDINDICES = 14;
+    const recorderFactory = global.D9WGDrawRecorder ||
+        (typeof require === "function" ? require("./d9wg_draw_recorder.js") : null);
+    const replayFactory = global.D9WGFrameReplayer ||
+        (typeof require === "function" ? require("./d9wg_frame_replayer.js") : null);
+    if (!recorderFactory || !replayFactory) throw new Error("d3d9_executor.js requires the draw recorder and frame replayer");
 
-    // D3D9's alpha test has no fixed-function equivalent in WebGPU: it has to
-    // become a `discard` in the fragment shader, which means the comparison
-    // and the reference value are baked into the shader and therefore into
-    // the pipeline key. Returns "" when no test is needed.
-    //
-    // This matters far beyond a subtle shading difference. UI atlases and
-    // billboarded foliage lean on alpha test to cut fully transparent texels;
-    // without it those texels are drawn opaque, which reads as wrong or
-    // missing texture on exactly the panels and edges that should be cut out.
-    //
-    // D3DCMPFUNC values are 1..8; the expression below is the *discard*
-    // condition, i.e. the negation of "the fragment passes".
-    function alphaTestDiscard(alphaTest, alphaExpression) {
-        if (!alphaTest || !alphaTest.enabled) return "";
-        const reference = (alphaTest.reference / 255).toFixed(6);
-        const condition = {
-            1: "true",                                        // NEVER
-            2: "!(" + alphaExpression + " < " + reference + ")",   // LESS
-            3: "!(" + alphaExpression + " == " + reference + ")",  // EQUAL
-            4: "!(" + alphaExpression + " <= " + reference + ")",  // LESSEQUAL
-            5: "!(" + alphaExpression + " > " + reference + ")",   // GREATER
-            6: "!(" + alphaExpression + " != " + reference + ")",  // NOTEQUAL
-            7: "!(" + alphaExpression + " >= " + reference + ")",  // GREATEREQUAL
-        }[alphaTest.func];
-        if (!condition) return ""; // ALWAYS (8) and anything unknown: no test
-        return "    if (" + condition + ") { discard; }\n";
-    }
+    const pipelineFactory = global.D9WGPipelineState ||
+        (typeof require === "function" ? require("./d9wg_pipeline_state.js") : null);
+    if (!pipelineFactory) throw new Error("d3d9_executor.js requires d9wg_pipeline_state.js");
 
-    // `blend` is the signature's resolved vertexBlend (null when the draw is
-    // not blended); it decides whether the skinning attributes are consumed.
-    function fixedFunctionLocationFor(element, blend) {
-        if (element.usage === DECLUSAGE_POSITION ||
-                element.usage === DECLUSAGE_POSITIONT)
-            return element.usageIndex === 0 ? FF_LOCATION_POSITION : -1;
-        if (element.usage === DECLUSAGE_COLOR)
-            return element.usageIndex === 0 ? FF_LOCATION_COLOR0
-                : (element.usageIndex === 1 ? FF_LOCATION_COLOR1 : -1);
-        if (element.usage === DECLUSAGE_NORMAL)
-            return element.usageIndex === 0 ? FF_LOCATION_NORMAL : -1;
-        if (element.usage === DECLUSAGE_TEXCOORD &&
-                element.usageIndex < MAX_TEXCOORD_SETS)
-            return FF_LOCATION_TEXCOORD0 + element.usageIndex;
-        if (element.usage === DECLUSAGE_PSIZE)
-            return element.usageIndex === 0 ? FF_LOCATION_PSIZE : -1;
-        // The skinning usages are read only while vertex blending is actually
-        // on. Reporting them unconditionally would put an attribute in the
-        // vertex layout that the generated WGSL never declares, for every
-        // declaration that carries blend data with D3DRS_VERTEXBLEND disabled
-        // -- which is most of them, since engines share one declaration
-        // between their skinned and unskinned passes.
-        if (element.usage === DECLUSAGE_BLENDWEIGHT)
-            return blend && blend.weightCount && element.usageIndex === 0
-                ? FF_LOCATION_BLENDWEIGHT : -1;
-        if (element.usage === DECLUSAGE_BLENDINDICES)
-            return blend && blend.indexed && element.usageIndex === 0
-                ? FF_LOCATION_BLENDINDICES : -1;
-        return -1;
-    }
-
-    // The WGSL declaration for a vertex attribute is always vec4<f32>: WebGPU
-    // fills the components a narrower vertex format does not supply with
-    // (_, 0, 0, 1), which is exactly D3D9's rule for a FLOAT3 POSITION or a
-    // FLOAT2 texcoord. One declared type per location also keeps a shader
-    // module independent of which declaration is bound with it.
-    // The one exception is an integer vertex format: WebGPU requires the WGSL
-    // input's base type to match the format's, so a UBYTE4 BLENDINDICES has to
-    // be declared vec4<u32>. `scalar` names that base type; it defaults to the
-    // f32 every other fixed-function attribute uses.
-    function vertexInputDeclaration(location, scalar) {
-        return "@location(" + location + ") in" + location +
-            ": vec4<" + (scalar || "f32") + ">";
-    }
-
-    // D3DDECLTYPE -> the WGSL base type its WebGPU format must be read as.
-    // Only the integer formats need an entry; everything else is f32. UDEC3
-    // (13) and DEC3N (14) arrive as a single packed uint32 rather than a
-    // four-component vector, so they have no vec4 reading at all and return
-    // null -- callers fall back rather than emit WGSL that will not compile.
-    function declTypeInputScalar(type) {
-        if (type === 13 || type === 14) return null;
-        if (type === 5) return "u32";           // UBYTE4  -> uint8x4
-        if (type === 6 || type === 7) return "i32"; // SHORT2/4 -> sint16x2/x4
-        return "f32";
-    }
-
-    // ---- fixed-function uniform blocks ----
-    //
-    // Both fixed-function stages get a uniform block whose *shape follows the
-    // signature*: an unlit untextured draw uploads 80 bytes, one with eight
-    // lights and three texture-coordinate transforms uploads over a kilobyte.
-    // The shape has to vary because a uniform buffer is built and written per
-    // draw (see constantBufferFor), so paying the worst case on every draw
-    // would multiply a War3 session's ~100k draws by an order of magnitude of
-    // upload traffic for state most of them do not use.
-    //
-    // One field table drives both the WGSL struct text and the JS writer, so
-    // the two cannot drift. That matters more than the usual DRY argument: a
-    // mismatched offset here produces a garbage matrix or a black light, not a
-    // compile error, which is the class of bug that costs a day to locate.
-    //
-    // Every field is a vec4, a mat4x4 or an array of a 16-multiple struct, so
-    // all of them align to 16 in WGSL's uniform address space and offsets
-    // accumulate by plain size with no padding rules to apply. assertAligned
-    // holds us to that.
-    function uniformBlockLayout(fields) {
-        let offset = 0;
-        const entries = [];
-        for (const field of fields) {
-            if (!field) continue;
-            if (field.bytes % 16 !== 0 || offset % 16 !== 0)
-                throw new Error("fixed-function uniform field " + field.name +
-                    " is not 16-byte aligned; WGSL uniform layout would " +
-                    "silently disagree with the writer");
-            entries.push({ name: field.name, type: field.type,
-                bytes: field.bytes, offset, source: field.source });
-            offset += field.bytes;
-        }
-        return { entries, byteLength: Math.max(16, offset),
-            byName: new Map(entries.map(entry => [entry.name, entry])) };
-    }
-
-    function uniformBlockStruct(structName, layout) {
-        // A zero-field block still has to be a legal struct, and every
-        // signature that produces one also produces a shader that reads
-        // nothing from it, so a dummy vec4 costs one binding slot and no
-        // correctness.
-        const body = layout.entries.length
-            ? layout.entries.map(entry =>
-                "    " + entry.name + ": " + entry.type + ",").join("\n")
-            : "    _unused: vec4<f32>,";
-        return "struct " + structName + " {\n" + body + "\n};";
-    }
-
-    // The vertex block. `source` names what fills the field; writeFixedVertex-
-    // Uniforms below is the single place that knows how.
-    // D3D9 rasterises with the sample point at a pixel's integer corner; WebGPU,
-    // like D3D10 and everything after it, samples at the pixel centre -- half a
-    // pixel further along both axes. A D3D9 title blitting UI 1:1 has already
-    // subtracted that half pixel itself (the "Directly Mapping Texels to Pixels"
-    // adjustment every 2000s-era engine carries), so replaying its geometry
-    // unchanged puts every sample exactly on a texel boundary and bilinear
-    // filtering returns the mean of two texels. 3D art does not care -- nothing
-    // in it is pixel-aligned to begin with -- but 12px CJK glyphs turn to mush,
-    // which is exactly the split Kart Rider showed: a clean track and an
-    // unreadable shop.
-    //
-    // Adding the half pixel back in clip space, scaled by w so it stays half a
-    // pixel at any depth, is what wined3d's posFixup and DXVK's half-pixel
-    // offset both do. Screen y grows downward while NDC y grows upward, hence
-    // the sign flip on the second component.
-    const HALF_PIXEL_OFFSET_BODY =
-        "    result.position = vec4<f32>(\n" +
-        "        result.position.x + result.position.w / uniforms.viewport.x,\n" +
-        "        result.position.y - result.position.w / uniforms.viewport.y,\n" +
-        "        result.position.zw);";
-
-    function fixedVertexUniformLayout(signature) {
-        // A blended draw cannot pre-multiply the world matrix into anything,
-        // because which world matrix applies is a per-vertex question. So the
-        // chain splits: the shader poses the vertex into world space from the
-        // matrix array, and these carry only what comes after that.
-        const blend = signature.vertexBlend;
-        const fields = [
-            { name: blend ? "view_projection" : "world_view_projection",
-                type: "mat4x4<f32>", bytes: 64 },
-            { name: "viewport", type: "vec4<f32>", bytes: 16 },
-        ];
-        if (blend)
-            fields.push({ name: "blend_worlds",
-                type: "array<mat4x4<f32>, " + blend.matrixSlots + ">",
-                bytes: 64 * blend.matrixSlots });
-        // D3D9 fixed-function clip-plane equations are in world space. The
-        // ordinary position path only needs a pre-multiplied WVP matrix, so
-        // retain the world matrix separately when clipping needs that space.
-        if (signature.clipPlaneCount && !blend &&
-                signature.positionType !== "screen")
-            fields.push({ name: "world_matrix",
-                type: "mat4x4<f32>", bytes: 64 });
-        if (signature.needsViewSpace) {
-            fields.push({ name: blend ? "view_matrix" : "world_view",
-                type: "mat4x4<f32>", bytes: 64 });
-            // Inverse-transpose of the preceding matrix's upper 3x3, widened to
-            // a mat4 so it obeys the same 16-byte rule as everything else here.
-            fields.push({ name: "normal_matrix", type: "mat4x4<f32>", bytes: 64 });
-        }
-        if (signature.fogMode)
-            fields.push({ name: "fog_params", type: "vec4<f32>", bytes: 16 });
-        for (const stage of signature.coordStages) {
-            if (stage.transformCount)
-                fields.push({ name: "texture_transform" + stage.index,
-                    type: "mat4x4<f32>", bytes: 64, source: stage.index });
-        }
-        if (signature.lighting) {
-            fields.push(
-                { name: "material_diffuse", type: "vec4<f32>", bytes: 16 },
-                { name: "material_ambient", type: "vec4<f32>", bytes: 16 },
-                { name: "material_specular", type: "vec4<f32>", bytes: 16 },
-                { name: "material_emissive", type: "vec4<f32>", bytes: 16 },
-                // xyz = D3DRS_AMBIENT, w = the material's specular power.
-                { name: "ambient_power", type: "vec4<f32>", bytes: 16 });
-            if (signature.lighting.lights.length)
-                fields.push({ name: "lights",
-                    type: "array<D9Light, " + signature.lighting.lights.length + ">",
-                    bytes: 112 * signature.lighting.lights.length });
-        }
-        if (signature.clipPlaneCount)
-            fields.push({ name: "clip_planes",
-                type: "array<vec4<f32>, " + signature.clipPlaneCount + ">",
-                bytes: 16 * signature.clipPlaneCount });
-        if (signature.pointExpansion) {
-            fields.push(
-                { name: "point_viewport", type: "vec4<f32>", bytes: 16 },
-                // x=size, y=min, z=max, w reserved.
-                { name: "point_params", type: "vec4<f32>", bytes: 16 });
-            if (signature.pointScale)
-                fields.push({ name: "point_scale", type: "vec4<f32>", bytes: 16 });
-        }
-        return uniformBlockLayout(fields);
-    }
-
-    // The pixel block: only what the texture cascade and the fog blend read.
-    function fixedPixelUniformLayout(signature) {
-        const fields = [];
-        if (signature.fogMode)
-            fields.push({ name: "fog_color", type: "vec4<f32>", bytes: 16 });
-        if (signature.tableFog)
-            fields.push({ name: "fog_params", type: "vec4<f32>", bytes: 16 });
-        if (signature.usesTextureFactor)
-            fields.push({ name: "texture_factor", type: "vec4<f32>", bytes: 16 });
-        for (const stage of signature.stages) {
-            if (stage.usesConstant)
-                fields.push({ name: "stage_constant" + stage.index,
-                    type: "vec4<f32>", bytes: 16, source: stage.index });
-            // The bump matrix and luminance terms belong to the stage that
-            // declared BUMPENVMAP, not to the stage that samples with them.
-            if (stage.isBumpSource) {
-                fields.push({ name: "stage_bump" + stage.index,
-                    type: "vec4<f32>", bytes: 16, bumpSource: stage.index });
-                if (stage.colorOp === D3DTOP_BUMPENVMAPLUMINANCE)
-                    fields.push({ name: "stage_bump_lum" + stage.index,
-                        type: "vec4<f32>", bytes: 16,
-                        bumpLuminanceSource: stage.index });
-            }
-        }
-        return uniformBlockLayout(fields);
-    }
-
-    function fixedFogFactorExpression(mode, distance) {
-        return {
-            [D3DFOG_LINEAR]: "clamp((uniforms.fog_params.y - " + distance + ") / " +
-                "max(uniforms.fog_params.y - uniforms.fog_params.x, 1e-6), 0.0, 1.0)",
-            [D3DFOG_EXP]: "clamp(exp(-(uniforms.fog_params.z * " + distance + ")), " +
-                "0.0, 1.0)",
-            [D3DFOG_EXP2]: "clamp(exp(-((uniforms.fog_params.z * " + distance + ") * " +
-                "(uniforms.fog_params.z * " + distance + "))), 0.0, 1.0)",
-        }[mode] || null;
-    }
-
-    // ---- D3DTEXTUREOP -> WGSL ----
-    //
-    // D3D9's texture cascade runs the colour and alpha channels through
-    // *separate* operations with separate arguments, so each operation is
-    // emitted twice: once over vec3 and once over f32. `blend` names the alpha
-    // an op blends with (diffuse/texture/factor/current), which the caller
-    // supplies as an already-built scalar expression.
-    //
-    // Only the operations fill_caps() lists in TextureOpCaps appear here.
-    // Returning null makes the caller count the draw and fall back to
-    // SELECTARG1 rather than inventing an approximation.
-    function textureOpExpression(op, type, args, blend) {
-        const one = type === "vec3<f32>" ? "vec3<f32>(1.0)" : "1.0";
-        const half = type === "vec3<f32>" ? "vec3<f32>(0.5)" : "0.5";
-        const a0 = args[0], a1 = args[1], a2 = args[2];
-        switch (op) {
-        case D3DTOP_SELECTARG1: return a1;
-        case D3DTOP_SELECTARG2: return a2;
-        case D3DTOP_MODULATE: return "(" + a1 + " * " + a2 + ")";
-        case D3DTOP_MODULATE2X: return "((" + a1 + " * " + a2 + ") * 2.0)";
-        case D3DTOP_MODULATE4X: return "((" + a1 + " * " + a2 + ") * 4.0)";
-        case D3DTOP_ADD: return "(" + a1 + " + " + a2 + ")";
-        case D3DTOP_ADDSIGNED:
-            return "(" + a1 + " + " + a2 + " - " + half + ")";
-        case D3DTOP_ADDSIGNED2X:
-            return "((" + a1 + " + " + a2 + " - " + half + ") * 2.0)";
-        case D3DTOP_SUBTRACT: return "(" + a1 + " - " + a2 + ")";
-        case D3DTOP_ADDSMOOTH:
-            return "(" + a1 + " + " + a2 + " * (" + one + " - " + a1 + "))";
-        case D3DTOP_BLENDDIFFUSEALPHA:
-        case D3DTOP_BLENDTEXTUREALPHA:
-        case D3DTOP_BLENDFACTORALPHA:
-        case D3DTOP_BLENDCURRENTALPHA:
-            return "mix(" + a2 + ", " + a1 + ", " + blend + ")";
-        case D3DTOP_BLENDTEXTUREALPHAPM:
-            // Pre-multiplied: arg1 already carries the alpha it was scaled by.
-            return "(" + a1 + " + " + a2 + " * (1.0 - " + blend + "))";
-        case D3DTOP_DOTPRODUCT3: {
-            // Signed-scaled dot product replicated to every channel including
-            // alpha, which is why the alpha form is the same expression.
-            const dot = "(4.0 * dot(" + args.rgb1 + " - vec3<f32>(0.5), " +
-                args.rgb2 + " - vec3<f32>(0.5)))";
-            return type === "vec3<f32>" ? "vec3<f32>(" + dot + ")" : dot;
-        }
-        case D3DTOP_BUMPENVMAP:
-        case D3DTOP_BUMPENVMAPLUMINANCE:
-            // A bump stage produces no colour of its own: its whole effect is
-            // the coordinate perturbation the *next* stage samples with (see
-            // the bump handling in buildFixedFunctionPixelShader). D3D leaves
-            // the running result untouched, which is arg2 -- D3DTA_CURRENT by
-            // default.
-            return a2;
-        // The four "modulate one channel set, add the other" forms. Each
-        // reaches for arg1's alpha alongside arg1's colour, which is why the
-        // caller supplies `args.alpha1` separately -- `a1` here is already
-        // reduced to the channel being computed. D3D9 defines all four for
-        // D3DTSS_COLOROP only, so the f32 form falls through to the null
-        // default and is counted rather than invented.
-        case D3DTOP_MODULATEALPHA_ADDCOLOR:
-            if (type !== "vec3<f32>") return null;
-            return "(" + args.rgb1 + " + " + args.alpha1 + " * " + args.rgb2 + ")";
-        case D3DTOP_MODULATECOLOR_ADDALPHA:
-            if (type !== "vec3<f32>") return null;
-            return "(" + args.rgb1 + " * " + args.rgb2 + " + " +
-                "vec3<f32>(" + args.alpha1 + "))";
-        case D3DTOP_MODULATEINVALPHA_ADDCOLOR:
-            if (type !== "vec3<f32>") return null;
-            return "((1.0 - " + args.alpha1 + ") * " + args.rgb2 + " + " +
-                args.rgb1 + ")";
-        case D3DTOP_MODULATEINVCOLOR_ADDALPHA:
-            if (type !== "vec3<f32>") return null;
-            return "((vec3<f32>(1.0) - " + args.rgb1 + ") * " + args.rgb2 +
-                " + vec3<f32>(" + args.alpha1 + "))";
-        case D3DTOP_MULTIPLYADD:
-            return "(" + a0 + " + " + a1 + " * " + a2 + ")";
-        case D3DTOP_LERP:
-            return "mix(" + a2 + ", " + a1 + ", " + a0 + ")";
-        default:
-            return null;
-        }
-    }
-
-    // Fixed-function vertex stage: position transform, optional lighting,
-    // per-stage texture coordinate generation/transform and fog, all written
-    // into the shared varying set. `signature` comes from
-    // fixedFunctionVertexSignature() plus the state-derived fields
-    // programFor() adds.
-    function buildFixedFunctionVertexShader(signature) {
-        const layout = fixedVertexUniformLayout(signature);
-        const lighting = signature.lighting;
-        const position = "in" + FF_LOCATION_POSITION;
-
-        const parameters = [vertexInputDeclaration(FF_LOCATION_POSITION)];
-        if (signature.hasColor)
-            parameters.push(vertexInputDeclaration(FF_LOCATION_COLOR0));
-        if (signature.hasColor1)
-            parameters.push(vertexInputDeclaration(FF_LOCATION_COLOR1));
-        if (signature.hasNormal)
-            parameters.push(vertexInputDeclaration(FF_LOCATION_NORMAL));
-        if (signature.hasPointSize)
-            parameters.push(vertexInputDeclaration(FF_LOCATION_PSIZE));
-        const blend = signature.vertexBlend;
-        if (blend && blend.weightCount)
-            parameters.push(vertexInputDeclaration(FF_LOCATION_BLENDWEIGHT));
-        if (blend && blend.indexed)
-            parameters.push(vertexInputDeclaration(FF_LOCATION_BLENDINDICES,
-                blend.indexScalar));
-        for (const set of signature.texCoordSets)
-            parameters.push(vertexInputDeclaration(FF_LOCATION_TEXCOORD0 + set));
-        if (signature.pointExpansion)
-            parameters.push("@builtin(vertex_index) d9_vertex_index: u32");
-
-        const varyings = [];
-        for (let slot = 0; slot < VARYING_COUNT; ++slot)
-            varyings.push(varyingDeclaration(slot, signature.flatShading));
-        const clipVaryings = [];
-        let clipBody = "";
-        if (signature.clipPlaneCount) {
-            const clipPosition = blend ? "d9_blend_position"
-                : signature.positionType === "screen" ? position
-                : "uniforms.world_matrix * " + position;
-            clipBody += "    let d9_clip_position = " + clipPosition + ";\n";
-        }
-        for (let group = 0; group < Math.ceil(
-                (signature.clipPlaneCount || 0) / 4); ++group) {
-            clipVaryings.push("    @location(" + (VARYING_COUNT + group) +
-                ") clip" + group + ": vec4<f32>,");
-            clipBody += "    result.clip" + group +
-                " = vec4<f32>(1.0);\n";
-        }
-        for (let plane = 0; plane < (signature.clipPlaneCount || 0); ++plane)
-            clipBody += "    result.clip" + Math.floor(plane / 4) + "." +
-                "xyzw"[plane & 3] + " = dot(d9_clip_position, " +
-                "uniforms.clip_planes[" + plane + "]);\n";
-
-        // ---- fixed-function vertex blending (D3DRS_VERTEXBLEND) ----
-        //
-        // D3D9 poses a vertex as sum(w_i * (v * WORLDMATRIX(i))) and applies
-        // view and projection only to the result, so a blended draw cannot
-        // fold the world matrix into world_view_projection the way every
-        // other draw does -- which world matrix applies is a per-vertex
-        // question. BLENDWEIGHT carries one fewer weight than there are
-        // matrices because D3D9 defines the last as 1 - sum(the rest); that is
-        // what keeps the weights a partition of unity even when the exported
-        // ones do not quite sum to 1.
-        //
-        // Normals ride the same blend through the same matrices, with no
-        // per-matrix inverse transpose. That is D3D9's behaviour rather than an
-        // approximation of it: a blend of two rotations is shorter than either,
-        // which is the whole reason D3DRS_NORMALIZENORMALS exists, and it is
-        // honoured below where an unblended draw honours it.
-        const blendedPosition = blend ? "d9_blend_position" : position;
-        let blendBody = "";
-        if (blend) {
-            const slots = blend.matrixCount;
-            const weights = [];
-            for (let slot = 0; slot < slots - 1; ++slot)
-                weights.push("in" + FF_LOCATION_BLENDWEIGHT + "." + "xyzw"[slot]);
-            blendBody = "    var d9_blend_position = vec4<f32>(0.0);\n";
-            if (signature.hasNormal)
-                blendBody += "    var d9_blend_normal = vec3<f32>(0.0);\n";
-            if (weights.length)
-                blendBody += "    let d9_blend_last = 1.0 - (" +
-                    weights.join(" + ") + ");\n";
-            if (blend.indexed) {
-                // A palette index out of range is the app's bug, but WGSL gives
-                // no defined value for an out-of-bounds uniform read, so clamp:
-                // one wrong bone beats an indeterminate matrix.
-                const raw = "in" + FF_LOCATION_BLENDINDICES;
-                let unsigned;
-                if (blend.indexScalar === "u32")
-                    unsigned = raw;
-                else if (blend.indexScalar === "i32")
-                    unsigned = "vec4<u32>(max(" + raw + ", vec4<i32>(0)))";
-                else if (blend.indexNormalized)
-                    // Rounded, not truncated: 2/255 * 255 does not land exactly
-                    // on 2 in f32, and truncating it would select bone 1.
-                    unsigned = "vec4<u32>(round(" + raw + " * 255.0))";
-                else
-                    unsigned = "vec4<u32>(max(" + raw + ", vec4<f32>(0.0)))";
-                blendBody += "    let d9_blend_index = min(" + unsigned +
-                    ",\n        vec4<u32>(" + (blend.matrixSlots - 1) + "u));\n";
-            }
-            for (let slot = 0; slot < slots; ++slot) {
-                const weight = slot < slots - 1 ? weights[slot]
-                    : (weights.length ? "d9_blend_last" : "1.0");
-                const index = blend.indexed
-                    ? "d9_blend_index." + "xyzw"[slot] : slot + "u";
-                blendBody += "    {\n" +
-                    "        let d9_bone = uniforms.blend_worlds[" + index + "];\n" +
-                    "        let d9_weight = " + weight + ";\n" +
-                    "        d9_blend_position = d9_blend_position +\n" +
-                    "            (d9_bone * " + position + ") * d9_weight;\n";
-                if (signature.hasNormal)
-                    blendBody +=
-                    "        d9_blend_normal = d9_blend_normal +\n" +
-                    "            (d9_bone * vec4<f32>(in" + FF_LOCATION_NORMAL +
-                        ".xyz, 0.0)).xyz * d9_weight;\n";
-                blendBody += "    }\n";
-            }
-        }
-
-
-        // XYZRHW ("screen") vertices arrive already in viewport pixel space and
-        // bypass the world/view/projection chain entirely. D3D9 also treats
-        // them as already lit, which is why lighting is forced off for them.
-        // XYZRHW ("screen") coordinates are absolute render-target pixels, not
-        // pixels relative to the viewport -- so the viewport's origin has to
-        // come off before normalising, because setViewport puts it back when it
-        // maps NDC into the viewport rect. Omitting it made the two cancel only
-        // for a viewport at 0,0, which is every full-screen UI pass and hid the
-        // bug completely. Kart Rider draws its shop item previews through
-        // 110x109 viewports at x=368..636, and pre-transformed geometry there
-        // landed several viewport-widths outside the box and was clipped away:
-        // the panels whose contents are entirely pre-transformed came out
-        // empty, while the one item drawn from world-space geometry rendered
-        // perfectly. Same fix as wined3d's transformed-position projection
-        // matrix, which carries the -2x/w term for exactly this reason.
-        const positionBody = blendBody + (signature.positionType === "screen"
-            ? `    let viewport = uniforms.viewport;
-    let ndc_x = ((${position}.x - viewport.z) / viewport.x) * 2.0 - 1.0;
-    let ndc_y = 1.0 - ((${position}.y - viewport.w) / viewport.y) * 2.0;
-    result.position = vec4<f32>(ndc_x, ndc_y, ${position}.z, 1.0);`
-            : "    result.position = uniforms." +
-                (blend ? "view_projection" : "world_view_projection") +
-                " * " + blendedPosition + ";")
-            + "\n" + HALF_PIXEL_OFFSET_BODY;
-
-        // View space is where D3D9 lights live and where the camera-space
-        // coordinate generation modes are defined, so one block serves both.
-        // The light positions/directions themselves arrive already multiplied by
-        // the view matrix (see writeFixedVertexUniforms) rather than as a second
-        // matrix in the shader.
-        let viewSpaceBody = "";
-        if (signature.needsViewSpace) {
-            // With blending, world_view/normal_matrix hold the view half only
-            // -- the world half already happened, per vertex, above.
-            viewSpaceBody = "    let position_view = uniforms." +
-                (blend ? "view_matrix" : "world_view") + " * " +
-                blendedPosition + ";\n";
-            if (signature.hasNormal) {
-                const normalSource = blend ? "d9_blend_normal"
-                    : "in" + FF_LOCATION_NORMAL + ".xyz";
-                viewSpaceBody += "    var normal_view = (uniforms.normal_matrix" +
-                    " * vec4<f32>(" + normalSource + ", 0.0)).xyz;\n";
-                // D3DRS_NORMALIZENORMALS is honoured rather than always
-                // normalising: D3D9 genuinely does not renormalise unless asked,
-                // so a scaled world matrix produces over- or under-bright
-                // lighting, and silently fixing that would make this renderer
-                // disagree with the reference for content tuned against it.
-                if (signature.normalizeNormals)
-                    viewSpaceBody += "    normal_view = normalize(normal_view);\n";
-            } else {
-                // A declaration with no normal cannot receive directional
-                // diffuse/specular light; D3D9 uses (0,0,0), which zeroes every
-                // N.L term while leaving ambient + emissive.
-                viewSpaceBody += "    let normal_view = vec3<f32>(0.0);\n";
-            }
-        }
-
-        // Vertex colours, before any material-source selection.
-        const vertexDiffuse = signature.hasColor
-            ? "in" + FF_LOCATION_COLOR0 + (signature.colorIsBGRA ? ".bgra" : "")
-            : "vec4<f32>(1.0, 1.0, 1.0, 1.0)";
-        const vertexSpecular = signature.hasColor1
-            ? "in" + FF_LOCATION_COLOR1 + (signature.color1IsBGRA ? ".bgra" : "")
-            : "vec4<f32>(0.0, 0.0, 0.0, 0.0)";
-
-        let colorBody = "    let vertex_diffuse = " + vertexDiffuse + ";\n" +
-            "    let vertex_specular = " + vertexSpecular + ";\n";
-        if (lighting) {
-            // D3DRS_COLORVERTEX off forces every channel to the material;
-            // otherwise D3DRS_*MATERIALSOURCE picks between the material and
-            // the two vertex colours. The D3D9 defaults are COLOR1 for diffuse
-            // and COLOR2 for specular, which is why a lit mesh with per-vertex
-            // colours is tinted by them rather than by the material alone.
-            const sourceExpression = (source, materialField) => {
-                if (!lighting.colorVertex) return "uniforms." + materialField;
-                if (source === D3DMCS_COLOR1) return "vertex_diffuse";
-                if (source === D3DMCS_COLOR2) return "vertex_specular";
-                return "uniforms." + materialField;
-            };
-            colorBody +=
-                "    let material_diffuse = " +
-                    sourceExpression(lighting.diffuseSource, "material_diffuse") + ";\n" +
-                "    let material_ambient = " +
-                    sourceExpression(lighting.ambientSource, "material_ambient") + ";\n" +
-                "    let material_specular = " +
-                    sourceExpression(lighting.specularSource, "material_specular") + ";\n" +
-                "    let material_emissive = " +
-                    sourceExpression(lighting.emissiveSource, "material_emissive") + ";\n" +
-                "    var total_diffuse = vec3<f32>(0.0);\n" +
-                "    var total_ambient = uniforms.ambient_power.xyz;\n" +
-                "    var total_specular = vec3<f32>(0.0);\n" +
-                // Without D3DRS_LOCALVIEWER the eye vector is the constant
-                // (0,0,-1) of D3D9's left-handed view space, which is the
-                // cheaper approximation engines of this era normally leave on.
-                "    let eye_direction = " + (lighting.localViewer
-                    ? "normalize(-position_view.xyz)"
-                    : "vec3<f32>(0.0, 0.0, -1.0)") + ";\n";
-            lighting.lights.forEach((light, index) => {
-                colorBody += "    {\n" +
-                    "        let light = uniforms.lights[" + index + "];\n";
-                if (light.type === D3DLIGHT_DIRECTIONAL) {
-                    colorBody +=
-                        "        let light_direction = -light.direction.xyz;\n" +
-                        "        let attenuation = 1.0;\n";
-                } else {
-                    colorBody +=
-                        "        let to_light = light.position.xyz - position_view.xyz;\n" +
-                        "        let light_distance = length(to_light);\n" +
-                        "        let light_direction = select(vec3<f32>(0.0, 0.0, 1.0),\n" +
-                        "            to_light / max(light_distance, 1e-6), light_distance > 0.0);\n" +
-                        // D3D9 attenuates by 1/(a0 + a1*d + a2*d^2) and drops
-                        // the light entirely past its range.
-                        "        var range_attenuation = 1.0 / max(light.attenuation.x +\n" +
-                        "            light.attenuation.y * light_distance +\n" +
-                        "            light.attenuation.z * light_distance * light_distance, 1e-6);\n" +
-                        "        range_attenuation = min(range_attenuation, 1.0);\n" +
-                        "        if (light_distance > light.range_falloff.x) {\n" +
-                        "            range_attenuation = 0.0;\n" +
-                        "        }\n";
-                    if (light.type === D3DLIGHT_SPOT) {
-                        // range_falloff = (range, falloff, cos(theta/2), cos(phi/2)).
-                        colorBody +=
-                            "        let rho = dot(light.direction.xyz, -light_direction);\n" +
-                            "        var spot = 0.0;\n" +
-                            "        if (rho > light.range_falloff.z) {\n" +
-                            "            spot = 1.0;\n" +
-                            "        } else if (rho > light.range_falloff.w) {\n" +
-                            "            spot = pow(max((rho - light.range_falloff.w) /\n" +
-                            "                max(light.range_falloff.z - light.range_falloff.w, 1e-6),\n" +
-                            "                0.0), max(light.range_falloff.y, 1e-4));\n" +
-                            "        }\n" +
-                            "        let attenuation = range_attenuation * spot;\n";
-                    } else {
-                        colorBody += "        let attenuation = range_attenuation;\n";
-                    }
-                }
-                colorBody +=
-                    "        let n_dot_l = max(dot(normal_view, light_direction), 0.0);\n" +
-                    "        total_diffuse = total_diffuse + light.diffuse.xyz *\n" +
-                    "            (n_dot_l * attenuation);\n" +
-                    "        total_ambient = total_ambient + light.ambient.xyz * attenuation;\n";
-                if (lighting.specularEnable) {
-                    colorBody +=
-                        "        let half_vector = normalize(light_direction + eye_direction);\n" +
-                        "        let n_dot_h = max(dot(normal_view, half_vector), 0.0);\n" +
-                        // Back faces contribute no highlight, and pow(0, p) is
-                        // only well-defined for p > 0, hence both guards.
-                        "        let highlight = select(0.0,\n" +
-                        "            pow(n_dot_h, max(uniforms.ambient_power.w, 1e-4)),\n" +
-                        "            n_dot_l > 0.0);\n" +
-                        "        total_specular = total_specular + light.specular.xyz *\n" +
-                        "            (highlight * attenuation);\n";
-                }
-                colorBody += "    }\n";
-            });
-            colorBody +=
-                "    let lit_rgb = clamp(total_ambient * material_ambient.xyz +\n" +
-                "        total_diffuse * material_diffuse.xyz + material_emissive.xyz,\n" +
-                "        vec3<f32>(0.0), vec3<f32>(1.0));\n" +
-                // D3D9 takes the lit vertex's alpha from the diffuse material
-                // channel only -- lighting never affects alpha.
-                "    let out_diffuse = vec4<f32>(lit_rgb, clamp(material_diffuse.a, 0.0, 1.0));\n" +
-                "    let out_specular = vec4<f32>(clamp(total_specular *\n" +
-                "        material_specular.xyz, vec3<f32>(0.0), vec3<f32>(1.0)), 0.0);\n";
-        } else {
-            colorBody += "    let out_diffuse = vertex_diffuse;\n" +
-                "    let out_specular = vertex_specular;\n";
-        }
-
-        // Fog distance is the clip-space w, which for a standard projection is
-        // the eye-space depth -- exactly D3DPRASTERCAPS_WFOG, which the guest
-        // advertises. D3DRS_RANGEFOGENABLE asks for true radial distance
-        // instead, which removes the "fog thins towards the screen edges"
-        // artefact of depth-based fog.
-        const fogDistance = signature.fogRange && signature.needsViewSpace
-            ? "length(position_view.xyz)" : "abs(result.position.w)";
-        const fogFactor = fixedFogFactorExpression(signature.fogMode,
-            "fog_distance");
-        const fogBody = fogFactor
-            ? "    let fog_distance = " + fogDistance + ";\n" +
-              "    result.varying" + shaderPipeline.VARYING_FOG +
-              " = vec4<f32>(" + fogFactor + ", 0.0, 0.0, 0.0);\n"
-            : "";
-
-        // One texture-coordinate varying per *stage*, not per declared
-        // coordinate set: D3DTSS_TEXCOORDINDEX chooses which set (or which
-        // generated vector) feeds a stage, and D3DTS_TEXTURE0+n transforms it,
-        // so the varying a pixel stage reads for stage n is already the final
-        // coordinate. That is also what D3D9 hands a real pixel shader, whose
-        // texcoord input n corresponds to texture stage n.
-        let coordBody = "";
-        for (const stage of signature.coordStages) {
-            let raw;
-            // XYZRHW vertices have already passed the object/view transform
-            // and carry neither an eye-space position nor a normal. A few
-            // D3D8 applications leave camera-space TCI bits behind when they
-            // switch to a pre-transformed overlay. Native D3D treats the
-            // generated value there as undefined; referring to the absent
-            // position_view/normal_view locals is worse because it makes the
-            // whole WGSL module invalid and poisons the command buffer. Keep a
-            // declared coordinate when one exists, otherwise use the same
-            // benign (0,0,0,1) value as a missing passthrough coordinate.
-            if (signature.positionType === "screen" &&
-                    stage.tciMode !== D3DTSS_TCI_PASSTHRU) {
-                raw = signature.texCoordSets.includes(stage.texCoordIndex)
-                    ? "in" + (FF_LOCATION_TEXCOORD0 + stage.texCoordIndex)
-                    : "vec4<f32>(0.0, 0.0, 0.0, 1.0)";
-            } else switch (stage.tciMode) {
-            case D3DTSS_TCI_CAMERASPACENORMAL:
-                raw = "vec4<f32>(normal_view, 1.0)";
-                break;
-            case D3DTSS_TCI_CAMERASPACEPOSITION:
-                raw = "vec4<f32>(position_view.xyz, 1.0)";
-                break;
-            case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
-                raw = "vec4<f32>(reflect(normalize(position_view.xyz), " +
-                    "normalize(normal_view)), 1.0)";
-                break;
-            case D3DTSS_TCI_SPHEREMAP:
-                // The classic sphere-map projection of the eye-space
-                // reflection vector: the same formula OpenGL's GL_SPHERE_MAP
-                // and wined3d use, which is what titles authored their
-                // sphere-map art against. m is twice the length of
-                // (R.x, R.y, R.z + 1), and the +0.5 recentres the result into
-                // the [0,1] texture domain.
-                raw = "(func_sphere_map(reflect(normalize(position_view.xyz), " +
-                    "normalize(normal_view))))";
-                break;
-            default:
-                raw = signature.texCoordSets.includes(stage.texCoordIndex)
-                    ? "in" + (FF_LOCATION_TEXCOORD0 + stage.texCoordIndex)
-                    : "vec4<f32>(0.0, 0.0, 0.0, 1.0)";
-                break;
-            }
-            let expression = raw;
-            if (stage.transformCount) {
-                // The coordinate enters the matrix as a *row* vector padded
-                // with ones, which is why a scrolling animation puts its offset
-                // in row 3 (_31/_32) for the two-component form. The matrix is
-                // uploaded untransposed for the same reason the WVP is: D3D's
-                // row-major bytes read back as the transpose in WGSL, and that
-                // transpose is exactly the column-vector form of D3D's
-                // row-vector multiply.
-                const padded = {
-                    1: "vec4<f32>(" + raw + ".x, 1.0, 1.0, 1.0)",
-                    2: "vec4<f32>(" + raw + ".xy, 1.0, 1.0)",
-                    3: "vec4<f32>(" + raw + ".xyz, 1.0)",
-                    4: raw,
-                }[stage.transformCount] || raw;
-                expression = "(uniforms.texture_transform" + stage.index +
-                    " * " + padded + ")";
-            }
-            coordBody += "    result.varying" +
-                (VARYING_TEXCOORD0 + stage.index) + " = " + expression + ";\n";
-        }
-
-        let pointBody = "";
-        if (signature.pointExpansion) {
-            const baseSize = signature.hasPointSize
-                ? "in" + FF_LOCATION_PSIZE + ".x" : "uniforms.point_params.x";
-            pointBody +=
-                "    let d9_point_uvs = array<vec2<f32>, 6>(\n" +
-                "        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0),\n" +
-                "        vec2<f32>(0.0, 1.0), vec2<f32>(0.0, 1.0),\n" +
-                "        vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0));\n" +
-                "    let d9_point_uv = d9_point_uvs[d9_vertex_index % 6u];\n" +
-                "    var d9_point_size = " + baseSize + ";\n";
-            if (signature.pointScale) {
-                pointBody +=
-                    "    let d9_point_distance = length(position_view.xyz);\n" +
-                    "    let d9_point_denom = max(uniforms.point_scale.x +\n" +
-                    "        uniforms.point_scale.y * d9_point_distance +\n" +
-                    "        uniforms.point_scale.z * d9_point_distance * d9_point_distance, 1e-6);\n" +
-                    "    d9_point_size = d9_point_size * uniforms.point_viewport.y *\n" +
-                    "        inverseSqrt(d9_point_denom);\n";
-            }
-            pointBody +=
-                "    d9_point_size = clamp(d9_point_size, uniforms.point_params.y,\n" +
-                "        max(uniforms.point_params.y, uniforms.point_params.z));\n" +
-                "    let d9_point_ndc = vec2<f32>(\n" +
-                "        (d9_point_uv.x * 2.0 - 1.0) * d9_point_size / uniforms.point_viewport.x,\n" +
-                "        (1.0 - d9_point_uv.y * 2.0) * d9_point_size / uniforms.point_viewport.y);\n" +
-                "    result.position = vec4<f32>(result.position.xy +\n" +
-                "        d9_point_ndc * result.position.w, result.position.zw);\n";
-            if (signature.pointSprite) {
-                for (let stage = 0; stage < MAX_TEXCOORD_SETS; ++stage) {
-                    pointBody += "    result.varying" +
-                        (VARYING_TEXCOORD0 + stage) +
-                        " = vec4<f32>(d9_point_uv, 0.0, 1.0);\n";
-                }
-            }
-        }
-
-        const lightStruct = lighting && lighting.lights.length ? `struct D9Light {
-    diffuse: vec4<f32>,
-    specular: vec4<f32>,
-    ambient: vec4<f32>,
-    position: vec4<f32>,
-    direction: vec4<f32>,
-    range_falloff: vec4<f32>,
-    attenuation: vec4<f32>,
-};
-` : "";
-
-        // Emitted only when a stage asks for it, so the ordinary vertex stage
-        // is unchanged.
-        const sphereMapHelper = signature.coordStages.some(stage =>
-            stage.tciMode === D3DTSS_TCI_SPHEREMAP) ? `
-fn func_sphere_map(r: vec3<f32>) -> vec4<f32> {
-    // m = 2 * |(R.x, R.y, R.z + 1)|. The guard keeps the division finite for
-    // the one reflection vector that degenerates it, R = (0, 0, -1), which is
-    // the direction looking straight down the reflected axis.
-    let m = 2.0 * sqrt(r.x * r.x + r.y * r.y + (r.z + 1.0) * (r.z + 1.0));
-    return vec4<f32>(r.x / max(m, 1e-6) + 0.5, r.y / max(m, 1e-6) + 0.5,
-        0.0, 1.0);
-}
-` : "";
-
-        return `${lightStruct}${uniformBlockStruct("D9FixedUniforms", layout)}
-@group(0) @binding(0) var<uniform> uniforms: D9FixedUniforms;
-${sphereMapHelper}
-
-struct D9VertexOutput {
-    @builtin(position) position: vec4<f32>,
-${varyings.join("\n")}
-${clipVaryings.join("\n")}
-};
-
-@vertex
-fn d9_vs_main(${parameters.join(", ")}) -> D9VertexOutput {
-    var result: D9VertexOutput;
-${positionBody}
-${varyings.map((_, slot) =>
-        "    result.varying" + slot + " = vec4<f32>(0.0);").join("\n")}
-${viewSpaceBody}${colorBody}    result.varying${VARYING_COLOR0} = out_diffuse;
-    result.varying${shaderPipeline.VARYING_COLOR1} = out_specular;
-${coordBody}${fogBody}${clipBody}${pointBody}    return result;
-}
-`;
-    }
-
-    // Fixed-function pixel stage: D3D9's texture blending cascade.
-    //
-    // M1/M2 hardcoded one stage of MODULATE(texture, diffuse). This walks the
-    // real cascade instead: stages 0..N-1 (N ends at the first D3DTOP_DISABLE),
-    // each with its own colour and alpha operation over arguments drawn from
-    // diffuse, the running result, the stage's texture, D3DRS_TEXTUREFACTOR,
-    // the specular colour, a scratch register and the stage's own constant --
-    // which is what terrain splatting, detail texturing and light mapping are
-    // actually built from. Every stage saturates its result, as D3D9 does.
-    //
-    // debugMode (null in normal operation) replaces the output with something
-    // unambiguous, so "the screen is black" can be attributed to a specific
-    // input rather than guessed at:
-    //   "solid"   flat green  -- proves geometry coverage and that fragments land
-    //   "color"   vertex colour only, textures ignored
-    //   "texture" stage 0's texture sample only, vertex colour ignored
-    //   "uv"      stage 0's texcoords as red/green -- shows whether UVs are sane
-    //   "missing" flat magenta -- set per draw by debug.highlightMissingTexture
-    //             to mark the draws sampling a stage with no live texture
-    function buildFixedFunctionPixelShader(signature, debugMode) {
-        const layout = fixedPixelUniformLayout(signature);
-        const diffuse = "stage_in.varying" + VARYING_COLOR0;
-        const specular = "stage_in.varying" + shaderPipeline.VARYING_COLOR1;
-
-        // Per-stage texture declarations. Cube and volume textures reach the
-        // fixed-function cascade too (environment mapping, volume fog), so the
-        // WGSL texture type and the coordinate arity both come from whatever is
-        // actually bound.
-        const declarations = [];
-        const samples = [];
-        for (const stage of signature.stages) {
-            if (!stage.samplesTexture) continue;
-            const wgslType = { cube: "texture_cube<f32>", "3d": "texture_3d<f32>" }[
-                stage.textureType] || "texture_2d<f32>";
-            declarations.push("@group(0) @binding(" + (2 + stage.index * 2) +
-                ") var d9_tex" + stage.index + ": " + wgslType + ";");
-            declarations.push("@group(0) @binding(" + (3 + stage.index * 2) +
-                ") var d9_smp" + stage.index + ": sampler;");
-            const coord = "stage_in.varying" +
-                (VARYING_TEXCOORD0 + stage.coordVarying);
-            const components = stage.textureType === "2d" ? 2 : 3;
-            let coordExpression = coord +
-                (components === 2 ? ".xy" : ".xyz");
-            if (stage.projected) {
-                // D3DTTFF_PROJECTED divides by the last component of the
-                // transformed coordinate, so the divisor follows the transform's
-                // component count, not the texture's dimensionality.
-                const divisor = coord + "." +
-                    ["x", "x", "y", "z", "w"][stage.transformCount || 4];
-                // Preserve the sign of q. Clamping a negative divisor with
-                // max(q, epsilon) turns every behind-projector coordinate into
-                // an enormous positive UV; Warcraft III's projected tree
-                // shadows then sample the opaque edge texel over whole terrain
-                // triangles, producing the characteristic black wedges.
-                const safeDivisor = "select(-max(abs(" + divisor +
-                    "), 1e-6), max(abs(" + divisor + "), 1e-6), " +
-                    divisor + " >= 0.0)";
-                coordExpression = "(" + coordExpression + " / (" +
-                    safeDivisor + "))";
-            }
-            // D3DTOP_BUMPENVMAP: the previous stage sampled a (du, dv) pair,
-            // and this stage's coordinate is displaced by it through that
-            // stage's 2x2 bump matrix. The bump formats decode signed (see
-            // signedNormalized in the upload path), so du/dv are used as
-            // sampled rather than being rescaled from unorm here.
-            if (stage.bumpFrom !== undefined && stage.textureType === "2d") {
-                const bump = "uniforms.stage_bump" + stage.bumpFrom;
-                const source = "tex" + stage.bumpFrom;
-                coordExpression = "((" + coordExpression + ") + vec2<f32>(" +
-                    bump + ".x * " + source + ".r + " + bump + ".z * " +
-                    source + ".g, " + bump + ".y * " + source + ".r + " +
-                    bump + ".w * " + source + ".g))";
-            }
-            // D3DTADDRESS_MIRRORONCE: mirror about zero, then clamp. The
-            // sampler is already clamp-to-edge for such an axis (see
-            // ADDRESS_MODES), so taking the absolute value of the coordinate
-            // here completes the mode exactly rather than approximating it --
-            // abs() folds the [-1,0] half onto [0,1] and the clamp handles
-            // everything beyond. Cube addressing ignores address modes, so it
-            // is excluded.
-            const mirrorOnceAxes = stage.textureType === "cube" ? [] :
-                (stage.textureType === "3d"
-                    ? [[stage.addressU, "x"], [stage.addressV, "y"],
-                       [stage.addressW, "z"]]
-                    : [[stage.addressU, "x"], [stage.addressV, "y"]])
-                .filter(axis => axis[0] === 5).map(axis => axis[1]);
-            if (mirrorOnceAxes.length) {
-                const axes = stage.textureType === "3d"
-                    ? ["x", "y", "z"] : ["x", "y"];
-                const vector = stage.textureType === "3d"
-                    ? "vec3<f32>" : "vec2<f32>";
-                coordExpression = vector + "(" + axes.map(axis =>
-                    (mirrorOnceAxes.includes(axis)
-                        ? "abs((" + coordExpression + ")." + axis + ")"
-                        : "(" + coordExpression + ")." + axis)).join(", ") + ")";
-            }
-            const sampled = stage.lodBias
-                ? "textureSampleBias(d9_tex" + stage.index + ", d9_smp" +
-                    stage.index + ", " + coordExpression + ", " +
-                    stage.lodBias.toFixed(6) + ")"
-                : "textureSample(d9_tex" + stage.index +
-                    ", d9_smp" + stage.index + ", " + coordExpression + ")";
-            const borderAxes = stage.textureType === "cube" ? [] :
-                (stage.textureType === "3d"
-                    ? [[stage.addressU, "x"], [stage.addressV, "y"],
-                       [stage.addressW, "z"]]
-                    : [[stage.addressU, "x"], [stage.addressV, "y"]])
-                .filter(axis => axis[0] === 4).map(axis => axis[1]);
-            let colorKeyInside = null;
-            if (borderAxes.length) {
-                // WebGPU has no border-colour sampler.  Clamp for the physical
-                // sample, then replace every coordinate outside the D3D unit
-                // domain on an axis whose addressing mode is BORDER.  This is
-                // especially important after projected division: sampling an
-                // opaque edge texel outside a shadow/fog projector turns whole
-                // terrain triangles into black masks.
-                const inside = borderAxes.map(axis => "(" + coordExpression +
-                    ")." + axis + " >= 0.0 && (" + coordExpression + ")." +
-                    axis + " <= 1.0").join(" && ");
-                colorKeyInside = inside;
-                const color = stage.borderColor === undefined
-                    ? 0 : stage.borderColor >>> 0;
-                const component = shift =>
-                    (((color >>> shift) & 0xff) / 255).toFixed(8);
-                const border = "vec4<f32>(" + component(16) + ", " +
-                    component(8) + ", " + component(0) + ", " +
-                    component(24) + ")";
-                samples.push("    let tex" + stage.index + " = select(" +
-                    border + ", " + sampled + ", " + inside + ");");
-            } else {
-                samples.push("    let tex" + stage.index + " = " + sampled + ";");
-            }
-            if (stage.colorKey && !stage.colorKey.indexed) {
-                const low = stage.colorKey.low >>> 0;
-                const high = stage.colorKey.high >>> 0;
-                const rgb = value => "vec3<u32>(" +
-                    ((value >>> 16) & 0xff) + "u, " +
-                    ((value >>> 8) & 0xff) + "u, " +
-                    (value & 0xff) + "u)";
-                const withinTexture = colorKeyInside
-                    ? "(" + colorKeyInside + ") && " : "";
-                samples.push("    let d9_key_rgb" + stage.index +
-                    " = vec3<u32>(round(clamp(tex" + stage.index +
-                    ".rgb, vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0));\n" +
-                    "    if (" + withinTexture + "all(d9_key_rgb" +
-                    stage.index + " >= " + rgb(low) + ") && all(d9_key_rgb" +
-                    stage.index + " <= " + rgb(high) + ")) { discard; }");
-            } else if (stage.colorKey && stage.colorKey.indexed) {
-                // The indexed companion view was resolved from the original
-                // indices and writes alpha zero only for indices in the key
-                // range. Comparing palette RGB here would be wrong when two
-                // entries contain the same colour.
-                samples.push("    if (tex" + stage.index +
-                    ".a <= 0.0) { discard; }");
-            }
-            // D3DTOP_BUMPENVMAPLUMINANCE additionally modulates this stage's
-            // colour by the bump texture's luminance channel, scaled and
-            // biased by BUMPENVLSCALE/BUMPENVLOFFSET and clamped to [0,1].
-            if (stage.bumpLuminanceFrom !== undefined) {
-                const lum = "uniforms.stage_bump_lum" + stage.bumpLuminanceFrom;
-                const source = "tex" + stage.bumpLuminanceFrom;
-                samples.push("    let tex" + stage.index + "_lit = vec4<f32>(" +
-                    "tex" + stage.index + ".rgb * clamp(" + lum + ".x * " +
-                    source + ".b + " + lum + ".y, 0.0, 1.0), tex" +
-                    stage.index + ".a);");
-            }
-        }
-
-        const luminanceScaledStages = new Set(signature.stages
-            .filter(stage => stage.bumpLuminanceFrom !== undefined)
-            .map(stage => stage.index));
-
-        // The argument pool. `current` and `temp` are the two mutable registers
-        // the cascade threads through, so they are read from variables the
-        // stage loop below reassigns.
-        function argumentExpression(argument, stageIndex, channel) {
-            const selector = argument & D3DTA_SELECTMASK;
-            let value;
-            switch (selector) {
-            case D3DTA_DIFFUSE: value = diffuse; break;
-            case D3DTA_CURRENT: value = "current"; break;
-            case D3DTA_TEXTURE:
-                // A stage sampled under BUMPENVMAPLUMINANCE reads the
-                // luminance-modulated copy, which is what the luminance form
-                // exists to produce.
-                value = "tex" + stageIndex +
-                    (luminanceScaledStages.has(stageIndex) ? "_lit" : "");
-                break;
-            case D3DTA_TFACTOR: value = "uniforms.texture_factor"; break;
-            case D3DTA_SPECULAR: value = specular; break;
-            case D3DTA_TEMP: value = "temp"; break;
-            case D3DTA_CONSTANT: value = "uniforms.stage_constant" + stageIndex; break;
-            default: value = diffuse; break;
-            }
-            // D3DTA_ALPHAREPLICATE broadcasts the argument's alpha over the
-            // colour channels; D3DTA_COMPLEMENT inverts whatever came out.
-            let expression;
-            if (channel === "rgb")
-                expression = (argument & D3DTA_ALPHAREPLICATE)
-                    ? "vec3<f32>(" + value + ".a)" : value + ".rgb";
-            else
-                expression = value + ".a";
-            if (argument & D3DTA_COMPLEMENT) {
-                expression = channel === "rgb"
-                    ? "(vec3<f32>(1.0) - " + expression + ")"
-                    : "(1.0 - " + expression + ")";
-            }
-            return expression;
-        }
-
-        let cascadeBody = "    var current = " + diffuse + ";\n" +
-            // D3D9 leaves the scratch register undefined until written; zero is
-            // the one starting value that cannot make an unwritten read look
-            // like meaningful data.
-            "    var temp = vec4<f32>(0.0);\n";
-        for (const stage of signature.stages) {
-            const rgb = argument => argumentExpression(argument, stage.index, "rgb");
-            const alpha = argument => argumentExpression(argument, stage.index, "a");
-            const blendAlpha = {
-                [D3DTOP_BLENDDIFFUSEALPHA]: diffuse + ".a",
-                [D3DTOP_BLENDTEXTUREALPHA]: "tex" + stage.index + ".a",
-                [D3DTOP_BLENDTEXTUREALPHAPM]: "tex" + stage.index + ".a",
-                [D3DTOP_BLENDFACTORALPHA]: "uniforms.texture_factor.a",
-                [D3DTOP_BLENDCURRENTALPHA]: "current.a",
-            };
-            const colorArgs = [rgb(stage.colorArg0), rgb(stage.colorArg1),
-                rgb(stage.colorArg2)];
-            colorArgs.rgb1 = rgb(stage.colorArg1);
-            colorArgs.rgb2 = rgb(stage.colorArg2);
-            // The MODULATE*_ADD* family reads arg1's alpha while computing the
-            // colour channel, so it needs the alpha reduction of the *colour*
-            // argument rather than of D3DTSS_ALPHAARG1.
-            colorArgs.alpha1 = alpha(stage.colorArg1);
-            const alphaArgs = [alpha(stage.alphaArg0), alpha(stage.alphaArg1),
-                alpha(stage.alphaArg2)];
-            alphaArgs.rgb1 = rgb(stage.colorArg1);
-            alphaArgs.rgb2 = rgb(stage.colorArg2);
-            alphaArgs.alpha1 = alpha(stage.colorArg1);
-            const colorExpression = textureOpExpression(stage.colorOp,
-                "vec3<f32>", colorArgs, blendAlpha[stage.colorOp] || "0.0");
-            const alphaExpression = stage.alphaOp === D3DTOP_DISABLE ? null
-                : textureOpExpression(stage.alphaOp, "f32", alphaArgs,
-                    blendAlpha[stage.alphaOp] || "0.0");
-            const destination = stage.resultArg === D3DTA_TEMP ? "temp" : "current";
-            cascadeBody += "    {\n" +
-                "        let stage_rgb = clamp(" +
-                    (colorExpression || rgb(stage.colorArg1)) +
-                    ", vec3<f32>(0.0), vec3<f32>(1.0));\n" +
-                "        let stage_a = clamp(" +
-                    (alphaExpression || destination + ".a") + ", 0.0, 1.0);\n" +
-                "        " + destination + " = vec4<f32>(stage_rgb, stage_a);\n" +
-                "    }\n";
-        }
-
-        let value = "current";
-        if (debugMode === "solid") value = "vec4<f32>(0.0, 1.0, 0.0, 1.0)";
-        else if (debugMode === "missing") value = "vec4<f32>(1.0, 0.0, 1.0, 1.0)";
-        else if (debugMode === "orphan") value = "vec4<f32>(0.0, 1.0, 1.0, 1.0)";
-        else if (debugMode === "color")
-            value = "vec4<f32>(" + diffuse + ".rgb, 1.0)";
-        else if (debugMode === "uv")
-            value = signature.stages.length
-                ? "vec4<f32>(stage_in.varying" +
-                    (VARYING_TEXCOORD0 + signature.stages[0].coordVarying) +
-                    ".xy, 0.0, 1.0)"
-                : "vec4<f32>(0.0, 0.0, 1.0, 1.0)";
-        else if (debugMode === "texture")
-            value = signature.stages.some(stage => stage.samplesTexture)
-                ? "vec4<f32>(tex" + signature.stages.find(
-                    stage => stage.samplesTexture).index + ".rgb, 1.0)"
-                : "vec4<f32>(1.0, 0.0, 0.0, 1.0)";
-
-        // D3D9 adds the specular colour after the texture cascade, before fog.
-        const specularBody = signature.specularEnable && !debugMode
-            ? "    result = vec4<f32>(clamp(result.rgb + " + specular +
-              ".rgb, vec3<f32>(0.0), vec3<f32>(1.0)), result.a);\n"
-            : "";
-        let fogBody = "";
-        if (signature.fogMode) {
-            // Table fog is pixel fog. The device advertises WFOG (and not
-            // ZFOG), while fragment position.w is reciprocal clip-space W in
-            // WGSL, so recover W here and evaluate the D3D fog equation per
-            // fragment. Vertex fog alone consumes the interpolated oFog value.
-            const tableFactor = fixedFogFactorExpression(signature.fogMode,
-                "fog_distance");
-            const factor = signature.tableFog && tableFactor
-                ? tableFactor
-                : "clamp(stage_in.varying" + shaderPipeline.VARYING_FOG +
-                  ".x, 0.0, 1.0)";
-            const tableDistance = signature.tableFog && tableFactor
-                ? "    let fog_distance = 1.0 / " +
-                  "max(abs(stage_in.position.w), 1e-6);\n"
-                : "";
-            fogBody = tableDistance +
-                "    result = vec4<f32>(mix(uniforms.fog_color.rgb, result.rgb,\n" +
-                "        " + factor + "), result.a);\n";
-        }
-        const varyings = [];
-        for (let slot = 0; slot < VARYING_COUNT; ++slot)
-            varyings.push(varyingDeclaration(slot, signature.flatShading));
-        const clipVaryings = [];
-        let clipDiscard = "";
-        for (let group = 0; group < Math.ceil(
-                (signature.clipPlaneCount || 0) / 4); ++group)
-            clipVaryings.push("    @location(" + (VARYING_COUNT + group) +
-                ") clip" + group + ": vec4<f32>,");
-        for (let plane = 0; plane < (signature.clipPlaneCount || 0); ++plane)
-            clipDiscard += "    if (stage_in.clip" +
-                Math.floor(plane / 4) + "." + "xyzw"[plane & 3] +
-                " < 0.0) { discard; }\n";
-
-        return `${layout.entries.length
-            ? uniformBlockStruct("D9FixedPixelUniforms", layout) +
-              "\n@group(0) @binding(1) var<uniform> uniforms: D9FixedPixelUniforms;"
-            : ""}
-${declarations.join("\n")}
-
-struct D9PixelInput {
-    @builtin(position) position: vec4<f32>,
-${varyings.join("\n")}
-${clipVaryings.join("\n")}
-};
-
-@fragment
-fn d9_ps_main(stage_in: D9PixelInput) -> @location(0) vec4<f32> {
-${clipDiscard}
-${samples.join("\n")}
-${cascadeBody}    var result = ${value};
-${specularBody}${alphaTestDiscard(signature.alphaTest, "result.a")}${fogBody}    return result;
-}
-`;
-    }
+    const ffpFactory = global.D9WGFFP ||
+        (typeof require === "function" ? require("./d9wg_ffp.js") : null);
+    if (!ffpFactory) throw new Error("d3d9_executor.js requires d9wg_ffp.js");
+    const ffp = ffpFactory.createGenerator({ shaderPipeline, DECLUSAGE_POSITION, DECLUSAGE_POSITIONT, DECLUSAGE_COLOR, DECLUSAGE_NORMAL, DECLUSAGE_TEXCOORD, MAX_TEXCOORD_SETS, DECLUSAGE_PSIZE, DECLUSAGE_BLENDWEIGHT, DECLUSAGE_BLENDINDICES, D3DTOP_BUMPENVMAPLUMINANCE, D3DFOG_LINEAR, D3DFOG_EXP, D3DFOG_EXP2, D3DTOP_SELECTARG1, D3DTOP_SELECTARG2, D3DTOP_MODULATE, D3DTOP_MODULATE2X, D3DTOP_MODULATE4X, D3DTOP_ADD, D3DTOP_ADDSIGNED, D3DTOP_ADDSIGNED2X, D3DTOP_SUBTRACT, D3DTOP_ADDSMOOTH, D3DTOP_BLENDDIFFUSEALPHA, D3DTOP_BLENDTEXTUREALPHA, D3DTOP_BLENDFACTORALPHA, D3DTOP_BLENDCURRENTALPHA, D3DTOP_BLENDTEXTUREALPHAPM, D3DTOP_DOTPRODUCT3, D3DTOP_BUMPENVMAP, D3DTOP_MODULATEALPHA_ADDCOLOR, D3DTOP_MODULATECOLOR_ADDALPHA, D3DTOP_MODULATEINVALPHA_ADDCOLOR, D3DTOP_MODULATEINVCOLOR_ADDALPHA, D3DTOP_MULTIPLYADD, D3DTOP_LERP, D3DMCS_COLOR1, D3DMCS_COLOR2, D3DLIGHT_DIRECTIONAL, D3DLIGHT_PARALLELPOINT, D3DLIGHT_SPOT, D3DTSS_TCI_PASSTHRU, D3DTSS_TCI_CAMERASPACENORMAL, D3DTSS_TCI_CAMERASPACEPOSITION, D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR, D3DTSS_TCI_SPHEREMAP, D3DTA_SELECTMASK, D3DTA_DIFFUSE, D3DTA_CURRENT, D3DTA_TEXTURE, D3DTA_TFACTOR, D3DTA_SPECULAR, D3DTA_TEMP, D3DTA_CONSTANT, D3DTA_ALPHAREPLICATE, D3DTA_COMPLEMENT, D3DTOP_DISABLE });
+    const { VARYING_COUNT, VARYING_COLOR0, D3DSHADE_FLAT, D3DSHADE_GOURAUD, varyingDeclaration, VARYING_TEXCOORD0, FF_LOCATION_POSITION, FF_LOCATION_COLOR0, FF_LOCATION_COLOR1, FF_LOCATION_NORMAL, FF_LOCATION_TEXCOORD0, FF_LOCATION_PSIZE, FF_LOCATION_BLENDWEIGHT, FF_LOCATION_BLENDINDICES, alphaTestDiscard, fixedFunctionLocationFor, vertexInputDeclaration, declTypeInputScalar, uniformBlockLayout, uniformBlockStruct, HALF_PIXEL_OFFSET_BODY, fixedVertexUniformLayout, fixedPixelUniformLayout, fixedFogFactorExpression, textureOpExpression, buildFixedFunctionVertexShader, buildFixedFunctionPixelShader } = ffp;
 
     // A fragment stage that deliberately depends on no varying, constant or
     // texture.  It is used only by the live black-screen probe below.  Keeping
@@ -2995,6 +1047,17 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             },
         };
     }
+
+    const PROGRAM_DRAW_COUNTERS = [
+        "drawsWithTexture", "drawsWithFallbackTexture", "drawsWithUnsupportedTextureOp",
+        "drawsWithCompactVertexInputs", "drawsWithMissingCoordSet", "drawsWithUnappliedVertexBlend",
+        "drawsWithUnwrittenCoordVarying", "zeroNormalDrawsWithoutTexture", "zeroNormalDrawsWithMissingTexture",
+        "zeroNormalDrawsWithUnboundTexture", "zeroNormalDrawsWithUnknownTexture", "zeroNormalDrawsWithLiveTexture",
+        "drawsWithDefaultedInputs", "drawsWithZeroNormalLighting", "blendedDraws",
+    ];
+
+    const DEVICE_STATE_CONSTANTS = { D3DMULTISAMPLE_NONE, D3DTS_VIEW, D3DTS_PROJECTION, D3DTS_WORLD, IDENTITY4x4,
+        MAX_VS_CONST_F, MAX_PS_CONST_F, MAX_CONST_I, MAX_CONST_B };
 
     class D3D9WebGPUExecutor {
         constructor(canvas, options) {
@@ -3069,12 +1132,14 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             // frame are three orders of magnitude below this.
             this.flushThreshold = Math.max(1024,
                 this.options.flushThreshold || 16384);
-            // The guest blocks on a readback, so this is a VM-freeze budget
-            // rather than a GPU-latency one.
+            // The guest blocks on a readback. A cold native HDR pipeline can
+            // legitimately keep the queue busy for more than four seconds;
+            // retain a finite freeze bound without reporting that work lost.
             this.readbackTimeoutMs = Math.max(250,
-                this.options.readbackTimeoutMs || 4000);
+                this.options.readbackTimeoutMs || 30000);
             this.heartbeat = 0;
             this.heartbeatBuffer = new Uint8Array(4);
+            this.uploads = null;
             this.uniformRingChunks = [];
             // A CPU-side mirror of each chunk. Constants are written here and
             // the whole used prefix goes up in one writeBuffer per submit --
@@ -3097,6 +1162,9 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
              * only ever miss a reuse, never claim a stale one.
              */
             this.commandSerial = 1;
+            this.programSerial = 1;
+            this.uniformSerial = 1;
+            this.recordingOpcode = 0;
             this.objectIds = new WeakMap();
             this.nextObjectId = 1;
             // Bytecode hash -> {ok, wgsl, reflection}. Survives device loss:
@@ -3123,6 +1191,7 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             this.shaderWorkerRequests = new Map();
             this.shaderWorkerSerial = 0;
             this.moduleCache = new Map();  // wgsl -> GPUShaderModule
+            this.fixedModuleCache = new Map(); // normalized signature -> GPUShaderModule
             this.samplerCache = new Map(); // sampler-state signature -> GPUSampler
             // D3D9 hardware cursor: bitmap, hotspot, position, visibility.
             this.cursor = { texture: null, view: null, width: 0, height: 0,
@@ -3133,7 +1202,6 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             this.fallbackView = null;
             this.fallbackDepth = null;
             this.fallbackViews = null;
-            this.substituteDepthViews = null;
             // Every protocol-1.3 batch carries its process session id in the
             // batch header. Futuremark launches several D3D9 probe/helper
             // processes alongside the benchmark, and their numeric handles
@@ -3142,87 +1210,51 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             // tear down a benchmark process that is still rendering.
             this.sessionStates = new Map();
             this.sessionKey = null;
+            // the sessions submitted since the arena's owner last released it
+            this.ownerSessions = new Set();
+            this.ownerSessionScopes = new Map();
+            this.hostCapabilitiesByOwner = new Map();
+            this.batchOwnerToken = 0;
             this.frame = null;             // { ops, transientBuffers, serial }
             this.frameSerial = 0;
+            this.frameReplayer = new FrameReplayer(this);
             this.readyPromise = null;
             this.pendingReadbacks = new Set();
             this.work = Promise.resolve();
-            this.failed = null;
-            // Console-togglable diagnostics, e.g.
-            //   v86gl.d3d9Executor.debug.forceClearColor = {r:1,g:0,b:1,a:1}
-            // These exist to split "the canvas is not on screen" from "the
-            // canvas is on screen but the drawn content is black", which the
-            // stats alone cannot distinguish.
+            // Host exceptions, kept in strict mode for tests to assert on
+            this.hostErrors = [];
+            // Why the last failed batch failed (diagnostics; nothing reads it)
+            this.lastBatchFailure = null;
+            // Flags remain cheap and directly console-togglable. Heavy capture
+            // and report code is loaded only by enableDiagnostics().
             this.debug = {
-                forceClearColor: null,  // {r,g,b,a} overrides every Clear
-                disableCull: false,     // force cullMode "none"
-                disableDepthTest: false,// force depthCompare "always"
-                shaderMode: null,       // "solid"|"color"|"texture"|"uv"
-                // Replaces *both* fixed-function and translated pixel shaders
-                // with an opaque green output. It also disables blend, alpha,
-                // depth/stencil rejection and forces RGBA writes, leaving only
-                // vertex fetch/transform, viewport and scissor able to hide a
-                // draw. This is the definitive geometry-vs-shading probe.
-                forceSolidAllDraws: false,
-                // Clamps every sampler to the top mip level. If a texture
-                // looks wrong because levels below 0 were never uploaded,
-                // this makes it correct immediately -- which is the cheapest
-                // way to confirm or rule out that cause.
-                forceMipLevel0: false,
-                // Suspicious-but-valid D3D9 state is counted in getStats()
-                // unconditionally. Detailed per-state console warnings are
-                // opt-in: real games deliberately reuse declarations and
-                // fixed-function state in ways that trip these heuristics,
-                // so they are debugging evidence rather than runtime errors.
-                warnOnSuspiciousDraws: false,
-                // Paints magenta over any fixed-function draw whose cascade
-                // samples a stage with no live texture -- the draws that get
-                // the 1x1 white fallback. A counter says how many there are;
-                // this says *which*, which is the question a flat silhouette
-                // actually poses: is the model I am looking at one of them?
-                // Everything else keeps rendering normally, so the answer is
-                // one screenshot rather than a bisection.
-                highlightMissingTexture: false,
-                // The same question for the other cause of a flat model:
-                // paints cyan over any draw whose stage reads a coordinate
-                // set its declaration does not carry. Magenta and cyan
-                // together answer "which of the two is this model" in one
-                // screenshot, which is the whole difficulty -- both render as
-                // one flat colour and neither fails.
-                highlightMissingCoordSet: false,
-                // Drops every draw that has a translated shader bound on
-                // either stage. shaderMode only rewrites the fixed-function
-                // pixel cascade, so a model rendered through the programmable
-                // path looks *identical* under every debug mode -- which reads
-                // as "the debug mode did nothing" rather than as "you are
-                // looking at the wrong pipeline". Making those draws vanish
-                // answers which path a model is on in one screenshot.
-                skipProgrammableDraws: false,
-                // Routes fixed-function texture stage n to varying TEXCOORD n
-                // (D3D9's rule when a vertex shader is bound) instead of to
-                // the varying D3DTSS_TEXCOORDINDEX names. See coordStagePlan
-                // for why the two disagree and which one D3D9 documents.
+                forceClearColor: null, disableCull: false, disableDepthTest: false,
+                shaderMode: null, forceSolidAllDraws: false, forceMipLevel0: false,
+                warnOnSuspiciousDraws: false, highlightMissingTexture: false,
+                highlightMissingCoordSet: false, skipProgrammableDraws: false,
                 texcoordFromStageIndex: true,
             };
-            this.debug.dumpSmallTextures = o => this.dumpSmallTextures(o);
-            this.debug.dumpShaders = o => this.dumpShaders(o);
+            for (const name of DIAGNOSTIC_REPORTS)
+                this.debug[name] = (...args) => this[name](...args);
             this.debug.clearShaderCache = () => this.clearShaderCache();
-            this.debug.dumpPipelineStates = () => this.dumpPipelineStates();
-            this.debug.blackScreenReport = () => this.blackScreenReport();
-            this.lastDraws = { fixed: null, programmable: null };
+            this.diagnosticsEnabled = false;
+            this.diagnosticsPromise = null;
+            this.lastDraws = null;
             this.stats = {
                 batches: 0, commands: 0, presents: 0, queueSubmits: 0,
                 drawCalls: 0, indexedDrawCalls: 0, upDrawCalls: 0,
-                pipelineCreations: 0, pipelineHits: 0,
+                pipelineCreations: 0, pipelineHits: 0, pipelinesRejected: 0,
+                programBuilds: 0, programCacheHits: 0,
                 bindGroupCreations: 0, bindGroupHits: 0,
-                bindGroupCacheEvictions: 0,
+                bindGroupCacheEvictions: 0, framesRejected: 0,
                 uniformSlotReuses: 0, uniformRingOverflows: 0,
                 uniformRingChunksAllocated: 0, uniformRingChunksUsed: 0,
                 backBufferAllocations: 0, backBufferPresents: 0,
                 redundantStateSkipped: 0, uniformStagingUploads: 0,
                 readbackRequests: 0,
                 frameFlushes: 0,
-                unsupportedCommands: 0, malformedBatches: 0,
+                unsupportedCommands: 0, malformedBatches: 0, batchesFailed: 0,
+                protocolViolations: 0, msaaUnresolves: 0,
                 malformedCommands: 0, gammaRampUpdates: 0, fillModeDraws: 0,
                 swapChainsCreated: 0, swapChainsDestroyed: 0,
                 swapChainsRefused: 0, swapChainPresents: 0,
@@ -3248,10 +1280,8 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 // A frame with no ops remains useful diagnostic evidence that
                 // Present itself did not produce new GPU work.
                 framesWithoutColorClear: 0, framesWithNoOps: 0,
-                // Dynamic buffers renamed because a draw already recorded in
-                // the same frame reads their previous contents (see
-                // applyBufferUpdate). Zero means the deferred-draw path never
-                // had a write-after-record hazard to begin with.
+                // Legacy rename counters stay zero for diagnostics consumers.
+                uploadChunksAllocated: 0, uploadStagingUploads: 0,
                 bufferRenames: 0, textureUpdateHazards: 0,
                 textureRenames: 0, textureFullCopyRenameBytes: 0,
                 bufferFullCopyRenames: 0, bufferNoOverwriteWrites: 0,
@@ -3265,12 +1295,15 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 cursorUploads: 0, cursorDraws: 0,
                 texturesRejected: 0,
                 srgbTextureSamples: 0, srgbViewsCreated: 0,
+                srgbCopyTexturesCreated: 0, srgbTextureCopies: 0,
                 srgbTextureUnavailable: 0, srgbWriteRequests: 0,
                 srgbWriteUnavailable: 0,
                 cubeTexturesCreated: 0, volumeTexturesCreated: 0,
                 renderTargetsCreated: 0,
                 renderTargetBinds: 0, renderPasses: 0,
                 depthTargetSizeMismatches: 0,
+                colorTargetPromotions: 0,
+                colorExtentCopies: 0,
                 depthTargetSubstitutions: 0,
                 depthTargetSubstitutionsUncleared: 0,
                 blits: 0, blitsSkipped: 0, blitsThroughBackBuffer: 0,
@@ -3341,6 +1374,46 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 pipelineCreations: 0, bindGroupCreations: 0,
                 queueSubmits: 0, renderPasses: 0,
             };
+            if (this.options.diagnostics && typeof require === "function")
+                this.installDiagnostics(require("./d9wg_diagnostics.js"));
+        }
+
+        installDiagnostics(factory) {
+            if (!this.diagnosticsEnabled) factory.install(this, {
+                TEXTURE_FORMAT_NAMES, RESOURCE_VERTEX_SHADER, RESOURCE_PIXEL_SHADER,
+                D3DRS_SCISSORTESTENABLE, intersectRects,
+            });
+            return this.debug;
+        }
+
+        enableDiagnostics() {
+            if (this.diagnosticsEnabled) return Promise.resolve(this.debug);
+            if (this.diagnosticsPromise) return this.diagnosticsPromise;
+            if (typeof require === "function") {
+                return Promise.resolve(this.installDiagnostics(require("./d9wg_diagnostics.js")));
+            }
+            if (!diagnosticsLoad) {
+                diagnosticsLoad = new Promise((resolve, reject) => {
+                    if (global.D9WGDiagnostics) { resolve(global.D9WGDiagnostics); return; }
+                    if (typeof document === "undefined") {
+                        reject(new Error("D3D diagnostics require a document or CommonJS loader"));return;
+                    }
+                    const script = document.createElement("script");
+                    const url = this.options.diagnosticsUrl || DEFAULT_DIAGNOSTICS_URL;
+                    if (!url) { reject(new Error("D3D diagnostics URL is unavailable"));return; }
+                    script.src = url;
+                    script.onload = () => {
+                        script.remove();
+                        if (global.D9WGDiagnostics) resolve(global.D9WGDiagnostics);
+                        else reject(new Error("D3D diagnostics script did not register its module"));
+                    };
+                    script.onerror = () => { script.remove();reject(new Error("Could not load D3D diagnostics")); };
+                    document.head.appendChild(script);
+                }).catch(error => { diagnosticsLoad = null;throw error; });
+            }
+            this.diagnosticsPromise = diagnosticsLoad.then(factory => this.installDiagnostics(factory))
+                .catch(error => { this.diagnosticsPromise = null;throw error; });
+            return this.diagnosticsPromise;
         }
 
         initialize() {
@@ -3417,11 +1490,15 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                     new Uint8Array([255, 255, 255, 255]),
                     { bytesPerRow: 4, rowsPerImage: 1 },
                     { width: 1, height: 1, depthOrArrayLayers: 1 });
-                this.uniformRingChunks = [];
+                this.uploads = null;
+            this.uniformRingChunks = [];
                 this.uniformStaging = [];
                 this.uniformRingIndex = 0;
                 this.uniformRingCursor = 0;
+                this.gpuErrors = resolveGPUHost().GPUErrorLog.forDevice(this.device);
+                if (this.options.strict) this.gpuErrors.strict = true;
                 this.watchForDeviceLoss();
+                if (this.options.diagnostics) await this.enableDiagnostics();
                 return this;
             })().catch(error => {
                 this.failed = error;
@@ -3537,7 +1614,13 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 .then(() => this.restorePersistentShaderCache())
                 .then(() => this.executeBatch(owned, metadata || {}))
                 .catch(error => {
-                    this.failed = error;
+                    // Only this batch is lost. A stream error is the guest
+                    // and host disagreeing about the layout; anything else
+                    // is a host bug, which strict mode (tests) keeps.
+                    ++this.stats.batchesFailed;
+                    this.lastBatchFailure = error;
+                    if (!(error instanceof D9WGStreamError) && this.options.strict)
+                        this.hostErrors.push(error);
                     console.error("[d3d9-webgpu] batch failed", error, metadata || {});
                     this.discardFrame();
                 });
@@ -3570,17 +1653,24 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
 
         async resetForReplay() {
             await this.checkpointIdle();
+            for (const reply of this.hostCapabilitiesByOwner.values()) delete reply.publishedBits;
             for (const key of this.sessionStates.keys()) {
                 this.switchSession(key);
                 this.releaseActiveSession("state-restore");
             }
             this.sessionStates.clear();
+            this.ownerSessions.clear();this.ownerSessionScopes.clear();
             this.sessionKey = null;
             this.pipelineCache.clear();
             this.bindGroupCache.clear();
             this.moduleCache.clear();
+            this.fixedModuleCache.clear();
+            this.multisampleCopyPipelines = null;
+            this.depthTransferPipelines = null;
+            this.depthBlitPipelines = null;
+            ++this.programSerial;
+            ++this.uniformSerial;
             this.samplerCache.clear();
-            this.failed = null;
         }
 
         // ---- batch decode ----
@@ -3589,61 +1679,35 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             const timing = this["performanceTiming"];
             let segmentStart = timing ? timing["now"]() : 0;
             try {
-            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-            if (bytes.byteLength < D9WG_BATCH_HEADER_BYTES) {
-                ++this.stats.malformedBatches;
-                throw new D9WGStreamError("D9WG batch shorter than its header");
+            let packet;
+            try { packet = wire.readHeader(bytes); }
+            catch (error) {
+                if (error instanceof D9WGStreamError) ++this.stats.malformedBatches;
+                throw error;
             }
-            const magic = view.getUint32(0, true);
-            const versionMajor = view.getUint16(4, true);
-            const versionMinor = view.getUint16(6, true);
-            const commandCount = view.getUint32(16, true);
-            const commandBytes = view.getUint32(20, true);
-            if (magic !== D9WG_MAGIC) {
+            const { view, end, commandCount } = packet;
+            const ownerToken = metadata.ownerToken === undefined ? 0 : metadata.ownerToken;
+            if (!Number.isInteger(ownerToken) || ownerToken < 0 || ownerToken > 0xffffffff) {
                 ++this.stats.malformedBatches;
-                throw new D9WGStreamError("D9WG batch has the wrong magic");
+                throw new D9WGStreamError("D9WG transport owner token is invalid");
             }
-            // Minor versions are accepted as a range, not an exact match. The
-            // guest DLL and this file are deployed separately -- the proxy has
-            // to be copied into the VM image, the page reloads on its own -- so
-            // insisting they agree exactly turns any protocol addition into a
-            // window where nothing renders at all and the only symptom is
-            // "unsupported D9WG version".
-            //
-            // What makes the range safe is that every field added since
-            // D9WG_VERSION_MIN_MINOR is length-gated at its decode site: an
-            // older payload is short, the field reads as its default, and the
-            // default is what that version meant. Adding a field that changes
-            // the meaning of existing bytes would need the major version, which
-            // is still an exact match.
-            if (versionMajor !== D9WG_VERSION_MAJOR ||
-                    versionMinor < D9WG_VERSION_MIN_MINOR ||
-                    versionMinor > D9WG_VERSION_MINOR) {
-                ++this.stats.malformedBatches;
-                throw new D9WGStreamError(`unsupported D9WG version ${versionMajor}.${versionMinor}`);
-            }
-            if (commandBytes > bytes.byteLength - D9WG_BATCH_HEADER_BYTES) {
-                ++this.stats.malformedBatches;
-                throw new D9WGStreamError(
-                    "D9WG batch command_bytes overruns the record");
-            }
-            const sessionLow = view.getUint32(24, true);
-            const sessionHigh = view.getUint32(28, true);
-            const sessionKey = sessionHigh.toString(16).padStart(8, "0") +
-                sessionLow.toString(16).padStart(8, "0");
+            this.batchOwnerToken = ownerToken;
+            const sessionKey = this.ownerSessionKey(packet.sessionKey, ownerToken);
             this.switchSession(sessionKey);
+            this.ownerSessions.add(sessionKey);
+            let scope = this.ownerSessionScopes.get(ownerToken);
+            if (!scope) this.ownerSessionScopes.set(ownerToken, scope = new Set());
+            scope.add(sessionKey);
             ++this.stats.batches;
 
+            this.checkStream(view, end, commandCount);
             let offset = D9WG_BATCH_HEADER_BYTES;
-            const end = D9WG_BATCH_HEADER_BYTES + commandBytes;
-            let decoded = 0;
-            while (offset + D9WG_COMMAND_HEADER_BYTES <= end) {
-                const opcode = view.getUint16(offset, true);
-                const size = view.getUint32(offset + 4, true);
-                if (size < D9WG_COMMAND_HEADER_BYTES || offset + size > end) {
-                    ++this.stats.malformedBatches;
-                    throw new D9WGStreamError("D9WG command size is invalid");
-                }
+            let primaryPresent = false, additionalPresent = false;
+            while (offset < end) {
+                const opcode = view.getUint16(offset + D9WG.F.CommandHeader.opcode, true);
+                if (opcode === OP_PRESENT) primaryPresent = true;
+                if (opcode === OP_PRESENT_SWAP_CHAIN) additionalPresent = true;
+                const size = view.getUint32(offset + D9WG.F.CommandHeader.size, true);
                 const payloadOffset = offset + D9WG_COMMAND_HEADER_BYTES;
                 const payloadBytes = size - D9WG_COMMAND_HEADER_BYTES;
                 // One command's failure must not consume the rest of the
@@ -3660,8 +1724,10 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 // is not one bad command but a disagreement about the byte
                 // layout, and continuing past it would be executing garbage.
                 try {
+                    this.recordingOpcode = opcode;
                     const pending = this.dispatchCommand(opcode, bytes, view,
-                        payloadOffset, payloadBytes, metadata);
+                        payloadOffset, payloadBytes, metadata,
+                        view.getUint16(offset + D9WG.F.CommandHeader.flags, true));
                     if (pending && typeof pending.then === "function") {
                         if (timing) timing["sync"](timing["now"]() - segmentStart);
                         try { await pending; }
@@ -3669,23 +1735,25 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                     }
                 } catch (error) {
                     if (error instanceof D9WGStreamError) throw error;
+                    // A host bug: this command is lost, the rest of the batch
+                    // is not. Each distinct failure is reported (once per
+                    // opcode hid the second kind of error behind the first),
+                    // and kept for tests in strict mode.
                     ++this.stats.commandsFailed;
-                    this.warnOnce("command-failed-" + opcode,
+                    if (this.options.strict) this.hostErrors.push(error);
+                    const message = String(error && error.message ? error.message : error);
+                    this.warnOnce("command-failed-" + opcode + "-" + message,
                         "a command threw and was skipped; the rest of the " +
-                        "batch still executes, so this draw or state change " +
-                        "is lost but nothing behind it is", {
-                            opcode, message: String(error && error.message
-                                ? error.message : error) });
-                }
+                        "batch still executes", { opcode, message, error });
+                } finally { this.recordingOpcode = 0; }
                 // Any command other than a draw may have moved something the
                 // constant block is built from. Draws are excluded because they
                 // are the thing being deduplicated; opcodes 0x300..0x303 are the
                 // four draw entry points.
                 if (opcode < OP_DRAW_PRIMITIVE ||
                         opcode > OP_DRAW_INDEXED_PRIMITIVE_UP)
-                    ++this.commandSerial;
+                    this.advanceDrawState(opcode, view, payloadOffset);
                 offset += size;
-                ++decoded;
                 ++this.stats.commands;
                 // Mid-batch, because one PCI batch can carry a whole 16 MiB
                 // arena's worth of draws -- checking only at the batch boundary
@@ -3693,13 +1761,10 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 if (this.frame && this.frame.ops.length >= this.flushThreshold)
                     this.finishFrame(false);
             }
-            if (decoded !== commandCount) {
-                ++this.stats.malformedBatches;
-                throw new D9WGStreamError("D9WG command_count does not match the decoded stream");
-            }
-
-            const present = (view.getUint32(12, true) & D9WG_BATCH_FLAG_PRESENT) !== 0;
-            if (present) this.finishFrame(true);
+            // The batch flag closes either kind of frame. A chain-only Present
+            // already records its own canvas blit and must leave primary scanout
+            // untouched. Preserve primary presentation for legacy flag-only batches.
+            if (packet.present) this.finishFrame(primaryPresent || !additionalPresent);
             else if (this.flushRequested) this.finishFrame(false);
             this.flushRequested = false;
             this.beat(metadata);
@@ -3710,170 +1775,98 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             }
         }
 
-        dispatchCommand(opcode, bytes, view, offset, length, metadata) {
+        // The batch's structure, before any of it runs: the command sizes tile
+        // command_bytes exactly, the guest numbered the commands consecutively
+        // (the header's sequence: a size that points into the middle of a
+        // payload lands on a "header" whose sequence is not the next one),
+        // and their number is command_count. A batch that fails here runs
+        // none of its commands.
+        checkStream(view, end, commandCount) {
+            try { wire.checkStream(view, end, commandCount); }
+            catch (error) {
+                if (error instanceof D9WGStreamError) ++this.stats.malformedBatches;
+                throw error;
+            }
+        }
+
+        dispatchCommand(opcode, bytes, view, offset, length, metadata, commandFlags = 0) {
             const handler = this.handlers[opcode];
+            if (handler && length < D9WG_MIN_PAYLOAD[opcode]) {
+                ++this.stats.malformedBatches;
+                throw new D9WGStreamError("D9WG " + D9WG.OP_NAME[opcode] + " payload is " + length +
+                    " bytes, its struct needs " + D9WG_MIN_PAYLOAD[opcode]);
+            }
             if (!handler) {
-                // Per plan section 6.8: an unrecognized opcode is skipped by
-                // its size (already advanced by the caller), never treated
-                // as "executed" -- it simply never produces GPU state.
+                // Skipped by its size (already advanced by the caller), and
+                // reported: a guest DLL newer than this host, or protocol drift
                 ++this.stats.unsupportedCommands;
+                this.protocolViolation("opcode-" + opcode, "unknown D9WG opcode 0x" +
+                    opcode.toString(16) + " skipped", { opcode });
                 return;
             }
-            return handler.call(this, bytes, view, offset, length, metadata);
+            return handler.call(this, bytes, view, offset, length, metadata, commandFlags);
+        }
+
+        uploadFrame(bytes) {
+            if (!this.recordingBindings && this.frame && this.uploads && this.uploads.bytesUsed + bytes > (this.options.uploadBudgetBytes || (64 << 20))) this.finishFrame(false);
+            const frame = this.ensureFrame();
+            if (!this.uploads) this.uploads = new Uploads(this.device, object => this.retireGPUObject(object), this.stats);
+            return frame;
+        }
+
+        stageBufferUpload(buffer, offset, source, noOverwrite = false) {
+            const frame = this.uploadFrame(source.byteLength);
+            const op = this.uploads.buffer(buffer, offset, source);
+            if (noOverwrite) frame.recordNoOverwriteUpload(op);
+            else frame.record(op);
+        }
+
+        // Present-time utilities may discover a palette after the recorded
+        // ops were replayed. Append only fresh staging bytes, then encode its
+        // copy directly into the same encoder before the utility pass.
+        encodeBufferUpload(encoder, buffer, source) {
+            if (!this.uploads) this.uploads = new Uploads(this.device, object => this.retireGPUObject(object), this.stats);
+            const op = this.uploads.buffer(buffer, 0, source);
+            this.uploads.flush();
+            this.uploads.replay(encoder, op);
+        }
+
+        stageTextureUpload(destination, source, layout, size, resource) {
+            const frame = this.uploadFrame(source.byteLength);
+            const op = this.uploads.texture(destination, source, layout, size);
+            op.writes = resource && resource.msaaTexture ? resource : null;
+            frame.record(op);
         }
 
         // ---- device/resource state ----
 
         deviceState(handle) {
-            let state = this.devices.get(handle);
-            if (!state) {
-                state = this.createDeviceState(handle);
-                this.devices.set(handle, state);
+            const state = this.devices.get(handle);
+            if (!state) throw new Error("D9WG command names an unknown device " + (handle >>> 0));
+            return state;
+        }
+
+        createDeviceState(handle, autoDepth = true, behaviorFlags = 0) {
+            const state = stateFactory.createDeviceState(handle, DEVICE_STATE_CONSTANTS, autoDepth);
+            if (behaviorFlags & D9WG.C.D9WG_DEVICE_LEGACY_LIGHTING)
+                state.legacyLighting = true;
+            if (behaviorFlags & (0x20 | 0x80)) {
+                state.vsConstF = new Float32Array(8192 * 4);
+                state.vsConstI = new Int32Array(2048 * 4);
+                state.vsConstB = new Uint32Array(2048);
             }
             return state;
         }
 
-        createDeviceState(handle) {
-            return {
-                handle,
-                // Where the guest's window is on the guest desktop, resent on
-                // every Present so the page can place the overlay canvas.
-                // Deliberately NOT the back buffer's size: emit_present_and_flush
-                // fills width/height from GetClientRect, and a windowed game's
-                // client area is smaller than the back buffer it hosts.
-                surface: { hwnd: 0, x: 0, y: 0, width: 0, height: 0,
-                    visible: true, noSurface: false, sessionKey: null },
-                // What the guest asked for at CreateDevice/Reset, and therefore
-                // the real size of the swap-chain colour attachment and of the
-                // auto depth target created beside it.
-                backBufferWidth: 0,
-                backBufferHeight: 0,
-                multisampleType: D3DMULTISAMPLE_NONE,
-                multisampleQuality: 0,
-                sampleCount: 1,
-                // WebGPU swap-chain textures are always single-sampled.  A
-                // multisampled D3D back buffer therefore renders into this
-                // private attachment and resolves into getCurrentTexture() at
-                // the end of every render pass.
-                backBufferMsaaTexture: null,
-                backBufferMsaaView: null,
-                backBufferMsaaSrgbView: null,
-                viewport: { x: 0, y: 0, width: 1, height: 1,
-                    minZ: 0, maxZ: 1 },
-                transforms: new Map([
-                    [D3DTS_VIEW, IDENTITY4x4], [D3DTS_PROJECTION, IDENTITY4x4],
-                    [D3DTS_WORLD, IDENTITY4x4],
-                ]),
-                // Highest n the guest has ever passed as D3DTS_WORLDMATRIX(n).
-                // Indexed vertex blending sizes its palette from this rather
-                // than from the 256 D3D9 allows, so an app using eight bones
-                // uploads eight matrices per draw and not 256.
-                maxWorldMatrixIndex: 0,
-                renderStates: new Map(),
-                // Auto depth-stencil surface, created on CREATE_DEVICE/RESET
-                // when the guest asked for one. hasDepth drives both the
-                // render pass attachment and whether pipelines declare a
-                // depthStencil block.
-                hasDepth: false,
-                depthTexture: null,
-                // CreateAdditionalSwapChain results, keyed by chain handle.
-                // The implicit chain is not in here: it is the canvas.
-                swapChains: new Map(),
-                depthView: null,
-                samplerStates: new Map(), // sampler*64+state -> value, read by samplerFor()
-                textureStageStates: new Map(),
-                vertexShaderHandle: 0,
-                pixelShaderHandle: 0,
-                // The D3D9 constant register file. Device state, not shader
-                // state: it survives SetVertexShader and Reset, so it lives
-                // here and is packed into a uniform buffer per draw by
-                // constantBufferFor(). Kept as flat typed arrays because the
-                // packing step is a straight subarray copy.
-                vsConstF: new Float32Array(MAX_VS_CONST_F * 4),
-                vsConstI: new Int32Array(MAX_CONST_I * 4),
-                vsConstB: new Uint32Array(MAX_CONST_B),
-                psConstF: new Float32Array(MAX_PS_CONST_F * 4),
-                psConstI: new Int32Array(MAX_CONST_I * 4),
-                psConstB: new Uint32Array(MAX_CONST_B),
-                material: null,          // set by SET_MATERIAL; not yet consumed (M2/M3 lighting)
-                lights: new Map(),       // light index -> D3DLIGHT9-shaped object; not yet consumed
-                lightEnabled: new Map(), // light index -> bool
-                // frequency is the raw SetStreamSourceFreq value. D3D9 starts
-                // every stream at 1; an absent entry is treated identically.
-                streams: new Map(),      // stream -> { handle, stride, offset, frequency }
-                indexBufferHandle: 0,
-                vertexDeclarationHandle: 0, // also used for the SET_FVF synthesized layout
-                fvfLayout: null,         // set by SET_FVF, cleared by SET_VERTEX_DECLARATION
-                textures: new Map(),     // stage -> resource handle
-                // Explicitly bound colour targets. A slot holding 0 (and slot 0
-                // by default) means the swap chain's back buffer, which is the
-                // only target whose view cannot be taken until Present.
-                renderTargets: [0, 0, 0, 0],
-                renderTargetLevels: [0, 0, 0, 0],
-                // Which cube face each slot names; 0 for a 2D target.
-                renderTargetFaces: [0, 0, 0, 0],
-                // D3DFMT_P8/A8P8 sample through this palette; null until
-                // SetCurrentTexturePalette names one.
-                currentPalette: null,
-                // 0 = the device's auto depth-stencil; depthUnbound is
-                // SetDepthStencilSurface(NULL), which is not the same thing --
-                // it turns depth testing off for the draws that follow.
-                depthTargetHandle: 0,
-                depthTargetLevel: 0,
-                depthUnbound: false,
-                scissorRect: null,
-                clipPlanes: Array.from({ length: 6 }, () => [0, 0, 0, 1]),
-                inScene: false,
-            };
-        }
-
         createSessionState(key) {
-            return {
-                key,
-                devices: new Map(),
-                resources: new Map(),
-                frame: null,
-                activeOcclusion: null,
-                presentingDevice: null,
-                lastSwapTexture: null,
-                backBufferTexture: null,
-                backBufferView: null,
-                backBufferSrgbView: null,
-                backBufferTextureWidth: 0,
-                backBufferTextureHeight: 0,
-                palettes: new Map(),
-                ddPaletteBuffers: new Map(),
-                ddPaletteSerials: new Map(),
-                windowState: null,
-                cursor: { texture: null, view: null, width: 0, height: 0,
-                    hotspotX: 0, hotspotY: 0, x: 0, y: 0, visible: false,
-                    pipeline: null, sampler: null, uniform: null },
-                lastDraws: { fixed: null, programmable: null },
-                featureBits: 0,
-            };
+            return stateFactory.createSessionState(key);
         }
 
         saveActiveSessionState() {
             if (this.sessionKey === null) return;
             const state = this.sessionStates.get(this.sessionKey);
             if (!state) return;
-            state.devices = this.devices;
-            state.resources = this.resources;
-            state.frame = this.frame;
-            state.activeOcclusion = this.activeOcclusion || null;
-            state.presentingDevice = this.presentingDevice || null;
-            state.lastSwapTexture = this.lastSwapTexture || null;
-            state.backBufferTexture = this.backBufferTexture || null;
-            state.backBufferView = this.backBufferView || null;
-            state.backBufferSrgbView = this.backBufferSrgbView || null;
-            state.backBufferTextureWidth = this.backBufferTextureWidth || 0;
-            state.backBufferTextureHeight = this.backBufferTextureHeight || 0;
-            state.palettes = this.palettes;
-            state.ddPaletteBuffers = this.ddPaletteBuffers;
-            state.ddPaletteSerials = this.ddPaletteSerials;
-            state.windowState = this.windowState || null;
-            state.cursor = this.cursor;
-            state.lastDraws = this.lastDraws;
+            stateFactory.captureSession(state, this);
         }
 
         switchSession(key) {
@@ -3886,23 +1879,9 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 this.sessionStates.set(key, state);
             }
             this.sessionKey = key;
-            this.devices = state.devices;
-            this.resources = state.resources;
-            this.frame = state.frame;
-            this.activeOcclusion = state.activeOcclusion;
-            this.presentingDevice = state.presentingDevice;
-            this.lastSwapTexture = state.lastSwapTexture;
-            this.backBufferTexture = state.backBufferTexture;
-            this.backBufferView = state.backBufferView;
-            this.backBufferSrgbView = state.backBufferSrgbView;
-            this.backBufferTextureWidth = state.backBufferTextureWidth;
-            this.backBufferTextureHeight = state.backBufferTextureHeight;
-            this.palettes = state.palettes;
-            this.ddPaletteBuffers = state.ddPaletteBuffers;
-            this.ddPaletteSerials = state.ddPaletteSerials;
-            this.windowState = state.windowState;
-            this.cursor = state.cursor;
-            this.lastDraws = state.lastDraws;
+            stateFactory.activateSession(this, state);
+            if (this.diagnosticsEnabled && !this.lastDraws)
+                this.lastDraws = { fixed: null, programmable: null };
             if (previousKey !== null) {
                 ++this.stats.sessionChanges;
                 if (this.stats.sessionChanges === 1)
@@ -3917,7 +1896,7 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                         !previous.resources.size && !previous.frame &&
                         !previous.activeOcclusion && !previous.cursor.texture &&
                         !previous.backBufferTexture &&
-                        !previous.ddPaletteBuffers.size)
+                        !previous.ddPaletteBuffers.size && !previous.uniformRingChunks.length)
                     this.sessionStates.delete(previousKey);
             }
         }
@@ -3951,7 +1930,6 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 [OP_CREATE_TEXTURE_CUBE]: this.onCreateTextureCube,
                 [OP_CREATE_TEXTURE_VOLUME]: this.onCreateTextureVolume,
                 [OP_UPDATE_TEXTURE]: this.onUpdateTexture,
-                [OP_UPDATE_SURFACE]: this.onUpdateSurface,
                 [OP_READBACK_SURFACE]: this.onReadbackSurface,
                 [OP_SESSION_END]: this.onSessionEnd,
                 [OP_SET_SCISSOR_RECT]: this.onSetScissorRect,
@@ -4016,14 +1994,19 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             if (D3D9WebGPUExecutor.extensionHandlers)
                 Object.assign(this._handlers,
                     D3D9WebGPUExecutor.extensionHandlers);
+            // A name that is not a method (UPDATE_SURFACE pointed at one
+            // nobody wrote) used to make its opcode silently "unsupported"
+            for (const [opcode, handler] of Object.entries(this._handlers))
+                if (typeof handler !== "function")
+                    throw new Error("D9WG handler for opcode " + opcode + " is not a function");
             return this._handlers;
         }
 
-        onHello(bytes, view, offset) {
-            void view.getUint32(offset, true); // guest_pointer_bits
-            const featureBits = view.getUint32(offset + 4, true);
-            const sessionLow = view.getUint32(offset + 8, true);
-            const sessionHigh = view.getUint32(offset + 12, true);
+        onHello(bytes, view, offset, length, metadata) {
+            void view.getUint32(offset + D9WG.F.Hello.guest_pointer_bits, true); // guest_pointer_bits
+            const featureBits = view.getUint32(offset + D9WG.F.Hello.feature_bits, true);
+            const sessionLow = view.getUint32(offset + D9WG.F.Hello.session_id_low, true);
+            const sessionHigh = view.getUint32(offset + D9WG.F.Hello.session_id_high, true);
             // Keyed as a string, not `high * 2**32 + low`: a 64-bit id does not
             // survive a float64 above 2**53, and the low bits are exactly the
             // ones that distinguish two processes. The old arithmetic key made
@@ -4031,8 +2014,8 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             // "...576c00" -- the same session, printed exact then rounded) and
             // let two distinct sessions round together into one key, which
             // would keep a dead process's handles alive against a live one.
-            const sessionKey = sessionHigh.toString(16).padStart(8, "0") +
-                sessionLow.toString(16).padStart(8, "0");
+            const sessionKey = this.ownerSessionKey(sessionHigh.toString(16).padStart(8, "0") +
+                sessionLow.toString(16).padStart(8, "0"), this.batchOwnerToken);
             // HELLO duplicates the batch-header id as a corruption check. The
             // header selected the context before command decoding; changing it
             // here would let one malformed command redirect the rest of its
@@ -4043,6 +2026,9 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             }
             const session = this.sessionStates.get(sessionKey);
             if (session) session.featureBits = featureBits;
+            let reply = this.hostCapabilitiesByOwner.get(this.batchOwnerToken);
+            if (!reply) this.hostCapabilitiesByOwner.set(this.batchOwnerToken, reply = {});
+            this.publishHostCapabilities(reply, metadata);
             this.stats.guestFeatureBits = featureBits;
             // Record the active caps profile so diagnostics can distinguish a
             // fixed-function/SM2 run from a default SM3 run directly.
@@ -4052,64 +2038,17 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 (featureBits & D9WG_FEATURE_SHADER_MODEL_3) !== 0;
         }
 
-        retireResourceState(resource) {
-            if (!resource) return;
-            this.retireGPUObject(resource.gpuBuffer);
-            this.retireGPUObject(resource.gpuTexture);
-            this.retireGPUObject(resource.msaaTexture);
-            // Installed by ddraw_ops.js on palettised sample resources. A
-            // SESSION_END bypasses per-resource opcodes, so its companion
-            // textures have to participate in the process-wide teardown too.
-            if (resource.ddSampleViews) {
-                for (const entry of resource.ddSampleViews.values())
-                    this.retireGPUObject(entry && entry.texture);
-                resource.ddSampleViews.clear();
-            }
-            resource.destroyed = true;
-        }
-
-        retirePaletteCachesForDevice(handle) {
-            const prefix = (handle >>> 0) + ":";
-            for (const [key, entry] of this.ddPaletteBuffers) {
-                if (!key.startsWith(prefix)) continue;
-                this.retireGPUObject(entry && entry.buffer);
-                this.ddPaletteBuffers.delete(key);
-            }
-            for (const key of this.ddPaletteSerials.keys())
-                if (key.startsWith(prefix)) this.ddPaletteSerials.delete(key);
-            for (const key of this.palettes.keys())
-                if (key.startsWith(prefix)) this.palettes.delete(key);
-        }
-
         retireDeviceState(state, reason) {
             if (!state) return;
             state.surface = { ...state.surface, visible: false };
             if (typeof this.options.onDestroy === "function")
                 this.options.onDestroy(state.surface, reason || "device");
-            if (state.swapChains) {
-                for (const chain of state.swapChains.values()) {
-                    if (chain.context &&
-                            typeof chain.context.unconfigure === "function")
-                        chain.context.unconfigure();
-                    this.notifySwapChainSurface(
-                        { ...chain.surface, visible: false }, "destroy");
-                }
-                state.swapChains.clear();
-            }
+            this.retireSwapChains(state);
+            this.retireDeviceBackBuffer(state);
             this.retireGPUObject(state.depthTexture);
             this.retireGPUObject(state.backBufferMsaaTexture);
             this.retireGPUObject(state.gammaRampTexture);
             this.retirePaletteCachesForDevice(state.handle);
-        }
-
-        retireActiveSessionBackBuffer() {
-            this.retireGPUObject(this.backBufferTexture);
-            this.backBufferTexture = null;
-            this.backBufferView = null;
-            this.backBufferSrgbView = null;
-            this.backBufferTextureWidth = 0;
-            this.backBufferTextureHeight = 0;
-            this.lastSwapTexture = null;
         }
 
         releaseActiveSession(reason) {
@@ -4128,32 +2067,37 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             this.ddPaletteSerials.clear();
             this.palettes.clear();
             this.retireActiveSessionBackBuffer();
+            if (this.uploads) this.uploads.release();
+            this.uploads = null;
+            for (const buffer of this.uniformRingChunks) this.retireGPUObject(buffer);
+            this.uniformRingChunks = [];
+            this.uniformStaging = [];
+            this.uniformRingIndex = 0;
+            this.uniformRingCursor = 0;
             this.retireGPUObject(this.cursor && this.cursor.texture);
             this.retireGPUObject(this.cursor && this.cursor.uniform);
             this.cursor = { texture: null, view: null, width: 0, height: 0,
                 hotspotX: 0, hotspotY: 0, x: 0, y: 0, visible: false,
                 pipeline: null, sampler: null, uniform: null };
             this.activeOcclusion = null;
+            this.recordingOcclusion = null;
             this.presentingDevice = null;
             this.windowState = null;
-            this.lastDraws = { fixed: null, programmable: null };
+            if (this.diagnosticsEnabled) this.lastDraws = { fixed: null, programmable: null };
         }
 
         onSessionEnd(bytes, view, offset, length) {
-            if (length < 8) {
-                ++this.stats.malformedBatches;
-                throw new D9WGStreamError("D9WG SESSION_END payload is truncated");
-            }
-            const sessionLow = view.getUint32(offset, true);
-            const sessionHigh = view.getUint32(offset + 4, true);
-            const sessionKey = sessionHigh.toString(16).padStart(8, "0") +
-                sessionLow.toString(16).padStart(8, "0");
+            const sessionLow = view.getUint32(offset + D9WG.F.SessionEnd.session_id_low, true);
+            const sessionHigh = view.getUint32(offset + D9WG.F.SessionEnd.session_id_high, true);
+            const sessionKey = this.ownerSessionKey(sessionHigh.toString(16).padStart(8, "0") +
+                sessionLow.toString(16).padStart(8, "0"), this.batchOwnerToken);
             if (this.sessionKey !== sessionKey) {
                 ++this.stats.malformedBatches;
                 throw new D9WGStreamError(
                     "D9WG SESSION_END session does not match its batch");
             }
             const endedKey = this.sessionKey;
+            this.hostCapabilitiesByOwner.delete(this.batchOwnerToken);
             this.releaseActiveSession("session-end");
             this.sessionStates.delete(endedKey);
             // SESSION_END is required to be the final command from a process.
@@ -4163,32 +2107,62 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             ++this.stats.sessionsEnded;
         }
 
-        onCreateDevice(bytes, view, offset, length) {
-            if (length < 52) {
-                ++this.stats.malformedBatches;
-                throw new D9WGStreamError("D9WG CREATE_DEVICE payload is not protocol 1.3");
+        // The process that owned the DMA arena is gone (it unmapped it, or the
+        // kernel closed the device for it when it was killed): its sessions
+        // end as SESSION_END would have ended them (review S1-10)
+        ownerSessionKey(sessionKey, ownerToken) {
+            return ownerToken ? "owner" + ownerToken.toString(16) + "/" + sessionKey : sessionKey;
+        }
+
+        endOwnerSessions(ownerToken) {
+            if (ownerToken === undefined) this.hostCapabilitiesByOwner.clear();
+            else this.hostCapabilitiesByOwner.delete(ownerToken);
+            const sessions = ownerToken === undefined ? this.ownerSessions : this.ownerSessionScopes.get(ownerToken);
+            if (!sessions) return;
+            const original = this.sessionKey;
+            const restore = original && !sessions.has(original);
+            for (const key of sessions) {
+                this.ownerSessions.delete(key);
+                if (!this.sessionStates.has(key) && this.sessionKey !== key) continue;
+                this.switchSession(key);
+                this.releaseActiveSession("owner-released");
+                this.sessionStates.delete(key);
+                this.sessionKey = null;
+                ++this.stats.sessionsEnded;
             }
-            const handle = view.getUint32(offset, true);
-            const hwnd = view.getUint32(offset + 4, true);
-            const x = view.getInt32(offset + 8, true);
-            const y = view.getInt32(offset + 12, true);
-            const width = view.getUint32(offset + 16, true);
-            const height = view.getUint32(offset + 20, true);
-            const enableAutoDepth = view.getUint32(offset + 36, true);
-            const multisampleType = view.getUint32(offset + 44, true);
-            const multisampleQuality = view.getUint32(offset + 48, true);
-            // A frame left un-presented by a previous device -- typically a
-            // process that exited mid-frame -- must not bleed into this one.
-            // Its recorded ops reference that device's depth target and
-            // back-buffer size, which WebGPU rejects as soon as the sizes
-            // differ ("depth stencil attachment size does not match ...").
-            this.discardFrame();
-            const state = this.deviceState(handle);
+            if (ownerToken === undefined) this.ownerSessionScopes.clear();
+            else this.ownerSessionScopes.delete(ownerToken);
+            if (restore && this.sessionStates.has(original)) this.switchSession(original);
+        }
+
+        onCreateDevice(bytes, view, offset, length) {
+            const handle = view.getUint32(offset + D9WG.F.CreateDevice.device_handle, true);
+            const hwnd = view.getUint32(offset + D9WG.F.CreateDevice.hwnd, true);
+            const x = view.getInt32(offset + D9WG.F.CreateDevice.x, true);
+            const y = view.getInt32(offset + D9WG.F.CreateDevice.y, true);
+            const width = view.getUint32(offset + D9WG.F.CreateDevice.width, true);
+            const height = view.getUint32(offset + D9WG.F.CreateDevice.height, true);
+            const enableAutoDepth = view.getUint32(offset + D9WG.F.CreateDevice.enable_auto_depth_stencil, true);
+            const multisampleType = view.getUint32(offset + D9WG.F.CreateDevice.multisample_type, true);
+            const multisampleQuality = view.getUint32(offset + D9WG.F.CreateDevice.multisample_quality, true);
+            // A new device cannot discard pending work from another device
+            // in the same session. Reusing a handle first submits the old work
+            // so its captured views remain valid until the queue completes.
+            const previous = this.devices.get(handle);
+            if (previous) {
+                this.finishFrame(false);
+                this.retireDeviceState(previous, "replace");
+            }
+            const state = this.createDeviceState(handle, enableAutoDepth !== 0,
+                view.getUint32(offset + D9WG.F.CreateDevice.behavior_flags, true));
+            this.devices.set(handle, state);
             state.viewport = { x: 0, y: 0, width, height, minZ: 0, maxZ: 1 };
             state.surface = { hwnd, x, y, width, height, visible: true,
                 noSurface: false, sessionKey: this.sessionKey };
             state.backBufferWidth = width;
             state.backBufferHeight = height;
+            state.backBufferD3DFormat = view.getUint32(offset + D9WG.F.CreateDevice.backbuffer_format, true);
+            state.depthD3DFormat = view.getUint32(offset + D9WG.F.CreateDevice.auto_depth_stencil_format, true);
             this.configureBackBufferMSAA(state, width, height,
                 multisampleType, multisampleQuality);
             this.ensureDepthTarget(state, width, height, enableAutoDepth !== 0);
@@ -4196,168 +2170,60 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onReset(bytes, view, offset, length) {
-            if (length < 56) {
-                ++this.stats.malformedBatches;
-                throw new D9WGStreamError("D9WG RESET payload is not protocol 1.3");
-            }
-            const oldHandle = view.getUint32(offset, true);
-            const newHandle = view.getUint32(offset + 4, true);
-            const hwnd = view.getUint32(offset + 8, true);
-            const x = view.getInt32(offset + 12, true);
-            const y = view.getInt32(offset + 16, true);
-            const width = view.getUint32(offset + 20, true);
-            const height = view.getUint32(offset + 24, true);
-            const enableAutoDepth = view.getUint32(offset + 40, true);
-            const multisampleType = view.getUint32(offset + 48, true);
-            const multisampleQuality = view.getUint32(offset + 52, true);
-            const oldState = this.devices.get(oldHandle);
+            const oldHandle = view.getUint32(offset + D9WG.F.ResetDevice.old_device_handle, true);
+            const newHandle = view.getUint32(offset + D9WG.F.ResetDevice.new_device_handle, true);
+            const hwnd = view.getUint32(offset + D9WG.F.ResetDevice.hwnd, true);
+            const x = view.getInt32(offset + D9WG.F.ResetDevice.x, true);
+            const y = view.getInt32(offset + D9WG.F.ResetDevice.y, true);
+            const width = view.getUint32(offset + D9WG.F.ResetDevice.width, true);
+            const height = view.getUint32(offset + D9WG.F.ResetDevice.height, true);
+            const enableAutoDepth = view.getUint32(offset + D9WG.F.ResetDevice.enable_auto_depth_stencil, true);
+            const multisampleType = view.getUint32(offset + D9WG.F.ResetDevice.multisample_type, true);
+            const multisampleQuality = view.getUint32(offset + D9WG.F.ResetDevice.multisample_quality, true);
+            const oldState = this.deviceState(oldHandle);
+            if (newHandle !== oldHandle && this.devices.has(newHandle))
+                throw new Error("D9WG RESET target device already exists");
+            this.finishFrame(false);
             if (oldState) {
+                this.retireSwapChains(oldState);
                 this.retireGPUObject(oldState.depthTexture);
                 this.retireGPUObject(oldState.backBufferMsaaTexture);
+                this.retireDeviceBackBuffer(oldState);
             }
-            // A D3D9 Reset leaves the back buffer's contents undefined, so the
-            // owned texture is dropped rather than carried across; the next
-            // frame recreates it, zero-filled, at whatever size Reset asked for.
-            this.retireGPUObject(this.backBufferTexture);
-            this.backBufferTexture = null;
-            this.backBufferView = null;
-            this.backBufferSrgbView = null;
-            this.backBufferTextureWidth = 0;
-            this.backBufferTextureHeight = 0;
             this.devices.delete(oldHandle);
-            const state = this.deviceState(newHandle);
+            // The session's resources and palettes survive the Reset under
+            // their handles (the guest no longer creates them again); what
+            // names the device moves to its new handle
+            for (const resource of this.resources.values())
+                if (resource.deviceHandle === oldHandle) resource.deviceHandle = newHandle;
+            for (const [key, palette] of Array.from(this.palettes || [])) {
+                const [device, index] = key.split(":");
+                if (Number(device) !== oldHandle) continue;
+                this.palettes.delete(key);
+                this.palettes.set(newHandle + ":" + index, palette);
+            }
+            // Reset changes the generation/defaults of an existing logical
+            // device; it cannot introduce a previously unknown device.
+            const state = Object.assign(oldState, this.createDeviceState(newHandle, enableAutoDepth !== 0,
+                view.getUint32(offset + D9WG.F.ResetDevice.behavior_flags, true)));
+            this.devices.set(newHandle, state);
             state.viewport = { x: 0, y: 0, width, height, minZ: 0, maxZ: 1 };
             state.surface = { hwnd, x, y, width, height, visible: true,
                 noSurface: false, sessionKey: this.sessionKey };
             state.backBufferWidth = width;
             state.backBufferHeight = height;
+            state.backBufferD3DFormat = view.getUint32(offset + D9WG.F.ResetDevice.backbuffer_format, true);
+            state.depthD3DFormat = view.getUint32(offset + D9WG.F.ResetDevice.auto_depth_stencil_format, true);
             this.configureBackBufferMSAA(state, width, height,
                 multisampleType, multisampleQuality);
             this.ensureDepthTarget(state, width, height, enableAutoDepth !== 0);
+            // Surviving P8 indices must follow the reset selector as well.
+            this.repaintPalettizedTextures(newHandle);
             this.notifySurface(state, "reset");
         }
 
-        resizeCanvasIfNeeded(width, height) {
-            if (this.canvas.width !== width) this.canvas.width = width;
-            if (this.canvas.height !== height) this.canvas.height = height;
-        }
-
-        // The swap-chain colour attachment is context.getCurrentTexture(). The
-        // shared canvas is resized only at Present, after that process has won
-        // ownership; CREATE/RESET from a helper session must not clear the
-        // currently visible owner's canvas.
-        // Reading state.surface here instead was a real defect: Present rewrites
-        // state.surface with the window's client rect every frame, so a windowed
-        // game reported a back buffer 13 rows shorter than the auto depth target
-        // created with it (Kart Rider: 800x587 against 800x600). The pass then
-        // looked mismatched and dropped depth, which turns off depth testing for
-        // the entire game rather than for anything the app actually did.
-        /*
-         * D3D9 draws into a back buffer that survives Present; WebGPU hands out
-         * a different canvas texture every frame, valid only for the task that
-         * acquired it. Owning the back buffer resolves both at once.
-         *
-         * The lifetime is what matters most. A D3D9 frame does not arrive in
-         * one task -- d3d9_proxy.c flushes a partial batch whenever the DMA
-         * arena fills, and each PCI record is a separate macrotask -- so
-         * acquiring the swap-chain texture early and holding it across the
-         * frame is the pattern that goes stale ("Destroyed texture ... used in
-         * a submit"). Recording into an owned texture instead means nothing
-         * before Present touches the swap chain at all, which is what lets
-         * finishFrame(false) submit a partial frame (see flushThreshold).
-         *
-         * It is also less work than the copy pair it replaces: the previous
-         * shape copied the retained image *into* the canvas texture at the
-         * start of every frame (so loadOp:"load" saw last frame's pixels) and
-         * copied it back *out* before Present (so GetRenderTargetData had
-         * something to read). Owning it makes the retained image and the render
-         * target the same object, leaving one copy at Present.
-         */
-        ensureBackBufferTexture(width, height) {
-            width = Math.max(1, width >>> 0);
-            height = Math.max(1, height >>> 0);
-            if (this.backBufferTexture &&
-                    this.backBufferTextureWidth === width &&
-                    this.backBufferTextureHeight === height)
-                return this.backBufferTexture;
-            // A resize discards the contents, which is what D3D9 does too: the
-            // back buffer is undefined across a Reset that changes its size.
-            this.retireGPUObject(this.backBufferTexture);
-            this.backBufferTexture = this.device.createTexture({
-                label: "D3D9 back buffer",
-                size: { width, height, depthOrArrayLayers: 1 },
-                format: this.format,
-                ...(this.swapchainSrgbFormat
-                    ? { viewFormats: [this.swapchainSrgbFormat] } : {}),
-                mipLevelCount: 1,
-                // RENDER_ATTACHMENT to draw into, COPY_SRC to reach the swap
-                // chain and GetRenderTargetData, COPY_DST + TEXTURE_BINDING
-                // because StretchRect uses the back buffer as both ends of a
-                // full-screen post-processing round trip.
-                usage: TEXTURE_USAGE_RENDER_ATTACHMENT | TEXTURE_USAGE_COPY_SRC |
-                    TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING,
-            });
-            this.backBufferView = this.backBufferTexture.createView();
-            this.backBufferSrgbView = this.swapchainSrgbFormat
-                ? this.backBufferTexture.createView(
-                    { format: this.swapchainSrgbFormat })
-                : this.backBufferView;
-            this.backBufferTextureWidth = width;
-            this.backBufferTextureHeight = height;
-            ++this.stats.backBufferAllocations;
-            return this.backBufferTexture;
-        }
-
-        backBufferWidthOf(state) {
-            return state.backBufferWidth || this.canvas.width ||
-                state.surface.width || 1;
-        }
-
-        backBufferHeightOf(state) {
-            return state.backBufferHeight || this.canvas.height ||
-                state.surface.height || 1;
-        }
-
-        configureBackBufferMSAA(state, width, height, type, quality) {
-            this.retireGPUObject(state.backBufferMsaaTexture);
-            state.backBufferMsaaTexture = null;
-            state.backBufferMsaaView = null;
-            state.backBufferMsaaSrgbView = null;
-            const sampleCount = sampleCountForD3D(type, quality);
-            if (!sampleCount) {
-                this.warnOnce("invalid-backbuffer-msaa-" + type + "-" + quality,
-                    "the guest requested an unsupported D3D9 multisample " +
-                    "configuration; the host falls back to a single-sampled " +
-                    "back buffer instead of creating an invalid WebGPU texture",
-                    { type, quality });
-            }
-            state.multisampleType = sampleCount ? (type >>> 0)
-                : D3DMULTISAMPLE_NONE;
-            state.multisampleQuality = sampleCount ? (quality >>> 0) : 0;
-            state.sampleCount = sampleCount || 1;
-            if (state.sampleCount === 1 || !width || !height) return;
-            const descriptor = {
-                label: "D3D9 multisampled back buffer",
-                size: { width, height, depthOrArrayLayers: 1 },
-                format: this.format,
-                ...(this.swapchainSrgbFormat
-                    ? { viewFormats: [this.swapchainSrgbFormat] } : {}),
-                mipLevelCount: 1,
-                sampleCount: state.sampleCount,
-                usage: TEXTURE_USAGE_RENDER_ATTACHMENT,
-            };
-            state.backBufferMsaaTexture = this.device.createTexture(descriptor);
-            state.backBufferMsaaView = state.backBufferMsaaTexture.createView();
-            state.backBufferMsaaSrgbView = this.swapchainSrgbFormat
-                ? state.backBufferMsaaTexture.createView(
-                    { format: this.swapchainSrgbFormat })
-                : state.backBufferMsaaView;
-        }
-
-        // Creates (or drops) the device's auto depth-stencil target. D3D9
-        // reports many depth formats but the guest can never read any of
-        // them back in M1, so one depth24plus-stencil8 target satisfies all
-        // of them; only whether a depth buffer exists at all is observable.
+        // Auto depth uses the same storage as explicit depth surfaces. Keep
+        // its D3D format identity separately for native copy compatibility.
         ensureDepthTarget(state, width, height, enabled) {
             if (state.depthTexture) {
                 // Never destroy it inline: the frame currently being recorded
@@ -4377,7 +2243,8 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 size: { width, height, depthOrArrayLayers: 1 },
                 format: DEPTH_FORMAT,
                 sampleCount: state.sampleCount || 1,
-                usage: TEXTURE_USAGE_RENDER_ATTACHMENT,
+                usage: TEXTURE_USAGE_RENDER_ATTACHMENT | ((state.sampleCount || 1) === 1
+                    ? TEXTURE_USAGE_COPY_SRC | TEXTURE_USAGE_COPY_DST : 0),
             });
             state.depthView = state.depthTexture.createView();
             state.depthWidth = width;
@@ -4386,6 +2253,15 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
 
         // One line per distinct condition, so a per-frame problem cannot flood
         // the console while still being reported the first time it happens.
+        // The guest sent what its own rules should have refused: a guest bug,
+        // reported (and kept for tests in strict mode); the host carries on
+        // with the nearest legal value
+        protocolViolation(key, message, details) {
+            ++this.stats.protocolViolations;
+            if (this.options.strict) this.hostErrors.push(new Error(message));
+            this.warnOnce("protocol-" + key, "guest protocol violation: " + message, details);
+        }
+
         warnOnce(key, message, details) {
             this.warned = this.warned || new Set();
             if (this.warned.has(key)) return;
@@ -4454,11 +2330,14 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         recoverDevice() {
+
+            for (const reply of this.hostCapabilitiesByOwner.values()) delete reply.publishedBits;
             // Everything below was created by the lost device and cannot be
             // destroyed or reused; dropping the references is all that is
             // possible and all that is needed.
             this.discardFrame();
             this.sessionStates.clear();
+            this.ownerSessions.clear();this.ownerSessionScopes.clear();
             this.devices = new Map();
             this.resources = new Map();
             this.palettes = new Map();
@@ -4467,11 +2346,18 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             this.pipelineCache.clear();
             this.bindGroupCache.clear();
             this.moduleCache.clear();
+            this.fixedModuleCache.clear();
+            this.multisampleCopyPipelines = null;
+            this.depthTransferPipelines = null;
+            this.depthBlitPipelines = null;
+            ++this.programSerial;
+            ++this.uniformSerial;
             this.samplerCache.clear();
             this.cursor = { ...this.cursor, texture: null, view: null,
                 pipeline: null, sampler: null, uniform: null,
                 bindGroupLayout: null, visible: false };
             this.activeOcclusion = null;
+            this.recordingOcclusion = null;
             this.presentingDevice = null;
             this.lastSwapTexture = null;
             this.windowState = null;
@@ -4480,12 +2366,12 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             this.fallbackView = null;
             this.fallbackDepth = null;
             this.fallbackViews = null;
-            this.substituteDepthViews = null;
             this.backBufferTexture = null;
             this.backBufferView = null;
             this.backBufferSrgbView = null;
             this.backBufferTextureWidth = 0;
             this.backBufferTextureHeight = 0;
+            this.uploads = null;
             this.uniformRingChunks = [];
             this.uniformStaging = [];
             this.uniformRingIndex = 0;
@@ -4495,7 +2381,6 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             this.device = null;
             this.context = null;
             this.readyPromise = null;
-            this.failed = null;
             this.sessionKey = null;
             if (typeof this.options.onDeviceLost === "function")
                 this.options.onDeviceLost();
@@ -4509,57 +2394,13 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             });
         }
 
-        notifySurface(state, reason) {
-            if (typeof this.options.onSurface === "function")
-                this.options.onSurface(state.surface, reason);
-        }
-
-        onPresent(bytes, view, offset) {
-            // The actual GPU submit happens in finishFrame(), called once
-            // per executeBatch() when the outer D9WGBatchHeader carries
-            // D9WG_BATCH_FLAG_PRESENT -- see the end of executeBatch(). The
-            // guest recomputes the window's current screen position on
-            // every Present (d3d9_proxy.c has no window-move subclassing in
-            // M1), so this is the live source of truth for canvas placement
-            // rather than a separate UPDATE_SURFACE event.
-            const handle = view.getUint32(offset, true);
-            const state = this.deviceState(handle);
-            const hwnd = view.getUint32(offset + 4, true);
-            const x = view.getInt32(offset + 8, true);
-            const y = view.getInt32(offset + 12, true);
-            let width = view.getUint32(offset + 16, true);
-            let height = view.getUint32(offset + 20, true);
-            // The guest recomputes the client rect on every Present, and
-            // GetClientRect is known to return an empty rect in fullscreen
-            // (recorded as an open issue at M1). Letting a 0x0 report through
-            // makes the host repeatedly resize/reposition the overlay canvas
-            // between the real size and nothing, which reads on screen as
-            // flicker. The last non-empty size is the better answer: a window
-            // that genuinely has no client area has nothing to show anyway.
-            if (!width || !height) {
-                ++this.stats.emptySurfaceReports;
-                width = state.surface.width || width;
-                height = state.surface.height || height;
-            }
-            const changed = state.surface.hwnd !== hwnd || state.surface.x !== x ||
-                state.surface.y !== y || state.surface.width !== width ||
-                state.surface.height !== height;
-            state.surface = { ...state.surface, hwnd, x, y, width, height,
-                visible: true, noSurface: false };
-            if (changed) {
-                ++this.stats.surfaceChanges;
-                this.notifySurface(state, "present");
-            }
-            this.presentingDevice = state;
-        }
-
         onBeginScene(bytes, view, offset) {
-            const handle = view.getUint32(offset, true);
+            const handle = view.getUint32(offset + D9WG.F.DeviceOnly.device_handle, true);
             this.deviceState(handle).inScene = true;
         }
 
         onEndScene(bytes, view, offset) {
-            const handle = view.getUint32(offset, true);
+            const handle = view.getUint32(offset + D9WG.F.DeviceOnly.device_handle, true);
             this.deviceState(handle).inScene = false;
         }
 
@@ -4596,10 +2437,9 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onCreateQuery(bytes, view, offset, length) {
-            if (length < 16) return;
-            const handle = view.getUint32(offset + 4, true);
-            const type = view.getUint32(offset + 8, true);
-            const responseOffset = view.getUint32(offset + 12, true);
+            const handle = view.getUint32(offset + D9WG.F.CreateQuery.resource_handle, true);
+            const type = view.getUint32(offset + D9WG.F.CreateQuery.query_type, true);
+            const responseOffset = view.getUint32(offset + D9WG.F.CreateQuery.response_offset, true);
             if (responseOffset + 16 > D9WG_QUERY_REGION_BYTES ||
                     (responseOffset & 15) !== 0) {
                 ++this.stats.queryFailures;
@@ -4611,34 +2451,34 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onBeginQuery(bytes, view, offset, length, metadata) {
-            if (length < 16) return;
-            const query = this.resources.get(view.getUint32(offset + 4, true));
+            const query = this.resources.get(view.getUint32(offset + D9WG.F.QueryIssue.resource_handle, true));
             if (!query || query.kind !== RESOURCE_QUERY) return;
-            const responseOffset = view.getUint32(offset + 8, true);
-            const requestId = view.getUint32(offset + 12, true);
+            const responseOffset = view.getUint32(offset + D9WG.F.QueryIssue.response_offset, true);
+            const requestId = view.getUint32(offset + D9WG.F.QueryIssue.request_id, true);
             if (responseOffset !== query.responseOffset) return;
             query.active = true;
+            if (query.type === D3DQUERYTYPE_OCCLUSION) this.recordingOcclusion = query;
             query.requestId = requestId;
             query.metadata = metadata || {};
             const frame = this.ensureFrame();
-            frame.ops.push({ kind: "query-begin", query, requestId,
+            frame.record({ kind: "query-begin", query, requestId,
                 metadata: query.metadata });
             ++this.stats.queryBegins;
         }
 
         onEndQuery(bytes, view, offset, length, metadata) {
-            if (length < 16) return;
-            const query = this.resources.get(view.getUint32(offset + 4, true));
+            const query = this.resources.get(view.getUint32(offset + D9WG.F.QueryIssue.resource_handle, true));
             if (!query || query.kind !== RESOURCE_QUERY) return;
-            const responseOffset = view.getUint32(offset + 8, true);
-            const requestId = view.getUint32(offset + 12, true);
+            const responseOffset = view.getUint32(offset + D9WG.F.QueryIssue.response_offset, true);
+            const requestId = view.getUint32(offset + D9WG.F.QueryIssue.request_id, true);
             if (responseOffset !== query.responseOffset) return;
             query.requestId = requestId;
             const resultMetadata = metadata || query.metadata || {};
             const frame = this.ensureFrame();
-            frame.ops.push({ kind: "query-end", query, requestId,
+            frame.record({ kind: "query-end", query, requestId,
                 metadata: resultMetadata });
             query.active = false;
+            if (this.recordingOcclusion === query) this.recordingOcclusion = null;
             ++this.stats.queryEnds;
             /* A GetData call submits the partial guest batch without Present.
              * Ask executeBatch() to submit this frame too so polling can make
@@ -4653,7 +2493,44 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
          * batches behind from one that has died -- and it gave up on the first,
          * reporting a readback failure for a host that was working correctly.
          */
+        hostFeatureBits() {
+            // Advertised adapter features are not necessarily enabled on the
+            // acquired device. Only that actual device may grant optional caps.
+            const features = this.device && this.device.features;
+            const has = name => !!(features && typeof features.has === "function" && features.has(name));
+            return (has("float32-filterable") ? D9WG.C.D9WG_HOST_FEATURE_FLOAT32_FILTERABLE : 0) |
+                (has("float32-blendable") ? D9WG.C.D9WG_HOST_FEATURE_FLOAT32_BLENDABLE : 0) |
+                (has("texture-compression-bc") ? D9WG.C.D9WG_HOST_FEATURE_TEXTURE_COMPRESSION_BC : 0) |
+                (has("timestamp-query") ? D9WG.C.D9WG_HOST_FEATURE_TIMESTAMP_QUERY : 0);
+        }
+
+        publishHostCapabilities(reply, metadata) {
+            const writer = metadata && metadata.writeGuestMemory;
+            if (typeof writer !== "function") return false;
+            const bits = this.hostFeatureBits();
+            if (reply.publishedBits === bits) return true;
+            const out = D9WG.encode("HostCapabilities", { feature_bits: bits,
+                version: D9WG.C.D9WG_HOST_CAPS_VERSION, magic: D9WG.C.D9WG_HOST_CAPS_MAGIC });
+            const at = D9WG_RESPONSE_REGION_OFFSET + D9WG.C.D9WG_HOST_CAPS_OFFSET;
+            try {
+                // Invalidate any earlier publication, write data, then publish
+                // completion. These bytes never overlap queries or readbacks.
+                writer(at + D9WG.F.HostCapabilities.magic, new Uint8Array(4), false);
+                writer(at, out.subarray(0, D9WG.F.HostCapabilities.magic), false);
+                writer(at + D9WG.F.HostCapabilities.magic, out.subarray(D9WG.F.HostCapabilities.magic), false);
+                reply.publishedBits = bits;
+                return true;
+            } catch (error) {
+                delete reply.publishedBits;
+                ++this.stats.responseWriteFailures;
+                this.warnOnce("host-capabilities-write", "host capabilities could not be written to the guest", { message: String(error) });
+                return false;
+            }
+        }
+
         beat(metadata) {
+            const reply = this.hostCapabilitiesByOwner.get(this.batchOwnerToken);
+            if (reply) this.publishHostCapabilities(reply, metadata);
             const writer = metadata && metadata.writeGuestMemory;
             if (typeof writer !== "function") {
                 this.warnOnce("beat-no-writer",
@@ -4710,34 +2587,20 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
 
         async onReadbackSurface(bytes, view, offset, length, metadata) {
             ++this.stats.readbackRequests;
-            if (length < 48) {
-                // Same reasoning as above: the guest blocks on the answer, so
-                // a malformed request has to be answered, not dropped.
-                ++this.stats.renderTargetReadbackFailures;
-                this.warnOnce("readback-short-payload",
-                    "a readback command was too short to decode; the guest is " +
-                    "told it failed rather than left waiting", { length });
-                try {
-                    this.writeReadbackResponse(
-                        view.getUint32(offset + 40, true),
-                        view.getUint32(offset + 44, true), null,
-                        D9WG_RESPONSE_FAILED, metadata);
-                } catch (_) { ++this.stats.responseWriteFailures; }
-                return;
-            }
-            const deviceHandle = view.getUint32(offset, true);
-            const textureHandle = view.getUint32(offset + 4, true);
-            const level = view.getUint32(offset + 8, true);
-            const format = view.getUint32(offset + 12, true);
-            const width = view.getUint32(offset + 16, true);
-            const height = view.getUint32(offset + 20, true);
-            const firstRow = view.getUint32(offset + 24, true);
-            const rowCount = view.getUint32(offset + 28, true);
-            const destinationPitch = view.getUint32(offset + 32, true);
-            const destinationBytes = view.getUint32(offset + 36, true);
-            const responseOffset = view.getUint32(offset + 40, true);
-            const requestId = view.getUint32(offset + 44, true);
-            const face = length >= 52 ? view.getUint32(offset + 48, true) : 0;
+            const deviceHandle = view.getUint32(offset + D9WG.F.ReadbackSurface.device_handle, true);
+            const textureHandle = view.getUint32(offset + D9WG.F.ReadbackSurface.texture_handle, true);
+            const level = view.getUint32(offset + D9WG.F.ReadbackSurface.level, true);
+            const format = view.getUint32(offset + D9WG.F.ReadbackSurface.format, true);
+            const width = view.getUint32(offset + D9WG.F.ReadbackSurface.width, true);
+            const height = view.getUint32(offset + D9WG.F.ReadbackSurface.height, true);
+            const firstRow = view.getUint32(offset + D9WG.F.ReadbackSurface.first_row, true);
+            const rowCount = view.getUint32(offset + D9WG.F.ReadbackSurface.row_count, true);
+            const destinationPitch = view.getUint32(offset + D9WG.F.ReadbackSurface.destination_pitch, true);
+            const destinationBytes = view.getUint32(offset + D9WG.F.ReadbackSurface.destination_bytes, true);
+            const responseOffset = view.getUint32(offset + D9WG.F.ReadbackSurface.response_offset, true);
+            const requestId = view.getUint32(offset + D9WG.F.ReadbackSurface.request_id, true);
+            const face = D9WG.has(length, "ReadbackSurface", "face")
+                ? view.getUint32(offset + D9WG.F.ReadbackSurface.face, true) : 0;
             const fail = error => {
                 ++this.stats.renderTargetReadbackFailures;
                 try {
@@ -4760,6 +2623,7 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             };
             let buffer = null;
             let mapped = false;
+            const depthTransients = [];
             try {
                 const resource = textureHandle
                     ? this.resources.get(textureHandle) : null;
@@ -4793,15 +2657,14 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 let sourceTexture = resource && resource.gpuTexture
                     ? resource.gpuTexture : null;
                 if (!textureHandle)
-                    sourceTexture = this.backBufferTexture ||
-                        this.lastSwapTexture || this.context.getCurrentTexture();
-                const gpuFormat = resource ? resource.gpuFormat : this.format;
+                    sourceTexture = state && this.deviceBackBuffer(state);
+                let gpuFormat = resource ? resource.gpuFormat : this.format;
                 if (!sourceTexture || !gpuFormat)
                     throw new Error("readback source is unavailable");
                 const sourceWidth = resource
-                    ? Math.max(1, resource.width >> level) : width;
+                    ? Math.max(1, resource.width >> level) : state.backBufferTextureWidth;
                 const sourceHeight = resource
-                    ? Math.max(1, resource.height >> level) : height;
+                    ? Math.max(1, resource.height >> level) : state.backBufferTextureHeight;
                 if (width !== sourceWidth || height !== sourceHeight)
                     throw new Error("readback dimensions do not match source");
 
@@ -4816,19 +2679,42 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 const rawRowBytes = compressed
                     ? Math.ceil(width / 4) * blockBytes : width * sourceBpp;
                 const gpuRowPitch = alignUp(rawRowBytes, 256);
+                const depthReadback = !!(resource && resource.isDepth);
+                if (depthReadback && (![70,71,73,75,77,79,80].includes(format) ||
+                        resource.format !== format || (resource.sampleCount || 1) !== 1 || face))
+                    throw new Error("unsupported depth readback descriptor");
+                const stencilReadback = depthReadback && [73,75,79].includes(format);
+                const stencilOffset = gpuRowPitch * copiedRows;
+                const stencilPitch = alignUp(width, 256);
                 buffer = this.device.createBuffer({
                     label: "D3D9 render-target readback",
-                    size: gpuRowPitch * copiedRows,
+                    size: stencilOffset + (stencilReadback ? stencilPitch * height : 0),
                     usage: BUFFER_USAGE_COPY_DST | BUFFER_USAGE_MAP_READ,
                 });
                 const encoder = this.device.createCommandEncoder();
+                let copyLevel = level, copyRow = firstRow;
+                if (depthReadback) {
+                    const converted = this.device.createTexture({label:"D3D9 depth readback values",
+                        size:{width,height:rowCount},format:"r32float",usage:TEXTURE_USAGE_RENDER_ATTACHMENT|TEXTURE_USAGE_COPY_SRC});
+                    depthTransients.push(converted);
+                    depthTransients.push(this.encodeDepthTransfer(encoder,sourceTexture.createView({aspect:"depth-only",baseMipLevel:level,mipLevelCount:1}),
+                        converted.createView(),false,0,0,width,rowCount,firstRow));
+                    sourceTexture = converted; gpuFormat = "r32float"; copyLevel = copyRow = 0;
+                }
                 encoder.copyTextureToBuffer({ texture: sourceTexture,
-                    mipLevel: level, origin: { x: 0, y: firstRow, z: face } },
+                    mipLevel: copyLevel, origin: { x: 0, y: copyRow, z: face } },
                     { buffer, bytesPerRow: gpuRowPitch,
                         rowsPerImage: copiedRows },
                     { width: blockAlignedCopyExtent(width, compressed),
                         height: blockAlignedCopyExtent(rowCount, compressed),
                         depthOrArrayLayers: 1 });
+                // WebGPU requires a whole depth/stencil subresource copy,
+                // even when the guest requested only a row slice.
+                if (stencilReadback)
+                    encoder.copyTextureToBuffer({texture:resource.gpuTexture,
+                        mipLevel:level,origin:{x:0,y:0,z:0},aspect:"stencil-only"},
+                        {buffer,offset:stencilOffset,bytesPerRow:stencilPitch,rowsPerImage:height},
+                        {width,height,depthOrArrayLayers:1});
                 this.device.queue.submit([encoder.finish()]);
                 ++this.stats.queueSubmits;
                 /*
@@ -4864,7 +2750,14 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                     for (let row = 0; row < rowCount; ++row)
                         packGPUReadbackRow(format, gpuFormat, mappedBytes,
                             row * gpuRowPitch, width, packed,
-                            row * destinationPitch);
+                            row * destinationPitch, !!(resource && resource.ddXrgbBits));
+                    if (stencilReadback) {
+                        const mask = format === 73 ? 1 : format === 79 ? 15 : 255;
+                        for (let row = 0; row < rowCount; ++row)
+                            for (let x = 0; x < width; ++x)
+                                packed[row * destinationPitch + x * destinationBpp] |=
+                                    mappedBytes[stencilOffset + (firstRow + row) * stencilPitch + x] & mask;
+                    }
                 }
                 buffer.unmap();
                 mapped = false;
@@ -4882,125 +2775,112 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                     try { buffer.destroy(); } catch (_) {}
                 }
                 fail(error);
+            } finally {
+                for (const object of depthTransients) object.destroy();
             }
         }
 
-        // A "frame" here is pure JS bookkeeping -- a list of pending clear/
-        // draw operations -- with no WebGPU objects created yet. This is
-        // deliberate: a canvas's context.getCurrentTexture() is only valid
-        // for the task that acquired it; once control returns to the
-        // browser's event loop, that texture is liable to be presented and
-        // invalidated out from under you ("Destroyed texture ... used in a
-        // submit"). A single D3D9 frame's Clear/Draw/Present calls do not
-        // reliably arrive in one task: d3d9_proxy.c flushes a partial batch
-        // over PCI whenever the DMA ring fills up (reserve_command_locked's
-        // intermediate submit_batch_locked(FALSE)), and each such PCI record
-        // is delivered to this executor as a separate worker postMessage --
-        // a separate macrotask. Acquiring the swapchain texture eagerly on
-        // the first Clear of a frame and holding it until a much-later
-        // Present-carrying submit is exactly the pattern that goes stale.
-        // Recording lightweight ops now and only turning them into real
-        // WebGPU calls inside finishFrame() -- acquired, recorded, and
-        // submitted in one synchronous stretch -- avoids that regardless of
-        // how many separate PCI submits contributed to the frame.
-        ensureFrame() {
-            if (this.frame) return this.frame;
-            // `serial` identifies this frame for the write-after-record check in
-            // applyBufferUpdate(); it must be unique per frame, never reused.
-            // Chunks are retained, only the write position rewinds: WebGPU
-            // orders queue.writeBuffer against already-submitted work, so
-            // rewinding after the previous frame's Present cannot overwrite
-            // bytes a queued draw still has to read.
-            this.uniformRingIndex = 0;
-            this.uniformRingCursor = 0;
-            this.frame = { ops: [], transientBuffers: [],
-                serial: ++this.frameSerial,
-                statStart: {
-                    pipelineCreations: this.stats.pipelineCreations,
-                    bindGroupCreations: this.stats.bindGroupCreations,
-                    queueSubmits: this.stats.queueSubmits,
-                    renderPasses: this.stats.renderPasses,
-                } };
-            return this.frame;
-        }
-
-        // If a command throws partway through a batch (see submit()'s catch
-        // handler), this.frame may be left holding recorded-but-unreplayed
-        // ops. Since no WebGPU render pass/encoder exists yet at this point
-        // (those are only created in finishFrame(), at Present time), there
-        // is nothing to end -- just drop the ops and free any transient
-        // buffers already created for them so the next frame starts clean.
-        discardFrame() {
-            const frame = this.frame;
-            // A discarded/reset device cannot legally carry an open query
-            // into the replacement command stream.
-            this.activeOcclusion = null;
-            if (!frame) return;
-            this.frame = null;
-            if (frame.transientBuffers && frame.transientBuffers.length) {
-                for (const buffer of frame.transientBuffers) buffer.destroy();
+        // A guest polling GetData waits for an answer to every query it
+        // ended; when the ops that would have produced one are dropped, the
+        // answer is FAILED
+        failDroppedQueries(ops) {
+            for (const op of ops) {
+                if (op.kind !== "query-end") continue;
+                ++this.stats.queryFailures;
+                this.writeQueryResponse(op.query, op.requestId, 0, D9WG_RESPONSE_FAILED, op.metadata);
             }
         }
 
-        onClear(bytes, view, offset, length) {
-            const deviceHandle = view.getUint32(offset, true);
-            const flags = view.getUint32(offset + 4, true);
-            const color = view.getUint32(offset + 8, true);
-            const depth = view.getFloat32(offset + 12, true);
-            const stencil = view.getUint32(offset + 16, true);
+        onClear(bytes, view, offset, length, metadata, commandFlags = 0) {
+            const rectCount = view.getUint32(offset + D9WG.F.Clear.rect_count, true);
+            const rectsEnd = D9WG.STRUCTS.Clear.size + rectCount * D9WG.STRUCTS.Rect.size;
+            const hasBounds = (commandFlags & D9WG.C.D9WG_COMMAND_CLEAR_BOUNDS) !== 0;
+            if (rectsEnd + (hasBounds ? D9WG.STRUCTS.ClearBounds.size : 0) > length) {
+                ++this.stats.malformedBatches;
+                throw new D9WGStreamError(hasBounds ? "D9WG Clear rectangles/bounds overrun the command" : "D9WG Clear rectangles overrun the command");
+            }
+            const boundsAt = offset + rectsEnd;
+            const callerBounds = hasBounds ? {
+                x: view.getUint32(boundsAt + D9WG.F.ClearBounds.x, true),
+                y: view.getUint32(boundsAt + D9WG.F.ClearBounds.y, true),
+                width: view.getUint32(boundsAt + D9WG.F.ClearBounds.width, true),
+                height: view.getUint32(boundsAt + D9WG.F.ClearBounds.height, true),
+            } : null;
+            const deviceHandle = view.getUint32(offset + D9WG.F.Clear.device_handle, true);
+            const flags = view.getUint32(offset + D9WG.F.Clear.clear_flags, true);
+            const color = view.getUint32(offset + D9WG.F.Clear.color, true);
+            const depth = view.getFloat32(offset + D9WG.F.Clear.depth, true);
+            const stencil = view.getUint32(offset + D9WG.F.Clear.stencil, true);
             const state = this.deviceState(deviceHandle);
             const clearsColor = (flags & D3DCLEAR_TARGET) !== 0;
             // A depth/stencil clear is only meaningful if the device
             // actually has an auto depth-stencil surface.
-            const targets = this.renderTargetsFor(state);
+            const targets = this.renderTargetsFor(state, true);
             if (!targets) return;
             const clearsDepth = (flags & D3DCLEAR_ZBUFFER) !== 0 && targets.hasDepth;
             const clearsStencil = (flags & D3DCLEAR_STENCIL) !== 0 && targets.hasDepth;
-            // A depth clear is what makes a substituted attachment equivalent
-            // to the oversized one it stands in for, so it has to be recorded
-            // even when the clear does nothing else.
-            this.noteSubstituteDepthUse(targets, clearsDepth);
             if (!clearsColor && !clearsDepth && !clearsStencil) return;
             const a = ((color >>> 24) & 0xff) / 255;
             const r = ((color >>> 16) & 0xff) / 255;
             const g = ((color >>> 8) & 0xff) / 255;
             const b = (color & 0xff) / 255;
-            const frame = this.ensureFrame();
-            const rectCount = view.getUint32(offset + 20, true);
-            if (rectCount) {
-                if (24 + rectCount * 16 > length) {
-                    ++this.stats.malformedBatches;
-                    throw new D9WGStreamError("D9WG Clear rectangles overrun the command");
-                }
+            // Clear clips independently to each attachment and the viewport.
+            // An explicit large viewport may clear a 4x4 depth buffer and a
+            // 1x2 MRT even when target0 is only 1x1 (native D3D9 visual test).
+            const clearSets = [];
+            if (targets.independentClear) {
+                if (clearsColor) targets.colors.forEach((color, index) => {
+                    if (!color) return;
+                    clearSets.push({ targets: { key: targets.key + ":clear-color:" + index,
+                        colors: [color], formats: [color.format], depthView: null, hasDepth: false,
+                        width: color.width, height: color.height, sampleCount: color.sampleCount || 1 },
+                        clearsColor: true, clearsDepth: false, clearsStencil: false });
+                });
+                if (clearsDepth || clearsStencil) clearSets.push({ targets: {
+                    key: targets.key + ":clear-depth", colors: [], formats: [], depthView: targets.depthView,
+                    hasDepth: true, width: targets.depthWidth, height: targets.depthHeight, sampleCount: targets.depthSamples },
+                    clearsColor: false, clearsDepth, clearsStencil });
+            } else clearSets.push({ targets, clearsColor, clearsDepth, clearsStencil });
+            for (const {targets, clearsColor, clearsDepth, clearsStencil} of clearSets) {
+                const frame = this.ensureFrame();
+                // D3D9 clears only inside the viewport, and inside the scissor
+                // rect while the scissor test is on (Wine's d3d9 clear_test)
+                const scissor = !hasBounds && (state.renderStates.get(D3DRS_SCISSORTESTENABLE) || 0) !== 0 ?
+                    state.scissorRect : null;
+                const bounds = intersectRects(callerBounds || state.viewport, scissor, targets.width, targets.height);
                 const rects = [];
+                const clip = (left, top, right, bottom) => {
+                    left = Math.max(left, bounds.x);
+                    top = Math.max(top, bounds.y);
+                    right = Math.min(right, bounds.x + bounds.width);
+                    bottom = Math.min(bottom, bounds.y + bounds.height);
+                    if (right > left && bottom > top) rects.push({ left, top, right, bottom });
+                };
+                if (!rectCount) clip(0, 0, targets.width, targets.height);
                 for (let index = 0; index < rectCount; ++index) {
-                    const base = offset + 24 + index * 16;
-                    const left = Math.max(0, Math.min(targets.width,
-                        view.getInt32(base, true)));
-                    const top = Math.max(0, Math.min(targets.height,
-                        view.getInt32(base + 4, true)));
-                    const right = Math.max(left, Math.min(targets.width,
-                        view.getInt32(base + 8, true)));
-                    const bottom = Math.max(top, Math.min(targets.height,
-                        view.getInt32(base + 12, true)));
-                    if (right > left && bottom > top)
-                        rects.push({ left, top, right, bottom });
+                    const base = offset + D9WG.STRUCTS.Clear.size + index * 16;
+                    clip(view.getInt32(base, true), view.getInt32(base + 4, true),
+                        view.getInt32(base + 8, true), view.getInt32(base + 12, true));
                 }
-                if (rects.length) {
-                    frame.ops.push({ kind: "rect-clear", targets, clearsColor,
-                        clearsDepth, clearsStencil, color: { r, g, b, a },
-                        depth, stencil, rects });
-                    ++this.stats.partialClears;
+                const whole = rects.length === 1 && rects[0].left === 0 && rects[0].top === 0 &&
+                    rects[0].right === targets.width && rects[0].bottom === targets.height;
+                if (!whole) {
+                    if (rects.length) {
+                        frame.record({ kind: "rect-clear", targets, clearsColor,
+                            clearsDepth, clearsStencil, color: { r, g, b, a },
+                            depth, stencil, rects });
+                        ++this.stats.partialClears;
+                    }
+                    continue;
                 }
-                return;
+                frame.record({
+                    kind: "clear", targets,
+                    clearsColor: clearsColor || !!this.debug.forceClearColor,
+                    clearsDepth, clearsStencil,
+                    color: this.debug.forceClearColor || { r, g, b, a },
+                    depth, stencil,
+                });
             }
-            frame.ops.push({
-                kind: "clear", targets,
-                clearsColor: clearsColor || !!this.debug.forceClearColor,
-                clearsDepth, clearsStencil,
-                color: this.debug.forceClearColor || { r, g, b, a },
-                depth, stencil,
-            });
         }
 
         // Replays every recorded clear/draw op against a freshly-acquired
@@ -5010,801 +2890,11 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         // has no mid-pass re-clear); a "draw" op opens a loadOp:"load" pass
         // first if none is open yet (a draw with no preceding Clear in this
         // frame means "keep whatever the swapchain texture already has").
-        finishFrame(present = true) {
-            /*
-             * A Present with no frame at all still has work to do. An earlier
-             * flush can consume every recorded op, and onPresent() records
-             * nothing itself, so `this.frame` is legitimately null here -- but
-             * the canvas hands out a fresh, undefined texture each frame, so
-             * without the copy below everything already submitted would stay in
-             * the owned back buffer and the screen would hold whatever the
-             * uninitialised canvas texture contains.
-             */
-            const frame = this.frame || (present ? this.ensureFrame() : null);
-            if (!frame) return;
-            this.frame = null;
-            // Counted only for a real Present: a partial flush is a fragment
-            // of a frame, and "this frame never cleared" is a statement about
-            // whole frames.
-            if (present) {
-                if (!frame.ops.length) ++this.stats.framesWithNoOps;
-                else if (!frame.ops.some(op =>
-                        op.kind === "clear" && op.clearsColor))
-                    ++this.stats.framesWithoutColorClear;
-            } else if (frame.ops.length) {
-                ++this.stats.frameFlushes;
-            }
-            /*
-             * `|| present` matters once a frame can be flushed early: the last
-             * flush may consume every remaining op, leaving a Present with
-             * nothing to replay -- and the canvas texture is a *new*, undefined
-             * texture each frame, so skipping the work would leave everything
-             * already submitted stuck in the owned back buffer, never reaching
-             * the screen. A Present always copies, even with no ops of its own.
-             */
-            if (frame.ops.length || present) {
-                const encoder = this.device.createCommandEncoder();
-                const carriedOcclusion = this.activeOcclusion || null;
-                this.activeOcclusion = null;
-                const hasOcclusion = !!carriedOcclusion || frame.ops.some(op =>
-                    op.kind === "query-begin" && op.query.type ===
-                        D3DQUERYTYPE_OCCLUSION);
-                /* Any op can force a render-pass boundary through a target
-                 * switch. One slot per recorded op is therefore a safe upper
-                 * bound on the number of query segments. */
-                const occlusionBudget = hasOcclusion
-                    ? Math.min(8192, Math.max(1, frame.ops.length)) : 0;
-                const timestampBudget = this.deviceFeatures.timestampQuery
-                    ? frame.ops.filter(op => op.kind === "query-end" &&
-                        op.query.type === D3DQUERYTYPE_TIMESTAMP).length : 0;
-                const occlusionQuerySet = occlusionBudget &&
-                        typeof this.device.createQuerySet === "function"
-                    ? this.device.createQuerySet({ type: "occlusion",
-                        count: Math.max(1, occlusionBudget) }) : null;
-                const timestampQuerySet = timestampBudget &&
-                        typeof this.device.createQuerySet === "function"
-                    ? this.device.createQuerySet({ type: "timestamp",
-                        count: Math.max(1, timestampBudget) }) : null;
-                let occlusionSlot = 0;
-                let timestampSlot = 0;
-                let activeOcclusion = carriedOcclusion;
-                let activeOcclusionSlots = [];
-                let activeOcclusionSlot = -1;
-                const occlusionCompletions = [];
-                const timestampCompletions = [];
-                const fenceCompletions = [];
-                // Ops recorded against the implicit back buffer land in the
-                // owned texture, so this whole replay is independent of the
-                // swap chain; getCurrentTexture() is acquired further down and
-                // only when this finish actually presents.
-                const backState = this.presentingDevice ||
-                    this.devices.values().next().value || null;
-                const backWidth = backState
-                    ? this.backBufferWidthOf(backState)
-                    : (this.backBufferTextureWidth || this.canvas.width || 1);
-                const backHeight = backState
-                    ? this.backBufferHeightOf(backState)
-                    : (this.backBufferTextureHeight || this.canvas.height || 1);
-                const backTexture = this.ensureBackBufferTexture(
-                    backWidth, backHeight);
-                const swapView = this.backBufferView;
-                const swapSrgbView = this.backBufferSrgbView;
-                // GetRenderTargetData on the implicit back buffer reads the
-                // owned texture, which -- unlike a canvas texture -- is still
-                // valid in whatever later task the request arrives in.
-                this.lastSwapTexture = backTexture;
-                // No restore copy: a D3D9 back buffer is routinely reused by
-                // applications that redraw only the changing rectangles between
-                // Presents (3DMark06's loading renderer does exactly that on
-                // 3342 of its first 3343 frames), and the owned texture simply
-                // still holds last frame's pixels, so loadOp:"load" is honest.
-                // Every op carries the target set it was recorded against (see
-                // renderTargetsFor). A pass covers the longest run of ops that
-                // share a target set; a Clear always starts a new one, because
-                // WebGPU expresses a clear only as a pass's loadOp.
-                let pass = null;
-                let openKey = null;
-                /*
-                 * Everything below is *pass* state in WebGPU: a setX persists
-                 * until it is changed or the pass ends, so re-issuing an
-                 * identical value is a no-op that still costs a full JS->Dawn
-                 * crossing. Nine of them were issued per draw regardless of
-                 * whether anything moved, which is invisible at the few hundred
-                 * draws a scene makes and dominant at the hundred thousand
-                 * 3DMark06's batch-size test makes -- there, consecutive draws
-                 * differ only in their index range, so eight of the nine calls
-                 * are pure overhead.
-                 *
-                 * `bound` shadows what this pass has actually been told. It is
-                 * reset in beginPass() and nowhere else, because beginning a
-                 * pass is exactly when WebGPU forgets all of it.
-                 */
-                let bound = null;
-                const resetBoundState = () => {
-                    bound = {
-                        pipeline: null, bindGroup: null, dynamicOffsets: null,
-                        blendR: NaN, blendG: NaN, blendB: NaN, blendA: NaN,
-                        stencilReference: -1,
-                        vpX: NaN, vpY: NaN, vpW: NaN, vpH: NaN,
-                        vpMinZ: NaN, vpMaxZ: NaN,
-                        scX: NaN, scY: NaN, scW: NaN, scH: NaN,
-                        clipScissor: undefined, clip: null,
-                        vertexBuffers: [],
-                        indexBuffer: null, indexFormat: null, indexOffset: -1,
-                    };
-                };
-                const sameOffsets = (a, b) => {
-                    if (a === b) return true;
-                    if (!a || !b || a.length !== b.length) return false;
-                    for (let i = 0; i < a.length; ++i)
-                        if (a[i] !== b[i]) return false;
-                    return true;
-                };
-                const endOcclusionSegment = () => {
-                    if (!pass || activeOcclusionSlot < 0) return;
-                    pass.endOcclusionQuery();
-                    activeOcclusionSlots.push(activeOcclusionSlot);
-                    activeOcclusionSlot = -1;
-                };
-                const closePass = () => {
-                    if (!pass) return;
-                    endOcclusionSegment();
-                    pass.end();
-                    pass = null;
-                    openKey = null;
-                };
-                const beginPass = (targets, clearColor, clearDepthStencil) => {
-                    const descriptor = {
-                        colorAttachments: targets.colors.map(color => ({
-                            view: color.swapchain
-                                ? (color.format === this.swapchainSrgbFormat
-                                    ? swapSrgbView : swapView)
-                                : color.view,
-                            loadOp: clearColor ? "clear" : "load",
-                            storeOp: "store",
-                            ...(clearColor ? { clearValue: clearColor } : {}),
-                        })),
-                    };
-                    if (occlusionQuerySet)
-                        descriptor.occlusionQuerySet = occlusionQuerySet;
-                    if (targets.depthView) {
-                        const clearsDepth = clearDepthStencil &&
-                            clearDepthStencil.depth !== undefined;
-                        const clearsStencil = clearDepthStencil &&
-                            clearDepthStencil.stencil !== undefined;
-                        descriptor.depthStencilAttachment = {
-                            view: targets.depthView,
-                            depthLoadOp: clearsDepth ? "clear" : "load",
-                            depthStoreOp: "store",
-                            stencilLoadOp: clearsStencil ? "clear" : "load",
-                            stencilStoreOp: "store",
-                            ...(clearsDepth ? {
-                                depthClearValue: clearDepthStencil.depth } : {}),
-                            ...(clearsStencil ? {
-                                stencilClearValue: clearDepthStencil.stencil } : {}),
-                        };
-                    }
-                    ++this.stats.renderPasses;
-                    const created = encoder.beginRenderPass(descriptor);
-                    resetBoundState();
-                    if (activeOcclusion && occlusionQuerySet &&
-                            occlusionSlot < occlusionBudget) {
-                        activeOcclusionSlot = occlusionSlot++;
-                        created.beginOcclusionQuery(activeOcclusionSlot);
-                    }
-                    return created;
-                };
-                // The back buffer and the auto depth-stencil must agree on size
-                // or WebGPU rejects the whole command buffer -- and with it
-                // every later frame, not just this one.
-                // A blit op carries its own attachment views rather than a
-                // target set, so it is not part of this check.
-                const backBufferOps = frame.ops.filter(op => op.targets &&
-                    op.targets.colors.some(color => color.swapchain));
-                const mismatched = backBufferOps.find(op => op.targets.depthView &&
-                    (op.targets.width !== backWidth ||
-                     op.targets.height !== backHeight));
-                if (mismatched) {
-                    this.warnOnce("depth-size-mismatch",
-                        "dropping a frame whose depth target " +
-                        mismatched.targets.width + "x" + mismatched.targets.height +
-                        " does not match the back buffer " +
-                        backWidth + "x" + backHeight);
-                    frame.ops.length = 0;
-                }
-                for (const op of frame.ops) {
-                    if (op.kind === "query-begin") {
-                        if (op.query.type === D3DQUERYTYPE_OCCLUSION) {
-                            closePass();
-                            activeOcclusion = { query: op.query,
-                                requestId: op.requestId,
-                                metadata: op.metadata, value: 0n,
-                                failed: false, pending: Promise.resolve() };
-                            activeOcclusionSlots = [];
-                        }
-                        continue;
-                    }
-                    if (op.kind === "query-end") {
-                        if (op.query.type === D3DQUERYTYPE_OCCLUSION) {
-                            endOcclusionSegment();
-                            const record = activeOcclusion || {
-                                query: op.query, requestId: op.requestId,
-                                metadata: op.metadata, value: 0n,
-                                failed: false, pending: Promise.resolve() };
-                            record.requestId = op.requestId;
-                            record.metadata = op.metadata;
-                            occlusionCompletions.push({ record,
-                                query: record.query,
-                                requestId: op.requestId,
-                                metadata: op.metadata,
-                                slots: activeOcclusionSlots.slice(),
-                                final: true });
-                            activeOcclusion = null;
-                            activeOcclusionSlots = [];
-                        } else if (op.query.type === D3DQUERYTYPE_TIMESTAMP &&
-                                timestampQuerySet &&
-                                typeof encoder.writeTimestamp === "function") {
-                            closePass();
-                            const slot = timestampSlot++;
-                            encoder.writeTimestamp(timestampQuerySet, slot);
-                            timestampCompletions.push({ ...op, slot });
-                        } else {
-                            fenceCompletions.push(op);
-                        }
-                        continue;
-                    }
-                    if (op.kind === "copy") {
-                        closePass();
-                        encoder.copyTextureToTexture(op.source, op.destination,
-                            op.size);
-                        continue;
-                    }
-                    if (op.kind === "blit") {
-                        // A blit is its own pass against its own attachment.
-                        closePass();
-                        const transient = this.replayBlit(encoder, op, swapView);
-                        if (transient) frame.transientBuffers.push(transient);
-                        continue;
-                    }
-                    if (op.kind === "ddblit") {
-                        // The DirectDraw blit: the same shape, plus colour
-                        // keying, mirroring and index/palette storage, so it is
-                        // replayed by ddraw_ops.js.
-                        closePass();
-                        const transient = this.replayDDBlit(encoder, op,
-                            swapView, backTexture);
-                        if (transient) frame.transientBuffers.push(transient);
-                        continue;
-                    }
-                    if (op.kind === "present-swap-chain") {
-                        // An additional chain's canvas is acquired here, in
-                        // the same synchronous stretch as the submit that
-                        // consumes it -- the rule getCurrentTexture() imposes
-                        // applies per canvas, not just to the implicit one.
-                        closePass();
-                        let target = null;
-                        try {
-                            target = op.chain.context.getCurrentTexture();
-                        } catch (error) {
-                            ++this.stats.swapChainPresentsDropped;
-                            this.warnOnce("swap-chain-acquire",
-                                "an additional swap chain's canvas could not " +
-                                "be acquired; its frame is dropped",
-                                { message: String(error) });
-                        }
-                        if (target) {
-                            const width = Math.min(target.width, op.width);
-                            const height = Math.min(target.height, op.height);
-                            // A blit rather than copyTextureToTexture: the
-                            // chain's back buffer is an ordinary D3D texture,
-                            // so its format is whatever the guest asked for,
-                            // while the canvas is the preferred canvas format.
-                            // A copy requires those to be identical and they
-                            // routinely are not.
-                            if (width && height) {
-                                const transient = this.replayBlit(encoder, {
-                                    sourceView: op.sourceView,
-                                    destinationView: null,
-                                    destinationFormat: this.format,
-                                    sourceFormat: op.sourceFormat,
-                                    sourceRect: [0, 0, 1, 1],
-                                    viewport: [0, 0, width, height],
-                                    filterPoint: false,
-                                }, target.createView());
-                                if (transient)
-                                    frame.transientBuffers.push(transient);
-                            }
-                        }
-                        continue;
-                    }
-                    if (op.kind === "generate-mips") {
-                        closePass();
-                        for (const transient of
-                                this.replayGenerateMips(encoder, op))
-                            frame.transientBuffers.push(transient);
-                        continue;
-                    }
-                    if (op.kind === "rect-clear") {
-                        closePass();
-                        const transient = this.replayRectClear(encoder, op,
-                            swapView, swapSrgbView);
-                        if (transient) frame.transientBuffers.push(transient);
-                        continue;
-                    }
-                    if (op.kind === "color-fill") {
-                        closePass();
-                        const transient = this.replayColorFill(encoder, op);
-                        if (transient) frame.transientBuffers.push(transient);
-                        continue;
-                    }
-                    if (op.kind === "clear") {
-                        closePass();
-                        // A Clear that only touches depth still has to keep the
-                        // colour already drawn this frame, and vice versa --
-                        // hence the two independent load ops.
-                        pass = beginPass(op.targets,
-                            op.clearsColor ? op.color : null,
-                            (op.clearsDepth || op.clearsStencil) ? {
-                                ...(op.clearsDepth ? { depth: op.depth } : {}),
-                                ...(op.clearsStencil ? { stencil: op.stencil } : {}),
-                            } : null);
-                        openKey = op.targets.key;
-                        continue;
-                    }
-                    if (!pass || openKey !== op.targets.key) {
-                        closePass();
-                        pass = beginPass(op.targets, null, null);
-                        openKey = op.targets.key;
-                    }
-                    if (bound.pipeline !== op.pipeline) {
-                        pass.setPipeline(op.pipeline);
-                        bound.pipeline = op.pipeline;
-                    } else ++this.stats.redundantStateSkipped;
-                    const offsets = op.dynamicOffsets || EMPTY_OFFSETS;
-                    if (bound.bindGroup !== op.bindGroup ||
-                            !sameOffsets(bound.dynamicOffsets, offsets)) {
-                        pass.setBindGroup(0, op.bindGroup, offsets);
-                        bound.bindGroup = op.bindGroup;
-                        bound.dynamicOffsets = offsets;
-                    } else ++this.stats.redundantStateSkipped;
-                    const blend = op.blendConstant;
-                    if (bound.blendR !== blend.r || bound.blendG !== blend.g ||
-                            bound.blendB !== blend.b || bound.blendA !== blend.a) {
-                        pass.setBlendConstant(blend);
-                        bound.blendR = blend.r; bound.blendG = blend.g;
-                        bound.blendB = blend.b; bound.blendA = blend.a;
-                    } else ++this.stats.redundantStateSkipped;
-                    if (bound.stencilReference !== op.stencilReference) {
-                        pass.setStencilReference(op.stencilReference);
-                        bound.stencilReference = op.stencilReference;
-                    } else ++this.stats.redundantStateSkipped;
-                    const vp = op.viewport;
-                    const viewportMoved = bound.vpX !== vp.x ||
-                        bound.vpY !== vp.y || bound.vpW !== vp.width ||
-                        bound.vpH !== vp.height || bound.vpMinZ !== vp.minZ ||
-                        bound.vpMaxZ !== vp.maxZ;
-                    if (viewportMoved) {
-                        pass.setViewport(vp.x, vp.y, vp.width, vp.height,
-                                vp.minZ, vp.maxZ);
-                        bound.vpX = vp.x; bound.vpY = vp.y;
-                        bound.vpW = vp.width; bound.vpH = vp.height;
-                        bound.vpMinZ = vp.minZ; bound.vpMaxZ = vp.maxZ;
-                    } else ++this.stats.redundantStateSkipped;
-                    // A D3D9 viewport clips; a WebGPU one only maps NDC to
-                    // pixels. Without a matching scissor, geometry an app
-                    // expected the viewport to cut off is drawn across the whole
-                    // target instead -- which is why the clip rect is the
-                    // viewport intersected with D3DRS_SCISSORTESTENABLE's rect
-                    // (D3D9 applies both), not just the latter.
-                    //
-                    // The intersection is memoised as well as skipped, because
-                    // recomputing it allocates a rect per draw. Keyed on the
-                    // viewport having *moved* rather than on op.viewport's
-                    // identity: every op carries its own copy of the viewport,
-                    // so an identity check would miss on every single draw. The
-                    // scissor is compared by identity because it is null --
-                    // literally the same null -- whenever D3DRS_SCISSORTESTENABLE
-                    // is off, which is the case this is here to make fast.
-                    let clip = bound.clip;
-                    if (!clip || viewportMoved || bound.clipScissor !== op.scissor) {
-                        clip = intersectRects(vp, op.scissor,
-                                op.targets.width, op.targets.height);
-                        bound.clip = clip;
-                        bound.clipScissor = op.scissor;
-                    }
-                    if (bound.scX !== clip.x || bound.scY !== clip.y ||
-                            bound.scW !== clip.width || bound.scH !== clip.height) {
-                        pass.setScissorRect(clip.x, clip.y, clip.width, clip.height);
-                        bound.scX = clip.x; bound.scY = clip.y;
-                        bound.scW = clip.width; bound.scH = clip.height;
-                    } else ++this.stats.redundantStateSkipped;
-                    for (let slot = 0; slot < op.vertexBuffers.length; ++slot) {
-                        const binding = op.vertexBuffers[slot];
-                        const previous = bound.vertexBuffers[slot];
-                        if (previous && previous.buffer === binding.buffer &&
-                                previous.offset === binding.offset) {
-                            ++this.stats.redundantStateSkipped;
-                            continue;
-                        }
-                        pass.setVertexBuffer(slot, binding.buffer, binding.offset);
-                        bound.vertexBuffers[slot] = binding;
-                    }
-                    if (op.indexInfo) {
-                        if (bound.indexBuffer !== op.indexInfo.buffer ||
-                                bound.indexFormat !== op.indexInfo.format ||
-                                bound.indexOffset !== op.indexInfo.offset) {
-                            pass.setIndexBuffer(op.indexInfo.buffer,
-                                    op.indexInfo.format, op.indexInfo.offset);
-                            bound.indexBuffer = op.indexInfo.buffer;
-                            bound.indexFormat = op.indexInfo.format;
-                            bound.indexOffset = op.indexInfo.offset;
-                        } else ++this.stats.redundantStateSkipped;
-                        pass.drawIndexed(op.indexInfo.count, op.instanceCount || 1,
-                                op.indexInfo.firstIndex, op.indexInfo.baseVertex);
-                    } else {
-                        // StartVertex is already folded into each stream's
-                        // setVertexBuffer offset (see boundStreams), so
-                        // firstVertex stays 0 here.
-                        if ((op.instanceCount || 1) === 1)
-                            pass.draw(op.vertexCount || 0);
-                        else
-                            pass.draw(op.vertexCount || 0, op.instanceCount);
-                    }
-                }
-                closePass();
-                // D3D9 permits an occlusion query to cross Present. Resolve
-                // this frame's segments now, retain the accumulator, and open
-                // a fresh WebGPU segment when the next frame starts.
-                if (activeOcclusion) {
-                    if (activeOcclusionSlots.length)
-                        occlusionCompletions.push({ record: activeOcclusion,
-                            query: activeOcclusion.query,
-                            requestId: activeOcclusion.requestId,
-                            metadata: activeOcclusion.metadata,
-                            slots: activeOcclusionSlots.slice(),
-                            final: false });
-                    this.activeOcclusion = activeOcclusion;
-                }
-                const queryReadbacks = [];
-                const encodeQueryReadback = (querySet, count, completions,
-                        kind) => {
-                    if (!querySet || !count || !completions.length) return;
-                    const byteCount = alignUp(count * 8, 256);
-                    const resolve = this.device.createBuffer({
-                        label: "D3D9 " + kind + " query resolve",
-                        size: byteCount,
-                        usage: BUFFER_USAGE_QUERY_RESOLVE |
-                            BUFFER_USAGE_COPY_SRC,
-                    });
-                    const read = this.device.createBuffer({
-                        label: "D3D9 " + kind + " query readback",
-                        size: byteCount,
-                        usage: BUFFER_USAGE_COPY_DST | BUFFER_USAGE_MAP_READ,
-                    });
-                    encoder.resolveQuerySet(querySet, 0, count, resolve, 0);
-                    encoder.copyBufferToBuffer(resolve, 0, read, 0,
-                        count * 8);
-                    queryReadbacks.push({ kind, count, completions, querySet,
-                        resolve, read });
-                };
-                encodeQueryReadback(occlusionQuerySet, occlusionSlot,
-                    occlusionCompletions.filter(item => item.slots.length),
-                    "occlusion");
-                encodeQueryReadback(timestampQuerySet, timestampSlot,
-                    timestampCompletions, "timestamp");
-                /* A query enclosing no draws still has a real answer: zero
-                 * visible samples. It needs only the queue fence, not a query
-                 * buffer mapping. */
-                for (const completion of occlusionCompletions) {
-                    if (!completion.slots.length && completion.final)
-                        fenceCompletions.push({ ...completion,
-                            query: completion.query, requestId: completion.requestId,
-                            metadata: completion.metadata, zeroOcclusion: true });
-                }
-                // The one place the swap chain is touched, and it happens in
-                // the same synchronous stretch as the submit that consumes it,
-                // which is the whole rule getCurrentTexture() imposes.
-                if (present) {
-                    // Canvas width/height are global even though the retained
-                    // image is per session. Defer this destructive resize until
-                    // the session actually presents, so a capability helper's
-                    // CREATE_DEVICE cannot blank the visible process.
-                    this.resizeCanvasIfNeeded(this.backBufferTextureWidth,
-                        this.backBufferTextureHeight);
-                    const swapTexture = this.context.getCurrentTexture();
-                    // A canvas resize between recording and here would leave
-                    // the two sizes disagreeing; copying the overlap keeps the
-                    // submit valid instead of failing the whole command buffer.
-                    const copyWidth = Math.min(swapTexture.width,
-                        this.backBufferTextureWidth);
-                    const copyHeight = Math.min(swapTexture.height,
-                        this.backBufferTextureHeight);
-                    if (copyWidth && copyHeight) {
-                        let presentSource = backTexture;
-                        if (typeof this.replayDDOverlays === "function") {
-                            const composite = this.replayDDOverlays(encoder,
-                                this.presentingDevice, backTexture,
-                                copyWidth, copyHeight, frame);
-                            if (composite) {
-                                presentSource = composite;
-                                frame.transientBuffers.push(composite);
-                            }
-                        }
-                        // A gamma ramp is applied here, at the one point every
-                        // finished pixel passes through on its way to the
-                        // canvas -- which is where the hardware applies it too.
-                        // The plain copy stays the path for the overwhelmingly
-                        // common identity case, because a lookup pass costs a
-                        // full-screen draw the copy does not.
-                        const gammaView = this.presentGammaView();
-                        if (gammaView) {
-                            // The configured canvas format, not
-                            // swapTexture.format: the context was configured
-                            // with the former and a pipeline target has to
-                            // match what the pass writes.
-                            const entry = this.gammaBlitPipelineFor(this.format);
-                            const pass = encoder.beginRenderPass({
-                                colorAttachments: [{
-                                    view: swapTexture.createView(),
-                                    loadOp: "clear",
-                                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
-                                    storeOp: "store" }],
-                            });
-                            ++this.stats.renderPasses;
-                            pass.setPipeline(entry.pipeline);
-                            pass.setBindGroup(0, this.device.createBindGroup({
-                                    layout: entry.bindGroupLayout,
-                                    entries: [
-                                    { binding: 0,
-                                      resource: presentSource.createView() },
-                                    { binding: 1, resource: entry.sampler },
-                                    { binding: 2, resource: gammaView },
-                                ],
-                            }));
-                            pass.setViewport(0, 0, copyWidth, copyHeight, 0, 1);
-                            pass.draw(6);
-                            pass.end();
-                            ++this.stats.gammaPresents;
-                        } else {
-                            encoder.copyTextureToTexture(
-                                { texture: presentSource },
-                                { texture: swapTexture },
-                                { width: copyWidth, height: copyHeight,
-                                    depthOrArrayLayers: 1 });
-                        }
-                        ++this.stats.backBufferPresents;
-                    }
-                    // Drawn onto the canvas copy rather than the back buffer,
-                    // so the cursor never accumulates into the image the next
-                    // frame loads or GetRenderTargetData reads.
-                    this.drawCursor(encoder, swapTexture.createView(),
-                        swapTexture.width, swapTexture.height);
-                }
-                this.uploadUniformStaging();
-                this.device.queue.submit([encoder.finish()]);
-                ++this.stats.queueSubmits;
+        finishFrame(present = true) { return this.frameReplayer.finishFrame(present); }
 
-                for (const pending of queryReadbacks) {
-                    const mapping = pending.read.mapAsync(MAP_MODE_READ).then(() => {
-                        const mapped = pending.read.getMappedRange();
-                        const source = new DataView(mapped);
-                        const values = new Map();
-                        for (const completion of pending.completions) {
-                            let value = 0n;
-                            if (pending.kind === "occlusion") {
-                                for (const slot of completion.slots)
-                                    value += source.getBigUint64(slot * 8, true);
-                            } else {
-                                value = source.getBigUint64(completion.slot * 8,
-                                    true);
-                            }
-                            values.set(completion, value);
-                        }
-                        pending.read.unmap();
-                        pending.read.destroy();
-                        pending.resolve.destroy();
-                        if (typeof pending.querySet.destroy === "function")
-                            pending.querySet.destroy();
-                        return { values };
-                    }).catch(error => {
-                        ++this.stats.queryFailures;
-                        pending.read.destroy();
-                        pending.resolve.destroy();
-                        if (typeof pending.querySet.destroy === "function")
-                            pending.querySet.destroy();
-                        this.warnOnce("query-map-" + pending.kind,
-                            "GPU query readback failed", {
-                                message: String(error) });
-                        return { error };
-                    });
-                    if (pending.kind === "occlusion") {
-                        for (const completion of pending.completions) {
-                            const record = completion.record;
-                            record.pending = this.trackReadback(record.pending.then(() => mapping)
-                                .then(result => {
-                                    if (result.error) record.failed = true;
-                                    else record.value += result.values.get(completion);
-                                    if (!completion.final) return;
-                                    ++this.stats.occlusionQueriesResolved;
-                                    this.writeQueryResponse(record.query,
-                                        completion.requestId, record.value,
-                                        record.failed ? D9WG_RESPONSE_FAILED
-                                            : D9WG_RESPONSE_OK,
-                                        completion.metadata);
-                                }));
-                        }
-                    } else {
-                        this.trackReadback(mapping.then(result => {
-                            for (const completion of pending.completions) {
-                                if (result.error) {
-                                    this.writeQueryResponse(completion.query,
-                                        completion.requestId, 0,
-                                        D9WG_RESPONSE_FAILED,
-                                        completion.metadata);
-                                    continue;
-                                }
-                                ++this.stats.timestampQueriesResolved;
-                                this.writeQueryResponse(completion.query,
-                                    completion.requestId,
-                                    result.values.get(completion),
-                                    D9WG_RESPONSE_OK, completion.metadata);
-                            }
-                        }));
-                    }
-                }
-                const fence = this.device.queue &&
-                        typeof this.device.queue.onSubmittedWorkDone === "function"
-                    ? this.device.queue.onSubmittedWorkDone() : Promise.resolve();
-                if (fenceCompletions.length) this.trackReadback(fence.then(() => {
-                    for (const completion of fenceCompletions) {
-                        if (completion.zeroOcclusion) {
-                            const record = completion.record;
-                            record.pending = this.trackReadback(record.pending.then(() => {
-                                ++this.stats.occlusionQueriesResolved;
-                                this.writeQueryResponse(record.query,
-                                    completion.requestId, record.value,
-                                    record.failed ? D9WG_RESPONSE_FAILED
-                                        : D9WG_RESPONSE_OK,
-                                    completion.metadata);
-                            }));
-                            continue;
-                        }
-                        let value = 0n;
-                        switch (completion.query.type) {
-                        case D3DQUERYTYPE_EVENT:
-                            value = 1n;
-                            ++this.stats.eventQueriesResolved;
-                            break;
-                        case D3DQUERYTYPE_TIMESTAMP:
-                            value = BigInt(Math.floor((global.performance &&
-                                global.performance.now ?
-                                global.performance.now() : Date.now()) * 1000000));
-                            ++this.stats.timestampQueriesResolved;
-                            break;
-                        case D3DQUERYTYPE_TIMESTAMPFREQ:
-                            value = 1000000000n;
-                            break;
-                        case D3DQUERYTYPE_TIMESTAMPDISJOINT:
-                        default:
-                            value = 0n;
-                            break;
-                        }
-                        this.writeQueryResponse(completion.query,
-                            completion.requestId, value, D9WG_RESPONSE_OK,
-                            completion.metadata);
-                    }
-                }, () => {
-                    for (const completion of fenceCompletions) {
-                        if (completion.zeroOcclusion) {
-                            const record = completion.record;
-                            record.pending = this.trackReadback(record.pending.then(() => {
-                                record.failed = true;
-                                ++this.stats.occlusionQueriesResolved;
-                                this.writeQueryResponse(record.query,
-                                    completion.requestId, record.value,
-                                    D9WG_RESPONSE_FAILED,
-                                    completion.metadata);
-                            }));
-                        } else {
-                            this.writeQueryResponse(completion.query,
-                                completion.requestId, 0,
-                                D9WG_RESPONSE_FAILED, completion.metadata);
-                        }
-                    }
-                }));
-            }
-            if (present) ++this.stats.presents;
-            const start = frame.statStart || {};
-            this.lastFrameStats = {
-                pipelineCreations: this.stats.pipelineCreations -
-                    (start.pipelineCreations || 0),
-                bindGroupCreations: this.stats.bindGroupCreations -
-                    (start.bindGroupCreations || 0),
-                queueSubmits: this.stats.queueSubmits -
-                    (start.queueSubmits || 0),
-                renderPasses: this.stats.renderPasses -
-                    (start.renderPasses || 0),
-            };
-            const transientBuffers = frame.transientBuffers;
-            if (transientBuffers && transientBuffers.length) {
-                const destroy = () => { for (const b of transientBuffers) b.destroy(); };
-                if (this.device.queue && typeof this.device.queue.onSubmittedWorkDone === "function")
-                    this.device.queue.onSubmittedWorkDone().then(destroy, destroy);
-                else
-                    destroy();
-            }
-            if (present && this.presentingDevice &&
-                    typeof this.options.onPresent === "function")
-                this.options.onPresent(this.presentingDevice.surface, this.getStats());
-            if (present) this.presentingDevice = null;
-        }
+        // Records and submits one frame's ops (finishFrame's body)
+        replayFrame(frame, present, frameValid) { return this.frameReplayer.replayFrame(frame, present, frameValid); }
 
-        // v86gl.d3d9Executor.debug.dumpSmallTextures() -> data: URLs that can
-        // be opened straight from the console. Only uncompressed top-level
-        // images up to 64x64 are retained (see onUpdateTexture).
-        dumpSmallTextures(options) {
-            const settings = options || {};
-            const out = [];
-            for (const [handle, resource] of this.resources) {
-                if (!resource.preview) continue;
-                if (settings.handle !== undefined && handle !== settings.handle)
-                    continue;
-                const { width, height, rgba } = resource.preview;
-                let url = null;
-                let error = null;
-                try {
-                    // A plain <canvas>, not OffscreenCanvas: only the former
-                    // has toDataURL. OffscreenCanvas offers convertToBlob,
-                    // which is async and cannot be returned from here -- that
-                    // mismatch is why the first version of this helper
-                    // reported url: null for every texture.
-                    if (typeof document === "undefined")
-                        throw new Error("no document to render into");
-                    const canvas = document.createElement("canvas");
-                    canvas.width = width;
-                    canvas.height = height;
-                    const context = canvas.getContext("2d");
-                    const image = context.createImageData(width, height);
-                    image.data.set(rgba.subarray(0, width * height * 4));
-                    context.putImageData(image, 0, 0);
-                    url = canvas.toDataURL();
-                } catch (failure) {
-                    error = failure && failure.message ? failure.message
-                        : String(failure);
-                }
-                const entry = { handle, format: resource.format,
-                    formatName: TEXTURE_FORMAT_NAMES[resource.format] ||
-                        ("0x" + (resource.format >>> 0).toString(16)),
-                    size: width + "x" + height,
-                    declaredLevels: resource.levelCount,
-                    uploadedLevels: resource.uploadedLevels
-                        ? [...resource.uploadedLevels].sort((a, b) => a - b) : null,
-                    url, error };
-                out.push(entry);
-                // Rendering them inline is the point of the helper: a data URL
-                // in a console row is unreadable, an actual picture answers
-                // "is the texture data wrong?" at a glance.
-                if (settings.log !== false && url) {
-                    const scale = Math.max(1, Math.round(64 / Math.max(width, height)));
-                    console.log("%c ", "font-size:0;padding:" +
-                        (height * scale / 2) + "px " + (width * scale / 2) +
-                        "px;background:url(" + url +
-                        ") no-repeat center/contain;image-rendering:pixelated",
-                        handle, entry.formatName, entry.size);
-                }
-            }
-            return out;
-        }
-
-        // Every distinct pipeline state actually in use, with the raw D3D9
-        // render-state values behind it. Reading the real mix beats guessing
-        // which blend/depth/cull combination a scene is built from.
-        // Prints every translated shader the session has created: its
-        // reflection (which declaration semantics it reads, which varyings it
-        // writes) and, optionally, the generated WGSL. Reading the shader is
-        // the only way to settle questions the pipeline cannot answer -- a
-        // varying that is written but written with a constant looks exactly
-        // like one that is routed correctly, from the outside.
         // Drops every translated shader, in memory and in storage, so the next
         // draw retranslates from the guest's bytecode. The revision guard in
         // D3D9ShaderCache makes this unnecessary going forward, but a cache
@@ -5813,6 +2903,12 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         async clearShaderCache() {
             this.shaderCache = new shaderPipeline.D3D9ShaderCache();
             this.moduleCache.clear();
+            this.fixedModuleCache.clear();
+            this.multisampleCopyPipelines = null;
+            this.depthTransferPipelines = null;
+            this.depthBlitPipelines = null;
+            ++this.programSerial;
+            ++this.uniformSerial;
             this.shaderCacheDirty = false;
             const storage = this.shaderCacheStorage;
             if (storage && typeof storage.save === "function") {
@@ -5825,256 +2921,6 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 }
             }
             return "shader cache cleared -- reload to retranslate";
-        }
-
-        dumpShaders(options) {
-            options = options || {};
-            const rows = [];
-            for (const [handle, resource] of this.resources) {
-                if (resource.kind !== RESOURCE_VERTEX_SHADER &&
-                        resource.kind !== RESOURCE_PIXEL_SHADER) continue;
-                const kind = resource.kind === RESOURCE_VERTEX_SHADER
-                    ? "vertex" : "pixel";
-                const translated = resource.translated;
-                const reflection = translated && translated.reflection;
-                rows.push({
-                    handle, kind,
-                    hash: [resource.hashHigh, resource.hashLow]
-                        .map(value => (value >>> 0).toString(16)
-                            .padStart(8, "0")).join(""),
-                    ok: !!(translated && translated.ok),
-                    error: translated && translated.error,
-                    version: reflection ? reflection.version.major + "." +
-                        reflection.version.minor : null,
-                    // usage*16+usageIndex is how programFor matches a
-                    // declaration element to a shader input, so print the
-                    // semantics rather than the raw register numbers.
-                    inputs: reflection ? reflection.inputs.map(input =>
-                        "v" + input.register + "=usage" + input.usage +
-                        "[" + input.usageIndex + "]") : null,
-                    writtenVaryings: reflection ? reflection.writtenVaryings : null,
-                    samplers: reflection
-                        ? reflection.samplers.map(s => s.index) : null,
-                    warnings: reflection ? reflection.warnings : null,
-                });
-            }
-            if (options.log !== false) {
-                for (const row of rows) console.log("[d3d9-shader]", row);
-            }
-            if (options.wgsl) {
-                for (const [handle, resource] of this.resources) {
-                    if (resource.kind !== RESOURCE_VERTEX_SHADER &&
-                            resource.kind !== RESOURCE_PIXEL_SHADER) continue;
-                    if (options.handle && handle !== options.handle) continue;
-                    if (!resource.translated || !resource.translated.ok) continue;
-                    console.log("[d3d9-shader] handle " + handle + " WGSL:\n" +
-                        resource.translated.wgsl);
-                }
-            }
-            return rows;
-        }
-
-        dumpPipelineStates() {
-            const out = [];
-            for (const [key, pipeline] of this.pipelineCache) {
-                const diagnostic = pipeline._d9wgDiagnostic;
-                if (diagnostic) {
-                    out.push({
-                        ...diagnostic,
-                        vertexBuffers: diagnostic.vertexBuffers.map(layout => ({
-                            ...layout,
-                            attributes: layout.attributes.map(attribute =>
-                                ({ ...attribute })),
-                        })),
-                        samplers: diagnostic.samplers.slice(),
-                        state: JSON.parse(JSON.stringify(diagnostic.state)),
-                        draws: pipeline._d9wgDrawCount || 0,
-                    });
-                    continue;
-                }
-                // Compatibility for a pipeline created before structured
-                // diagnostics existed. Do not try to split the key: a
-                // fixed-function fragment signature legitimately contains
-                // "|", so its fields cannot be recovered unambiguously.
-                out.push({ key, state: null,
-                    draws: pipeline._d9wgDrawCount || 0 });
-            }
-            return out;
-        }
-
-        textureDiagnostic(handle) {
-            const resource = handle ? this.resources.get(handle) : null;
-            if (!resource) return { handle: handle || 0, live: false };
-            const byteSummary = data => {
-                const step = Math.max(1, Math.ceil(data.length / 65536));
-                let sampled = 0, nonZero = 0, minimum = 255, maximum = 0;
-                let hash = 2166136261 >>> 0;
-                for (let index = 0; index < data.length; index += step) {
-                    const value = data[index];
-                    ++sampled;
-                    if (value) ++nonZero;
-                    minimum = Math.min(minimum, value);
-                    maximum = Math.max(maximum, value);
-                    hash = Math.imul(hash ^ value, 16777619) >>> 0;
-                }
-                return { bytes: data.length, sampled, nonZero,
-                    minimum: sampled ? minimum : null,
-                    maximum: sampled ? maximum : null,
-                    hash: "0x" + hash.toString(16).padStart(8, "0") };
-            };
-            const shadowLevels = [];
-            if (resource.textureShadows) {
-                for (const [level, shadow] of resource.textureShadows) {
-                    shadowLevels.push({ level, width: shadow.width,
-                        height: shadow.height, depth: shadow.depth,
-                        compressed: !!shadow.compressed,
-                        data: byteSummary(shadow.data) });
-                }
-            }
-            return {
-                handle, live: true, kind: resource.kind,
-                type: resource.textureType || "2d",
-                format: resource.format,
-                formatName: TEXTURE_FORMAT_NAMES[resource.format] || null,
-                gpuFormat: resource.gpuFormat || null,
-                width: resource.width, height: resource.height,
-                depth: resource.depth || 1,
-                levels: resource.levelCount,
-                uploadedLevels: resource.uploadedLevels
-                    ? [...resource.uploadedLevels].sort((a, b) => a - b) : null,
-                shadowLevels,
-            };
-        }
-
-        drawDiagnostic(reference, path) {
-            if (!reference) return null;
-            const { which, state, elements, geometry, program, pipelineState,
-                targets, pipeline } = reference;
-            const viewport = { ...state.viewport };
-            const scissorEnabled =
-                (state.renderStates.get(D3DRS_SCISSORTESTENABLE) || 0) !== 0 &&
-                !!state.scissorRect;
-            const scissor = scissorEnabled ? { ...state.scissorRect } : null;
-            const clip = intersectRects(viewport, scissor,
-                targets.width, targets.height);
-            const streams = [];
-            for (const [index, binding] of geometry.streams) {
-                const resource = binding.resource || null;
-                const shadow = resource && resource.shadow;
-                const start = Math.max(0, binding.offset || 0);
-                const preview = shadow
-                    ? shadow.subarray(start,
-                        Math.min(shadow.length, start + 64)) : null;
-                streams.push({ index, stride: binding.stride || 0,
-                    offset: binding.offset || 0,
-                    frequency: binding.frequency === undefined
-                        ? 1 : binding.frequency,
-                    resourceBytes: resource ? resource.byteCount : null,
-                    shadowBytes: shadow ? shadow.length : null,
-                    availableVertices: shadow && binding.stride
-                        ? Math.max(0, Math.floor((shadow.length - start) /
-                            binding.stride)) : null,
-                    firstBytes: preview ? [...preview].map(value =>
-                        value.toString(16).padStart(2, "0")).join("") : null,
-                });
-            }
-            let index = null;
-            if (geometry.indexInfo) {
-                const info = geometry.indexInfo;
-                const resource = geometry.indexResource ||
-                    this.resources.get(state.indexBufferHandle);
-                const shadow = resource && resource.shadow;
-                const bytesPerIndex = info.format === "uint32" ? 4 : 2;
-                const scanCount = Math.min(info.count || 0, 4096);
-                const samples = [];
-                let minimum = Infinity, maximum = -Infinity, scanned = 0;
-                if (shadow) {
-                    const view = new DataView(shadow.buffer,
-                        shadow.byteOffset, shadow.byteLength);
-                    for (let item = 0; item < scanCount; ++item) {
-                        const byteOffset = (info.offset || 0) +
-                            ((info.firstIndex || 0) + item) * bytesPerIndex;
-                        if (byteOffset + bytesPerIndex > shadow.length) break;
-                        const value = bytesPerIndex === 4
-                            ? view.getUint32(byteOffset, true)
-                            : view.getUint16(byteOffset, true);
-                        ++scanned;
-                        if (samples.length < 24) samples.push(value);
-                        minimum = Math.min(minimum, value);
-                        maximum = Math.max(maximum, value);
-                    }
-                }
-                index = { format: info.format, count: info.count,
-                    firstIndex: info.firstIndex, baseVertex: info.baseVertex,
-                    bufferOffset: info.offset || 0,
-                    resourceBytes: resource ? resource.byteCount : null,
-                    scanned,
-                    minimum: Number.isFinite(minimum) ? minimum : null,
-                    maximum: Number.isFinite(maximum) ? maximum : null,
-                    samples };
-            }
-            const textureHandles = [...new Set(program.samplerIndices.map(
-                sampler => state.textures.get(sampler) || 0))];
-            return {
-                path, which,
-                shaders: { vertex: state.vertexShaderHandle || 0,
-                    pixel: state.pixelShaderHandle || 0 },
-                program: { vertex: program.vertexKey,
-                    fragment: program.fragmentKey,
-                    fixedPosition: program.fixedFunctionSignature
-                        ? program.fixedFunctionSignature.positionType : null,
-                    fixedTexCoordSets: program.fixedFunctionSignature
-                        ? program.fixedFunctionSignature.texCoordSets.slice() : null,
-                    samplers: program.samplerIndices.slice() },
-                viewport, scissor, effectiveClip: clip,
-                target: { width: targets.width, height: targets.height,
-                    formats: targets.formats.slice(),
-                    hasDepth: targets.hasDepth },
-                pipelineState: JSON.parse(JSON.stringify(pipelineState)),
-                pipelineDraws: pipeline._d9wgDrawCount || 0,
-                elements: elements.map(element => ({ ...element })),
-                streams, index,
-                textures: textureHandles.map(handle =>
-                    this.textureDiagnostic(handle)),
-            };
-        }
-
-        blackScreenReport() {
-            const device = this.presentingDevice ||
-                this.devices.values().next().value || null;
-            const report = {
-                stats: this.getStats(),
-                debug: {
-                    forceSolidAllDraws: !!this.debug.forceSolidAllDraws,
-                    shaderMode: this.debug.shaderMode,
-                    skipProgrammableDraws:
-                        !!this.debug.skipProgrammableDraws,
-                    disableCull: !!this.debug.disableCull,
-                    disableDepthTest: !!this.debug.disableDepthTest,
-                },
-                device: device ? {
-                    handle: device.handle,
-                    viewport: { ...device.viewport },
-                    scissorRect: device.scissorRect
-                        ? { ...device.scissorRect } : null,
-                    shaders: { vertex: device.vertexShaderHandle || 0,
-                        pixel: device.pixelShaderHandle || 0 },
-                    renderStates: Object.fromEntries(device.renderStates),
-                    streams: Array.from(device.streams,
-                        ([index, stream]) => ({ index, ...stream })),
-                    indexBufferHandle: device.indexBufferHandle,
-                } : null,
-                pipelines: this.dumpPipelineStates(),
-                draws: {
-                    fixed: this.drawDiagnostic(this.lastDraws.fixed, "fixed"),
-                    programmable: this.drawDiagnostic(
-                        this.lastDraws.programmable, "programmable"),
-                },
-                shaders: this.dumpShaders({ log: false }),
-                guestReports: (this.guestReports || []).slice(),
-            };
-            console.log("[d3d9-webgpu] black-screen report", report);
-            return report;
         }
 
         getStats() {
@@ -6111,10 +2957,8 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                     tableMode: rs.get(D3DRS_FOGTABLEMODE) || 0,
                     vertexMode: rs.get(D3DRS_FOGVERTEXMODE) || 0,
                     color: "#" + (color & 0xffffff).toString(16).padStart(6, "0"),
-                    // null means the game never set it and the D3D9 default
-                    // (start 0, end 1) applies -- which fogs everything past
-                    // one unit completely, so a null here with LINEAR mode is
-                    // itself the explanation for a uniformly washed-out frame.
+                    // These are effective values, including the generated
+                    // creation/reset defaults when the game has not changed them.
                     start: asFloat(D3DRS_FOGSTART),
                     end: asFloat(D3DRS_FOGEND),
                     density: asFloat(D3DRS_FOGDENSITY),
@@ -6136,412 +2980,13 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 shadersCached: shaderCache.cached,
                 shaderWGSLBytesCached: shaderCache.totalWGSLBytes,
                 shaderCompileLatencyMs: { ...shaderCache.compileLatencyMs },
-                occlusionQueries: { mode: "webgpu-query-set",
+                occlusionQueries: { mode: this.options.occlusionMode === "native" ? "webgpu-query-set" : "gpu-sample-counter",
                     active: this.activeOcclusion ? 1 : 0,
                     perFrameCapacity: 8192,
                     resolved: this.stats.occlusionQueriesResolved },
                 surface: device ? { ...device.surface } : null,
                 window: this.windowState ? { ...this.windowState } : null,
                 fog };
-        }
-
-        // ---- resources ----
-
-        onCreateBuffer(bytes, view, offset) {
-            const handle = view.getUint32(offset + 4, true);
-            const kind = view.getUint32(offset + 8, true);
-            const byteCount = view.getUint32(offset + 12, true);
-            const format = view.getUint32(offset + 20, true); // index format, for INDEX kind
-            const usage = kind === RESOURCE_BUFFER_INDEX
-                ? BUFFER_USAGE_INDEX | BUFFER_USAGE_COPY_DST
-                : BUFFER_USAGE_VERTEX | BUFFER_USAGE_COPY_DST;
-            const alignedSize = Math.max(4, alignUp(byteCount, 4));
-            const gpuBuffer = this.device.createBuffer({
-                size: alignedSize,
-                usage,
-            });
-            this.resources.set(handle, {
-                kind, gpuBuffer, byteCount,
-                // CPU mirror of the buffer's full (aligned) content. D3D9's
-                // Lock/Unlock byte ranges can start and end anywhere, but
-                // WebGPU's writeBuffer requires both the destination offset
-                // and the size to be a multiple of 4 -- a 16-bit index
-                // buffer partially updated starting at an odd index is a
-                // routine, common example that is neither. Applying the
-                // update to this plain byte array first (no alignment
-                // concerns) and re-uploading only the small 4-byte-aligned
-                // super-range that covers it keeps every write legal without
-                // ever guessing at or corrupting the untouched bytes on
-                // either edge (see applyBufferUpdate()).
-                shadow: new Uint8Array(alignedSize),
-                indexFormat: format === D3DFMT_INDEX32 ? "uint32" : "uint16",
-            });
-        }
-
-        onUpdateBuffer(bytes, view, offset, length) {
-            const handle = view.getUint32(offset, true);
-            const destinationOffset = view.getUint32(offset + 4, true);
-            const byteCount = view.getUint32(offset + 8, true);
-            const dataOffset = view.getUint32(offset + 12, true);
-            const lockFlags = view.getUint32(offset + 16, true);
-            const resource = this.resources.get(handle);
-            if (!resource || !byteCount) return;
-            this.applyBufferUpdate(resource, destinationOffset, bytes, dataOffset,
-                byteCount, lockFlags);
-        }
-
-        applyBufferUpdate(resource, destinationOffset, bytes, sourceOffset,
-                byteCount, lockFlags) {
-            lockFlags = lockFlags || 0;
-            const shadow = resource.shadow;
-            if (destinationOffset >= shadow.length) return;
-            if (destinationOffset + byteCount > shadow.length)
-                byteCount = shadow.length - destinationOffset;
-            if (!byteCount) return;
-            const source = new Uint8Array(bytes.buffer, bytes.byteOffset + sourceOffset, byteCount);
-            shadow.set(source, destinationOffset);
-
-            // Renaming (below) is what keeps deferred draws honest.
-            //
-            // Draws are not encoded when they arrive: they are recorded and
-            // replayed at Present, because a swapchain texture is only valid
-            // inside the task that acquired it (see ensureFrame). Buffer
-            // writes, by contrast, take effect in queue order -- so every
-            // writeBuffer issued during a frame lands *before* that frame's
-            // single submit, and therefore before every draw in it.
-            //
-            // For the single most common dynamic-geometry idiom that is
-            // catastrophic:
-            //
-            //     Lock(DISCARD); write batch A; DrawPrimitive
-            //     Lock(DISCARD); write batch B; DrawPrimitive
-            //     Present
-            //
-            // Both draws end up reading batch B. The first renders real
-            // indices against the wrong vertices, which on screen is stray
-            // geometry stretching across the frame, different every frame,
-            // while static/managed resources look perfect.
-            //
-            // A real D3D9 driver answers this by *renaming*: DISCARD means
-            // "I no longer care about the old contents", and the driver hands
-            // back fresh storage while in-flight commands keep the old
-            // allocation. Do the same here -- but only when this buffer has
-            // actually been read by a draw already recorded in this frame, so
-            // the ordinary "upload once, draw many" path allocates nothing.
-            //
-            // The lock flags decide *which* answer is needed, and getting this
-            // distinction right is what keeps the cost sane. War3 renamed ~277
-            // times per frame when every mid-frame write was treated the same:
-            //
-            //   NOOVERWRITE  the application has promised it is only writing
-            //                bytes no issued draw reads -- that is precisely
-            //                the guarantee this hazard needs, and it is how a
-            //                game appends batch after batch into one buffer.
-            //                Write in place; renaming here is pure waste.
-            //   DISCARD      the old contents are dead, so the replacement
-            //                only needs the bytes being written now. The rest
-            //                is garbage the application has promised not to
-            //                read, so there is nothing to copy forward.
-            //   neither      a plain lock keeps the old contents readable, so
-            //                the replacement has to carry the whole shadow.
-            //                Rare, and the only case that costs a full upload.
-            const D3DLOCK_NOOVERWRITE = 0x1000;
-            const D3DLOCK_DISCARD = 0x2000;
-            if (this.frame && resource.frameReferenced === this.frame.serial &&
-                    !(lockFlags & D3DLOCK_NOOVERWRITE)) {
-                const replacement = this.device.createBuffer({
-                    label: "D3D9 renamed buffer",
-                    size: resource.gpuBuffer.size,
-                    usage: resource.kind === RESOURCE_BUFFER_INDEX
-                        ? BUFFER_USAGE_INDEX | BUFFER_USAGE_COPY_DST
-                        : BUFFER_USAGE_VERTEX | BUFFER_USAGE_COPY_DST,
-                });
-                if (lockFlags & D3DLOCK_DISCARD) {
-                    const start = destinationOffset & ~3;
-                    const end = Math.min(shadow.length,
-                        alignUp(destinationOffset + byteCount, 4));
-                    if (end > start)
-                        this.device.queue.writeBuffer(replacement, start,
-                            shadow.buffer, shadow.byteOffset + start, end - start);
-                } else {
-                    this.device.queue.writeBuffer(replacement, 0, shadow.buffer,
-                        shadow.byteOffset, shadow.length);
-                    ++this.stats.bufferFullCopyRenames;
-                }
-                this.retireGPUObject(resource.gpuBuffer);
-                resource.gpuBuffer = replacement;
-                resource.frameReferenced = 0;
-                ++this.stats.bufferRenames;
-                return;
-            }
-            if (this.frame && resource.frameReferenced === this.frame.serial)
-                ++this.stats.bufferNoOverwriteWrites;
-
-            const alignedStart = destinationOffset & ~3;
-            const alignedEnd = Math.min(shadow.length,
-                alignUp(destinationOffset + byteCount, 4));
-            if (alignedEnd <= alignedStart) return;
-            this.device.queue.writeBuffer(resource.gpuBuffer, alignedStart,
-                shadow.buffer, shadow.byteOffset + alignedStart, alignedEnd - alignedStart);
-        }
-
-        // WebGPU requires writeBuffer's size (and destination offset) to be a
-        // multiple of 4 bytes; D3D9's Lock/Unlock byte ranges carry no such
-        // guarantee (a 16-bit index buffer update is a common example that
-        // is not). D9WG command records are always padded to an 8-byte
-        // boundary (D9WG_ALIGN8 in d3d9_proxy.c), so up to 3 extra
-        // zero-padding bytes past `byteCount` are always safely readable
-        // from the same batch -- this rounds the write size up into that
-        // slack rather than crashing the whole batch on an unaligned
-        // Direct3D-legal update.
-        writeBufferAligned(gpuBuffer, dstOffset, bytes, sourceOffset, byteCount) {
-            if (!byteCount) return;
-            if (dstOffset % 4 !== 0) {
-                console.warn("[d3d9-webgpu] dropping a buffer update at a " +
-                    "non-4-byte-aligned destination offset", { dstOffset, byteCount });
-                return;
-            }
-            let writeCount = alignUp(byteCount, 4);
-            const available = gpuBuffer.size - dstOffset;
-            if (writeCount > available) writeCount = available - (available % 4);
-            if (writeCount <= 0) return;
-            this.device.queue.writeBuffer(gpuBuffer, dstOffset,
-                new Uint8Array(bytes.buffer, bytes.byteOffset + sourceOffset, writeCount));
-        }
-
-        onDestroyResource(bytes, view, offset) {
-            const handle = view.getUint32(offset, true);
-            const kind = view.getUint32(offset + 4, true);
-            if (kind === 0) {
-                // Matches the D3D8 guest convention: DESTROY_RESOURCE with
-                // resource_kind 0 targets the device handle itself, emitted
-                // once from device_release() when the app's last reference
-                // drops (see d3d9_proxy.c).
-                const state = this.devices.get(handle);
-                if (state) {
-                    const lastDevice = this.devices.size === 1;
-                    if (lastDevice) this.discardFrame();
-                    this.retireDeviceState(state, "device");
-                    this.devices.delete(handle);
-                    if (this.presentingDevice === state)
-                        this.presentingDevice = null;
-                    if (lastDevice) {
-                        this.retireActiveSessionBackBuffer();
-                        this.retireGPUObject(this.cursor && this.cursor.texture);
-                        this.retireGPUObject(this.cursor && this.cursor.uniform);
-                        this.cursor = { texture: null, view: null, width: 0,
-                            height: 0, hotspotX: 0, hotspotY: 0, x: 0, y: 0,
-                            visible: false, pipeline: null, sampler: null,
-                            uniform: null };
-                    }
-                }
-                return;
-            }
-            const resource = this.resources.get(handle);
-            if (!resource) return;
-            // Never destroy inline. A frame being recorded may already hold a
-            // bind group referencing this texture's view or a pending draw
-            // referencing this buffer, and none of it is submitted until
-            // Present -- destroying now makes WebGPU reject the whole command
-            // buffer ("Destroyed texture ... used in a submit"). Releasing a
-            // texture in the same frame it was last drawn with is ordinary
-            // application behaviour, not an edge case.
-            this.retireResourceState(resource);
-            this.resources.delete(handle);
-        }
-
-        onCreateTexture2D(bytes, view, offset, length) {
-            const handle = view.getUint32(offset + 4, true);
-            const width = view.getUint32(offset + 8, true);
-            const height = view.getUint32(offset + 12, true);
-            let levelCount = view.getUint32(offset + 16, true);
-            const format = view.getUint32(offset + 20, true);
-            const usage = view.getUint32(offset + 24, true);
-            const multisampleType = length >= 40
-                ? view.getUint32(offset + 32, true) : D3DMULTISAMPLE_NONE;
-            const multisampleQuality = length >= 40
-                ? view.getUint32(offset + 36, true) : 0;
-            // A render target or depth surface arrives as a CREATE_TEXTURE_2D
-            // carrying the usage (see d3d9_protocol.h): the host needs a GPU
-            // texture either way, and D3D9 reaches a texture's render target
-            // through GetSurfaceLevel as often as through CreateRenderTarget, so
-            // one opcode covers both without two host paths for one object.
-            // A FOURCC depth format is a depth resource whether or not the
-            // app spelled out D3DUSAGE_DEPTHSTENCIL: INTZ in particular is
-            // routinely created with usage 0 and then bound as the depth
-            // surface, which is exactly the trick it exists for.
-            const isDepth = (usage & D3DUSAGE_DEPTHSTENCIL) !== 0 ||
-                isFourCCDepthFormat(format);
-            const isTarget = (usage & D3DUSAGE_RENDERTARGET) !== 0;
-            const ddIndexed = (usage & D9WG_USAGE_DDRAW_INDEXED) !== 0 &&
-                isPalettizedFormat(format) && !isDepth;
-            const sampleCount = sampleCountForD3D(multisampleType,
-                multisampleQuality);
-            if (!sampleCount) {
-                ++this.stats.texturesRejected;
-                this.warnOnce("invalid-texture-msaa-" + multisampleType + "-" +
-                        multisampleQuality,
-                    "a texture requested an unsupported D3D9 multisample " +
-                    "configuration and is rejected instead of silently " +
-                    "creating a resource with different sampling semantics",
-                    { multisampleType, multisampleQuality });
-                return;
-            }
-            if (sampleCount > 1 && (!isTarget && !isDepth)) {
-                ++this.stats.texturesRejected;
-                this.warnOnce("msaa-non-attachment-texture",
-                    "a multisampled D3D9 texture must be a render target or " +
-                    "depth-stencil attachment", { usage, sampleCount });
-                return;
-            }
-            if (sampleCount > 1 && levelCount > 1) {
-                ++this.stats.texturesRejected;
-                this.warnOnce("msaa-mip-chain",
-                    "a multisampled D3D9 texture cannot have multiple mip " +
-                    "levels; the resource is rejected", { levelCount,
-                        sampleCount });
-                return;
-            }
-            // Every D3D9 depth format collapses onto one real depth target: the
-            // guest cannot read any of them back, so only "a depth buffer
-            // exists" is observable (same argument as ensureDepthTarget).
-            // D3DUSAGE_AUTOGENMIPMAP means the app owns level 0 and the driver
-            // owns everything under it. The guest therefore reports one level
-            // -- which is what D3D9's GetLevelCount says for such a texture --
-            // and the full chain is allocated here, where it is filled.
-            const autoGenerateMips = (usage & D3DUSAGE_AUTOGENMIPMAP) !== 0 &&
-                !isDepth;
-            if (autoGenerateMips)
-                levelCount = fullMipLevelCount(width, height);
-            const gpuFormat = isDepth ? DEPTH_FORMAT
-                : (ddIndexed ? "r8uint" : formatToGPU(format));
-            if (!gpuFormat) {
-                console.warn("[d3d9-webgpu] unsupported texture format", format);
-                return;
-            }
-            if (isTarget && !isDepth && !isRenderableGPUFormat(gpuFormat)) {
-                ++this.stats.texturesRejected;
-                this.warnOnce("non-renderable-d3d9-target-" + format,
-                    "a texture was marked as a D3D9 render target but its " +
-                    "WebGPU storage format cannot be a render attachment; " +
-                    "the resource is rejected instead of creating an invalid " +
-                    "GPU descriptor", { format, gpuFormat });
-                return;
-            }
-            const srgbFormat = isDepth ? null : srgbSiblingOf(gpuFormat);
-            const textureDescriptor = {
-                label: isDepth ? "D3D9 depth surface"
-                    : (isTarget ? "D3D9 render target" : undefined),
-                size: { width, height, depthOrArrayLayers: 1 },
-                format: gpuFormat,
-                ...(srgbFormat ? { viewFormats: [srgbFormat] } : {}),
-                mipLevelCount: Math.max(1, levelCount),
-                ...(isDepth && sampleCount > 1 ? { sampleCount } : {}),
-                usage: (isDepth
-                        ? TEXTURE_USAGE_RENDER_ATTACHMENT |
-                          // A D3D9 depth *texture* is the standard hardware
-                          // shadow map: rendered into as a depth attachment,
-                          // then bound to a sampler so the lighting pass can
-                          // compare against it. Leaving the binding usage off
-                          // made that second half impossible -- see the
-                          // `view` field below.
-                          (sampleCount > 1 ? 0 : TEXTURE_USAGE_TEXTURE_BINDING)
-                        : TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_COPY_SRC |
-                          TEXTURE_USAGE_TEXTURE_BINDING) |
-                    // A blit writes through a render pass, so anything that can
-                    // be a StretchRect destination needs the attachment usage.
-                    // BCn cannot be an attachment at all, which is also why a
-                    // StretchRect into a compressed texture stays unsupported.
-                    ((!isDepth && isRenderableGPUFormat(gpuFormat) &&
-                        (isTarget || autoGenerateMips ||
-                            !isCompressedFormat(format)))
-                        ? TEXTURE_USAGE_RENDER_ATTACHMENT : 0),
-            };
-            const gpuTexture = this.createTextureOrNull(textureDescriptor, format);
-            if (!gpuTexture) return;
-            // WebGPU multisampled colour textures cannot be sampled or copied.
-            // Keep the ordinary texture as D3D9's resolved surface and render
-            // through a transiently persistent multisampled attachment which
-            // resolves into it at every pass boundary. Depth has no resolve in
-            // either API, so its primary texture itself is multisampled.
-            let msaaTexture = null;
-            if (sampleCount > 1 && isTarget && !isDepth) {
-                const msaaDescriptor = {
-                    label: "D3D9 multisampled render target",
-                    size: { width, height, depthOrArrayLayers: 1 },
-                    format: gpuFormat,
-                    ...(srgbFormat ? { viewFormats: [srgbFormat] } : {}),
-                    mipLevelCount: 1,
-                    sampleCount,
-                    usage: TEXTURE_USAGE_RENDER_ATTACHMENT,
-                };
-                msaaTexture = this.createTextureOrNull(msaaDescriptor, format);
-                if (!msaaTexture) {
-                    if (typeof gpuTexture.destroy === "function")
-                        gpuTexture.destroy();
-                    return;
-                }
-            }
-            ++this.stats.texturesCreated;
-            if (isTarget) ++this.stats.renderTargetsCreated;
-            // No sampler is attached to the texture: since M2, sampling
-            // parameters come from the device's per-stage sampler state
-            // through samplerFor(), so the same texture bound to two stages
-            // with different filtering behaves the way D3D9 says it should.
-            this.resources.set(handle, {
-                kind: RESOURCE_TEXTURE_2D, textureType: "2d",
-                deviceHandle: view.getUint32(offset, true),
-                gpuTexture, msaaTexture, gpuFormat, srgbFormat, format, usage,
-                width, height, sampleCount,
-                multisampleType, multisampleQuality,
-                gpuBytesPerTexel: ddIndexed ? 1 : gpuBytesPerTexel(format),
-                ddIndexed,
-                textureDescriptor,
-                levelCount: Math.max(1, levelCount),
-                // A subresource the guest never initializes has undefined
-                // contents.  Initialization can arrive either as a CPU upload
-                // or as a GPU write such as DirectDraw Blt/StretchRect.
-                // Sampling one is not "slightly blurry" -- it is whatever was
-                // in that memory, which reads as a completely wrong texture.
-                // M1 could not hit this the same way because it sampled with
-                // one hardcoded sampler; M2 honours D3DSAMP_MIPFILTER, so a
-                // game asking for mip filtering now reaches levels that were
-                // never written.
-                // A render target's or depth surface's levels are written by
-                // the GPU, never uploaded, so tracking them would make the
-                // incomplete-mip-chain warning fire on every draw that samples
-                // a perfectly valid target.
-                // A generated chain is written by the GPU, never uploaded, so
-                // tracking it would make the incomplete-mip warning fire on
-                // every draw that samples a perfectly valid texture.
-                uploadedLevels: (isTarget || isDepth || autoGenerateMips)
-                    ? null : new Set(),
-                autoGenerateMips,
-                isDepth,
-                // D3D9 has two ways to read a depth texture and they are not
-                // interchangeable. A D16/D24X8/D32 texture bound to a sampler
-                // is a hardware shadow map: the driver compares and returns
-                // filtered visibility. A DF16/DF24/INTZ texture returns the
-                // stored depth itself, which is precisely why an app picks one.
-                // Sampling either as though it were the other produces an
-                // image that looks deliberate and is wrong.
-                depthReadsRaw: isDepth && isFourCCDepthFormat(format),
-                // A null view here used to be the modelling assumption that a
-                // depth surface is only ever an attachment -- nothing can read
-                // its pixels back, so "a depth buffer exists" looked like the
-                // whole of its observable behaviour. Shadow mapping is the
-                // counter-example, and the failure was not a wrong image: the
-                // null reached createBindGroup as a binding resource and threw
-                // a TypeError out of the batch, taking every command after it
-                // in that batch with it.
-                //
-                // depth24plus-stencil8 can only be sampled one aspect at a
-                // time, and the stencil aspect would need its own uint layout
-                // entry that no D3D9 shader can ask for.
-                view: !isDepth ? gpuTexture.createView()
-                    : (sampleCount > 1 ? null
-                        : gpuTexture.createView({ aspect: "depth-only" })),
-            });
         }
 
         // Whether the texture bound to a stage is a hardware shadow map: a
@@ -6565,943 +3010,44 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             return resource.depthReadsRaw ? "depth-fetch" : "depth-compare";
         }
 
-        textureShadowFor(resource, level, layer, compressed) {
-            if (!resource.textureShadows) resource.textureShadows = new Map();
-            const key = level + ":" + (resource.textureType === "3d" ? 0 : layer);
-            let shadow = resource.textureShadows.get(key);
-            if (shadow) return shadow;
-            const width = Math.max(1, resource.width >> level);
-            const height = Math.max(1, resource.height >> level);
-            const depth = resource.textureType === "3d"
-                ? Math.max(1, resource.depth >> level) : 1;
-            let bytesPerRow;
-            let rowsPerImage;
-            if (compressed) {
-                const blockBytes = compressedBlockBytes(resource.format);
-                bytesPerRow = Math.ceil(width / 4) * blockBytes;
-                rowsPerImage = Math.ceil(height / 4);
-            } else {
-                bytesPerRow = width * resource.gpuBytesPerTexel;
-                rowsPerImage = height;
-            }
-            shadow = { level, layer: resource.textureType === "3d" ? 0 : layer,
-                width, height, depth, bytesPerRow, rowsPerImage,
-                compressed, data: new Uint8Array(bytesPerRow * rowsPerImage * depth) };
-            resource.textureShadows.set(key, shadow);
-            return shadow;
-        }
-
-        updateTextureShadow(resource, level, layer, x, y, width, height,
-                payload, sourceBytesPerRow, compressed, depth = 1,
-                sourceSlicePitch = 0) {
-            const shadow = this.textureShadowFor(resource, level, layer,
-                compressed);
-            const blockBytes = compressed
-                ? compressedBlockBytes(resource.format)
-                : resource.gpuBytesPerTexel;
-            const destinationX = compressed ? Math.floor(x / 4) : x;
-            const destinationY = compressed ? Math.floor(y / 4) : y;
-            const rowBytes = compressed
-                ? Math.ceil(width / 4) * blockBytes
-                : width * resource.gpuBytesPerTexel;
-            const rowCount = compressed ? Math.ceil(height / 4) : height;
-            const sourceSlice = sourceSlicePitch || sourceBytesPerRow * rowCount;
-            for (let slice = 0; slice < depth; ++slice) {
-                for (let row = 0; row < rowCount; ++row) {
-                    const destinationOffset = resource.textureType === "3d"
-                        ? (layer + slice) * shadow.bytesPerRow *
-                            shadow.rowsPerImage +
-                            (destinationY + row) * shadow.bytesPerRow +
-                            destinationX * blockBytes
-                        : (destinationY + row) * shadow.bytesPerRow +
-                            destinationX * blockBytes;
-                    const sourceOffset = slice * sourceSlice +
-                        row * sourceBytesPerRow;
-                    const available = Math.max(0,
-                        Math.min(rowBytes, shadow.data.length - destinationOffset,
-                            payload.length - sourceOffset));
-                    if (available)
-                        shadow.data.set(payload.subarray(sourceOffset,
-                            sourceOffset + available), destinationOffset);
-                }
-            }
-        }
-
-        renameTextureForUpdate(resource) {
-            if (!resource.textureDescriptor ||
-                    (resource.usage & (D3DUSAGE_RENDERTARGET |
-                        D3DUSAGE_DEPTHSTENCIL)) !== 0)
-                return false;
-            let replacement;
-            try {
-                replacement = this.device.createTexture({
-                    ...resource.textureDescriptor,
-                    label: "D3D9 renamed texture",
-                });
-            } catch (error) {
-                this.warnOnce("texture-rename-failed",
-                    "a texture updated after an earlier draw could not be " +
-                    "renamed; that earlier draw may see the newer pixels", {
-                        format: resource.format,
-                        size: resource.width + "x" + resource.height,
-                        message: error && error.message,
-                    });
-                return false;
-            }
-            if (resource.textureShadows) {
-                for (const shadow of resource.textureShadows.values()) {
-                    this.device.queue.writeTexture({ texture: replacement,
-                        mipLevel: shadow.level,
-                        origin: { x: 0, y: 0, z: shadow.layer } }, shadow.data,
-                        { bytesPerRow: shadow.bytesPerRow,
-                            rowsPerImage: shadow.rowsPerImage },
-                        { width: blockAlignedCopyExtent(shadow.width,
-                                shadow.compressed),
-                            height: blockAlignedCopyExtent(shadow.height,
-                                shadow.compressed),
-                            depthOrArrayLayers: shadow.depth || 1 });
-                    this.stats.textureFullCopyRenameBytes += shadow.data.length;
-                }
-            }
-            const oldTexture = resource.gpuTexture;
-            resource.gpuTexture = replacement;
-            resource.view = replacement.createView({ dimension:
-                resource.textureType === "cube" ? "cube"
-                    : resource.textureType === "3d" ? "3d" : "2d" });
-            resource.srgbView = null;
-            resource.blitViews = null;
-            resource.targetViews = null;
-            resource.frameReferenced = 0;
-            this.retireGPUObject(oldTexture);
-            ++this.stats.textureRenames;
-            return true;
-        }
-
-        onUpdateTexture(bytes, view, offset) {
-            const handle = view.getUint32(offset, true);
-            const level = view.getUint32(offset + 4, true);
-            const x = view.getUint32(offset + 8, true);
-            const y = view.getUint32(offset + 12, true);
-            // D9WGUpdateTexture.z is the cube face for a cube texture and the
-            // slice for a volume texture; both land on the same WebGPU array
-            // layer, which is why one field and one opcode serve both.
-            const z = view.getUint32(offset + 16, true);
-            const width = view.getUint32(offset + 20, true);
-            const height = view.getUint32(offset + 24, true);
-            const depth = Math.max(1, view.getUint32(offset + 28, true));
-            const rowPitch = view.getUint32(offset + 32, true);
-            const slicePitch = view.getUint32(offset + 36, true) ||
-                rowPitch * height;
-            const dataBytes = view.getUint32(offset + 40, true);
-            const dataOffset = view.getUint32(offset + 44, true);
-            const resource = this.resources.get(handle);
-            if (!resource || !resource.gpuTexture) return;
-            const source = new Uint8Array(bytes.buffer, bytes.byteOffset + dataOffset, dataBytes);
-            const compressed = isCompressedFormat(resource.format);
-            // Bind groups are built eagerly and retain the old view. Renaming
-            // here therefore preserves pixels for draws already recorded in
-            // this frame while later draws bind the replacement texture.
-            if (this.frame && resource.frameReferenced === this.frame.serial) {
-                ++this.stats.textureUpdateHazards;
-                this.renameTextureForUpdate(resource);
-            }
-            let payload = source;
-            let bytesPerRow = rowPitch;
-            if (resource.ddIndexed) {
-                // An indexed DirectDraw surface stores what the app wrote: the
-                // bytes are the texels, and nothing about them changes when the
-                // palette does. Only the row padding comes off, because
-                // writeTexture wants the rows tightly packed.
-                const packed = new Uint8Array(width * height * depth);
-                for (let slice = 0; slice < depth; ++slice) {
-                    for (let row = 0; row < height; ++row) {
-                        const from = slice * slicePitch + row * rowPitch;
-                        packed.set(source.subarray(from, from + width),
-                            slice * width * height + row * width);
-                    }
-                }
-                this.updateTextureShadow(resource, level, z, x, y, width,
-                    height, packed, width, false, depth, width * height);
-                ++this.stats.textureUploads;
-                this.stats.textureBytesUploaded += packed.length;
-                resource.ddContentSerial = (resource.ddContentSerial || 0) + 1;
-                this.markTextureSubresourceWritten(resource, level, z);
-                // Keep the primary r8uint texture current for indexed-to-
-                // indexed DirectDraw blits.  The RGBA sampling companion is
-                // derived lazily from the same shadow by ddIndexedSampleViewFor.
-                this.device.queue.writeTexture(
-                    { texture: resource.gpuTexture, mipLevel: level,
-                        origin: { x, y, z } }, packed,
-                    { bytesPerRow: width, rowsPerImage: height },
-                    { width, height, depthOrArrayLayers: depth });
-                return;
-            }
-            if (isPalettizedFormat(resource.format)) {
-                // The indices, not the colours, are what the app uploaded. A
-                // palette swap has to repaint this texture without any new
-                // traffic -- that is the whole point of a palettized format --
-                // so the source bytes are kept and re-expanded on demand.
-                this.rememberPalettizedUpload(resource, {
-                    level, z, x, y, width, height, depth, rowPitch, slicePitch,
-                    source: source.slice(),
-                });
-            }
-            if (!compressed) {
-                const gpuBpp = resource.gpuBytesPerTexel;
-                // Expand to the tightly packed WebGPU representation chosen
-                // by formatToGPU(): RGBA8 UNORM/SNORM or RGBA16F.
-                const expandedSlicePitch = width * height * gpuBpp;
-                const expanded = new Uint8Array(expandedSlicePitch * depth);
-                const palette = isPalettizedFormat(resource.format)
-                    ? this.currentPaletteFor(handle) : null;
-                for (let slice = 0; slice < depth; ++slice) {
-                    for (let row = 0; row < height; ++row) {
-                        expandRowToGPU(resource.format, source,
-                            slice * slicePitch + row * rowPitch, width,
-                            expanded, slice * expandedSlicePitch +
-                                row * width * gpuBpp, palette);
-                    }
-                }
-                payload = expanded;
-                bytesPerRow = width * gpuBpp;
-            }
-            this.updateTextureShadow(resource, level, z, x, y, width, height,
-                payload, bytesPerRow, compressed, depth,
-                bytesPerRow * (compressed ? Math.ceil(height / 4) : height));
-            ++this.stats.textureUploads;
-            this.stats.textureBytesUploaded += payload.length;
-            // Only level 0 is the app's on an autogen texture, so only level 0
-            // can invalidate what the driver generated from it.
-            this.markTextureSubresourceWritten(resource, level, z);
-            // Retain a CPU copy of small top-level images. This is the one
-            // piece of evidence that separates "the texture data we uploaded
-            // is wrong" from "the data is right but we sample it wrong", and
-            // guessing between those two has already cost several rounds.
-            // Bounded to sprite-sized textures so it cannot grow without
-            // limit -- cursors and UI glyphs are exactly this size.
-            // 64x64 was too small a net: a game's cursor and UI glyphs
-            // usually live in a larger atlas, so the one texture worth looking
-            // at was the one never captured. 256x256 covers those at a bounded
-            // total cost (previewBudget below).
-            if (!compressed && resource.gpuFormat === "rgba8unorm" &&
-                    resource.textureType !== "3d" && depth === 1 &&
-                    level === 0 && z === 0 && width <= 256 &&
-                    height <= 256 && x === 0 && y === 0) {
-                const previewBytes = width * height * 4;
-                if (!resource.preview) {
-                    if (this.previewBudget === undefined)
-                        this.previewBudget = 16 * 1024 * 1024;
-                    if (this.previewBudget >= previewBytes) {
-                        this.previewBudget -= previewBytes;
-                        resource.preview = {
-                            width, height, rgba: payload.slice()
-                        };
-                    } else {
-                        // The preview is diagnostics only. Returning here used
-                        // to drop the real queue.writeTexture below once War3
-                        // had loaded 16 MiB of menu atlases. Textures first
-                        // touched in battle (fog/minimap/command icons/software
-                        // cursor) consequently stayed black or transparent.
-                        ++this.stats.texturePreviewsSkipped;
-                    }
-                } else {
-                    resource.preview = { width, height, rgba: payload.slice() };
-                }
-            }
-            // rowsPerImage counts *block* rows for a block-compressed format,
-            // not pixel rows -- BCn blocks are 4x4, so a DXT upload that
-            // passes the pixel height describes an image four times taller
-            // than the data actually is.
-            this.device.queue.writeTexture(
-                { texture: resource.gpuTexture, mipLevel: level, origin: { x, y, z } },
-                payload,
-                { bytesPerRow, rowsPerImage: compressed ? Math.ceil(height / 4) : height },
-                { width: blockAlignedCopyExtent(width, compressed),
-                    height: blockAlignedCopyExtent(height, compressed),
-                    depthOrArrayLayers: depth });
-        }
-
-        // ---- render targets, cube textures and blits (M3/M4) ----
-
-        // A cube texture is a six-layer 2D WebGPU texture viewed as "cube".
-        // Both views are kept: bind groups need the cube view, and a blit or an
-        // upload addresses a single face, which only the layered 2D form can do.
-        onCreateTextureCube(bytes, view, offset) {
-            const handle = view.getUint32(offset + 4, true);
-            const edge = view.getUint32(offset + 8, true);
-            const levelCount = Math.max(1, view.getUint32(offset + 12, true));
-            const format = view.getUint32(offset + 16, true);
-            const usage = view.getUint32(offset + 20, true);
-            const ddIndexed = (usage & D9WG_USAGE_DDRAW_INDEXED) !== 0 &&
-                isPalettizedFormat(format);
-            const gpuFormat = ddIndexed ? "r8uint" : formatToGPU(format);
-            if (!gpuFormat) {
-                console.warn("[d3d9-webgpu] unsupported cube texture format", format);
-                return;
-            }
-            const autoGenerateMips = (usage & D3DUSAGE_AUTOGENMIPMAP) !== 0;
-            const srgbFormat = srgbSiblingOf(gpuFormat);
-            const textureDescriptor = {
-                label: "D3D9 cube " + edge,
-                size: { width: edge, height: edge, depthOrArrayLayers: 6 },
-                format: gpuFormat,
-                ...(srgbFormat ? { viewFormats: [srgbFormat] } : {}),
-                mipLevelCount: autoGenerateMips
-                    ? fullMipLevelCount(edge, edge) : levelCount,
-                usage: TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_COPY_SRC |
-                    TEXTURE_USAGE_TEXTURE_BINDING |
-                    // A dynamic environment map is a cube render target: the
-                    // app renders the scene six times, once per face, through
-                    // the surfaces GetCubeMapSurface hands out.
-                    ((((usage & D3DUSAGE_RENDERTARGET) || autoGenerateMips) &&
-                        isRenderableGPUFormat(gpuFormat))
-                        ? TEXTURE_USAGE_RENDER_ATTACHMENT : 0),
-            };
-            const gpuTexture = this.createTextureOrNull(textureDescriptor, format);
-            if (!gpuTexture) return;
-            ++this.stats.texturesCreated;
-            ++this.stats.cubeTexturesCreated;
-            this.resources.set(handle, {
-                kind: RESOURCE_TEXTURE_CUBE, textureType: "cube",
-                deviceHandle: view.getUint32(offset, true),
-                gpuTexture, gpuFormat, srgbFormat,
-                format, usage, width: edge, height: edge, layerCount: 6,
-                gpuBytesPerTexel: ddIndexed ? 1 : gpuBytesPerTexel(format),
-                ddIndexed,
-                textureDescriptor,
-                levelCount: textureDescriptor.mipLevelCount,
-                // Keyed by level*6+face, so the incomplete-mip warning counts a
-                // cube's faces independently -- a game that fills face 0's whole
-                // chain and leaves face 5 empty is a real bug this would hide if
-                // the levels were tracked per-level only.
-                uploadedLevels: autoGenerateMips ? null : new Set(),
-                autoGenerateMips,
-                view: gpuTexture.createView({ dimension: "cube" }),
-            });
-        }
-
-        onCreateTextureVolume(bytes, view, offset, length) {
-            if (length < 40) return;
-            const handle = view.getUint32(offset + 4, true);
-            const width = view.getUint32(offset + 8, true);
-            const height = view.getUint32(offset + 12, true);
-            const depth = view.getUint32(offset + 16, true);
-            const levelCount = Math.max(1, view.getUint32(offset + 20, true));
-            const format = view.getUint32(offset + 24, true);
-            const usage = view.getUint32(offset + 28, true);
-            const gpuFormat = formatToGPU(format);
-            if (!gpuFormat || isCompressedFormat(format) ||
-                    (isRenderableGPUFormat(gpuFormat) &&
-                        (usage & D3DUSAGE_RENDERTARGET))) {
-                ++this.stats.texturesRejected;
-                return;
-            }
-            const textureDescriptor = {
-                label: "D3D9 volume texture",
-                size: { width, height, depthOrArrayLayers: depth },
-                dimension: "3d",
-                format: gpuFormat,
-                mipLevelCount: levelCount,
-                usage: TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_COPY_SRC |
-                    TEXTURE_USAGE_TEXTURE_BINDING,
-            };
-            const gpuTexture = this.createTextureOrNull(textureDescriptor,
-                format);
-            if (!gpuTexture) return;
-            ++this.stats.texturesCreated;
-            ++this.stats.volumeTexturesCreated;
-            this.resources.set(handle, {
-                kind: RESOURCE_TEXTURE_VOLUME, textureType: "3d",
-                deviceHandle: view.getUint32(offset, true),
-                gpuTexture, gpuFormat, format, usage,
-                width, height, depth,
-                gpuBytesPerTexel: gpuBytesPerTexel(format),
-                textureDescriptor, levelCount,
-                uploadedLevels: new Set(),
-                view: gpuTexture.createView({ dimension: "3d" }),
-            });
-        }
-
-        // createTexture throws for a format the device does not support, and an
-        // exception here propagates out of the batch and discards the whole
-        // frame -- one unsupported texture would blank the screen instead of
-        // costing one texture. Contained, counted, and named once instead: the
-        // draws that bind it fall back to the 1x1 white stand-in, which is
-        // visibly wrong in a way that points at the right place.
-        createTextureOrNull(descriptor, d3dFormat) {
-            try {
-                return this.device.createTexture(descriptor);
-            } catch (error) {
-                ++this.stats.texturesRejected;
-                this.warnOnce("createtexture-" + descriptor.format,
-                    "the WebGPU device refused a texture format the D3D9 " +
-                    "format table claims to support; every draw sampling it " +
-                    "gets the 1x1 white fallback instead", {
-                        d3dFormat, gpuFormat: descriptor.format,
-                        size: descriptor.size,
-                        bcSupported: this.deviceFeatures &&
-                            this.deviceFeatures.bc,
-                        message: error && error.message,
-                    });
-                return null;
-            }
+        // Fetch4 channel for one sampler: the component to gather, "depth" for a
+        // raw-depth texture, or undefined when the sampler samples normally
+        // (3D/cube textures, multi-channel formats and compare-mode depth ignore it).
+        fetch4ChannelFor(state, index, texture) {
+            if (!texture || (state.samplerStates.get(index * 64 + D3DSAMP_MIPMAPLODBIAS) >>> 0) !== D3DFETCH4_ENABLE ||
+                    (texture.textureType || "2d") !== "2d") return undefined;
+            if (texture.isDepth) return texture.depthReadsRaw ? "depth" : undefined;
+            const channel = fetch4Channel(texture.format);
+            return channel < 0 ? undefined : channel;
         }
 
         onSetScissorRect(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            const left = view.getInt32(offset + 4, true);
-            const top = view.getInt32(offset + 8, true);
-            const right = view.getInt32(offset + 12, true);
-            const bottom = view.getInt32(offset + 16, true);
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetScissorRect.device_handle, true));
+            const left = view.getInt32(offset + D9WG.F.SetScissorRect.left, true);
+            const top = view.getInt32(offset + D9WG.F.SetScissorRect.top, true);
+            const right = view.getInt32(offset + D9WG.F.SetScissorRect.right, true);
+            const bottom = view.getInt32(offset + D9WG.F.SetScissorRect.bottom, true);
             state.scissorRect = { x: Math.max(0, left), y: Math.max(0, top),
                 width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
         }
 
         onSetRenderTarget(bytes, view, offset, length) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            const index = view.getUint32(offset + 4, true);
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetRenderTarget.device_handle, true));
+            const index = view.getUint32(offset + D9WG.F.SetRenderTarget.target_index, true);
             if (index >= MAX_RENDER_TARGETS) return;
-            state.renderTargets[index] = view.getUint32(offset + 8, true);
-            state.renderTargetLevels[index] = view.getUint32(offset + 12, true);
+            state.renderTargets[index] = view.getUint32(offset + D9WG.F.SetRenderTarget.color_texture_handle, true);
+            state.renderTargetLevels[index] = view.getUint32(offset + D9WG.F.SetRenderTarget.color_level, true);
             // Protocol 1.4 added the cube face. Length-gated so a 1.3 payload
             // still decodes as "face 0", which is what a 2D target always is.
-            state.renderTargetFaces[index] = length >= 20
-                ? view.getUint32(offset + 16, true) : 0;
+            state.renderTargetFaces[index] = D9WG.has(length, "SetRenderTarget", "color_face")
+                ? view.getUint32(offset + D9WG.F.SetRenderTarget.color_face, true) : 0;
             ++this.stats.renderTargetBinds;
         }
 
-        // ---- texture palettes ----
-        //
-        // A D3D9 palette is device state consulted when a texel is sampled,
-        // not a property baked into the texture: the same P8 surface takes on
-        // different colours as the app switches palettes, with no upload in
-        // between. WebGPU has no palettized format, so the expansion happens on
-        // the CPU -- which means the indices have to be kept and replayed
-        // whenever the table or the selection changes.
-
-        paletteFor(deviceHandle, index) {
-            if (!this.palettes) this.palettes = new Map();
-            return this.palettes.get(deviceHandle + ":" + index) || null;
-        }
-
-        currentPaletteFor(resourceHandle) {
-            const resource = this.resources.get(resourceHandle);
-            const deviceHandle = resource ? resource.deviceHandle : 0;
-            const state = this.devices.get(deviceHandle);
-            if (!state || state.currentPalette === null ||
-                    state.currentPalette === undefined)
-                return null;
-            return this.paletteFor(deviceHandle, state.currentPalette);
-        }
-
-        rememberPalettizedUpload(resource, upload) {
-            if (!resource.palettizedUploads) resource.palettizedUploads = [];
-            // Keyed by subresource *and* sub-rectangle: a partial LockRect
-            // update of one region must not discard the rest of the level.
-            const key = upload.level + ":" + upload.z + ":" + upload.x + ":" +
-                upload.y + ":" + upload.width + ":" + upload.height;
-            const existing = resource.palettizedUploads
-                .findIndex(item => item.key === key);
-            upload.key = key;
-            if (existing >= 0) resource.palettizedUploads[existing] = upload;
-            else resource.palettizedUploads.push(upload);
-        }
-
-        // Re-expands every palettized texture on the device through the palette
-        // now in force. Cheap in the way that matters: palettized content is
-        // one byte per texel by definition, and a palette swap is rare.
-        repaintPalettizedTextures(deviceHandle) {
-            let repainted = 0;
-            for (const [handle, resource] of this.resources) {
-                if (!resource || resource.deviceHandle !== deviceHandle) continue;
-                if (!isPalettizedFormat(resource.format)) continue;
-                if (!resource.palettizedUploads) continue;
-                const palette = this.currentPaletteFor(handle);
-                for (const upload of resource.palettizedUploads) {
-                    this.uploadPalettizedRegion(resource, upload, palette);
-                    ++repainted;
-                }
-            }
-            this.stats.palettizedRepaints += repainted;
-        }
-
-        uploadPalettizedRegion(resource, upload, palette) {
-            const gpuBpp = resource.gpuBytesPerTexel;
-            const { level, z, x, y, width, height, depth, rowPitch,
-                slicePitch, source } = upload;
-            const expandedSlicePitch = width * height * gpuBpp;
-            const expanded = new Uint8Array(expandedSlicePitch * depth);
-            for (let slice = 0; slice < depth; ++slice) {
-                for (let row = 0; row < height; ++row) {
-                    expandRowToGPU(resource.format, source,
-                        slice * slicePitch + row * rowPitch, width,
-                        expanded,
-                        slice * expandedSlicePitch + row * width * gpuBpp,
-                        palette);
-                }
-            }
-            const bytesPerRow = width * gpuBpp;
-            // A repaint rewrites pixels a bind group recorded earlier in this
-            // frame may still be reading, so it takes the same rename hazard
-            // path an ordinary mid-frame update does.
-            if (this.frame && resource.frameReferenced === this.frame.serial) {
-                ++this.stats.textureUpdateHazards;
-                this.renameTextureForUpdate(resource);
-            }
-            this.updateTextureShadow(resource, level, z, x, y, width, height,
-                expanded, bytesPerRow, false, depth, bytesPerRow * height);
-            this.device.queue.writeTexture(
-                { texture: resource.gpuTexture, mipLevel: level,
-                    origin: { x, y, z } },
-                expanded, { bytesPerRow, rowsPerImage: height },
-                { width, height, depthOrArrayLayers: depth });
-        }
-
-        // ---- automatic mip generation ----
-        //
-        // D3DUSAGE_AUTOGENMIPMAP hands the driver everything below level 0 and
-        // asks it to keep the chain current. D3D9 regenerates whenever the top
-        // level changes; the host is the side that can see when that actually
-        // happened -- an upload landed, or a render pass had level 0 as its
-        // attachment -- so the trigger lives here rather than being guessed at
-        // by the guest. GenerateMipSubLevels() arrives as its own opcode for
-        // the case where the app asks explicitly.
-
-        // Remember every subresource write, irrespective of whether its pixels
-        // came over the wire or were produced on the GPU.  uploadedLevels keeps
-        // its historical name because it is also exposed in diagnostic state,
-        // but semantically it is the set of initialized levels/faces.
-        markTextureSubresourceWritten(resource, level, layer = 0) {
-            if (!resource) return;
-            if (resource.uploadedLevels) {
-                if (resource.textureType === "3d") {
-                    resource.uploadedLevels.add(level);
-                } else {
-                    const layerCount = Math.max(1, resource.layerCount || 1);
-                    const safeLayer = Math.max(0,
-                        Math.min(layer >>> 0, layerCount - 1));
-                    // Six slots per level preserve the existing cube-map key
-                    // layout while a 2D texture naturally occupies slot zero.
-                    resource.uploadedLevels.add(level * 6 + safeLayer);
-                }
-            }
-            if (level === 0) this.markMipsDirty(resource);
-        }
-
-        markMipsDirty(resource) {
-            if (!resource || !resource.autoGenerateMips) return;
-            resource.mipsDirty = true;
-        }
-
-        // Queued before whatever is about to read the texture, not executed
-        // now: the chain is filled by render passes, and record time is inside
-        // whatever pass is already open.
-        flushGeneratedMips(resource) {
-            if (!resource || !resource.autoGenerateMips || !resource.mipsDirty)
-                return;
-            if (!resource.gpuTexture || resource.levelCount < 2) {
-                resource.mipsDirty = false;
-                return;
-            }
-            resource.mipsDirty = false;
-            const frame = this.ensureFrame();
-            frame.ops.push({ kind: "generate-mips", resource });
-            resource.frameReferenced = frame.serial;
-            ++this.stats.mipChainsGenerated;
-        }
-
-        // One blit per level, each reading the level above with linear
-        // filtering: the box downsample D3D9's default D3DTEXF_LINEAR describes.
-        replayGenerateMips(encoder, op) {
-            const resource = op.resource;
-            const layers = resource.layerCount || 1;
-            const format = resource.gpuFormat || formatToGPU(resource.format);
-            const buffers = [];
-            for (let layer = 0; layer < layers; ++layer) {
-                for (let level = 1; level < resource.levelCount; ++level) {
-                    const width = Math.max(1, resource.width >> level);
-                    const height = Math.max(1, resource.height >> level);
-                    const blit = {
-                        kind: "blit",
-                        sourceView: this.blitSourceView(resource, level - 1,
-                            layer),
-                        destinationView: this.targetViewFor(resource, level,
-                            false, layer),
-                        destinationFormat: format,
-                        sourceFormat: format,
-                        // The whole of the parent level, into the whole of this
-                        // one.
-                        sourceRect: [0, 0, 1, 1],
-                        viewport: [0, 0, width, height],
-                        filterPoint: false,
-                    };
-                    const transient = this.replayBlit(encoder, blit, null);
-                    if (transient) buffers.push(transient);
-                    ++this.stats.mipLevelsGenerated;
-                }
-            }
-            return buffers;
-        }
-
-        onGenerateMips(bytes, view, offset) {
-            const resource = this.resources.get(
-                view.getUint32(offset + 4, true));
-            if (!resource || !resource.autoGenerateMips) return;
-            // An explicit call regenerates whether or not the host noticed a
-            // write: the app may know something the write tracking cannot.
-            resource.mipsDirty = true;
-            this.flushGeneratedMips(resource);
-            ++this.stats.explicitMipGenerations;
-        }
-
-        onSetTextureLOD(bytes, view, offset) {
-            const resource = this.resources.get(
-                view.getUint32(offset + 4, true));
-            if (!resource) return;
-            // Clamped against the chain that actually exists rather than
-            // trusted: the guest clamps too, but a texture recreated at a
-            // different level count between the two would otherwise leave a
-            // lodMinClamp above lodMaxClamp, which WebGPU rejects outright.
-            const levels = Math.max(1, resource.levelCount || 1);
-            resource.lod = Math.min(view.getUint32(offset + 8, true) >>> 0,
-                levels - 1);
-        }
-
-        // IDirect3DDevice9::SetGammaRamp. D3D9 applies this at scanout, after
-        // everything the renderer did, so it is applied here in the step that
-        // moves the finished back buffer onto the canvas -- see the present
-        // path in finishFrame(), which swaps its plain copy for a lookup pass
-        // whenever a non-identity ramp is set.
-        //
-        // Held as a 256x1 rgba32float lookup rather than as a curve fit: a
-        // D3D9 ramp is an arbitrary table, and titles do use it for effects
-        // (fades, damage flashes) that no gamma exponent can express.
-        // ---- additional swap chains ----
-        //
-        // An additional chain targets a *different* HWND, so it needs its own
-        // drawing surface: the implicit chain's canvas is the one the page
-        // composites over the device window and nothing else.
-        //
-        // The chain's back buffer arrives as an ordinary render-target texture
-        // handle, which is what keeps every other path unchanged -- draws,
-        // StretchRect and readback all treat it as a texture. It becomes
-        // special only here, in the step that moves the finished image onto
-        // its canvas.
-        //
-        // The canvas itself has to come from the embedder, because only the
-        // page knows where a second overlay may live in the document. Without
-        // that hook the chain is refused and named rather than quietly
-        // rendering nowhere.
-        onCreateSwapChain(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            if (!state) return;
-            const handle = view.getUint32(offset + 4, true);
-            const backBufferHandle = view.getUint32(offset + 8, true);
-            const surface = {
-                hwnd: view.getUint32(offset + 12, true),
-                x: view.getInt32(offset + 16, true),
-                y: view.getInt32(offset + 20, true),
-                width: view.getUint32(offset + 24, true),
-                height: view.getUint32(offset + 28, true),
-                swapChain: handle,
-                sessionKey: state.surface ? state.surface.sessionKey : null,
-                visible: true,
-            };
-            const create = this.options.createSwapChainCanvas;
-            if (typeof create !== "function") {
-                ++this.stats.swapChainsRefused;
-                this.warnOnce("additional-swap-chain",
-                    "the guest created an additional swap chain, but this " +
-                    "embedder supplies no createSwapChainCanvas hook, so " +
-                    "there is no second surface to present it on; its frames " +
-                    "are counted and dropped");
-                state.swapChains.set(handle, { handle, backBufferHandle,
-                    surface, canvas: null, context: null });
-                return;
-            }
-            let canvas = null;
-            try {
-                canvas = create(surface);
-            } catch (error) {
-                this.warnOnce("additional-swap-chain-canvas",
-                    "createSwapChainCanvas threw; the chain has no surface to " +
-                    "present on", { message: String(error) });
-            }
-            let context = null;
-            if (canvas) {
-                canvas.width = Math.max(1, surface.width);
-                canvas.height = Math.max(1, surface.height);
-                context = canvas.getContext("webgpu");
-                if (context) {
-                    context.configure({
-                        device: this.device, format: this.format,
-                        alphaMode: "opaque",
-                        usage: TEXTURE_USAGE_RENDER_ATTACHMENT |
-                            TEXTURE_USAGE_COPY_DST,
-                    });
-                }
-            }
-            state.swapChains.set(handle,
-                { handle, backBufferHandle, surface, canvas, context });
-            ++this.stats.swapChainsCreated;
-            this.notifySwapChainSurface(surface, "create");
-        }
-
-        onDestroySwapChain(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            if (!state) return;
-            const handle = view.getUint32(offset + 4, true);
-            const chain = state.swapChains.get(handle);
-            if (!chain) return;
-            state.swapChains.delete(handle);
-            if (chain.context && typeof chain.context.unconfigure === "function")
-                chain.context.unconfigure();
-            this.notifySwapChainSurface(
-                { ...chain.surface, visible: false }, "destroy");
-            ++this.stats.swapChainsDestroyed;
-        }
-
-        onPresentSwapChain(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            if (!state) return;
-            const handle = view.getUint32(offset + 4, true);
-            const chain = state.swapChains.get(handle);
-            if (!chain) {
-                ++this.stats.swapChainPresentsDropped;
-                return;
-            }
-            const width = view.getUint32(offset + 16, true);
-            const height = view.getUint32(offset + 20, true);
-            chain.surface = {
-                ...chain.surface,
-                hwnd: view.getUint32(offset + 8, true),
-                x: view.getInt32(offset + 12, true),
-                // An empty client rect means the guest could not find the
-                // window; the last non-empty size is the better answer, for
-                // the same reason the implicit chain keeps its own.
-                width: width || chain.surface.width,
-                height: height || chain.surface.height,
-                visible: true,
-            };
-            this.notifySwapChainSurface(chain.surface, "present");
-            if (!chain.context) {
-                ++this.stats.swapChainPresentsDropped;
-                return;
-            }
-            const texture = this.resources.get(chain.backBufferHandle);
-            if (!texture || !texture.gpuTexture) {
-                ++this.stats.swapChainPresentsDropped;
-                return;
-            }
-            if (chain.canvas) {
-                if (chain.canvas.width !== texture.width)
-                    chain.canvas.width = texture.width;
-                if (chain.canvas.height !== texture.height)
-                    chain.canvas.height = texture.height;
-            }
-            // Queued into the frame op list rather than run here, for the same
-            // reason draws are: the chain's current texture is only valid
-            // inside the task that acquires it, and a guest frame arrives
-            // across several PCI submits.
-            const frame = this.ensureFrame();
-            frame.ops.push({
-                kind: "present-swap-chain",
-                chain,
-                sourceView: this.blitSourceView(texture, 0, 0),
-                sourceFormat: texture.gpuFormat ||
-                    formatToGPU(texture.format),
-                width: texture.width,
-                height: texture.height,
-            });
-            texture.frameReferenced = frame.serial;
-            ++this.stats.swapChainPresents;
-        }
-
-        notifySwapChainSurface(surface, reason) {
-            if (typeof this.options.onSwapChainSurface === "function")
-                this.options.onSwapChainSurface(surface, reason);
-        }
-
-        onSetGammaRamp(bytes, view, offset, length) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            if (!state) return;
-            if (length < 16 + 768 * 2) {
-                ++this.stats.malformedCommands;
-                return;
-            }
-            const values = new Float32Array(256 * 4);
-            let identity = true;
-            for (let index = 0; index < 256; ++index) {
-                for (let channel = 0; channel < 3; ++channel) {
-                    const raw = view.getUint16(
-                        offset + 16 + (channel * 256 + index) * 2, true);
-                    values[index * 4 + channel] = raw / 65535;
-                    // The identity ramp is entry = index * 257 (0x0000, 0x0101,
-                    // ... 0xffff). Recognising it matters: a title that sets the
-                    // identity ramp on startup would otherwise pay for a lookup
-                    // pass on every frame for no visible difference.
-                    if (raw !== index * 257) identity = false;
-                }
-                values[index * 4 + 3] = 1;
-            }
-            state.gammaRampIdentity = identity;
-            // Counted for every accepted ramp, identity included: "the title
-            // never called SetGammaRamp" and "the title set the identity ramp"
-            // are different facts, and a counter that only moved for the second
-            // kind could not tell them apart.
-            ++this.stats.gammaRampUpdates;
-            if (identity) {
-                this.retireGPUObject(state.gammaRampTexture);
-                state.gammaRampTexture = null;
-                state.gammaRampView = null;
-                return;
-            }
-            if (!state.gammaRampTexture) {
-                state.gammaRampTexture = this.device.createTexture({
-                    label: "D3D9 gamma ramp",
-                    size: { width: 256, height: 1, depthOrArrayLayers: 1 },
-                    format: "rgba32float",
-                    usage: TEXTURE_USAGE_TEXTURE_BINDING |
-                        TEXTURE_USAGE_COPY_DST,
-                });
-                state.gammaRampView = state.gammaRampTexture.createView();
-            }
-            this.device.queue.writeTexture({ texture: state.gammaRampTexture },
-                values, { bytesPerRow: 256 * 16 },
-                { width: 256, height: 1, depthOrArrayLayers: 1 });
-        }
-
-        // Which device's ramp the canvas should show. A page runs one D3D9
-        // device at a time in practice, but the state table is keyed by handle
-        // and nothing guarantees a single entry, so this picks the first device
-        // that actually has a non-identity ramp rather than assuming there is
-        // exactly one.
-        presentGammaView() {
-            for (const state of this.devices.values()) {
-                if (state && state.gammaRampView) return state.gammaRampView;
-            }
-            return null;
-        }
-
-        // The present-time lookup pass. Separate from blitPipelineFor() because
-        // it binds a third resource the ordinary blit has no slot for, and
-        // because textureLoad -- not textureSample -- is what makes the lookup
-        // exact: a ramp entry is chosen by index, never interpolated between
-        // two neighbours.
-        gammaBlitPipelineFor(format) {
-            if (!this.gammaBlitPipelines) this.gammaBlitPipelines = new Map();
-            let entry = this.gammaBlitPipelines.get(format);
-            if (entry) return entry;
-            const module = this.moduleFor(`@group(0) @binding(0) var d9_gamma_source: texture_2d<f32>;
-@group(0) @binding(1) var d9_gamma_sampler: sampler;
-@group(0) @binding(2) var d9_gamma_ramp: texture_2d<f32>;
-
-struct D9GammaOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn d9_vs_main(@builtin(vertex_index) index: u32) -> D9GammaOutput {
-    var corners = array<vec2<f32>, 6>(
-        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
-        vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0));
-    let corner = corners[index];
-    var result: D9GammaOutput;
-    result.position = vec4<f32>(corner.x * 2.0 - 1.0, 1.0 - corner.y * 2.0,
-        0.0, 1.0);
-    result.uv = corner;
-    return result;
-}
-
-@fragment
-fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
-    let source = textureSample(d9_gamma_source, d9_gamma_sampler, stage_in.uv);
-    // Each channel indexes the table independently -- D3D9's ramp is three
-    // separate curves, and titles do set them apart (a red damage flash is
-    // exactly that).
-    let index = vec3<i32>(clamp(source.rgb, vec3<f32>(0.0), vec3<f32>(1.0))
-        * 255.0 + vec3<f32>(0.5));
-    return vec4<f32>(
-        textureLoad(d9_gamma_ramp, vec2<i32>(index.r, 0), 0).r,
-        textureLoad(d9_gamma_ramp, vec2<i32>(index.g, 0), 0).g,
-        textureLoad(d9_gamma_ramp, vec2<i32>(index.b, 0), 0).b,
-        source.a);
-}
-`, "d3d9 gamma blit " + format);
-            const bindGroupLayout = this.device.createBindGroupLayout({
-                entries: [
-                    { binding: 0, visibility: SHADER_STAGE_FRAGMENT,
-                      texture: { sampleType: "float" } },
-                    { binding: 1, visibility: SHADER_STAGE_FRAGMENT,
-                      sampler: { type: "filtering" } },
-                    // The ramp is read with textureLoad, which is defined for
-                    // an unfilterable-float binding and needs no sampler.
-                    { binding: 2, visibility: SHADER_STAGE_FRAGMENT,
-                      texture: { sampleType: "unfilterable-float" } },
-                ],
-            });
-            entry = {
-                pipeline: this.device.createRenderPipeline({
-                    label: "D3D9 gamma blit " + format,
-                    layout: this.device.createPipelineLayout(
-                        { bindGroupLayouts: [bindGroupLayout] }),
-                    vertex: { module, entryPoint: "d9_vs_main" },
-                    fragment: { module, entryPoint: "d9_ps_main",
-                        targets: [{ format }] },
-                    primitive: { topology: "triangle-list" },
-                }),
-                bindGroupLayout,
-                sampler: this.device.createSampler({
-                    magFilter: "nearest", minFilter: "nearest",
-                    addressModeU: "clamp-to-edge",
-                    addressModeV: "clamp-to-edge",
-                }),
-            };
-            this.gammaBlitPipelines.set(format, entry);
-            return entry;
-        }
-
-        onSetPalette(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const index = view.getUint32(offset + 4, true);
-            const entryCount = view.getUint32(offset + 8, true);
-            const dataOffset = view.getUint32(offset + 12, true);
-            if (entryCount !== 256) return;
-            const source = new Uint8Array(bytes.buffer,
-                bytes.byteOffset + dataOffset, 256 * 4);
-            // The wire carries D3DCOLOR (A8R8G8B8, little-endian BGRA bytes);
-            // the expansion wants RGBA in memory order.
-            const rgba = new Uint8Array(256 * 4);
-            for (let entry = 0; entry < 256; ++entry) {
-                const at = entry * 4;
-                rgba[at] = source[at + 2];
-                rgba[at + 1] = source[at + 1];
-                rgba[at + 2] = source[at];
-                rgba[at + 3] = source[at + 3];
-            }
-            if (!this.palettes) this.palettes = new Map();
-            this.palettes.set(deviceHandle + ":" + index, rgba);
-            ++this.stats.palettesSet;
-            const state = this.devices.get(deviceHandle);
-            if (state && state.currentPalette === index)
-                this.repaintPalettizedTextures(deviceHandle);
-        }
-
-        onSetCurrentTexturePalette(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const index = view.getUint32(offset + 4, true);
-            const state = this.deviceState(deviceHandle);
-            if (state.currentPalette === index) return;
-            state.currentPalette = index;
-            ++this.stats.paletteSelections;
-            this.repaintPalettizedTextures(deviceHandle);
-        }
-
         onSetDepthStencilSurfaceLevel(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            const handle = view.getUint32(offset + 4, true);
-            const level = view.getUint32(offset + 8, true);
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetDepthStencilSurfaceLevel.device_handle, true));
+            const handle = view.getUint32(offset + D9WG.F.SetDepthStencilSurfaceLevel.depth_texture_handle, true);
+            const level = view.getUint32(offset + D9WG.F.SetDepthStencilSurfaceLevel.depth_level, true);
             this.setDepthStencilSurface(state, handle, level);
         }
 
@@ -7524,7 +3070,7 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
         //
         // `key` is what groups consecutive ops into one pass: two draws with the
         // same key can share a pass, and a change of key has to end it.
-        renderTargetsFor(state) {
+        renderTargetsFor(state, forClear = false) {
             const colors = [];
             const wantsSRGB = (state.renderStates.get(D3DRS_SRGBWRITEENABLE) || 0)
                 !== 0;
@@ -7537,12 +3083,22 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                     if (index === 0) {
                         const format = wantsSRGB && this.swapchainSrgbFormat
                             ? this.swapchainSrgbFormat : this.format;
-                        colors.push({ view: null, format,
+                        // with MSAA the pass renders into the device's
+                        // multisampled back buffer and resolves into the
+                        // owned one (finishFrame's swapView)
+                        this.deviceBackBuffer(state);
+                        colors.push({ view: wantsSRGB ? state.backBufferSrgbView : state.backBufferView, format,
+                            linearView: state.backBufferView,
+                            owner: state, texture: state.backBufferTexture,
+                            width: this.backBufferWidthOf(state), height: this.backBufferHeightOf(state),
                             swapchain: true,
-                            sampleCount: state.sampleCount || 1 });
+                            sampleCount: state.sampleCount || 1,
+                            msaaView: format === this.format ? state.backBufferMsaaView
+                                : state.backBufferMsaaSrgbView,
+                            msaaOwner: state.backBufferMsaaView ? state : null });
                         width = this.backBufferWidthOf(state);
                         height = this.backBufferHeightOf(state);
-                        key += "bb" + (format === this.format ? "" : "s") + ";";
+                        key += "bb" + this.objectId(state.backBufferTexture) + (format === this.format ? "" : "s") + ";";
                     }
                     continue;
                 }
@@ -7556,6 +3112,8 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                         "not know; draws into it are dropped rather than " +
                         "redirected to the back buffer", { index, handle });
                     if (index === 0) return null;
+                    // (the slot keeps its place: attachment N is oC#N)
+                    colors.push(null);
                     continue;
                 }
                 const resourceFormat = resource.gpuFormat ||
@@ -7568,6 +3126,7 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                         { index, handle, format: resource.format,
                             gpuFormat: resourceFormat });
                     if (index === 0) return null;
+                    colors.push(null);
                     continue;
                 }
                 const level = state.renderTargetLevels[index] || 0;
@@ -7581,11 +3140,17 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                     face);
                 if (face) ++this.stats.cubeFaceTargetBinds;
                 this.markTextureSubresourceWritten(resource, level, face);
+                // A multisampled target renders into its msaaTexture (one
+                // level, one layer) and resolves into the texture D3D reads
+                const msaaView = resource.msaaTexture ? this.msaaViewFor(resource, srgb) : null;
                 colors.push({ view: targetView,
                     format: srgb ? resource.srgbFormat : resourceFormat,
                     swapchain: false,
                     sampleCount: resource.sampleCount || 1,
-                    resource });
+                    msaaView,
+                    msaaOwner: msaaView ? resource : null,
+                    resource, owner: resource, texture: resource.gpuTexture, level, face,
+                    width: Math.max(1, resource.width >> level), height: Math.max(1, resource.height >> level) });
                 if (index === 0) {
                     width = Math.max(1, resource.width >> level);
                     height = Math.max(1, resource.height >> level);
@@ -7596,14 +3161,15 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                 key += handle + "." + level + "." + face +
                     (srgb ? "s" : "") + ";";
             }
+            while (colors.length && !colors[colors.length - 1]) colors.pop();
             if (!colors.length) return null;
 
             // Depth: an explicitly bound surface wins, then the device's auto
             // depth-stencil, and SetDepthStencilSurface(NULL) means neither.
             let depthView = null;
+            let depthSamples = 1;
             let depthWidth = 0;
             let depthHeight = 0;
-            let substituteDepth = null;
             if (state.depthTargetHandle) {
                 const resource = this.resources.get(state.depthTargetHandle);
                 const level = state.depthTargetLevel || 0;
@@ -7615,6 +3181,7 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                     // targets so both subresource paths have identical cache
                     // and descriptor semantics.
                     depthView = this.targetViewFor(resource, level, false);
+                    depthSamples = resource.sampleCount || 1;
                     depthWidth = Math.max(1, resource.width >> level);
                     depthHeight = Math.max(1, resource.height >> level);
                     key += "d" + state.depthTargetHandle + "." + level;
@@ -7632,79 +3199,83 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                 }
             } else if (!state.depthUnbound && state.depthView) {
                 depthView = state.depthView;
+                depthSamples = state.sampleCount || 1;
                 depthWidth = state.depthWidth;
                 depthHeight = state.depthHeight;
                 key += "dauto";
             } else {
                 key += "dnone";
             }
-            // WebGPU requires the depth attachment to be exactly the colour
-            // target's size. D3D9 requires only that it be *at least* as large,
-            // and render-to-texture leans on that constantly: an app keeps one
-            // full-screen depth surface and renders half-resolution passes --
-            // HDR downsamples, shadow projections, reflections -- against it.
-            //
-            // Dropping depth for those passes is not a small approximation.
-            // Nothing is occluded any more, so every alpha-blended draw that
-            // should have been hidden behind geometry paints over it: the image
-            // washes out and solid objects turn translucent. A substitute depth
-            // texture of the right size preserves the depth *test*, which is
-            // what the pass was relying on. What it cannot preserve is depth
-            // written by an earlier pass, and an app doing this almost always
-            // clears depth on entry anyway -- so this trades a fault that
-            // ruins the frame for one that is usually invisible.
+            // A NULL-format target has no storage of its own: its draws extend over
+            // the viewport and are bounded only by the depth surface, whatever size
+            // either one is.
+            if (depthView && colors[0] && colors[0].resource && colors[0].resource.format === D3DFMT_NULL) {
+                width = depthWidth;
+                height = depthHeight;
+            }
+            if (forClear) {
+                const sampleCount = colors[0].sampleCount || 1;
+                const independentClear = colors.some(color => color &&
+                    (color.width !== width || color.height !== height || color.sampleCount !== sampleCount)) ||
+                    (depthView && (depthWidth !== width || depthHeight !== height || depthSamples !== sampleCount));
+                return { key, colors, depthView, width, height, depthWidth, depthHeight, depthSamples,
+                    independentClear, sampleCount, hasDepth: !!depthView,
+                    formats: colors.map(color => color ? color.format : null) };
+            }
+            // D3D permits a larger shared depth surface. Keep its storage;
+            // colors will use temporary matching extents below. Undersized
+            // depth remains an invalid binding and is omitted as before.
             if (depthView && (depthWidth !== width || depthHeight !== height)) {
                 ++this.stats.depthTargetSizeMismatches;
-                if (depthWidth >= width && depthHeight >= height) {
-                    substituteDepth = this.substituteDepthFor(
-                        state.depthTargetHandle, width, height);
-                    depthView = substituteDepth.view;
-                    ++this.stats.depthTargetSubstitutions;
-                    // Deliberately not warned about here: the substitution
-                    // only loses something if the pass depth-tests against
-                    // contents an earlier pass wrote, and a pass that clears
-                    // depth on entry has none to lose. noteSubstituteDepthUse()
-                    // reports the case that actually does.
-                    // The substitute is part of the pass identity: two passes
-                    // standing in for different depth surfaces must not merge.
-                    key += "dsub" + (state.depthTargetHandle || 0) + "." +
-                        width + "x" + height;
-                } else {
-                    // Smaller than the target: the app is asking to depth-test
-                    // fragments the depth buffer has no storage for. There is
-                    // nothing to substitute that would be more correct.
-                    this.warnOnce("rt-depth-undersized",
-                        "the bound depth surface is smaller than the render " +
-                        "target, so this pass runs without depth testing " +
-                        "rather than being rejected wholesale", {
-                            target: width + "x" + height,
-                            depth: depthWidth + "x" + depthHeight,
-                        });
-                    depthView = null;
-                    key += "!d";
+                if (depthWidth < width || depthHeight < height) {
+                    this.warnOnce("rt-depth-undersized", "the bound depth surface is smaller than the render target; this pass runs without depth",
+                        { target: width + "x" + height, depth: depthWidth + "x" + depthHeight });
+                    depthView = null; key += "!d";
                 }
             }
             // WebGPU requires every attachment of a pass -- and the pipeline
-            // drawing into it -- to agree on the sample count, so slot 0 sets
-            // it and a disagreeing slot is named rather than left to fail
-            // pipeline creation with nothing pointing at the cause.
+            // drawing into it -- to agree on the sample count. D3D9 makes a
+            // disagreeing binding the application's error; slot 0 decides,
+            // and a disagreeing slot or depth surface is left out of the pass
+            // (and named) rather than making it invalid.
             const sampleCount = colors[0].sampleCount || 1;
             for (let index = 1; index < colors.length; ++index) {
-                if ((colors[index].sampleCount || 1) === sampleCount) continue;
+                if (!colors[index] || (colors[index].sampleCount || 1) === sampleCount) continue;
                 this.warnOnce("mrt-sample-count",
                     "the render target slots disagree about multisampling; " +
-                    "WebGPU needs one sample count for the whole pass, so " +
-                    "slot 0's is used", {
+                    "slot 0's sample count is used and the slot is left out", {
                         slot0: sampleCount,
                         slot: index,
                         slotSampleCount: colors[index].sampleCount || 1,
                     });
-                break;
+                colors[index] = null;
+                key += "!" + index;
+            }
+            if (depthView && depthSamples !== sampleCount) {
+                this.warnOnce("depth-sample-count",
+                    "the depth surface's multisample type differs from the " +
+                    "render target's; the pass runs without depth", { depthSamples, sampleCount });
+                depthView = null;
+                key += "!ds";
+            }
+            const physicalWidth = depthView ? depthWidth : width;
+            const physicalHeight = depthView ? depthHeight : height;
+            let promotedColors = false;
+            for (let index = 0; index < colors.length; ++index) {
+                const color = colors[index];
+                if (!color || (color.width === physicalWidth && color.height === physicalHeight)) continue;
+                colors[index] = this.promoteColorTarget(color, physicalWidth, physicalHeight);
+                promotedColors = true;
             }
             return { key: key + "x" + sampleCount, colors, depthView, width,
-                height, substituteDepth,
+                height, promotedColors,
                 hasDepth: !!depthView, sampleCount,
-                formats: colors.map(color => color.format) };
+                // Packed RGB/XRGB targets use RGBA storage on WebGPU, but
+                // their destination alpha is still logically one for blending.
+                opaqueTargetMask: colors.reduce((mask, color, index) => mask |
+                    (color && OPAQUE_COLOR_FORMATS.has(color.resource
+                        ? color.resource.format : state.backBufferD3DFormat) ? 1 << index : 0), 0),
+                formats: colors.map(color => color ? color.format : null) };
         }
 
         // StretchRect between two host-owned surfaces. A same-size, same-format
@@ -7735,34 +3306,37 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
         // Doing it eagerly is what produced "the host cannot address this
         // surface" -- the back buffer genuinely has no view yet at this point.
         onStretchRect(bytes, view, offset, length) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            const sourceHandle = view.getUint32(offset + 4, true);
-            const sourceLevel = view.getUint32(offset + 8, true);
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.StretchRect.device_handle, true));
+            const sourceHandle = view.getUint32(offset + D9WG.F.StretchRect.source_texture_handle, true);
+            const sourceLevel = view.getUint32(offset + D9WG.F.StretchRect.source_level, true);
             const sourceRect = {
-                left: view.getInt32(offset + 12, true),
-                top: view.getInt32(offset + 16, true),
-                right: view.getInt32(offset + 20, true),
-                bottom: view.getInt32(offset + 24, true),
+                left: view.getInt32(offset + D9WG.F.StretchRect.source_left, true),
+                top: view.getInt32(offset + D9WG.F.StretchRect.source_top, true),
+                right: view.getInt32(offset + D9WG.F.StretchRect.source_right, true),
+                bottom: view.getInt32(offset + D9WG.F.StretchRect.source_bottom, true),
             };
-            const destinationHandle = view.getUint32(offset + 28, true);
-            const destinationLevel = view.getUint32(offset + 32, true);
+            const destinationHandle = view.getUint32(offset + D9WG.F.StretchRect.destination_texture_handle, true);
+            const destinationLevel = view.getUint32(offset + D9WG.F.StretchRect.destination_level, true);
             const destinationRect = {
-                left: view.getInt32(offset + 36, true),
-                top: view.getInt32(offset + 40, true),
-                right: view.getInt32(offset + 44, true),
-                bottom: view.getInt32(offset + 48, true),
+                left: view.getInt32(offset + D9WG.F.StretchRect.destination_left, true),
+                top: view.getInt32(offset + D9WG.F.StretchRect.destination_top, true),
+                right: view.getInt32(offset + D9WG.F.StretchRect.destination_right, true),
+                bottom: view.getInt32(offset + D9WG.F.StretchRect.destination_bottom, true),
             };
-            const filterPoint = view.getUint32(offset + 52, true) !== 0;
+            const filterPoint = view.getUint32(offset + D9WG.F.StretchRect.filter_point, true) !== 0;
             // Protocol 1.4. Length-gated: a 1.3 payload has no faces, and a
             // 2D surface is always face 0 anyway.
-            const sourceFace = length >= 64
-                ? view.getUint32(offset + 56, true) : 0;
-            const destinationFace = length >= 64
-                ? view.getUint32(offset + 60, true) : 0;
+            const sourceFace = D9WG.has(length, "StretchRect", "source_face")
+                ? view.getUint32(offset + D9WG.F.StretchRect.source_face, true) : 0;
+            const destinationFace = D9WG.has(length, "StretchRect", "destination_face")
+                ? view.getUint32(offset + D9WG.F.StretchRect.destination_face, true) : 0;
 
-            const source = sourceHandle ? this.resources.get(sourceHandle) : null;
-            const destination = destinationHandle
-                ? this.resources.get(destinationHandle) : null;
+            const surfaceFor = handle => handle === D9WG_AUTO_DEPTH_STENCIL_HANDLE
+                ? state.depthTexture && {isDepth:true,format:state.depthD3DFormat,gpuFormat:DEPTH_FORMAT,
+                    width:state.depthWidth,height:state.depthHeight,gpuTexture:state.depthTexture}
+                : handle ? this.resources.get(handle) : null;
+            const source = surfaceFor(sourceHandle);
+            const destination = surfaceFor(destinationHandle);
             // Handle 0 means the back buffer; a non-zero handle the host does not
             // know is a real error, not a back buffer.
             if ((sourceHandle && !source) || (destinationHandle && !destination) ||
@@ -7792,6 +3366,16 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                 return;
             }
 
+            if ((source && source.isDepth) || (destination && destination.isDepth)) {
+                const whole = (resource,level,rect) => resource && !level &&
+                    !rect.left && !rect.top && rect.right === resource.width && rect.bottom === resource.height;
+                if (!source || !destination || !source.isDepth || !destination.isDepth ||
+                        source.format !== destination.format || source.width !== destination.width || source.height !== destination.height ||
+                        !whole(source,sourceLevel,sourceRect) || !whole(destination,destinationLevel,destinationRect)) {
+                    this.protocolViolation("stretchrect-depth", "Depth StretchRect requires matching whole depth surfaces", {sourceHandle,destinationHandle});
+                    return;
+                }
+            }
             const sourceFormat = source ? formatToGPU(source.format) : this.format;
             const destinationFormat = destination
                 ? formatToGPU(destination.format) : this.format;
@@ -7802,7 +3386,7 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                 const frame = this.ensureFrame();
                 // The face is the copy's z origin: a cube map is a six-layer
                 // 2D texture, so "face 3" is layer 3 of one subresource range.
-                frame.ops.push({ kind: "copy",
+                frame.record({ kind: "copy", writes: this.msaaOwnerOf(destination, state),
                     source: { texture: source.gpuTexture, mipLevel: sourceLevel,
                         origin: { x: sourceRect.left, y: sourceRect.top,
                             z: sourceFace } },
@@ -7840,11 +3424,12 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                 : this.backBufferHeightOf(state);
             const op = {
                 kind: "blit",
+                writes: this.msaaOwnerOf(destination, state),
                 sourceView: source
-                    ? this.blitSourceView(source, sourceLevel, sourceFace) : null,
+                    ? this.blitSourceView(source, sourceLevel, sourceFace) : (this.deviceBackBuffer(state), state.backBufferView),
                 destinationView: destination
                     ? this.targetViewFor(destination, destinationLevel, false,
-                        destinationFace) : null,
+                        destinationFace) : (this.deviceBackBuffer(state), state.backBufferView),
                 destinationFormat,
                 sourceFormat: source ? (source.gpuFormat ||
                     formatToGPU(source.format)) : this.format,
@@ -7857,7 +3442,7 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
                 filterPoint,
             };
             const frame = this.ensureFrame();
-            frame.ops.push(op);
+            frame.record(op);
             if (source) source.frameReferenced = frame.serial;
             if (destination) destination.frameReferenced = frame.serial;
             this.markTextureSubresourceWritten(destination, destinationLevel,
@@ -7866,409 +3451,11 @@ fn d9_ps_main(stage_in: D9GammaOutput) -> @location(0) vec4<f32> {
             if (swapchainInvolved) ++this.stats.blitsThroughBackBuffer;
         }
 
-        // A sampled view of one mip level, cached on the resource.
-        blitSourceView(resource, level, face) {
-            if (!resource.blitViews) resource.blitViews = new Map();
-            const baseArrayLayer = face || 0;
-            const key = level + ":" + baseArrayLayer;
-            let cached = resource.blitViews.get(key);
-            if (!cached) {
-                cached = resource.gpuTexture.createView({
-                    dimension: "2d", baseMipLevel: level, mipLevelCount: 1,
-                    baseArrayLayer, arrayLayerCount: 1,
-                });
-                resource.blitViews.set(key, cached);
-            }
-            return cached;
-        }
-
-        // Shared with renderTargetsFor(): a render-attachment view of one level.
-        // Size-matched stand-in depth attachments, one per distinct size. Kept
-        // for the device's lifetime rather than per frame: an app that renders
-        // half-resolution passes does it every frame, and the sizes it uses are
-        // a handful of fixed values.
-        // Keyed by the depth surface being stood in for as well as the size.
-        // Sharing one texture across every pass of a given size looked
-        // economical and is a correctness bug: two render-to-texture passes at
-        // the same resolution but against *different* depth surfaces would
-        // depth-test against each other's fragments. Which is exactly the
-        // hazard this whole path exists to avoid, arrived at from the other
-        // direction. Kept for the device's lifetime because the set of
-        // (surface, size) pairs an app uses is small and fixed.
-        // A pass is about to depth-test against a stand-in. If nothing cleared
-        // it this frame, it is being read for contents the real (larger) depth
-        // surface holds and this one never received -- the one case where the
-        // substitution actually changes the image.
-        noteSubstituteDepthUse(targets, clearsDepth) {
-            const record = targets && targets.substituteDepth;
-            if (!record) return;
-            // ensureFrame(), not this.frame: a Clear is often the first thing
-            // in a frame, and reading a not-yet-created frame's serial as 0
-            // made the clear and the draw that follows it disagree about which
-            // frame they were in -- so every cleared substitute looked stale.
-            const serial = this.ensureFrame().serial;
-            if (clearsDepth) {
-                record.clearedInFrame = serial;
-                return;
-            }
-            if (record.clearedInFrame === serial) return;
-            ++this.stats.depthTargetSubstitutionsUncleared;
-            this.warnOnce("rt-depth-oversized-uncleared",
-                "a pass depth-tests against a depth surface larger than its " +
-                "render target -- which D3D9 allows and WebGPU does not -- " +
-                "without clearing depth first, so it reads a stand-in that " +
-                "never received what an earlier pass wrote into the larger " +
-                "surface; geometry that should have been occluded is not", {
-                    target: targets.width + "x" + targets.height,
-                });
-        }
-
-        substituteDepthFor(sourceHandle, width, height) {
-            if (!this.substituteDepthViews) this.substituteDepthViews = new Map();
-            const size = width + "x" + height;
-            const key = (sourceHandle || 0) + ":" + size;
-            let record = this.substituteDepthViews.get(key);
-            if (record) return record;
-            const texture = this.device.createTexture({
-                label: "D3D9 substitute depth " + size + " for " +
-                    (sourceHandle || "auto"),
-                size: { width, height, depthOrArrayLayers: 1 },
-                format: DEPTH_FORMAT,
-                usage: TEXTURE_USAGE_RENDER_ATTACHMENT,
-            });
-            // clearedInFrame is what separates the harmless case from the
-            // real one: a pass that clears depth on entry loses nothing by
-            // getting a fresh texture, and that is what render-to-texture does.
-            record = { view: texture.createView(), clearedInFrame: -1 };
-            this.substituteDepthViews.set(key, record);
-            return record;
-        }
-
-        // One attachment view per (level, face, srgb). A cube map is a
-        // six-layer 2D texture here, so rendering into one face is exactly
-        // selecting one array layer -- which is why the layer has to reach this
-        // far rather than being resolved at bind time: an attachment view names
-        // a single subresource, and "the cube" is not one.
-        targetViewFor(resource, level, srgb, layer) {
-            if (!resource.targetViews) resource.targetViews = new Map();
-            const baseArrayLayer = layer || 0;
-            const key = level + ":" + baseArrayLayer + (srgb ? "s" : "");
-            let cached = resource.targetViews.get(key);
-            if (!cached) {
-                cached = resource.gpuTexture.createView({
-                    baseMipLevel: level, mipLevelCount: 1, dimension: "2d",
-                    baseArrayLayer, arrayLayerCount: 1,
-                    ...(srgb ? { format: resource.srgbFormat } : {}),
-                });
-                resource.targetViews.set(key, cached);
-            }
-            return cached;
-        }
-
-        // One pipeline per destination format. The quad is generated from the
-        // vertex index, so a blit needs no vertex buffer at all.
-        blitPipelineFor(format, filterPoint, sourceFormat) {
-            // WebGPU exposes filtering and blending for 32-bit float formats
-            // as independent optional features.  A D3D point blit remains
-            // legal without float32-filterable, but its binding layout and
-            // sampler must explicitly be non-filtering.
-            const unfilterable = isFloat32GPUFormat(sourceFormat) &&
-                !this.deviceFeatures.float32Filterable;
-            const point = filterPoint || unfilterable;
-            const key = format + "|" + (point ? "point" : "linear") + "|" +
-                (unfilterable ? "unfilterable" : "filterable");
-            if (!this.blitPipelines) this.blitPipelines = new Map();
-            let entry = this.blitPipelines.get(key);
-            if (entry) return entry;
-            const module = this.moduleFor(`struct D9BlitUniforms {
-    source_rect: vec4<f32>,
-};
-@group(0) @binding(0) var<uniform> blit: D9BlitUniforms;
-@group(0) @binding(1) var d9_blit_source: texture_2d<f32>;
-@group(0) @binding(2) var d9_blit_sampler: sampler;
-
-struct D9BlitOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn d9_vs_main(@builtin(vertex_index) index: u32) -> D9BlitOutput {
-    // Two triangles covering the whole viewport; setViewport restricts the
-    // output to the destination rect, so no destination maths is needed here.
-    var corners = array<vec2<f32>, 6>(
-        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
-        vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0));
-    let corner = corners[index];
-    var result: D9BlitOutput;
-    result.position = vec4<f32>(corner.x * 2.0 - 1.0, 1.0 - corner.y * 2.0,
-        0.0, 1.0);
-    result.uv = blit.source_rect.xy + corner * blit.source_rect.zw;
-    return result;
-}
-
-@fragment
-fn d9_ps_main(stage_in: D9BlitOutput) -> @location(0) vec4<f32> {
-    return textureSample(d9_blit_source, d9_blit_sampler, stage_in.uv);
-}
-`, "d3d9 blit " + key);
-            const bindGroupLayout = this.device.createBindGroupLayout({
-                entries: [
-                    { binding: 0, visibility: SHADER_STAGE_VERTEX,
-                      buffer: { type: "uniform" } },
-                    { binding: 1, visibility: SHADER_STAGE_FRAGMENT,
-                      texture: { sampleType: unfilterable
-                          ? "unfilterable-float" : "float" } },
-                    { binding: 2, visibility: SHADER_STAGE_FRAGMENT,
-                      sampler: { type: unfilterable
-                          ? "non-filtering" : "filtering" } },
-                ],
-            });
-            const pipeline = this.device.createRenderPipeline({
-                label: "D3D9 blit " + key,
-                layout: this.device.createPipelineLayout(
-                    { bindGroupLayouts: [bindGroupLayout] }),
-                vertex: { module, entryPoint: "d9_vs_main" },
-                fragment: { module, entryPoint: "d9_ps_main",
-                    targets: [{ format }] },
-                primitive: { topology: "triangle-list" },
-            });
-            const sampler = this.device.createSampler({
-                magFilter: point ? "nearest" : "linear",
-                minFilter: point ? "nearest" : "linear",
-                addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge",
-            });
-            entry = { pipeline, bindGroupLayout, sampler };
-            this.blitPipelines.set(key, entry);
-            return entry;
-        }
-
-        // Runs a recorded blit op inside finishFrame, where the swap chain view
-        // exists. `swapView` substitutes for a null source/destination view.
-        replayBlit(encoder, op, swapView) {
-            const sourceView = op.sourceView || swapView;
-            const destinationView = op.destinationView || swapView;
-            if (!sourceView || !destinationView) return null;
-            const entry = this.blitPipelineFor(op.destinationFormat,
-                op.filterPoint, op.sourceFormat);
-            const uniform = this.device.createBuffer({
-                size: 16,
-                usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST,
-            });
-            this.device.queue.writeBuffer(uniform, 0,
-                new Float32Array(op.sourceRect));
-            const bindGroup = this.device.createBindGroup({
-                layout: entry.bindGroupLayout,
-                entries: [
-                    { binding: 0, resource: { buffer: uniform } },
-                    { binding: 1, resource: sourceView },
-                    { binding: 2, resource: entry.sampler },
-                ],
-            });
-            const pass = encoder.beginRenderPass({
-                colorAttachments: [{ view: destinationView,
-                    loadOp: "load", storeOp: "store" }],
-            });
-            ++this.stats.renderPasses;
-            pass.setPipeline(entry.pipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.setViewport(op.viewport[0], op.viewport[1], op.viewport[2],
-                op.viewport[3], 0, 1);
-            pass.draw(6);
-            pass.end();
-            return uniform;
-        }
-
-        rectClearPipelineFor(targets, clearsColor, clearsDepth, clearsStencil) {
-            // The key has to describe the *pass* this pipeline will be used
-            // in, not just what the clear writes. WebGPU requires a pipeline's
-            // attachment state -- colour formats, whether there is a
-            // depth-stencil attachment, and the sample count -- to match the
-            // pass exactly. Keying on the clear flags alone let a pipeline
-            // built for a depth-less pass be reused in a pass that has depth,
-            // which fails validation at setPipeline and invalidates the whole
-            // command buffer, so the frame draws nothing. 3DMark 2001 hits
-            // this the moment one pass drops depth (an undersized depth
-            // surface does that) and the next one has it.
-            const key = [targets.formats.join(","), clearsColor ? "c" : "-",
-                clearsDepth ? "d" : "-", clearsStencil ? "s" : "-",
-                targets.hasDepth ? "z" : "-",
-                targets.sampleCount || 1].join("|");
-            if (!this.rectClearPipelines) this.rectClearPipelines = new Map();
-            let entry = this.rectClearPipelines.get(key);
-            if (entry) return entry;
-            const colorFields = targets.formats.map((_, index) =>
-                "    @location(" + index + ") color" + index + ": vec4<f32>,");
-            const colorWrites = targets.formats.map((_, index) =>
-                "    result.color" + index + " = clear.color;");
-            const depthField = clearsDepth
-                ? "    @builtin(frag_depth) depth: f32," : "";
-            const depthWrite = clearsDepth
-                ? "    result.depth = clear.depth.x;" : "";
-            const module = this.moduleFor(`struct D9RectClearUniforms {
-    color: vec4<f32>,
-    depth: vec4<f32>,
-};
-@group(0) @binding(0) var<uniform> clear: D9RectClearUniforms;
-
-struct D9RectClearOutput {
-${colorFields.join("\n")}
-${depthField}
-};
-
-@vertex
-fn d9_vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
-    var positions = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0),
-        vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
-    return vec4<f32>(positions[index], 0.0, 1.0);
-}
-
-@fragment
-fn d9_ps_main() -> D9RectClearOutput {
-    var result: D9RectClearOutput;
-${colorWrites.join("\n")}
-${depthWrite}
-    return result;
-}
-`, "d3d9 rectangle clear " + key);
-            const bindGroupLayout = this.device.createBindGroupLayout({
-                entries: [{ binding: 0, visibility: SHADER_STAGE_FRAGMENT,
-                    buffer: { type: "uniform" } }],
-            });
-            const descriptor = {
-                label: "D3D9 rectangle clear " + key,
-                layout: this.device.createPipelineLayout(
-                    { bindGroupLayouts: [bindGroupLayout] }),
-                vertex: { module, entryPoint: "d9_vs_main" },
-                fragment: { module, entryPoint: "d9_ps_main",
-                    targets: targets.formats.map(format => ({ format,
-                        writeMask: clearsColor ? 0xF : 0 })) },
-                primitive: { topology: "triangle-list" },
-            };
-            if (targets.hasDepth) {
-                const stencil = clearsStencil ? { compare: "always",
-                    failOp: "keep", depthFailOp: "keep", passOp: "replace" } : {};
-                descriptor.depthStencil = { format: DEPTH_FORMAT,
-                    depthWriteEnabled: clearsDepth, depthCompare: "always",
-                    stencilFront: stencil, stencilBack: stencil,
-                    stencilReadMask: clearsStencil ? 0xff : 0,
-                    stencilWriteMask: clearsStencil ? 0xff : 0 };
-            }
-            if ((targets.sampleCount || 1) > 1)
-                descriptor.multisample = { count: targets.sampleCount };
-            entry = { pipeline: this.device.createRenderPipeline(descriptor),
-                bindGroupLayout };
-            this.rectClearPipelines.set(key, entry);
-            return entry;
-        }
-
-        replayRectClear(encoder, op, swapView, swapSrgbView) {
-            const entry = this.rectClearPipelineFor(op.targets, op.clearsColor,
-                op.clearsDepth, op.clearsStencil);
-            const uniform = this.device.createBuffer({ size: 32,
-                usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST });
-            this.device.queue.writeBuffer(uniform, 0, new Float32Array([
-                op.color.r, op.color.g, op.color.b, op.color.a,
-                op.depth, 0, 0, 0,
-            ]));
-            const bindGroup = this.device.createBindGroup({
-                layout: entry.bindGroupLayout,
-                entries: [{ binding: 0, resource: { buffer: uniform } }],
-            });
-            const descriptor = {
-                colorAttachments: op.targets.colors.map(color => ({
-                    view: color.swapchain
-                        ? (color.format === this.swapchainSrgbFormat
-                            ? swapSrgbView : swapView)
-                        : color.view,
-                    loadOp: "load", storeOp: "store",
-                })),
-            };
-            if (op.targets.depthView) descriptor.depthStencilAttachment = {
-                view: op.targets.depthView,
-                depthLoadOp: "load", depthStoreOp: "store",
-                stencilLoadOp: "load", stencilStoreOp: "store",
-            };
-            const pass = encoder.beginRenderPass(descriptor);
-            ++this.stats.renderPasses;
-            pass.setPipeline(entry.pipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.setStencilReference(op.stencil & 0xff);
-            for (const rect of op.rects) {
-                pass.setViewport(rect.left, rect.top, rect.right - rect.left,
-                    rect.bottom - rect.top, 0, 1);
-                pass.draw(3);
-            }
-            pass.end();
-            return uniform;
-        }
-
-        colorFillPipelineFor(format) {
-            if (!this.colorFillPipelines) this.colorFillPipelines = new Map();
-            let entry = this.colorFillPipelines.get(format);
-            if (entry) return entry;
-            const module = this.moduleFor(`struct D9ColorFillUniforms {
-    color: vec4<f32>,
-};
-@group(0) @binding(0) var<uniform> fill: D9ColorFillUniforms;
-
-@vertex
-fn d9_vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
-    var positions = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0),
-        vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
-    return vec4<f32>(positions[index], 0.0, 1.0);
-}
-
-@fragment
-fn d9_ps_main() -> @location(0) vec4<f32> {
-    return fill.color;
-}
-`, "d3d9 ColorFill " + format);
-            const bindGroupLayout = this.device.createBindGroupLayout({
-                entries: [{ binding: 0, visibility: SHADER_STAGE_FRAGMENT,
-                    buffer: { type: "uniform" } }],
-            });
-            const pipeline = this.device.createRenderPipeline({
-                label: "D3D9 ColorFill " + format,
-                layout: this.device.createPipelineLayout(
-                    { bindGroupLayouts: [bindGroupLayout] }),
-                vertex: { module, entryPoint: "d9_vs_main" },
-                fragment: { module, entryPoint: "d9_ps_main",
-                    targets: [{ format }] },
-                primitive: { topology: "triangle-list" },
-            });
-            entry = { pipeline, bindGroupLayout };
-            this.colorFillPipelines.set(format, entry);
-            return entry;
-        }
-
-        replayColorFill(encoder, op) {
-            const pass = encoder.beginRenderPass({ colorAttachments: [{
-                view: op.targetView, loadOp: op.isFull ? "clear" : "load",
-                storeOp: "store", ...(op.isFull ? { clearValue: {
-                    r: op.rgba[0], g: op.rgba[1], b: op.rgba[2], a: op.rgba[3],
-                } } : {}),
-            }] });
-            ++this.stats.renderPasses;
-            let transient = null;
-            if (!op.isFull) {
-                const entry = this.colorFillPipelineFor(op.format);
-                transient = this.device.createBuffer({ size: 16,
-                    usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST });
-                this.device.queue.writeBuffer(transient, 0,
-                    new Float32Array(op.rgba));
-                const bindGroup = this.device.createBindGroup({
-                    layout: entry.bindGroupLayout,
-                    entries: [{ binding: 0, resource: { buffer: transient } }],
-                });
-                pass.setPipeline(entry.pipeline);
-                pass.setBindGroup(0, bindGroup);
-                pass.setViewport(op.left, op.top, op.right - op.left,
-                    op.bottom - op.top, 0, 1);
-                pass.draw(3);
-            }
-            pass.end();
-            return transient;
+        // What a write outside a render pass leaves stale: the multisampled
+        // texture behind `destination` (null: the back buffer of `state`)
+        msaaOwnerOf(destination, state) {
+            if (destination) return destination.msaaTexture ? destination : null;
+            return state.backBufferMsaaView ? state : null;
         }
 
         // A full ColorFill is a clear pass; a partial one is a viewport-limited
@@ -8282,15 +3469,15 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         // exact text, so each distinct message arrives once no matter how many
         // frames it repeats on.
         onGuestLog(bytes, view, offset, length, metadata) {
-            const severity = view.getUint32(offset, true);
-            const textBytes = view.getUint32(offset + 4, true);
+            const severity = view.getUint32(offset + D9WG.F.GuestLog.severity, true);
+            const textBytes = view.getUint32(offset + D9WG.F.GuestLog.text_bytes, true);
             if (8 + textBytes > length) {
                 ++this.stats.malformedBatches;
                 throw new D9WGStreamError("D9WG guest log text overruns the command");
             }
             let text = "";
             for (let index = 0; index < textBytes; ++index)
-                text += String.fromCharCode(bytes[offset + 8 + index]);
+                text += String.fromCharCode(bytes[offset + D9WG.STRUCTS.GuestLog.size + index]);
             ++this.stats.guestReports;
             (this.guestReports || (this.guestReports = [])).push(text);
             // A state restore replays the graphics journal, and with it every
@@ -8310,17 +3497,23 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onColorFill(bytes, view, offset, length) {
-            const resource = this.resources.get(view.getUint32(offset + 4, true));
-            const level = view.getUint32(offset + 8, true);
-            const color = view.getUint32(offset + 12, true);
-            const face = length >= 40 ? view.getUint32(offset + 32, true) : 0;
+            const handle = view.getUint32(offset + D9WG.F.ColorFill.texture_handle, true);
+            const state = this.devices.get(view.getUint32(offset + D9WG.F.ColorFill.device_handle, true));
+            const resource = handle ? this.resources.get(handle) : state && {
+                gpuTexture: this.deviceBackBuffer(state), width: this.backBufferWidthOf(state),
+                height: this.backBufferHeightOf(state), format: state.backBufferD3DFormat || 22,
+                textureDescriptor: { usage: TEXTURE_USAGE_RENDER_ATTACHMENT }
+            };
+            const level = view.getUint32(offset + D9WG.F.ColorFill.level, true);
+            const color = view.getUint32(offset + D9WG.F.ColorFill.color, true);
+            const face = D9WG.has(length, "ColorFill", "face") ? view.getUint32(offset + D9WG.F.ColorFill.face, true) : 0;
             // The question is whether this texture can be an attachment, not
             // whether D3D9 called it a render target. An offscreen plain
             // surface in D3DPOOL_DEFAULT carries no D3DUSAGE_RENDERTARGET and
             // ColorFill is nevertheless defined on it -- that is most of what
             // the call exists for -- and the GPU texture behind it is
             // attachable all the same.
-            const attachable = resource && resource.textureDescriptor &&
+            const attachable = resource && !resource.isDepth && resource.textureDescriptor &&
                 (resource.textureDescriptor.usage &
                     TEXTURE_USAGE_RENDER_ATTACHMENT) !== 0;
             if (!resource || !resource.gpuTexture || !attachable) {
@@ -8336,12 +3529,12 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             // Shares targetViewFor's cache and its single-layer descriptor.
             // Building a view here by hand left the array layers unbounded,
             // which on a cube map is a six-layer view where the pass wants one.
-            const targetView = this.targetViewFor(resource, level, false,
-                Math.min(face, (resource.layerCount || 1) - 1));
-            const left = view.getInt32(offset + 16, true);
-            const top = view.getInt32(offset + 20, true);
-            const right = view.getInt32(offset + 24, true);
-            const bottom = view.getInt32(offset + 28, true);
+            const targetView = handle ? this.targetViewFor(resource, level, false,
+                Math.min(face, (resource.layerCount || 1) - 1)) : state.backBufferView;
+            const left = view.getInt32(offset + D9WG.F.ColorFill.left, true);
+            const top = view.getInt32(offset + D9WG.F.ColorFill.top, true);
+            const right = view.getInt32(offset + D9WG.F.ColorFill.right, true);
+            const bottom = view.getInt32(offset + D9WG.F.ColorFill.bottom, true);
             const fullWidth = Math.max(1, resource.width >> level);
             const fullHeight = Math.max(1, resource.height >> level);
             const clippedLeft = Math.max(0, Math.min(fullWidth, left));
@@ -8354,14 +3547,20 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 return;
             const rgba = [((color >>> 16) & 0xff) / 255,
                 ((color >>> 8) & 0xff) / 255, (color & 0xff) / 255,
-                ((color >>> 24) & 0xff) / 255];
+                resource.format === formats.D3DFMT_X8R8G8B8 || resource.format === formats.D3DFMT_X1R5G5B5 ||
+                    resource.format === formats.D3DFMT_X4R4G4B4 || resource.format === formats.D3DFMT_X8B8G8R8 ||
+                    resource.format === formats.D3DFMT_R5G6B5 || resource.format === formats.D3DFMT_R8G8B8
+                    ? 1 : ((color >>> 24) & 0xff) / 255];
+            if (resource.format === formats.D3DFMT_G16R16) { rgba[2] = 1; rgba[3] = 1; }
             const isFull = clippedLeft === 0 && clippedTop === 0 &&
                 clippedRight === fullWidth && clippedBottom === fullHeight;
             const frame = this.ensureFrame();
-            frame.ops.push({ kind: "color-fill", targetView,
-                format: formatToGPU(resource.format), rgba, isFull,
+            frame.record({ kind: "color-fill", targetView,
+                writes: handle ? (resource.msaaTexture ? resource : null) : (state.backBufferMsaaView ? state : null),
+                format: handle ? formatToGPU(resource.format) : this.format, rgba, isFull,
                 left: clippedLeft, top: clippedTop,
                 right: clippedRight, bottom: clippedBottom });
+            if (handle) this.markTextureSubresourceWritten(resource, level, face);
             resource.frameReferenced = frame.serial;
             ++this.stats.colorFills;
         }
@@ -8396,14 +3595,29 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             let hasPointSize = false;
             let blendWeightType = -1;
             let blendIndicesType = -1;
-            const texCoordSets = [];
+            let position2Type = -1, normal2Type = -1;
+            const texCoordSets = [], texCoordDimensions = {};
+            let inputConversions = null;
             for (const element of elements) {
+                const location = fixedFunctionLocationFor(element);
+                const conversion = shaderPipeline.vertexInputConversion(element.type);
+                // COLOR keeps its existing per-color swizzle. Blend inputs have
+                // their own palette/index rules and are not mapped without a plan.
+                if (location >= 0 && conversion &&
+                        !(conversion === "color" && element.usage === DECLUSAGE_COLOR)) {
+                    if (!inputConversions) inputConversions = {};
+                    inputConversions[location] = conversion;
+                }
                 if (element.usage === DECLUSAGE_BLENDWEIGHT &&
                         element.usageIndex === 0)
                     blendWeightType = element.type;
                 else if (element.usage === DECLUSAGE_BLENDINDICES &&
                         element.usageIndex === 0)
                     blendIndicesType = element.type;
+                if (element.usage === DECLUSAGE_POSITION && element.usageIndex === 1)
+                    position2Type = element.type;
+                if (element.usage === DECLUSAGE_NORMAL && element.usageIndex === 1)
+                    normal2Type = element.type;
                 if (element.usage === DECLUSAGE_POSITION && element.usageIndex === 0)
                     positionType = "world";
                 else if (element.usage === DECLUSAGE_POSITIONT && element.usageIndex === 0)
@@ -8423,8 +3637,10 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                     hasPointSize = true;
                 else if (element.usage === DECLUSAGE_TEXCOORD &&
                         element.usageIndex < MAX_TEXCOORD_SETS &&
-                        !texCoordSets.includes(element.usageIndex))
+                        !texCoordSets.includes(element.usageIndex)) {
                     texCoordSets.push(element.usageIndex);
+                    texCoordDimensions[element.usageIndex] = [1, 2, 3, 4, 4, 4, 2, 4, 4, 2, 4, 2, 4, 3, 3, 2, 4][element.type] || 4;
+                }
             }
             if (!positionType) return null;
             texCoordSets.sort((a, b) => a - b);
@@ -8434,8 +3650,9 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             // whether they are read at all is a render-state question that
             // vertexBlendPlan() answers once the state is in hand.
             return { positionType, hasColor, colorIsBGRA, hasColor1,
-                color1IsBGRA, hasNormal, hasPointSize, texCoordSets,
-                blendWeightType, blendIndicesType,
+                color1IsBGRA, hasNormal, hasPointSize, texCoordSets, texCoordDimensions,
+                blendWeightType, blendIndicesType, position2Type, normal2Type,
+                ...(inputConversions ? { inputConversions } : null),
                 hasTexCoord: texCoordSets.length > 0 };
         }
 
@@ -8453,14 +3670,24 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             // there is nothing for a world matrix to pose.
             if (signature.positionType === "screen") return null;
             if (mode === D3DVBF_TWEENING) {
-                // Vertex tweening interpolates two *streams* by
-                // D3DRS_TWEENFACTOR rather than blending matrices; nothing here
-                // implements it, and fill_caps() does not claim
-                // D3DVTXPCAPS_TWEENING.
-                this.warnOnce("ff-vertex-tweening",
-                    "D3DVBF_TWEENING is not implemented; the draw is posed by " +
-                    "world matrix 0 alone");
-                return null;
+                const hasPosition2 = signature.position2Type >= 0;
+                const hasNormal2 = signature.normal2Type >= 0;
+                if (!hasPosition2 && !hasNormal2)
+                    throw new Error("D3DVBF_TWEENING requires POSITION1 or NORMAL1");
+                const conversions = { ...signature.inputConversions };
+                if (hasPosition2) {
+                    const conversion = shaderPipeline.vertexInputConversion(signature.position2Type);
+                    if (conversion) conversions[FF_LOCATION_BLENDWEIGHT] = conversion;
+                }
+                if (hasNormal2) {
+                    const conversion = shaderPipeline.vertexInputConversion(signature.normal2Type);
+                    if (conversion) conversions[FF_LOCATION_BLENDINDICES] = conversion;
+                }
+                signature.inputConversions = conversions;
+                // Tween and weighted matrix blending are mutually exclusive;
+                // reuse their two attribute locations and one world matrix.
+                return { tween: true, hasPosition2, hasNormal2, matrixCount: 1,
+                    matrixSlots: 1, weightCount: 0, indexed: false };
             }
             const indexed = (rs.get(D3DRS_INDEXEDVERTEXBLENDENABLE) || 0) !== 0;
             // 1/2/3WEIGHTS carry that many weights and one more matrix;
@@ -8595,8 +3822,6 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                     addressV: samplerState(index, D3DSAMP_ADDRESSV, 1),
                     addressW: samplerState(index, D3DSAMP_ADDRESSW, 1),
                     borderColor: samplerState(index, D3DSAMP_BORDERCOLOR, 0),
-                    lodBias: lodBiasFor(samplerState(index,
-                        D3DSAMP_MIPMAPLODBIAS, 0)),
                 };
                 // Which arguments a stage reads decides what has to be declared
                 // and uploaded for it. Getting this wrong in either direction is
@@ -8607,13 +3832,27 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 // unconditionally would declare textures and upload constants a
                 // stage never touches -- and, worse, would leave the app's stale
                 // arg0 deciding what gets bound.
-                const readsArg0 = op =>
-                    op === D3DTOP_MULTIPLYADD || op === D3DTOP_LERP;
-                const argumentsUsed = [stage.colorArg1, stage.colorArg2];
-                if (stage.alphaOp !== D3DTOP_DISABLE)
-                    argumentsUsed.push(stage.alphaArg1, stage.alphaArg2);
-                if (readsArg0(stage.colorOp)) argumentsUsed.push(stage.colorArg0);
-                if (readsArg0(stage.alphaOp)) argumentsUsed.push(stage.alphaArg0);
+                const texture = this.resources.get(state.textures.get(index));
+                // A compare-mode depth texture is a hardware shadow map, which the
+                // cascade samples as a comparison against the third coordinate.
+                const shadowMap = this.depthSampleModeFor(state.textures.get(index)) === "depth-compare";
+                const usable = texture && (!texture.isDepth || shadowMap);
+                for (const channel of ["color", "alpha"]) {
+                    const normalized = ffp.normalizeTextureOperation(stage[channel + "Op"],
+                        [0, 1, 2].map(argument => stage[channel + "Arg" + argument]), !!usable);
+                    stage[channel + "Op"] = normalized.op;
+                    normalized.args.forEach((argument, i) => { stage[channel + "Arg" + i] = argument; });
+                }
+                // DOT3 writes all four channels; a stale alpha operation and
+                // its arguments neither sample a texture nor affect the key.
+                if (stage.colorOp === D3DTOP_DOTPRODUCT3) {
+                    stage.alphaOp = D3DTOP_DISABLE;
+                    stage.alphaArg0 = stage.alphaArg1 = stage.alphaArg2 = D3DTA_CURRENT;
+                }
+                const argumentsUsed = [
+                    ...ffp.textureOpArguments(stage.colorOp).map(i => stage["colorArg" + i]),
+                    ...ffp.textureOpArguments(stage.alphaOp).map(i => stage["alphaArg" + i]),
+                ];
                 const opsUsed = [stage.colorOp];
                 if (stage.alphaOp !== D3DTOP_DISABLE) opsUsed.push(stage.alphaOp);
                 // Support is per *channel*, not per operation: the
@@ -8642,16 +3881,23 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                         opsUsed.includes(D3DTOP_BLENDTEXTUREALPHAPM);
                 if (opsUsed.includes(D3DTOP_BLENDFACTORALPHA))
                     usesTextureFactor = true;
+                stage.samplesTexture ||= ffp.textureOpReadsTexture(stage.colorOp, []) ||
+                    ffp.textureOpReadsTexture(stage.alphaOp, []);
                 if (stage.samplesTexture) {
-                    const texture = this.resources.get(state.textures.get(index));
                     // A depth texture counts as nothing bound here. The fixed
                     // function cascade has no comparison reference to offer, so
                     // it takes the white fallback and viewForStage() reports
                     // why -- rather than reaching a float layout entry with a
                     // depth view, which is invalid rather than merely wrong.
-                    const usable = texture && !texture.isDepth;
                     stage.textureType = usable ? (texture.textureType || "2d") : "2d";
                     stage.hasTextureBound = !!usable;
+                    stage.sampleSwizzle = usable ? samplingSwizzle(texture.format) : "";
+                    if (shadowMap) stage.depthCompare = true;
+                    const fetch4 = usable ? this.fetch4ChannelFor(state, index, texture) : undefined;
+                    if (fetch4 !== undefined) {
+                        stage.fetch4 = fetch4;
+                        stage.sampleSwizzle = "";
+                    }
                     // DirectDraw stores four independent key kinds. Texture
                     // rendering uses SRCBLT (kind 0), the same source-domain
                     // key used by a keyed blit.  Keep the widened integer
@@ -8668,6 +3914,10 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                 const transformFlags =
                     stageState(index, D3DTSS_TEXTURETRANSFORMFLAGS, 0);
                 stage.transformCount = transformFlags & 0xFF;
+                // World fixed-function outputs place the projection divisor in W;
+                // programmable VS outputs already have their native W component.
+                stage.projectionComponent = options && options.screenVertexStage
+                    ? (["w", "x", "y", "z", "w"][stage.transformCount] || "w") : "w";
                 stage.projected = (transformFlags & D3DTTFF_PROJECTED) !== 0;
                 const coordIndex = stageState(index, D3DTSS_TEXCOORDINDEX, index);
                 stage.texCoordIndex = coordIndex & 0xFFFF;
@@ -8736,15 +3986,9 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                     stage.coordVarying = this.debug.texcoordFromStageIndex
                         ? Math.min(stage.index, MAX_TEXCOORD_SETS - 1)
                         : Math.min(stage.texCoordIndex, MAX_TEXCOORD_SETS - 1);
-                    if (stage.tciMode !== D3DTSS_TCI_PASSTHRU ||
-                            stage.transformCount) {
-                        unsupported.push("stage " + stage.index + " asks for " +
-                            "fixed-function coordinate generation/transform " +
-                            "while a vertex shader is bound, which D3D9 does " +
-                            "not apply either");
-                        stage.transformCount = 0;
-                        stage.projected = false;
-                    }
+                    // A programmable VS bypasses coordinate generation and
+                    // matrices, but projection remains a pixel sampling operation.
+                    stage.transformCount = 0;
                 }
             } else {
                 for (const stage of stages) stage.coordVarying = stage.index;
@@ -8833,7 +4077,7 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
                     continue;
                 }
                 const stream = state.streams.get(element.stream);
-                if (!stream || !stream.stride) continue;
+                if (!stream || (!stream.bufferHandle && !stream.userPointer)) continue;
                 let entry = perStream.get(element.stream);
                 if (!entry) {
                     const frequency = (stream.frequency ?? 1) >>> 0;
@@ -8868,31 +4112,23 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
             return layouts;
         }
 
-        onCreateVertexDeclaration(bytes, view, offset, length) {
-            const handle = view.getUint32(offset + 4, true);
-            const count = view.getUint32(offset + 8, true);
-            const elements = this.decodeVertexElements(bytes, view, offset + 16, count);
-            this.resources.set(handle,
-                { kind: RESOURCE_VERTEX_DECLARATION, elements });
-        }
-
         onSetVertexDeclaration(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const declarationHandle = view.getUint32(offset + 4, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetVertexDeclaration.device_handle, true);
+            const declarationHandle = view.getUint32(offset + D9WG.F.SetVertexDeclaration.declaration_handle, true);
             const state = this.deviceState(deviceHandle);
             state.vertexDeclarationHandle = declarationHandle;
             state.fvfElements = null;
         }
 
         onSetFVF(bytes, view, offset, length) {
-            const deviceHandle = view.getUint32(offset, true);
-            const count = view.getUint32(offset + 8, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetFVF.device_handle, true);
+            const count = view.getUint32(offset + D9WG.F.SetFVF.element_count, true);
             const state = this.deviceState(deviceHandle);
-            state.fvfElements = this.decodeVertexElements(bytes, view, offset + 16, count);
+            state.fvfElements = this.decodeVertexElements(bytes, view, offset + D9WG.STRUCTS.SetFVF.size, count);
             // Kept only so a diagnostic can say which FVF produced a
             // declaration; nothing in the render path reads it, because the
             // guest already expanded it into the element shape above.
-            state.fvf = view.getUint32(offset + 4, true);
+            state.fvf = view.getUint32(offset + D9WG.F.SetFVF.fvf, true);
             state.vertexDeclarationHandle = 0;
         }
 
@@ -8907,9 +4143,9 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onSetRenderState(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const stateId = view.getUint32(offset + 4, true);
-            const value = view.getUint32(offset + 8, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetRenderState.device_handle, true);
+            const stateId = view.getUint32(offset + D9WG.F.SetRenderState.state, true);
+            const value = view.getUint32(offset + D9WG.F.SetRenderState.value, true);
             this.deviceState(deviceHandle).renderStates.set(stateId, value);
             this.noteUnreadState("renderState", CONSUMED_RENDER_STATES, stateId);
             if (stateId === D3DRS_SRGBWRITEENABLE && value !== 0) {
@@ -8958,17 +4194,17 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onSetTextureStageState(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const stage = view.getUint32(offset + 4, true);
-            const stateId = view.getUint32(offset + 8, true);
-            const value = view.getUint32(offset + 12, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetTextureStageState.device_handle, true);
+            const stage = view.getUint32(offset + D9WG.F.SetTextureStageState.stage, true);
+            const stateId = view.getUint32(offset + D9WG.F.SetTextureStageState.state, true);
+            const value = view.getUint32(offset + D9WG.F.SetTextureStageState.value, true);
             this.deviceState(deviceHandle).textureStageStates.set(stage * 64 + stateId, value);
         }
 
         onSetTexture(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const stage = view.getUint32(offset + 4, true);
-            const textureHandle = view.getUint32(offset + 8, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetTexture.device_handle, true);
+            const stage = view.getUint32(offset + D9WG.F.SetTexture.stage, true);
+            const textureHandle = view.getUint32(offset + D9WG.F.SetTexture.texture_handle, true);
             this.deviceState(deviceHandle).textures.set(stage, textureHandle);
         }
 
@@ -8979,82 +4215,82 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         // lighting math. Real consumption is M2 (sampler variants, 4.4/12) and
         // M2/M3 (lighting) work.
         onSetSamplerState(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const sampler = view.getUint32(offset + 4, true);
-            const stateId = view.getUint32(offset + 8, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetSamplerState.device_handle, true);
+            const sampler = view.getUint32(offset + D9WG.F.SetSamplerState.sampler, true);
+            const stateId = view.getUint32(offset + D9WG.F.SetSamplerState.state, true);
             this.noteUnreadState("samplerState", CONSUMED_SAMPLER_STATES, stateId);
-            const value = view.getUint32(offset + 12, true);
+            const value = view.getUint32(offset + D9WG.F.SetSamplerState.value, true);
             this.deviceState(deviceHandle).samplerStates.set(sampler * 64 + stateId, value);
         }
 
         onSetMaterial(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetMaterial.device_handle, true);
             const readVec4 = base => [
                 view.getFloat32(base, true), view.getFloat32(base + 4, true),
                 view.getFloat32(base + 8, true), view.getFloat32(base + 12, true),
             ];
             this.deviceState(deviceHandle).material = {
-                diffuse: readVec4(offset + 4), ambient: readVec4(offset + 20),
-                specular: readVec4(offset + 36), emissive: readVec4(offset + 52),
-                power: view.getFloat32(offset + 68, true),
+                diffuse: readVec4(offset + D9WG.F.SetMaterial.diffuse), ambient: readVec4(offset + D9WG.F.SetMaterial.ambient),
+                specular: readVec4(offset + D9WG.F.SetMaterial.specular), emissive: readVec4(offset + D9WG.F.SetMaterial.emissive),
+                power: view.getFloat32(offset + D9WG.F.SetMaterial.power, true),
             };
         }
 
         onSetLight(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const index = view.getUint32(offset + 4, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetLight.device_handle, true);
+            const index = view.getUint32(offset + D9WG.F.SetLight.index, true);
             const readVec = (base, count) => {
                 const out = [];
                 for (let i = 0; i < count; ++i) out.push(view.getFloat32(base + i * 4, true));
                 return out;
             };
             this.deviceState(deviceHandle).lights.set(index, {
-                type: view.getUint32(offset + 8, true),
-                diffuse: readVec(offset + 12, 4), specular: readVec(offset + 28, 4),
-                ambient: readVec(offset + 44, 4), position: readVec(offset + 60, 3),
-                direction: readVec(offset + 72, 3), range: view.getFloat32(offset + 84, true),
-                falloff: view.getFloat32(offset + 88, true),
-                attenuation: readVec(offset + 92, 3),
-                theta: view.getFloat32(offset + 104, true), phi: view.getFloat32(offset + 108, true),
+                type: view.getUint32(offset + D9WG.F.SetLight.type, true),
+                diffuse: readVec(offset + D9WG.F.SetLight.diffuse, 4), specular: readVec(offset + D9WG.F.SetLight.specular, 4),
+                ambient: readVec(offset + D9WG.F.SetLight.ambient, 4), position: readVec(offset + D9WG.F.SetLight.position, 3),
+                direction: readVec(offset + D9WG.F.SetLight.direction, 3), range: view.getFloat32(offset + D9WG.F.SetLight.range, true),
+                falloff: view.getFloat32(offset + D9WG.F.SetLight.falloff, true),
+                attenuation: readVec(offset + D9WG.F.SetLight.attenuation, 3),
+                theta: view.getFloat32(offset + D9WG.F.SetLight.theta, true), phi: view.getFloat32(offset + D9WG.F.SetLight.phi, true),
             });
         }
 
         onLightEnable(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const index = view.getUint32(offset + 4, true);
-            const enable = view.getUint32(offset + 8, true) !== 0;
+            const deviceHandle = view.getUint32(offset + D9WG.F.LightEnable.device_handle, true);
+            const index = view.getUint32(offset + D9WG.F.LightEnable.index, true);
+            const enable = view.getUint32(offset + D9WG.F.LightEnable.enable, true) !== 0;
             this.deviceState(deviceHandle).lightEnabled.set(index, enable);
         }
 
         onSetViewport(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetViewport.device_handle, true);
             const state = this.deviceState(deviceHandle);
-            // MinZ/MaxZ have been on the wire since M1 (D9WGSetViewport) and
-            // used to be dropped here, with recordDraw hardcoding 0..1 into
-            // setViewport. D3D9's viewport depth range is not decoration: an app
-            // that composites a 3D object into a 2D panel routinely restricts it
-            // so the object cannot collide in depth with the interface around
-            // it, and discarding that puts the object at its natural depth --
-            // where whatever the app expected to be in front of it no longer is.
-            const minZ = view.getFloat32(offset + 20, true);
-            const maxZ = view.getFloat32(offset + 24, true);
+            // Native XP stores finite ranges outside [0,1]. Those need a
+            // fragment-depth mapping; clamping the endpoints changes the image.
+            let minZ = view.getFloat32(offset + D9WG.F.SetViewport.min_z, true);
+            let maxZ = view.getFloat32(offset + D9WG.F.SetViewport.max_z, true);
+            if (!Number.isFinite(minZ) || !Number.isFinite(maxZ)) {
+                this.protocolViolation("viewport-depth", "SetViewport depth range is nonfinite", {minZ, maxZ});
+                return;
+            }
+            // Native D3D keeps the API values, but rasterization uses at
+            // least a .001 depth span, including equal or reversed endpoints.
+            // Guest GetViewport still returns its unmodified stored values.
+            maxZ = Math.max(maxZ, Math.fround(minZ + .001));
             state.viewport = {
-                x: view.getUint32(offset + 4, true),
-                y: view.getUint32(offset + 8, true),
-                width: view.getUint32(offset + 12, true),
-                height: view.getUint32(offset + 16, true),
-                // A device that never calls SetViewport, and any guest that
-                // sends zeros, still has to mean the D3D9 default range.
-                minZ: Number.isFinite(minZ) ? minZ : 0,
-                maxZ: Number.isFinite(maxZ) && maxZ !== 0 ? maxZ : 1,
+                x: view.getUint32(offset + D9WG.F.SetViewport.x, true),
+                y: view.getUint32(offset + D9WG.F.SetViewport.y, true),
+                width: view.getUint32(offset + D9WG.F.SetViewport.width, true),
+                height: view.getUint32(offset + D9WG.F.SetViewport.height, true),
+                minZ, maxZ,
             };
         }
 
         onSetTransform(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const transformState = view.getUint32(offset + 4, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetTransform.device_handle, true);
+            const transformState = view.getUint32(offset + D9WG.F.SetTransform.state, true);
             const matrix = new Float32Array(16);
-            for (let i = 0; i < 16; ++i) matrix[i] = view.getFloat32(offset + 8 + i * 4, true);
+            for (let i = 0; i < 16; ++i) matrix[i] = view.getFloat32(offset + D9WG.F.SetTransform.matrix + i * 4, true);
             // Stored exactly as D3D sent it (row-major, row-vector
             // convention). No transpose here -- see uniformBufferFor for why
             // none is needed anywhere on this path.
@@ -9068,24 +4304,23 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onSetClipPlane(bytes, view, offset, length) {
-            if (length < 24) return;
-            const state = this.deviceState(view.getUint32(offset, true));
-            const index = view.getUint32(offset + 4, true);
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetClipPlane.device_handle, true));
+            const index = view.getUint32(offset + D9WG.F.SetClipPlane.index, true);
             if (index >= 6) return;
             state.clipPlanes[index] = [
-                view.getFloat32(offset + 8, true),
-                view.getFloat32(offset + 12, true),
-                view.getFloat32(offset + 16, true),
-                view.getFloat32(offset + 20, true),
+                view.getFloat32(offset + D9WG.F.SetClipPlane.plane, true),
+                view.getFloat32(offset + D9WG.F.SetClipPlane.plane + 4, true),
+                view.getFloat32(offset + D9WG.F.SetClipPlane.plane + 8, true),
+                view.getFloat32(offset + D9WG.F.SetClipPlane.plane + 12, true),
             ];
         }
 
         onSetStreamSource(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const stream = view.getUint32(offset + 4, true);
-            const bufferHandle = view.getUint32(offset + 8, true);
-            const stride = view.getUint32(offset + 12, true);
-            const offsetInBytes = view.getUint32(offset + 16, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetStreamSource.device_handle, true);
+            const stream = view.getUint32(offset + D9WG.F.SetStreamSource.stream, true);
+            const bufferHandle = view.getUint32(offset + D9WG.F.SetStreamSource.buffer_handle, true);
+            const stride = view.getUint32(offset + D9WG.F.SetStreamSource.stride, true);
+            const offsetInBytes = view.getUint32(offset + D9WG.F.SetStreamSource.offset_in_bytes, true);
             const state = this.deviceState(deviceHandle);
             const previous = state.streams.get(stream);
             state.streams.set(stream, { bufferHandle, stride, offsetInBytes,
@@ -9093,9 +4328,9 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onSetStreamSourceFreq(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const stream = view.getUint32(offset + 4, true);
-            const frequency = view.getUint32(offset + 8, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetStreamSourceFreq.device_handle, true);
+            const stream = view.getUint32(offset + D9WG.F.SetStreamSourceFreq.stream, true);
+            const frequency = view.getUint32(offset + D9WG.F.SetStreamSourceFreq.divider, true);
             const state = this.deviceState(deviceHandle);
             const previous = state.streams.get(stream) || {
                 bufferHandle: 0, stride: 0, offsetInBytes: 0,
@@ -9104,120 +4339,19 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onSetIndices(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const bufferHandle = view.getUint32(offset + 4, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.SetIndices.device_handle, true);
+            const bufferHandle = view.getUint32(offset + D9WG.F.SetIndices.buffer_handle, true);
             this.deviceState(deviceHandle).indexBufferHandle = bufferHandle;
         }
 
-        // ---- programmable shaders (M2) ----
-
-        // Translation happens here, at CREATE time, and never on a draw path
-        // (plan 4.2): a shader first used mid-frame would otherwise produce an
-        // unattributable latency spike. A shader this build cannot translate
-        // is stored with its error rather than dropped -- recordDraw() then
-        // skips draws that bind it and counts them, which is the difference
-        // between "this shader is unsupported" and "the game stopped drawing".
-        async onCreateShader(bytes, view, offset, kind) {
-            const handle = view.getUint32(offset + 4, true);
-            const tokenCount = view.getUint32(offset + 8, true);
-            const codeOffset = view.getUint32(offset + 12, true);
-            const suppliedHashLow = view.getUint32(offset + 16, true);
-            const suppliedHashHigh = view.getUint32(offset + 20, true);
-            if (codeOffset + tokenCount * 4 > bytes.byteLength) {
-                ++this.stats.malformedBatches;
-                throw new D9WGStreamError("D9WG shader bytecode overruns the batch");
-            }
-            // The DMA blob is not 4-byte aligned within `bytes` in general,
-            // so copy rather than aliasing a Uint32Array onto it.
-            const tokens = new Uint32Array(tokenCount);
-            for (let i = 0; i < tokenCount; ++i)
-                tokens[i] = view.getUint32(codeOffset + i * 4, true);
-            // Hashes are a cache hint carried by an untrusted guest. Verify
-            // them from the bytecode so an old or buggy proxy cannot alias
-            // every shader to the same cached translation (the original D3D8
-            // proxy sent zero for both fields).
-            const verifiedHash = shaderPipeline.hashTokens(tokens);
-            const hashLow = verifiedHash.low;
-            const hashHigh = verifiedHash.high;
-            if (hashLow !== suppliedHashLow || hashHigh !== suppliedHashHigh) {
-                this.warnOnce("shader-hash-mismatch-" + kind,
-                    "guest shader bytecode hash did not match its token " +
-                    "stream; using the verified hash to prevent distinct " +
-                    "shaders from aliasing in the translation cache", {
-                        kind: kind === RESOURCE_VERTEX_SHADER
-                            ? "vertex" : "pixel",
-                        suppliedHashLow,
-                        suppliedHashHigh,
-                        verifiedHashLow: hashLow,
-                        verifiedHashHigh: hashHigh,
-                    });
-            }
-            const compilesBefore = this.shaderCache.stats.compiles;
-            let translated = this.shaderCache.get(hashLow, hashHigh);
-            if (!translated) {
-                const started = typeof performance !== "undefined" && performance.now
-                    ? performance.now() : Date.now();
-                const workerCompile = this.compileShaderInWorker(tokens);
-                if (workerCompile) {
-                    try {
-                        translated = await workerCompile;
-                        if (!translated || typeof translated.ok !== "boolean")
-                            throw new Error("shader worker returned an invalid result");
-                        ++this.stats.shaderWorkerCompiles;
-                        const ended = typeof performance !== "undefined" && performance.now
-                            ? performance.now() : Date.now();
-                        translated = this.shaderCache.store(hashLow, hashHigh,
-                            translated, ended - started);
-                    } catch (error) {
-                        ++this.stats.shaderWorkerFallbacks;
-                        this.warnOnce("shader-worker-runtime",
-                            "shader compile Worker failed; falling back to the " +
-                            "executor thread", { message: String(error) });
-                        translated = this.shaderCache.compile(tokens,
-                            hashLow, hashHigh);
-                    }
-                } else {
-                    translated = this.shaderCache.compile(tokens,
-                        hashLow, hashHigh);
-                }
-            }
-            if (this.shaderCache.stats.compiles !== compilesBefore)
-                this.shaderCacheDirty = true;
-            if (translated.ok) ++this.stats.shadersTranslated;
-            else {
-                ++this.stats.shaderTranslationFailures;
-                this.warnOnce("shader-translate-" + hashHigh + "-" + hashLow,
-                    "cannot translate a " + (kind === RESOURCE_VERTEX_SHADER
-                        ? "vertex" : "pixel") + " shader; draws that bind it " +
-                    "will be skipped: " + translated.error);
-            }
-            this.resources.set(handle, {
-                kind, tokens, hashLow, hashHigh,
-                translated,
-                // Variant key -> {translated, module}. A vertex shader needs
-                // one variant per set of D3DCOLOR input locations; in practice
-                // that is a single entry, because a given shader is used with
-                // one vertex format.
-                variants: new Map(),
-            });
-        }
-
-        onCreateVertexShader(bytes, view, offset) {
-            return this.onCreateShader(bytes, view, offset, RESOURCE_VERTEX_SHADER);
-        }
-
-        onCreatePixelShader(bytes, view, offset) {
-            return this.onCreateShader(bytes, view, offset, RESOURCE_PIXEL_SHADER);
-        }
-
         onSetVertexShader(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            state.vertexShaderHandle = view.getUint32(offset + 4, true);
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetShader.device_handle, true));
+            state.vertexShaderHandle = view.getUint32(offset + D9WG.F.SetShader.shader_handle, true);
         }
 
         onSetPixelShader(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            state.pixelShaderHandle = view.getUint32(offset + 4, true);
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetShader.device_handle, true));
+            state.pixelShaderHandle = view.getUint32(offset + D9WG.F.SetShader.shader_handle, true);
         }
 
         // Shared decode for all six SET_*_SHADER_CONSTANT_* opcodes: they use
@@ -9244,345 +4378,39 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         }
 
         onSetVertexShaderConstantF(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetShaderConstantF.device_handle, true));
             this.applyConstants(bytes, view, offset, state.vsConstF, 4,
                 at => view.getFloat32(at, true));
         }
 
         onSetPixelShaderConstantF(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetShaderConstantF.device_handle, true));
             this.applyConstants(bytes, view, offset, state.psConstF, 4,
                 at => view.getFloat32(at, true));
         }
 
         onSetVertexShaderConstantI(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetShaderConstantF.device_handle, true));
             this.applyConstants(bytes, view, offset, state.vsConstI, 4,
                 at => view.getInt32(at, true));
         }
 
         onSetPixelShaderConstantI(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetShaderConstantF.device_handle, true));
             this.applyConstants(bytes, view, offset, state.psConstI, 4,
                 at => view.getInt32(at, true));
         }
 
         onSetVertexShaderConstantB(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetShaderConstantF.device_handle, true));
             this.applyConstants(bytes, view, offset, state.vsConstB, 1,
                 at => view.getUint32(at, true));
         }
 
         onSetPixelShaderConstantB(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.SetShaderConstantF.device_handle, true));
             this.applyConstants(bytes, view, offset, state.psConstB, 1,
                 at => view.getUint32(at, true));
-        }
-
-        // ---- D3D9 hardware cursor ----
-        //
-        // A fullscreen D3D9 game draws its pointer through SetCursorProperties
-        // rather than GDI, so it never reaches the VGA framebuffer the page
-        // composites under this canvas -- and the page hides the browser
-        // cursor. Without this the pointer is invisible even though input
-        // still works, which makes the game effectively unplayable.
-        onSetCursorProperties(bytes, view, offset) {
-            const width = view.getUint32(offset + 12, true);
-            const height = view.getUint32(offset + 16, true);
-            const dataBytes = view.getUint32(offset + 20, true);
-            const dataOffset = view.getUint32(offset + 24, true);
-            if (!width || !height) return;
-            if (dataOffset + dataBytes > bytes.byteLength) {
-                ++this.stats.malformedBatches;
-                throw new D9WGStreamError("D9WG cursor bitmap overruns the batch");
-            }
-            this.cursor.hotspotX = view.getUint32(offset + 4, true);
-            this.cursor.hotspotY = view.getUint32(offset + 8, true);
-            if (this.cursor.width !== width || this.cursor.height !== height ||
-                    !this.cursor.texture) {
-                this.retireGPUObject(this.cursor.texture);
-                this.cursor.texture = this.device.createTexture({
-                    label: "D3D9 hardware cursor",
-                    size: { width, height, depthOrArrayLayers: 1 },
-                    format: "rgba8unorm",
-                    usage: TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING,
-                });
-                this.cursor.view = this.cursor.texture.createView();
-                this.cursor.width = width;
-                this.cursor.height = height;
-            }
-            // The guest sends A8R8G8B8 at a tight width*4 stride; the same
-            // BGRA-to-RGBA reorder every other texture upload does.
-            const source = new Uint8Array(bytes.buffer,
-                bytes.byteOffset + dataOffset, dataBytes);
-            const rgba = new Uint8Array(width * height * 4);
-            for (let row = 0; row < height; ++row)
-                expandRowToGPU(D3DFMT_A8R8G8B8, source, row * width * 4,
-                    width, rgba, row * width * 4);
-            this.device.queue.writeTexture({ texture: this.cursor.texture },
-                rgba, { bytesPerRow: width * 4, rowsPerImage: height },
-                { width, height, depthOrArrayLayers: 1 });
-            ++this.stats.cursorUploads;
-        }
-
-        onSetCursorPosition(bytes, view, offset) {
-            this.cursor.x = view.getInt32(offset + 4, true);
-            this.cursor.y = view.getInt32(offset + 8, true);
-        }
-
-        onShowCursor(bytes, view, offset) {
-            this.cursor.visible = view.getUint32(offset + 4, true) !== 0;
-        }
-
-        // Moves the overlay to match a WINDOW_STATE report.
-        //
-        // Deliberately conservative about what counts as a real move. The
-        // report also arrives for foreground changes and other events that say
-        // nothing about geometry, and a 0x0 client area is the same
-        // fullscreen GetClientRect artefact onPresent() already guards
-        // against -- letting either through makes the canvas flicker between
-        // the real size and nothing.
-        //
-        // Covered windows are not hidden ones. Other windows lying over all
-        // or part of the device window (occluded, visibleRegion) is state the
-        // surface keeps until the next report changes it -- a Present in
-        // between does not uncover anything -- and the embedder shows the
-        // picture only where the guest's screen shows the window.
-        applyWindowStateGeometry(deviceHandle, report) {
-            if (!deviceHandle) return;
-            const state = this.devices.get(deviceHandle);
-            if (!state) return;
-            const hidden = !report.isWindow || report.iconic || !report.visible;
-            if (hidden) {
-                // Visibility is tracked per device; the canvas is one shared
-                // thing. Those disagree the moment anything else puts the
-                // canvas back on screen -- a CreateDevice for the same
-                // session does exactly that -- and this device's own flag
-                // still reads false from an earlier report. Skipping the
-                // notification as redundant then drops the one message that
-                // would have taken the canvas down.
-                //
-                // A no-surface report is a teardown signal rather than a
-                // geometry update, so it is never redundant: it is the last
-                // thing an exiting process says, and if it is dropped its
-                // final frame stays composited over the guest's desktop with
-                // nothing left running to remove it.
-                if (state.surface.visible === false && !report.noSurface)
-                    return;
-                if (report.noSurface) {
-                    state.ddScreenWriteRect = null;
-                    state.surface = { ...state.surface, clipRect: null };
-                }
-                state.surface = { ...state.surface, visible: false,
-                    noSurface: !!report.noSurface };
-                ++this.stats.surfaceChanges;
-                this.notifySurface(state, "window-state");
-                return;
-            }
-            const width = report.clientWidth || state.surface.width;
-            const height = report.clientHeight || state.surface.height;
-            if (!width || !height) {
-                ++this.stats.emptySurfaceReports;
-                return;
-            }
-            const occluded = !!report.occluded;
-            const visibleRegion = report.visibleRegion || null;
-            const changed = state.surface.hwnd !== report.hwnd ||
-                state.surface.x !== report.windowX ||
-                state.surface.y !== report.windowY ||
-                state.surface.width !== width ||
-                state.surface.height !== height ||
-                state.surface.visible === false ||
-                !!state.surface.occluded !== occluded ||
-                !sameVisibleRegion(state.surface.visibleRegion || null, visibleRegion);
-            if (!changed) return;
-            state.surface = { ...state.surface, hwnd: report.hwnd,
-                x: report.windowX, y: report.windowY, width, height,
-                visible: true, noSurface: false, occluded, visibleRegion };
-            ++this.stats.surfaceChanges;
-            this.notifySurface(state, "window-state");
-        }
-
-        // Two jobs. The diagnostic one is why the opcode exists: see
-        // D9WG_OP_WINDOW_STATE in d3d9_protocol.h for why the guest's
-        // window-manager view has to be reported rather than inferred.
-        //
-        // The second is placement, and it exists for the D3D8 frontend. A
-        // D3D9 title presents continuously, so onPresent() is a fine source of
-        // truth for where the overlay goes. A D3D8 title need not: one that
-        // draws a single frame and then only pumps messages still has to have
-        // the overlay follow its window, and there is no further Present to
-        // carry the geometry. d3d8_proxy.c sends this record on move/size/show
-        // for exactly that reason.
-        onWindowState(bytes, view, offset, length) {
-            const flags = view.getUint32(offset + 12, true);
-            const deviceHandle = view.getUint32(offset, true);
-            const state = {
-                hwnd: view.getUint32(offset + 4, true),
-                foregroundHwnd: view.getUint32(offset + 8, true),
-                isWindow: (flags & D9WG_WINDOW_IS_WINDOW) !== 0,
-                visible: (flags & D9WG_WINDOW_VISIBLE) !== 0,
-                iconic: (flags & D9WG_WINDOW_ICONIC) !== 0,
-                foreground: (flags & D9WG_WINDOW_FOREGROUND) !== 0,
-                fullscreen: (flags & D9WG_WINDOW_FULLSCREEN) !== 0,
-                windowX: view.getInt32(offset + 16, true),
-                windowY: view.getInt32(offset + 20, true),
-                windowWidth: view.getUint32(offset + 24, true),
-                windowHeight: view.getUint32(offset + 28, true),
-                clientWidth: view.getUint32(offset + 32, true),
-                clientHeight: view.getUint32(offset + 36, true),
-                // "I have nothing to show", which is not the same claim as
-                // "my window is gone": the window may be up and taking input.
-                noSurface: (flags & D9WG_WINDOW_NO_SURFACE) !== 0,
-                occluded: (flags & D9WG_WINDOW_OCCLUDED) !== 0,
-                visibleRegion: null,
-            };
-            if (flags & D9WG_WINDOW_REGION) {
-                state.visibleRegion = readVisibleRegion(view, offset + D9WG_WINDOW_STATE_BYTES,
-                    (length === undefined ? D9WG_WINDOW_STATE_BYTES : length) - D9WG_WINDOW_STATE_BYTES,
-                    state.clientWidth, state.clientHeight, state.windowX, state.windowY);
-                if (state.visibleRegion) ++this.stats.windowRegionReports;
-            }
-            this.windowState = state;
-            ++this.stats.windowStateChanges;
-            this.applyWindowStateGeometry(deviceHandle, state);
-            // A device that says it has nothing to present is not describing a
-            // window problem, and the two diagnostics below are about window
-            // problems: they would report broken input for a title that is
-            // simply done drawing.
-            if (state.noSurface) return;
-            // Covered by another of the guest's windows, which then rightly
-            // has the foreground and the input: not a window problem either
-            if (state.occluded) {
-                ++this.stats.windowOccludedReports;
-                return;
-            }
-            if (!state.foreground) {
-                ++this.stats.windowNotForegroundReports;
-                // The guest re-takes the foreground for a fullscreen device
-                // (maintain_fullscreen_foreground in d3d9_proxy.c), so a single
-                // report of this at startup is normal and self-healing. Repeated
-                // reports mean the claim is being refused, which is worth saying
-                // out loud: the picture looks perfect either way and every click
-                // goes somewhere else, so there is nothing on screen to notice.
-                if (this.stats.windowNotForegroundReports > 1)
-                    this.warnOnce("window-not-foreground",
-                        "the game's window keeps losing the guest's foreground " +
-                        "even though the guest re-claims it, so clicks go to " +
-                        "whatever is on top -- the overlay still shows this " +
-                        "game's frames either way. Check getStats().window",
-                        state);
-            }
-            if (state.iconic || !state.visible)
-                this.warnOnce("window-not-visible",
-                    "the game's window is minimised or hidden in the guest; " +
-                    "input will not reach it", state);
-        }
-
-        // A self-contained screen-space quad, built once. It deliberately does
-        // not go through programFor()/pipelineFor(): the cursor is host-owned
-        // compositing, not a guest draw, and giving it its own trivial
-        // pipeline keeps it out of the caches keyed on guest state.
-        ensureCursorPipeline() {
-            if (this.cursor.pipeline) return this.cursor.pipeline;
-            const module = this.device.createShaderModule({
-                label: "D3D9 cursor",
-                code: `
-struct CursorRect { origin: vec2<f32>, size: vec2<f32> };
-@group(0) @binding(0) var<uniform> rect: CursorRect;
-@group(0) @binding(1) var cursor_texture: texture_2d<f32>;
-@group(0) @binding(2) var cursor_sampler: sampler;
-
-struct VSOut {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) index: u32) -> VSOut {
-    // Two triangles covering the cursor's rectangle, in normalised
-    // back-buffer space supplied by the uniform.
-    var corners = array<vec2<f32>, 6>(
-        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
-        vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0));
-    let corner = corners[index];
-    let position = rect.origin + corner * rect.size;
-    var out: VSOut;
-    out.position = vec4<f32>(position.x * 2.0 - 1.0,
-        1.0 - position.y * 2.0, 0.0, 1.0);
-    out.uv = corner;
-    return out;
-}
-
-@fragment
-fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
-    return textureSample(cursor_texture, cursor_sampler, in.uv);
-}
-`,
-            });
-            const bindGroupLayout = this.device.createBindGroupLayout({
-                entries: [
-                    { binding: 0, visibility: SHADER_STAGE_VERTEX, buffer: { type: "uniform" } },
-                    { binding: 1, visibility: SHADER_STAGE_FRAGMENT, texture: {} },
-                    { binding: 2, visibility: SHADER_STAGE_FRAGMENT, sampler: {} },
-                ],
-            });
-            this.cursor.bindGroupLayout = bindGroupLayout;
-            this.cursor.sampler = this.device.createSampler({
-                magFilter: "nearest", minFilter: "nearest",
-                addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge",
-            });
-            this.cursor.uniform = this.device.createBuffer({
-                label: "D3D9 cursor rect", size: 16,
-                usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST,
-            });
-            this.cursor.pipeline = this.device.createRenderPipeline({
-                layout: this.device.createPipelineLayout(
-                    { bindGroupLayouts: [bindGroupLayout] }),
-                vertex: { module, entryPoint: "vs_main" },
-                fragment: { module, entryPoint: "fs_main", targets: [{
-                    format: this.format,
-                    // Straight alpha: a cursor bitmap's transparent texels
-                    // must not paint over the frame.
-                    blend: {
-                        color: { srcFactor: "src-alpha",
-                                 dstFactor: "one-minus-src-alpha", operation: "add" },
-                        alpha: { srcFactor: "one",
-                                 dstFactor: "one-minus-src-alpha", operation: "add" },
-                    },
-                }] },
-                primitive: { topology: "triangle-list" },
-            });
-            return this.cursor.pipeline;
-        }
-
-        // Drawn last, in its own depth-less pass, so it sits on top of the
-        // frame regardless of what the game left in the depth buffer.
-        drawCursor(encoder, targetView, width, height) {
-            const cursor = this.cursor;
-            if (!cursor.visible || !cursor.view || !width || !height) return;
-            const pipeline = this.ensureCursorPipeline();
-            const originX = (cursor.x - cursor.hotspotX) / width;
-            const originY = (cursor.y - cursor.hotspotY) / height;
-            this.device.queue.writeBuffer(cursor.uniform, 0, new Float32Array([
-                originX, originY, cursor.width / width, cursor.height / height,
-            ]));
-            const bindGroup = this.device.createBindGroup({
-                layout: cursor.bindGroupLayout,
-                entries: [
-                    { binding: 0, resource: { buffer: cursor.uniform } },
-                    { binding: 1, resource: cursor.view },
-                    { binding: 2, resource: cursor.sampler },
-                ],
-            });
-            const pass = encoder.beginRenderPass({
-                colorAttachments: [{ view: targetView, loadOp: "load", storeOp: "store" }],
-            });
-            pass.setPipeline(pipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.draw(6);
-            pass.end();
-            ++this.stats.cursorDraws;
         }
 
         // GPUShaderModules are content-addressed by their WGSL text, so two
@@ -9591,10 +4419,22 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         // asynchronously -- createShaderModule() never throws on bad WGSL, and
         // plan 9.6 requires the getCompilationInfo() check rather than
         // assuming successful translation implies valid output.
+        fixedModuleFor(key, stage, signature, debugMode) {
+            let module = this.fixedModuleCache.get(key);
+            if (!module) {
+                const wgsl = stage === "vertex" ? buildFixedFunctionVertexShader(signature)
+                    : buildFixedFunctionPixelShader(signature, debugMode);
+                module = this.moduleFor(wgsl, "d3d9 " + key);
+                this.fixedModuleCache.set(key, module);
+            }
+            return module;
+        }
+
         moduleFor(wgsl, label) {
             let module = this.moduleCache.get(wgsl);
             if (module) return module;
             module = this.device.createShaderModule({ label, code: wgsl });
+            module._d9wgSource = wgsl;
             ++this.stats.shaderModulesCreated;
             this.moduleCache.set(wgsl, module);
             if (typeof module.getCompilationInfo === "function") {
@@ -9612,286 +4452,106 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             return module;
         }
 
-        // ---- draw pipeline ----
-
-        // Distils the render states a WebGPU render pipeline is allowed to
-        // depend on into a small plain object. WebGPU bakes depth/blend/cull
-        // into the immutable pipeline (unlike D3D9, where they are free-
-        // floating device state), so this is also exactly the set that has
-        // to participate in the pipeline cache key.
-        pipelineStateFor(state, targets) {
-            const rs = state.renderStates;
-            const hasDepth = targets ? targets.hasDepth : !!state.hasDepth;
-            const forceSolid = !!this.debug.forceSolidAllDraws;
-            const get = (id, fallback) => {
-                const value = rs.get(id);
-                return value === undefined ? fallback : value;
-            };
-
-            // D3DRS_ZENABLE defaults to on whenever a depth buffer exists;
-            // with no depth attachment there is nothing to test against.
-            const depthEnabled = !forceSolid && hasDepth
-                && get(D3DRS_ZENABLE, 1) !== D3DZB_FALSE;
-            const depthWrite = !forceSolid &&
-                get(D3DRS_ZWRITEENABLE, 1) !== 0;
-            const depthCompare = (forceSolid || this.debug.disableDepthTest)
-                ? "always"
-                : (COMPARE_FUNCS[get(D3DRS_ZFUNC, 4)] || "less-equal");
-
-            const blendEnabled = !forceSolid &&
-                get(D3DRS_ALPHABLENDENABLE, 0) !== 0;
-            const resolveBlend = (rawSrc, rawDst) => {
-                // The legacy BOTH* source values override both halves of the
-                // pair. D3D9 exposes them as one enum; WebGPU exposes the two
-                // factors separately, so the mapping is exact once resolved.
-                if (rawSrc === 12)
-                    return { src: "src-alpha", dst: "one-minus-src-alpha",
-                        valid: true };
-                if (rawSrc === 13)
-                    return { src: "one-minus-src-alpha", dst: "src-alpha",
-                        valid: true };
-                return { src: BLEND_FACTORS[rawSrc], dst: BLEND_FACTORS[rawDst],
-                    valid: !!BLEND_FACTORS[rawSrc] && !!BLEND_FACTORS[rawDst] };
-            };
-            // D3D9 starts at ONE/ZERO.  Using SRCALPHA/INVSRCALPHA here was
-            // mostly hidden while blending stayed disabled, but it changes an
-            // app that enables blending before choosing new factors from an
-            // overwrite into a translucent UI/overlay pass.
-            const rawColorSrc = get(D3DRS_SRCBLEND, 2);
-            const rawColorDst = get(D3DRS_DESTBLEND, 1);
-            const rawColorOp = get(D3DRS_BLENDOP, 1);
-            const colorBlend = resolveBlend(rawColorSrc, rawColorDst);
-            const separateAlpha =
-                get(D3DRS_SEPARATEALPHABLENDENABLE, 0) !== 0;
-            const rawAlphaSrc = separateAlpha
-                ? get(D3DRS_SRCBLENDALPHA, 2) : rawColorSrc;
-            const rawAlphaDst = separateAlpha
-                ? get(D3DRS_DESTBLENDALPHA, 1) : rawColorDst;
-            const rawAlphaOp = separateAlpha
-                ? get(D3DRS_BLENDOPALPHA, 1) : rawColorOp;
-            const alphaBlend = separateAlpha
-                ? resolveBlend(rawAlphaSrc, rawAlphaDst) : colorBlend;
-            const srcFactor = colorBlend.src || "src-alpha";
-            const dstFactor = colorBlend.dst || "one-minus-src-alpha";
-            const blendOp = BLEND_OPS[rawColorOp] || "add";
-            const alphaSrcFactor = alphaBlend.src || "one";
-            const alphaDstFactor = alphaBlend.dst || "zero";
-            const alphaBlendOp = BLEND_OPS[rawAlphaOp] || "add";
-            if (blendEnabled && (!colorBlend.valid || !alphaBlend.valid ||
-                    !BLEND_OPS[rawColorOp] || !BLEND_OPS[rawAlphaOp])) {
-                ++this.stats.drawsWithUnmappedBlend;
-                this.warnOnce("unmapped-blend-" + [rawColorSrc, rawColorDst,
-                    rawColorOp, rawAlphaSrc, rawAlphaDst, rawAlphaOp].join("-"),
-                    "a draw asks for a blend mode with no WebGPU equivalent; " +
-                    "it silently falls back to src-alpha/inv-src-alpha, which " +
-                    "renders as plausible-but-wrong compositing", {
-                        D3DRS_SRCBLEND: rawColorSrc, mappedSrc: colorBlend.src,
-                        D3DRS_DESTBLEND: rawColorDst, mappedDst: colorBlend.dst,
-                        D3DRS_BLENDOP: rawColorOp, mappedOp: BLEND_OPS[rawColorOp],
-                    });
-            }
-            const blendColor = get(D3DRS_BLENDFACTOR, 0xffffffff) >>> 0;
-            const blendConstant = {
-                r: ((blendColor >>> 16) & 0xff) / 255,
-                g: ((blendColor >>> 8) & 0xff) / 255,
-                b: (blendColor & 0xff) / 255,
-                a: ((blendColor >>> 24) & 0xff) / 255,
-            };
-
-            // D3D9 stores both bias states as float bit patterns in DWORDs.
-            // Its constant bias is in normalised depth units; depth24 WebGPU
-            // expresses the same offset in one-ULP integer steps.
-            const rawDepthBias = floatFromDWORD(get(D3DRS_DEPTHBIAS, 0));
-            const scaledDepthBias = Number.isFinite(rawDepthBias)
-                ? Math.round(rawDepthBias * 0x1000000) : 0;
-            const depthBias = Math.max(-0x80000000,
-                Math.min(0x7fffffff, scaledDepthBias));
-            const rawSlopeBias = floatFromDWORD(
-                get(D3DRS_SLOPESCALEDEPTHBIAS, 0));
-            const depthBiasSlopeScale = Number.isFinite(rawSlopeBias)
-                ? rawSlopeBias : 0;
-
-            const stencilEnabled = !forceSolid && hasDepth &&
-                get(D3DRS_STENCILENABLE, 0) !== 0;
-            const stencilFace = (failId, depthFailId, passId, funcId) => ({
-                compare: COMPARE_FUNCS[get(funcId, 8)] || "always",
-                failOp: STENCIL_OPS[get(failId, 1)] || "keep",
-                depthFailOp: STENCIL_OPS[get(depthFailId, 1)] || "keep",
-                passOp: STENCIL_OPS[get(passId, 1)] || "keep",
-            });
-            const stencilFront = stencilFace(D3DRS_STENCILFAIL,
-                D3DRS_STENCILZFAIL, D3DRS_STENCILPASS, D3DRS_STENCILFUNC);
-            const stencilBack = get(D3DRS_TWOSIDEDSTENCILMODE, 0) !== 0
-                ? stencilFace(D3DRS_CCW_STENCILFAIL, D3DRS_CCW_STENCILZFAIL,
-                    D3DRS_CCW_STENCILPASS, D3DRS_CCW_STENCILFUNC)
-                : stencilFront;
-
-            // D3D9's front face is clockwise, so D3DCULL_CW means "cull the
-            // front" and D3DCULL_CCW (its default) means "cull the back".
-            const cullValue = get(D3DRS_CULLMODE, D3DCULL_CCW);
-            let cullMode = "none";
-            if (!forceSolid && !this.debug.disableCull) {
-                if (cullValue === D3DCULL_CW) cullMode = "front";
-                else if (cullValue === D3DCULL_CCW) cullMode = "back";
-            }
-
-            // D3DCOLORWRITEENABLE's RED/GREEN/BLUE/ALPHA bits happen to be
-            // 1/2/4/8, matching GPUColorWrite exactly.
-            const writeMask = forceSolid ? 0xF
-                : get(D3DRS_COLORWRITEENABLE, 0xF) & 0xF;
-            const extraWriteMasks = forceSolid ? [0xF, 0xF, 0xF] : [
-                    get(D3DRS_COLORWRITEENABLE1, 0xF) & 0xF,
-                    get(D3DRS_COLORWRITEENABLE2, 0xF) & 0xF,
-                    get(D3DRS_COLORWRITEENABLE3, 0xF) & 0xF,
-                ];
-
-            // Alpha test is a shader construct here, not pipeline state, so
-            // it travels with the rest of the immutable state and lands in
-            // the fragment key rather than in the GPURenderPipeline itself.
-            const alphaTest = {
-                enabled: !forceSolid &&
-                    get(D3DRS_ALPHATESTENABLE, 0) !== 0,
-                func: get(D3DRS_ALPHAFUNC, 8) & 0xF,
-                reference: get(D3DRS_ALPHAREF, 0) & 0xFF,
-            };
-
-            const sampleCount = (targets && targets.sampleCount) || 1;
-            return { depthEnabled, depthWrite, depthCompare, depthBias,
-                depthBiasSlopeScale, blendEnabled, srcFactor, dstFactor,
-                blendOp, alphaSrcFactor, alphaDstFactor, alphaBlendOp,
-                blendConstant, cullMode, writeMask, alphaTest, hasDepth,
-                stencilEnabled, stencilFront, stencilBack,
-                stencilReadMask: get(D3DRS_STENCILMASK, 0xffffffff) >>> 0,
-                stencilWriteMask: get(D3DRS_STENCILWRITEMASK, 0xffffffff) >>> 0,
-                stencilReference: get(D3DRS_STENCILREF, 0) >>> 0,
-                extraWriteMasks,
-                // Every colour attachment of the pass this pipeline runs in has
-                // to appear in its fragment targets, in order -- WebGPU matches
-                // them positionally, so an MRT pass needs the whole list baked
-                // into the pipeline and therefore into its cache key.
-                colorFormats: targets ? targets.formats : [this.format],
-                // WebGPU takes the sample count on the pipeline as well as on
-                // the attachments, and the two must agree; without this the
-                // pipeline defaulted to 1 and every draw into a multisampled
-                // target failed validation.
-                sampleCount,
-                // D3DRS_MULTISAMPLEMASK maps straight onto WebGPU's
-                // multisample mask. D3DRS_MULTISAMPLEANTIALIAS turning
-                // antialiasing off for one draw has no WebGPU equivalent --
-                // the sample count is fixed for the whole pass -- so it is
-                // approximated by writing sample 0 only, which is what
-                // "no antialiasing" means for the pixels this draw covers.
-                sampleMask: sampleCount > 1
-                    ? (get(D3DRS_MULTISAMPLEANTIALIAS, 1) !== 0
-                        ? (get(D3DRS_MULTISAMPLEMASK, 0xffffffff) >>> 0)
-                        : 1)
-                    : 0xffffffff,
-                // Only meaningful on a multisampled target -- with one sample
-                // there is no coverage to spread an alpha value over, and
-                // WebGPU rejects the combination outright.
-                alphaToCoverage: sampleCount > 1 &&
-                    (get(D3DRS_ADAPTIVETESS_Y, 0) >>> 0) === D3DFOURCC_ATOC };
-        }
-
-        // ---- independent sampler state (plan 4.4/12) ----
-        //
-        // D3D9 splits sampling parameters out of texture-stage state into
-        // SetSamplerState, which maps almost one-to-one onto an immutable
-        // GPUSampler. M1 recorded these values but sampled every texture with
-        // one hardcoded linear/repeat sampler created alongside the texture;
-        // they now drive a cache keyed by the parameter tuple, so a stage's
-        // sampler follows the app's state rather than the texture it happens
-        // to be bound to.
-        samplerFor(state, stage, unfilterable, texture) {
-            const get = (id, fallback) => {
-                const value = state.samplerStates.get(stage * 64 + id);
-                return value === undefined ? fallback : value;
-            };
-            // D3D9 defaults: WRAP addressing, POINT min/mag, no mip filtering.
-            const addressU = get(D3DSAMP_ADDRESSU, 1);
-            const addressV = get(D3DSAMP_ADDRESSV, 1);
-            const addressW = get(D3DSAMP_ADDRESSW, 1);
-            const requestedMipFilter = get(D3DSAMP_MIPFILTER, 0);
-            const magFilter = unfilterable ? 1 : get(D3DSAMP_MAGFILTER, 1);
-            const minFilter = unfilterable ? 1 : get(D3DSAMP_MINFILTER, 1);
-            const mipFilter = unfilterable && requestedMipFilter !== 0
-                ? 1 : requestedMipFilter;
-            let maxAnisotropy = get(D3DSAMP_MAXANISOTROPY, 1) | 0;
-            if (unfilterable) maxAnisotropy = 1;
-            // Two independent floors on the mip chain, and D3D9 applies the
-            // more restrictive: D3DSAMP_MAXMIPLEVEL is sampler state and
-            // applies to whatever is bound here, while SetLOD travels with the
-            // texture. Both are level indices; WebGPU spells the same thing as
-            // a LOD clamp. Clamped against the chain that exists so a stale
-            // value cannot produce lodMinClamp > lodMaxClamp, which WebGPU
-            // rejects outright.
-            const levels = Math.max(1, (texture && texture.levelCount) || 1);
-            const lodFloor = Math.min(levels - 1,
-                Math.max(get(D3DSAMP_MAXMIPLEVEL, 0) >>> 0,
-                    (texture && texture.lod) || 0));
-            const key = [addressU, addressV, addressW, magFilter, minFilter,
-                mipFilter, maxAnisotropy, lodFloor,
-                this.debug.forceMipLevel0 ? "top" : "",
-                unfilterable ? "non-filtering" : "filtering"].join(",");
-            const cached = this.samplerCache.get(key);
-            if (cached) { ++this.stats.samplerHits; return cached; }
-
-            const descriptor = {
-                addressModeU: ADDRESS_MODES[addressU] || "repeat",
-                addressModeV: ADDRESS_MODES[addressV] || "repeat",
-                addressModeW: ADDRESS_MODES[addressW] || "repeat",
-                magFilter: FILTER_MODES[magFilter] || "nearest",
-                minFilter: FILTER_MODES[minFilter] || "nearest",
-                // D3DTEXF_NONE means "use only the top mip level", which is
-                // what clamping the LOD range to 0 expresses in WebGPU.
-                mipmapFilter: mipFilter === 2 ? "linear" : "nearest",
-            };
-            if (this.debug.forceMipLevel0) {
-                descriptor.lodMinClamp = 0;
-                descriptor.lodMaxClamp = 0;
-            } else if (mipFilter === 0) {
-                // D3DTEXF_NONE means "sample one level and do not blend
-                // between levels". That level is the most detailed one still
-                // allowed, which is the floor -- not level 0, once
-                // D3DSAMP_MAXMIPLEVEL or SetLOD has raised it.
-                descriptor.lodMinClamp = lodFloor;
-                descriptor.lodMaxClamp = lodFloor;
-            } else if (lodFloor > 0) {
-                descriptor.lodMinClamp = lodFloor;
-            }
-            // WebGPU only accepts maxAnisotropy > 1 when all three filters are
-            // linear, so anisotropy is dropped rather than forcing filters the
-            // app did not ask for.
-            if (!unfilterable && maxAnisotropy > 1 &&
-                    descriptor.magFilter === "linear" &&
-                    descriptor.minFilter === "linear" &&
-                    descriptor.mipmapFilter === "linear" && mipFilter !== 0)
-                descriptor.maxAnisotropy = Math.min(16, maxAnisotropy);
-            if (addressU === 4 || addressV === 4 || addressW === 4)
-                this.warnOnce("address-border", "D3DTADDRESS_BORDER has no " +
-                    "native WebGPU sampler mode; the physical sample clamps " +
-                    "to edge and the fixed-function fragment shader replaces " +
-                    "out-of-domain coordinates with D3DSAMP_BORDERCOLOR");
-            const sampler = this.device.createSampler(descriptor);
-            ++this.stats.samplersCreated;
-            this.samplerCache.set(key, sampler);
-            return sampler;
-        }
-
         // ---- program resolution ----
 
         // Resolves the two stages into GPUShaderModules plus everything the
         // pipeline and bind group need. Returns {error} instead of throwing
         // for anything the caller should turn into a counted skipped draw.
+        // Program reuse is confined to serialized wire draws. Direct callers
+        // may mutate a state object without sending a command and retain the
+        // uncached builder contract. Unknown commands invalidate conservatively.
+        advanceDrawState(opcode, view, offset) {
+            ++this.commandSerial;
+            let programDirty = true, uniformsDirty = true;
+            if (opcode === OP_SET_RENDER_STATE) {
+                const id = view.getUint32(offset + D9WG.F.SetRenderState.state, true);
+                if (id === D3DRS_CULLMODE || id === D3DRS_STENCILREF ||
+                        id === D3DRS_BLENDFACTOR || id === D3DRS_ALPHAREF ||
+                        id === D3DRS_TEXTUREFACTOR) programDirty = false;
+                if (id === D3DRS_CULLMODE || id === D3DRS_STENCILREF ||
+                        id === D3DRS_BLENDFACTOR) uniformsDirty = false;
+                else if (id === D3DRS_TEXTUREFACTOR) {
+                    const state = this.devices.get(view.getUint32(offset + D9WG.F.SetRenderState.device_handle, true));
+                    const cached = state && state.lastProgram;
+                    if (cached && cached.serial === this.programSerial &&
+                            !(cached.program.pixelSignature && cached.program.pixelSignature.usesTextureFactor))
+                        uniformsDirty = false;
+                }
+            }
+            if (programDirty) ++this.programSerial;
+            if (uniformsDirty) ++this.uniformSerial;
+        }
+
         programFor(state, elements, pipelineState, drawOptions) {
+            const wireDraw = this.recordingOpcode >= OP_DRAW_PRIMITIVE &&
+                this.recordingOpcode <= OP_DRAW_INDEXED_PRIMITIVE_UP;
+            if (!wireDraw || this.options.cachePrograms === false) {
+                ++this.stats.programBuilds;
+                return this.buildProgramFor(state, elements, pipelineState, drawOptions);
+            }
+            const pointExpansion = !!(drawOptions && drawOptions.pointExpansion);
+            const pointSprite = !!(drawOptions && drawOptions.pointSprite);
+            const stream0 = state.streams.get(0);
+            const stride = stream0 ? stream0.stride : 0;
+            const frequency = stream0 ? stream0.frequency : undefined;
+            const alphaMode = pipelineState.alphaTest.enabled ? pipelineState.alphaTest.func : 0;
+            const depthBias = pipelineState.depthEnabled ? pipelineState.depthBiasValue : 0;
+            const debug = this.debug, cached = state.lastProgram;
+            if (cached && cached.serial === this.programSerial &&
+                    cached.elements === elements && cached.stride === stride && cached.frequency === frequency &&
+                    cached.pointExpansion === pointExpansion && cached.pointSprite === pointSprite &&
+                    cached.alphaMode === alphaMode && cached.depthBias === depthBias && cached.shaderMode === debug.shaderMode &&
+                    cached.forceSolidAllDraws === debug.forceSolidAllDraws &&
+                    cached.skipProgrammableDraws === debug.skipProgrammableDraws &&
+                    cached.highlightMissingTexture === debug.highlightMissingTexture &&
+                    cached.highlightMissingCoordSet === debug.highlightMissingCoordSet &&
+                    cached.warnOnSuspiciousDraws === debug.warnOnSuspiciousDraws &&
+                    cached.texcoordFromStageIndex === debug.texcoordFromStageIndex &&
+                    !cached.program.vertexModule._d9wgBroken && !cached.program.fragmentModule._d9wgBroken) {
+                ++this.stats.programCacheHits;
+                for (const [name, count] of cached.program.drawCounters) this.stats[name] += count;
+                return cached.program;
+            }
+            ++this.stats.programBuilds;
+            const before = PROGRAM_DRAW_COUNTERS.map(name => this.stats[name]);
+            const program = this.buildProgramFor(state, elements, pipelineState, drawOptions);
+            if (program.error) { state.lastProgram = null;return program; }
+            program.drawCounters = PROGRAM_DRAW_COUNTERS.flatMap((name, index) => {
+                const delta = this.stats[name] - before[index];
+                return delta ? [[name, delta]] : [];
+            });
+            state.lastProgram = {
+                serial: this.programSerial, elements, stride, frequency, alphaMode, depthBias, pointExpansion, pointSprite, program,
+                shaderMode: debug.shaderMode, forceSolidAllDraws: debug.forceSolidAllDraws,
+                skipProgrammableDraws: debug.skipProgrammableDraws,
+                highlightMissingTexture: debug.highlightMissingTexture,
+                highlightMissingCoordSet: debug.highlightMissingCoordSet,
+                warnOnSuspiciousDraws: debug.warnOnSuspiciousDraws,
+                texcoordFromStageIndex: debug.texcoordFromStageIndex,
+            };
+            return program;
+        }
+
+        buildProgramFor(state, elements, pipelineState, drawOptions) {
             drawOptions = drawOptions || {};
             const alphaTest = pipelineState.alphaTest;
             const alphaTestKey = alphaTest.enabled
-                ? "_a" + alphaTest.func + "_" + alphaTest.reference : "";
+                ? "_a" + alphaTest.func : "";
             const rs = state.renderStates;
+            const pretransformed = elements.some(element =>
+                element.usage === DECLUSAGE_POSITIONT && element.usageIndex === 0);
+            const screenDepthUnclipped = pretransformed && !pipelineState.depthEnabled;
+            const viewportDepthRange = !pretransformed &&
+                (state.viewport.minZ < 0 || state.viewport.maxZ > 1)
+                ? [state.viewport.minZ, state.viewport.maxZ] : null;
+            const depthBias = pipelineState.depthEnabled ? pipelineState.depthBiasValue : 0;
+            const viewportDepthKey = (viewportDepthRange ? "_viewportDepth:" + viewportDepthRange.join(":") : "") +
+                (depthBias ? "_bias:" + depthBias : "");
             const clipMask = (rs.get(D3DRS_CLIPPLANEENABLE) || 0) & 0x3f;
-            const clipPlaneCount = clipMask
-                ? 32 - Math.clz32(clipMask) : 0;
+            if (clipMask) state.clipPlaneCapacity = 6;
+            // POSITIONT has already completed vertex processing, including
+            // user clipping. Plane capacity remains cached for later XYZ draws.
+            const clipPlaneCount = pretransformed ? 0 : state.clipPlaneCapacity || 0;
             const clipKey = "_cl" + clipPlaneCount;
             // D3DRS_SHADEMODE, applied to the two colour varyings in both
             // stages, fixed-function or translated (D3D9 flat-shades COLOR0/1
@@ -9908,8 +4568,6 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             // matching POSITIONT against the shader's POSITION input instead
             // dropped the draw, or built a pipeline missing attribute 0, which
             // invalidates the whole frame's command buffer.
-            const pretransformed = elements.some(element =>
-                element.usage === DECLUSAGE_POSITIONT && element.usageIndex === 0);
             const vsHandle = pretransformed ? 0 : state.vertexShaderHandle;
             const psHandle = state.pixelShaderHandle;
             const vsResource = vsHandle ? this.resources.get(vsHandle) : null;
@@ -9940,19 +4598,35 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 return { error: "declaration has no POSITION/POSITIONT element " +
                     "and no vertex shader is bound" };
 
-            // Table fog (D3DRS_FOGTABLEMODE) takes precedence over vertex fog
-            // when both are set, which is what D3D9 does. Screen-space XYZRHW
-            // geometry is excluded: it has no eye-space depth to fog against.
+            // Table fog wins over vertex fog. Transformed vertices supply
+            // their vertex factor in specular alpha, irrespective of the mode.
             let fogMode = 0;
             let tableFog = false;
-            if ((rs.get(D3DRS_FOGENABLE) || 0) !== 0 &&
-                    (!fixedVertexSignature ||
-                     fixedVertexSignature.positionType !== "screen")) {
+            if ((rs.get(D3DRS_FOGENABLE) || 0) !== 0) {
                 const table = rs.get(D3DRS_FOGTABLEMODE) || D3DFOG_NONE;
                 tableFog = table !== D3DFOG_NONE;
-                fogMode = tableFog ? table
-                    : (rs.get(D3DRS_FOGVERTEXMODE) || D3DFOG_NONE);
+                fogMode = tableFog ? table : fixedVertexSignature && fixedVertexSignature.positionType === "screen"
+                    ? "factor" : (rs.get(D3DRS_FOGVERTEXMODE) || "factor");
             }
+
+            // ps_3_0 owns fog; the legacy post-shader blend is only ps<3.
+            if (psResource && psResource.translated.ok && psResource.translated.reflection.version.major >= 3) { fogMode = 0;tableFog = false; }
+
+            const pixelInterface = psResource && psResource.translated.ok ? psResource.translated.reflection : null;
+            // POSITIONT bypasses transform/lighting. With ps_3_0, every declared
+            // vertex semantic can feed a pixel input, not only COLOR/TEXCOORD.
+            // Pack only consumed components so this fits WebGPU's varying budget.
+            const passthrough = fixedVertexSignature && fixedVertexSignature.positionType === "screen" &&
+                pixelInterface && pixelInterface.version.major >= 3;
+            const passthroughOutputs = passthrough ? (pixelInterface.inputDeclarations || pixelInterface.inputs)
+                .map(input => ({...input,mask:input.mask === undefined ? 15 : input.mask})) : null;
+            const semanticPair = shaderPipeline.linkShaderSemantics(
+                passthrough ? {version:{major:3},outputDeclarations:passthroughOutputs}
+                    : vsResource && vsResource.translated.ok ? vsResource.translated.reflection : null,
+                pixelInterface, {pointSprite: !!drawOptions.pointExpansion && !!drawOptions.pointSprite});
+            if (!semanticPair.ok) return {error: "shader semantic link failed: " + semanticPair.error, shaderError: true};
+            const semanticLink = semanticPair.link;
+            const semanticKey = semanticPair.key ? "|link:" + semanticPair.key : "";
 
             // ---- pixel stage ----
             //
@@ -9976,11 +4650,32 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 // SM1 tex/texld have implicit sampler types. A shader can be
                 // used with 2D, cube or volume textures on different draws, so
                 // specialize its WGSL and cache key from the current bindings.
-                // SM2+ dcl_* types remain authoritative and are checked below.
+                // An SM2+ dcl_* type that disagrees with the bound texture is
+                // also followed by the texture (drivers sample it rather than
+                // fail), so a mismatched draw still runs.
                 const legacySamplerTypes = {};
                 let legacySamplerKey = "";
+                const legacyProjection = {};
+                let legacyProjectionKey = "";
+                if (variant.reflection.version.major >= 2) {
+                    for (const sampler of variant.reflection.samplers) {
+                        const texture = this.resources.get(state.textures.get(sampler.index));
+                        const type = texture && (texture.textureType || "2d");
+                        if (type && type !== sampler.type) {
+                            legacySamplerTypes[sampler.index] = type;
+                            legacySamplerKey += "_t" + sampler.index + ":" + type;
+                        }
+                    }
+                }
                 if (variant.reflection.version.major === 1) {
                     for (const sampler of variant.reflection.samplers) {
+                        const flags = state.textureStageStates.get(sampler.index * 64 + D3DTSS_TEXTURETRANSFORMFLAGS) || 0;
+                        if (variant.reflection.version.minor < 4 && (flags & D3DTTFF_PROJECTED)) {
+                            const count = flags & 0xff;
+                            legacyProjection[sampler.index] = fixedVertexSignature && fixedVertexSignature.positionType === "screen"
+                                ? (["w", "x", "y", "z", "w"][count] || "w") : "w";
+                            legacyProjectionKey += "_q" + sampler.index + legacyProjection[sampler.index];
+                        }
                         const texture = this.resources.get(state.textures.get(sampler.index));
                         const type = texture && (texture.textureType || "2d");
                         if (type && type !== sampler.type) {
@@ -10010,26 +4705,28 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                         (depthFetchSamplers.length
                             ? "_r" + depthFetchSamplers.join(".") : "")
                     : "";
-                // D3DSAMP_MIPMAPLODBIAS is sampler state, but WebGPU has no
-                // sampler field for it, so it can only be applied at the sample
-                // call -- which puts it in the WGSL and therefore in the variant
-                // key. Only the samplers this shader actually declares are
-                // considered, so an unrelated stage's stale bias cannot mint a
-                // variant.
-                const samplerLodBias = {};
-                let lodBiasKey = "";
+                // The sampler set determines one bias uniform layout; values
+                // are uploaded per draw and never enter the shader key.
+                const samplerSwizzles = {};
+                let swizzleKey = "";
+                const samplerLodBiasUniform = psResource.translated.reflection.samplers.length > 0;
+                const lodBiasKey = samplerLodBiasUniform ? "_lod_uniform" : "";
                 // D3DTADDRESS_MIRRORONCE is finished in the shader too: the
                 // sampler clamps, and abs() on the coordinate supplies the
-                // mirror. Same variant-key treatment as the bias.
+                // mirror. Address modes remain part of the variant key.
                 const samplerMirrorOnce = {};
                 let mirrorOnceKey = "";
+                const fetch4Samplers = {};
+                let fetch4Key = "";
                 for (const sampler of psResource.translated.reflection.samplers) {
-                    const bias = lodBiasFor(state.samplerStates.get(
-                        sampler.index * 64 + D3DSAMP_MIPMAPLODBIAS) || 0);
-                    if (bias) {
-                        samplerLodBias[sampler.index] = bias;
-                        lodBiasKey += "_b" + sampler.index + ":" + bias;
+                    const texture = this.resources.get(state.textures.get(sampler.index));
+                    const fetch4 = this.fetch4ChannelFor(state, sampler.index, texture);
+                    if (fetch4 !== undefined) {
+                        fetch4Samplers[sampler.index] = fetch4;
+                        fetch4Key += "_f" + sampler.index + ":" + fetch4;
                     }
+                    const swizzle = fetch4 === undefined && texture && samplingSwizzle(texture.format);
+                    if (swizzle) { samplerSwizzles[sampler.index] = swizzle;swizzleKey += "_w" + sampler.index + ":" + swizzle; }
                     const axes = [
                         [D3DSAMP_ADDRESSU, "x"], [D3DSAMP_ADDRESSV, "y"],
                         [D3DSAMP_ADDRESSW, "z"],
@@ -10041,24 +4738,27 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                         mirrorOnceKey += "_m" + sampler.index + ":" + axes;
                     }
                 }
-                const pixelVariantKey = alphaTestKey + clipKey + depthKey +
-                    lodBiasKey + mirrorOnceKey + legacySamplerKey +
+                const fogBlend = ffp.fogBlendSource({ fogMode, tableFog, screenDepthUnclipped, screenPosition: pretransformed }, "d9c", "result.color0");
+                const fogKey = fogBlend ? "_fog" + fogMode + (tableFog ? "t" : "v") + (screenDepthUnclipped ? "u" : pretransformed ? "s" : "") : "";
+                const pixelVariantKey = semanticKey + fogKey + alphaTestKey + clipKey + depthKey + viewportDepthKey +
+                    lodBiasKey + mirrorOnceKey + fetch4Key + legacySamplerKey + legacyProjectionKey + swizzleKey +
                     (flatShading ? "_flat" : "");
-                if (alphaTest.enabled || clipPlaneCount || depthSamplers.length
-                        || lodBiasKey || mirrorOnceKey || legacySamplerKey ||
-                        flatShading) {
+                if (semanticLink || alphaTest.enabled || clipPlaneCount || depthSamplers.length
+                        || lodBiasKey || mirrorOnceKey || fetch4Key || legacySamplerKey || legacyProjectionKey || swizzleKey ||
+                        flatShading || fogBlend || viewportDepthRange || depthBias) {
                     variant = psResource.variants.get(pixelVariantKey);
                     if (!variant) {
-                        variant = shaderPipeline.compileShader(psResource.tokens, {
+                        variant = shaderPipeline.specializeShader(psResource.translated, {
                             alphaTestDiscard: alphaTestDiscard(alphaTest,
-                                "result.color0.a"),
+                                "result.color0.a", "d9c.alpha_test.x"),
+                            alphaTestUniform: alphaTest.enabled,
                             clipPlaneCount,
                             depthSamplers,
                             depthFetchSamplers,
-                            samplerLodBias,
-                            samplerMirrorOnce,
-                            legacySamplerTypes,
-                            flatShading,
+                            samplerLodBiasUniform, samplerSwizzles,
+                            samplerMirrorOnce, fetch4Samplers,
+                            legacySamplerTypes, legacyProjection,
+                            flatShading, fogBlend, semanticLink, viewportDepthRange, depthBias,
                         });
                         psResource.variants.set(pixelVariantKey, variant);
                         if (variant.ok) ++this.stats.shaderVariantsTranslated;
@@ -10084,13 +4784,6 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 samplerIndices = pixelReflection.samplers.map(s => s.index);
                 for (const sampler of pixelReflection.samplers)
                     samplerDimensions[sampler.index] = sampler.type;
-                if (fogMode) {
-                    ++this.stats.drawsWithUnappliedFog;
-                    this.warnOnce("fog-programmable",
-                        "fog is enabled on a draw with a translated pixel " +
-                        "shader; the fixed-function fog blend is not applied " +
-                        "there, so the fragment keeps its untinted colour");
-                }
                 // D3D9 hands a pixel shader the coordinates of texture stage n
                 // in its texcoord n, so the vertex stage still has to run
                 // generation/transform for every stage the shader reads.
@@ -10107,7 +4800,8 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 fragmentModule = this.moduleFor(variant.wgsl, "d3d9 " + fragmentKey);
             } else {
                 cascade = this.textureCascadeSignature(state,
-                    { fixedVertexStage: !!fixedVertexSignature });
+                    { fixedVertexStage: !!fixedVertexSignature,
+                        screenVertexStage: fixedVertexSignature && fixedVertexSignature.positionType === "screen" });
                 coordStageCount = cascade.stages.length;
                 for (const stage of cascade.stages) {
                     if (!stage.samplesTexture) continue;
@@ -10152,40 +4846,18 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 pixelSignature = {
                     stages: cascade.stages,
                     usesTextureFactor: cascade.usesTextureFactor,
-                    fogMode, tableFog, alphaTest, clipPlaneCount,
+                    lodBiasUniforms: cascade.stages.some(stage => stage.samplesTexture),
+                    fogMode, tableFog, screenDepthUnclipped, screenPosition: pretransformed, alphaTest: { enabled: alphaTest.enabled, func: alphaTest.func }, clipPlaneCount,
                     // D3D9 adds the specular colour after the cascade whenever
                     // D3DRS_SPECULARENABLE is set, whether it came from lighting
                     // or straight off the vertex.
                     specularEnable: (rs.get(D3DRS_SPECULARENABLE) || 0) !== 0,
                     flatShading,
                 };
-                fragmentKey = "ffps" + cascade.stages.map(stage =>
-                    [stage.index, stage.colorOp, stage.colorArg0, stage.colorArg1,
-                     stage.colorArg2, stage.alphaOp, stage.alphaArg0,
-                     stage.alphaArg1, stage.alphaArg2, stage.resultArg,
-                     stage.samplesTexture ? stage.textureType : "-",
-                     stage.coordVarying, stage.projected ? "p" + stage.transformCount : "",
-                     stage.samplesTexture
-                         ? [stage.addressU, stage.addressV, stage.addressW,
-                            stage.borderColor >>> 0].join("b") : "",
-                     stage.colorKey
-                         ? "k" + (stage.colorKey.indexed ? "i" : "r") +
-                            (stage.colorKey.low >>> 0) + ":" +
-                            (stage.colorKey.high >>> 0) : "",
-                     // Baked into the WGSL as a literal (WebGPU samplers have
-                     // no bias field), so two stages differing only in bias are
-                     // different shaders and must not share a cache entry.
-                     stage.lodBias ? "l" + stage.lodBias : ""
-                    ].join(".")).join("|") +
-                    (pixelSignature.usesTextureFactor ? "_tf" : "") +
-                    (pixelSignature.specularEnable ? "_s" : "") +
-                    (flatShading ? "_flat" : "") +
-                    alphaTestKey + (fogMode
-                        ? (tableFog ? "_ft" : "_fv") + fogMode : "") +
-                    clipKey + (debugMode ? "_" + debugMode : "");
-                fragmentModule = this.moduleFor(
-                    buildFixedFunctionPixelShader(pixelSignature, debugMode),
-                    "d3d9 " + fragmentKey);
+                if (viewportDepthRange) pixelSignature.viewportDepthRange = viewportDepthRange;
+                if (depthBias) pixelSignature.depthBias = depthBias;
+                fragmentKey = ffp.signatureKey("pixel", pixelSignature, debugMode);
+                fragmentModule = this.fixedModuleFor(fragmentKey, "pixel", pixelSignature, debugMode);
             }
             if (this.debug.forceSolidAllDraws) {
                 // Preserve the original key in the diagnostic key. Although
@@ -10213,15 +4885,15 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 const bgra = [];
                 const inputConversions = {};
                 for (const element of elements) {
+                    const binding = state.streams.get(element.stream);
+                    if (!binding || (!binding.bufferHandle && !binding.userPointer)) continue;
                     const location = inputLocations.get(
                         element.usage * 16 + element.usageIndex);
                     if (location !== undefined && element.type === DECLTYPE_D3DCOLOR)
                         bgra.push(location);
                     if (location === undefined) continue;
-                    const conversion = {
-                        5: "ubyte4", 6: "short2", 7: "short4",
-                        13: "udec3", 14: "dec3n",
-                    }[element.type];
+                    const conversion = element.type === DECLTYPE_D3DCOLOR ? "" :
+                        shaderPipeline.vertexInputConversion(element.type);
                     if (conversion) inputConversions[location] = conversion;
                 }
                 bgra.sort((a, b) => a - b);
@@ -10231,20 +4903,33 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     .join(",");
                 const pointKey = drawOptions.pointExpansion
                     ? "|p:" + (drawOptions.pointSprite ? "s" : "q") : "";
+                const vertexSwizzles = {};
+                let vertexSwizzleKey = "";
+                for (const sampler of vsResource.translated.reflection.samplers) {
+                    const texture = this.resources.get(state.textures.get(D3DVERTEXTEXTURESAMPLER0 + sampler.index));
+                    const swizzle = texture && samplingSwizzle(texture.format);
+                    if (swizzle) { vertexSwizzles[sampler.index] = swizzle;vertexSwizzleKey += "|w" + sampler.index + ":" + swizzle; }
+                }
+                const legacyColorClamp = vsResource.translated.reflection.version.major >= 3 &&
+                    (!pixelReflection || pixelReflection.version.major < 3);
+                const floatConstantCapacity = state.vsConstF.length / 4;
+                const extendedConstants = floatConstantCapacity > MAX_VS_CONST_F;
                 const variantKey = "b:" + bgra.join(",") + "|c:" +
-                    conversionKey + pointKey + clipKey +
+                    conversionKey + pointKey + clipKey + vertexSwizzleKey + semanticKey +
+                    (extendedConstants ? "|fc:" + floatConstantCapacity : "") +
+                    (legacyColorClamp ? "|legacy-color" : "") +
                     (flatShading ? "|flat" : "");
-                const needsVariant = bgra.length || conversionKey.length ||
+                const needsVariant = extendedConstants || bgra.length || conversionKey.length ||
                     !!drawOptions.pointExpansion || !!clipPlaneCount ||
-                    flatShading;
+                    !!vertexSwizzleKey || flatShading || legacyColorClamp || !!semanticLink;
                 let variant = vsResource.variants.get(variantKey);
                 if (!variant) {
                     variant = needsVariant
-                        ? shaderPipeline.compileShader(vsResource.tokens,
-                            { bgraInputLocations: bgra, inputConversions,
+                        ? shaderPipeline.specializeShader(vsResource.translated,
+                            { bgraInputLocations: bgra, inputConversions, samplerSwizzles: vertexSwizzles,
                               pointExpansion: !!drawOptions.pointExpansion,
                               pointSprite: !!drawOptions.pointSprite,
-                              clipPlaneCount, flatShading })
+                              clipPlaneCount, flatShading, legacyColorClamp, semanticLink, floatConstantCapacity })
                         : vsResource.translated;
                     vsResource.variants.set(variantKey, variant);
                     if (needsVariant && variant.ok)
@@ -10266,6 +4951,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     ++this.stats.drawsWithCompactVertexInputs;
             } else {
                 const signature = fixedVertexSignature;
+                signature.screenDepthUnclipped = screenDepthUnclipped;
                 signature.pointExpansion = !!drawOptions.pointExpansion;
                 signature.pointSprite = signature.pointExpansion &&
                     (rs.get(D3DRS_POINTSPRITEENABLE) || 0) !== 0;
@@ -10280,7 +4966,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 signature.normalizeNormals =
                     (rs.get(D3DRS_NORMALIZENORMALS) || 0) !== 0;
                 signature.lighting = this.lightingSignature(state, signature);
-                signature.coordStages = this.coordStagePlan(state, coordStageCount);
+                signature.coordStages = this.coordStagePlan(state, coordStageCount, signature);
                 /*
                  * buildFixedFunctionVertexShader() feeds a stage
                  * vec4(0,0,0,1) when texCoordSets does not carry the set
@@ -10338,6 +5024,8 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 }
                 signature.clipPlaneCount = clipPlaneCount;
                 signature.vertexBlend = this.vertexBlendPlan(state, signature);
+                if (signature.lighting && state.legacyLighting && !signature.vertexBlend)
+                    signature.lighting.legacyWorld = true;
                 // Skinning data in the declaration that no world matrix past 0
                 // will act on. This is now usually *correct* -- D3D9 ignores it
                 // too whenever D3DRS_VERTEXBLEND is DISABLE, and engines share
@@ -10355,48 +5043,41 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 signature.needsViewSpace = signature.positionType !== "screen" && (
                     !!signature.lighting ||
                     signature.pointScale ||
-                    (signature.fogRange && !!signature.fogMode) ||
+                    // (the vertex signature's fogMode is NONE under table fog)
+                    !!signature.fogMode ||
                     signature.coordStages.some(stage =>
                         stage.tciMode !== D3DTSS_TCI_PASSTHRU));
                 signature.flatShading = flatShading;
-                vertexKey = "ffvs_" + signature.positionType +
-                    (flatShading ? "_flat" : "") +
-                    (signature.hasColor ? (signature.colorIsBGRA ? "_cb" : "_c") : "") +
-                    (signature.hasColor1 ? (signature.color1IsBGRA ? "_sb" : "_s") : "") +
-                    (signature.hasNormal ? "_n" : "") +
-                    (signature.hasPointSize ? "_ps" : "") +
-                    (signature.vertexBlend ? "_vb" +
-                        signature.vertexBlend.matrixCount +
-                        (signature.vertexBlend.indexed
-                            ? "i" + signature.vertexBlend.indexScalar +
-                              (signature.vertexBlend.indexNormalized ? "n" : "") +
-                              "." + signature.vertexBlend.matrixSlots
-                            : "") : "") +
-                    "_t" + signature.texCoordSets.join(".") +
-                    "_x" + signature.coordStages.map(stage =>
-                        [stage.index, stage.texCoordIndex, stage.tciMode,
-                         stage.transformCount].join(".")).join(",") +
-                    (signature.needsViewSpace ? "_v" : "") +
-                    (signature.normalizeNormals ? "_nn" : "") +
-                    (signature.lighting ? "_l" + signature.lighting.lights
-                        .map(light => light.type).join(".") +
-                        (signature.lighting.colorVertex ? "cv" : "") +
-                        (signature.lighting.specularEnable ? "sp" : "") +
-                        (signature.lighting.localViewer ? "lv" : "") +
-                        "m" + [signature.lighting.diffuseSource,
-                            signature.lighting.ambientSource,
-                            signature.lighting.specularSource,
-                            signature.lighting.emissiveSource].join("") : "") +
-                    (signature.fogMode ? "_f" + signature.fogMode +
-                        (signature.fogRange ? "r" : "") : "") +
-                    (signature.pointExpansion ? "_point" +
-                        (signature.pointSprite ? "s" : "") +
-                        (signature.pointScale ? "a" : "") : "");
-                vertexModule = this.moduleFor(
-                    buildFixedFunctionVertexShader(signature), "d3d9 " + vertexKey);
+                if (passthrough) {
+                    const inputs = [{usage:DECLUSAGE_POSITIONT,usageIndex:0,location:0}];
+                    const addInput = (usage,usageIndex) => {
+                        if (inputs.some(input=>input.usage===usage && input.usageIndex===usageIndex)) return;
+                        if (elements.some(element=>element.usage===usage && element.usageIndex===usageIndex))
+                            inputs.push({usage,usageIndex,location:inputs.length});
+                    };
+                    for (const output of passthroughOutputs) addInput(output.usage,output.usageIndex);
+                    if (signature.pointExpansion) addInput(DECLUSAGE_PSIZE,0);
+                    signature.passthrough = {inputs,writes:semanticLink.vertex,flatSlots:semanticLink.flatSlots,
+                        pointLocation:inputs.find(input=>input.usage===DECLUSAGE_PSIZE && !input.usageIndex)?.location};
+                    signature.inputConversions = {};
+                    for (const input of inputs) {
+                        const element = elements.find(element=>element.usage===input.usage && element.usageIndex===input.usageIndex);
+                        const binding = element && state.streams.get(element.stream);
+                        const conversion = element && shaderPipeline.vertexInputConversion(element.type);
+                        if (conversion && binding && (binding.bufferHandle || binding.userPointer))
+                            signature.inputConversions[input.location] = conversion;
+                    }
+                    signature.hasColor = signature.hasColor1 = signature.hasNormal = signature.hasPointSize = false;
+                    signature.lighting = signature.vertexBlend = null;
+                    signature.texCoordSets = [];signature.coordStages = [];signature.fogMode = 0;
+                    signature.needsViewSpace = false;
+                }
+                vertexKey = ffp.signatureKey("vertex", signature);
+                vertexModule = this.fixedModuleFor(vertexKey, "vertex", signature);
                 vertexReflection = null;
-                locationFor = element =>
-                    fixedFunctionLocationFor(element, signature.vertexBlend);
+                locationFor = signature.passthrough ? element =>
+                    signature.passthrough.inputs.find(input=>input.usage===element.usage && input.usageIndex===element.usageIndex)?.location ?? -1
+                    : element => fixedFunctionLocationFor(element, signature.vertexBlend);
                 fixedFunctionSignature = signature;
             }
 
@@ -10472,7 +5153,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     };
                 });
                 const missingTexture = textureBindings.some(binding => !binding.live);
-                const diagnostic = {
+                const diagnostic = this.debug.warnOnSuspiciousDraws ? {
                     pixelPath: psResource ? "programmable" : "fixed-function",
                     pixelShader: psResource
                         ? [psResource.hashHigh, psResource.hashLow]
@@ -10492,7 +5173,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     materialAmbient: state.material
                         ? state.material.ambient.slice() : null,
                     globalAmbient: (rs.get(D3DRS_AMBIENT) || 0) >>> 0,
-                };
+                } : null;
                 if (!samplerIndices.length) {
                     ++this.stats.zeroNormalDrawsWithoutTexture;
                     if (state.material && this.debug.warnOnSuspiciousDraws) {
@@ -10541,11 +5222,14 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             // (0, 0, 0, 1), as D3D9 hardware does, instead of leaving the
             // pipeline without the attribute (an invalid pipeline invalidates
             // the whole command buffer and with it the frame)
-            if (vertexReflection && vertexReflection.inputs) {
+            {
+                const inputLocations = vertexReflection && vertexReflection.inputs
+                    ? vertexReflection.inputs.map(input => input.location)
+                    : elements.map(locationFor);
                 const supplied = new Set();
                 for (const layout of vertexBuffers)
                     for (const attribute of layout.attributes) supplied.add(attribute.shaderLocation);
-                const missing = vertexReflection.inputs.map(input => input.location)
+                const missing = inputLocations
                     .filter(location => location >= 0 && !supplied.has(location));
                 if (missing.length) {
                     if (vertexBuffers.length >= MAX_VERTEX_BUFFERS_PER_DRAW)
@@ -10558,9 +5242,6 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                                 format: "float32x4" })) });
                 }
             }
-            if (!vertexBuffers.length)
-                return { error: "no vertex stream supplies any attribute the " +
-                    "vertex stage reads" };
             const pixelUniformLayout = pixelSignature
                 ? fixedPixelUniformLayout(pixelSignature) : null;
             // r32/rg32/rgba32 textures are sampleable on baseline WebGPU, but
@@ -10580,6 +5261,9 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 .map(sampler => [sampler.index,
                     sampler.depth === "fetch" ? "depth-fetch"
                         : "depth-compare"]));
+            if (pixelSignature)
+                for (const stage of pixelSignature.stages)
+                    if (stage.samplesTexture && stage.depthCompare) declaredDepth.set(stage.index, "depth-compare");
             const samplerBindingTypes = {};
             for (const index of samplerIndices) {
                 if (declaredDepth.has(index)) {
@@ -10596,7 +5280,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             let vertexSamplerError = null;
             const vertexSamplers = vertexReflection
                 ? vertexReflection.samplers.map(sampler => {
-                    const stage = 256 + sampler.index;
+                    const stage = D3DVERTEXTEXTURESAMPLER0 + sampler.index;
                     const texture = this.resources.get(state.textures.get(stage));
                     const bound = texture ? (texture.textureType || "2d") : null;
                     if (bound && bound !== sampler.type)
@@ -10616,7 +5300,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 vertexReflection, pixelReflection, samplerIndices,
                 samplerDimensions, samplerBindingTypes, vertexSamplers,
                 vertexBuffers,
-                fixedFunctionSignature, pixelSignature, pixelUniformLayout,
+                fixedFunctionSignature, pixelSignature, pixelUniformLayout, viewportDepthRange,
                 vertexUniformLayout: fixedFunctionSignature
                     ? fixedVertexUniformLayout(fixedFunctionSignature) : null,
                 // A translated pixel shader brings its own register file; the
@@ -10634,7 +5318,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         // matrix transforms it. D3D9 runs this half of fixed-function T&L
         // whether or not a pixel shader is bound, which is why it is not folded
         // into textureCascadeSignature().
-        coordStagePlan(state, stageCount) {
+        coordStagePlan(state, stageCount, signature) {
             const stageState = (stage, id, fallback) => {
                 const value = state.textureStageStates.get(stage * 64 + id);
                 return value === undefined ? fallback : value;
@@ -10649,192 +5333,15 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 stages.push({ index,
                     texCoordIndex: coordIndex & 0xFFFF,
                     tciMode: coordIndex & D3DTSS_TCI_MASK,
-                    transformCount: flags & 0xFF,
+                    inputDimensions: !signature ? 4 : signature.positionType === "screen" || !(coordIndex & D3DTSS_TCI_MASK)
+                        ? signature.texCoordDimensions[coordIndex & 0xFFFF] || 4
+                        : (coordIndex & D3DTSS_TCI_MASK) === D3DTSS_TCI_SPHEREMAP ? 2 : 3,
+                    // COUNT1 and malformed flags preserve the untransformed input.
+                    transformCount: (flags & ~D3DTTFF_PROJECTED) >= 2 && (flags & ~D3DTTFF_PROJECTED) <= 4
+                        ? flags & ~D3DTTFF_PROJECTED : 0,
                     projected: (flags & D3DTTFF_PROJECTED) !== 0 });
             }
             return stages;
-        }
-
-        pipelineFor(program, pipelineState, topology, stripIndexFormat) {
-            const key = program.vertexKey + "|" + program.fragmentKey + "|" +
-                JSON.stringify(program.vertexBuffers) + "|" +
-                topology + "|" + (stripIndexFormat || "") + "|" +
-                JSON.stringify(pipelineState) + "|" +
-                program.samplerIndices.map(index => index + ":" +
-                    ((program.samplerDimensions &&
-                      program.samplerDimensions[index]) || "2d") + ":" +
-                    ((program.samplerBindingTypes &&
-                      program.samplerBindingTypes[index]) || "filterable"))
-                    .join(",") + "|vs:" + (program.vertexSamplers || [])
-                    .map(sampler => sampler.index + ":" + sampler.type + ":" +
-                        sampler.bindingType).join(",");
-            let pipeline = this.pipelineCache.get(key);
-            if (pipeline) { ++this.stats.pipelineHits; return pipeline; }
-
-            // Binding 0 is the vertex stage's constant buffer (or the
-            // fixed-function transform block, which occupies the same slot),
-            // binding 1 the pixel stage's; samplers take 2+2n / 3+2n, the
-            // numbering d3d9_shader_pipeline.js emits.
-            const bindGroupEntries = [
-                { binding: 0, visibility: SHADER_STAGE_VERTEX,
-                  buffer: { type: "uniform", hasDynamicOffset: true } },
-            ];
-            if (program.pixelUniformBytes)
-                bindGroupEntries.push({ binding: 1, visibility: SHADER_STAGE_FRAGMENT,
-                    buffer: { type: "uniform", hasDynamicOffset: true } });
-            for (const index of program.samplerIndices) {
-                // The view dimension has to be declared here, not left to
-                // default to "2d": WebGPU checks the layout against what the
-                // shader declares, so a texture_cube<f32> binding paired with a
-                // default 2D layout entry fails pipeline creation outright. naga
-                // cannot catch that -- it validates one module, not the pairing.
-                const dimension = (program.samplerDimensions &&
-                    program.samplerDimensions[index]) || "2d";
-                const bindingType = program.samplerBindingTypes &&
-                    program.samplerBindingTypes[index];
-                const unfilterable = bindingType === "unfilterable";
-                const compare = bindingType === "depth-compare";
-                const fetch = bindingType === "depth-fetch";
-                const depth = compare || fetch;
-                // Both depth modes are sampleType "depth"; only the comparison
-                // one takes a comparison sampler. A raw fetch reads the stored
-                // value through an ordinary non-filtering sampler, because
-                // WebGPU will not filter a depth texture without comparing.
-                bindGroupEntries.push(
-                    { binding: 2 + index * 2, visibility: SHADER_STAGE_FRAGMENT,
-                      texture: { viewDimension: depth ? "2d" : dimension,
-                          sampleType: depth ? "depth"
-                              : (unfilterable ? "unfilterable-float" : "float") } },
-                    { binding: 3 + index * 2, visibility: SHADER_STAGE_FRAGMENT,
-                      sampler: { type: compare ? "comparison"
-                          : ((fetch || unfilterable) ? "non-filtering"
-                              : "filtering") } });
-            }
-            for (const sampler of program.vertexSamplers || []) {
-                const unfilterable = sampler.bindingType === "unfilterable";
-                bindGroupEntries.push(
-                    { binding: sampler.textureBinding,
-                      visibility: SHADER_STAGE_VERTEX,
-                      texture: { viewDimension: sampler.type,
-                          sampleType: unfilterable
-                              ? "unfilterable-float" : "float" } },
-                    { binding: sampler.samplerBinding,
-                      visibility: SHADER_STAGE_VERTEX,
-                      sampler: { type: unfilterable
-                          ? "non-filtering" : "filtering" } });
-            }
-            const bindGroupLayout = this.device.createBindGroupLayout(
-                { entries: bindGroupEntries });
-
-            // D3DRS_COLORWRITEENABLE1/2/3 mask the extra MRT attachments; slot
-            // 0 uses D3DRS_COLORWRITEENABLE. An attachment the fragment shader
-            // does not write still needs an entry, or WebGPU rejects the
-            // pipeline against the pass.
-            const colorTargets = (pipelineState.colorFormats || [this.format])
-                .map((format, index) => {
-                    const target = { format, writeMask: index === 0
-                        ? pipelineState.writeMask
-                        : (pipelineState.extraWriteMasks
-                            ? pipelineState.extraWriteMasks[index - 1] : 0xF) };
-                    if (pipelineState.blendEnabled &&
-                            isBlendableGPUFormat(format, this.deviceFeatures)) {
-                        target.blend = {
-                            color: { srcFactor: pipelineState.srcFactor,
-                                     dstFactor: pipelineState.dstFactor,
-                                     operation: pipelineState.blendOp },
-                            alpha: { srcFactor: pipelineState.alphaSrcFactor,
-                                     dstFactor: pipelineState.alphaDstFactor,
-                                     operation: pipelineState.alphaBlendOp },
-                        };
-                    } else if (pipelineState.blendEnabled &&
-                            !isBlendableGPUFormat(format, this.deviceFeatures)) {
-                        this.warnOnce("float32-blend-disabled-" + format,
-                            "D3D blending was requested for a 32-bit float " +
-                            "render target, but this WebGPU device does not " +
-                            "expose float32-blendable; the draw is emitted " +
-                            "without blending instead of creating an invalid " +
-                            "render pipeline", { format });
-                    }
-                    return target;
-                });
-            const primitive = { topology,
-                cullMode: program.pointExpansion ? "none" : pipelineState.cullMode,
-                frontFace: "cw" };
-            // WebGPU needs to know the restart-index width up front for an
-            // indexed strip draw; it must be absent for every other topology.
-            if (stripIndexFormat) primitive.stripIndexFormat = stripIndexFormat;
-            const descriptor = {
-                layout: this.device.createPipelineLayout(
-                    { bindGroupLayouts: [bindGroupLayout] }),
-                vertex: {
-                    module: program.vertexModule, entryPoint: "d9_vs_main",
-                    buffers: program.vertexBuffers.map(layout =>
-                        ({ arrayStride: layout.arrayStride,
-                           stepMode: layout.stepMode || "vertex",
-                           attributes: layout.attributes })),
-                },
-                fragment: { module: program.fragmentModule, entryPoint: "d9_ps_main",
-                    targets: colorTargets },
-                primitive,
-            };
-            if (pipelineState.sampleCount > 1) {
-                descriptor.multisample = {
-                    count: pipelineState.sampleCount,
-                    mask: pipelineState.sampleMask,
-                    alphaToCoverageEnabled: pipelineState.alphaToCoverage,
-                };
-            }
-            // The pipeline must declare a depthStencil state whenever the
-            // pass it runs in has a depth attachment, even for a draw that
-            // does no depth testing -- hence depthCompare "always" plus
-            // depthWriteEnabled false rather than omitting the block.
-            if (pipelineState.hasDepth) {
-                descriptor.depthStencil = {
-                    format: DEPTH_FORMAT,
-                    depthWriteEnabled: pipelineState.depthEnabled
-                        ? pipelineState.depthWrite : false,
-                    depthCompare: pipelineState.depthEnabled
-                        ? pipelineState.depthCompare : "always",
-                    depthBias: pipelineState.depthBias,
-                    depthBiasSlopeScale: pipelineState.depthBiasSlopeScale,
-                    stencilFront: pipelineState.stencilEnabled
-                        ? pipelineState.stencilFront : {},
-                    stencilBack: pipelineState.stencilEnabled
-                        ? pipelineState.stencilBack : {},
-                    stencilReadMask: pipelineState.stencilEnabled
-                        ? pipelineState.stencilReadMask : 0,
-                    stencilWriteMask: pipelineState.stencilEnabled
-                        ? pipelineState.stencilWriteMask : 0,
-                };
-            }
-            pipeline = this.device.createRenderPipeline(descriptor);
-            pipeline._bindGroupLayout = bindGroupLayout;
-            pipeline._d9wgId = this.objectId(pipeline);
-            // Keep structured diagnostic data beside the cached object. The
-            // old dumpPipelineStates() attempted to recover it by splitting
-            // the cache key on "|", but fixed-function fragment keys use the
-            // same character between texture stages, shifting every field and
-            // producing a null/misattributed state exactly when multi-texture
-            // debugging mattered most.
-            pipeline._d9wgDiagnostic = {
-                vertex: program.vertexKey,
-                fragment: program.fragmentKey,
-                topology,
-                stripIndexFormat: stripIndexFormat || null,
-                vertexBuffers: program.vertexBuffers.map(layout => ({
-                    stream: layout.stream,
-                    arrayStride: layout.arrayStride,
-                    stepMode: layout.stepMode || "vertex",
-                    attributes: layout.attributes.map(attribute =>
-                        ({ ...attribute })),
-                })),
-                samplers: program.samplerIndices.slice(),
-                state: JSON.parse(JSON.stringify(pipelineState)),
-            };
-            pipeline._d9wgDrawCount = 0;
-            ++this.stats.pipelineCreations;
-            this.pipelineCache.set(key, pipeline);
-            return pipeline;
         }
 
         objectId(value) {
@@ -10858,7 +5365,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 chunk = this.device.createBuffer({
                     label: "D3D9 uniform ring " + index,
                     size: this.uniformRingCapacity,
-                    usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST,
+                    usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_STORAGE | BUFFER_USAGE_COPY_DST,
                 });
                 this.uniformRingChunks[index] = chunk;
                 this.uniformStaging[index] =
@@ -10870,7 +5377,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             return chunk;
         }
 
-        allocateUniformSlot(byteCount) {
+        allocateUniformSlot(byteCount, retire = true) {
             const size = alignUp(byteCount, UNIFORM_OFFSET_ALIGNMENT);
             // A block wider than a whole chunk cannot be sub-allocated at all.
             if (size <= this.uniformRingCapacity) {
@@ -10904,10 +5411,12 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             const buffer = this.device.createBuffer({
                 label: "D3D9 uniform ring overflow",
                 size,
-                usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST,
+                usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_STORAGE | BUFFER_USAGE_COPY_DST,
             });
             ++this.stats.uniformRingOverflows;
-            this.retireAfterSubmit(buffer);
+            // Replay-time utility passes retire through their active frame;
+            // ensureFrame() here would create a new frame and rewind its ring.
+            if (retire) this.retireAfterSubmit(buffer);
             return { buffer, offset: 0, transient: true, chunkIndex: -1 };
         }
 
@@ -10947,7 +5456,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
          * register files separate.
          *
          * A run of draws with no state change between them shares one slot, and
-         * that is decided by commandSerial rather than by hashing the assembled
+         * that is decided by uniformSerial rather than by hashing the assembled
          * bytes. The frame serial is part of the test because a flush rewinds
          * the ring: a slot from an already-submitted segment has had its bytes
          * handed back out to a later draw.
@@ -10962,11 +5471,11 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
              * The serial covers device state. Every input the block is built
              * from -- constant registers, `def` defaults, viewport, clip planes,
              * transforms, lights, material, texture stage state -- moves only
-             * through a command, and any non-draw command bumps the serial.
+             * through a command. Pipeline-only states and an unused texture
+             * factor do not invalidate these bytes; all other commands do.
              *
-             * The module keys cover the program. programFor() rebuilds its
-             * return object per draw, so the object cannot be compared by
-             * identity, but vertexKey/fragmentKey are the keys its WGSL modules
+             * The module keys cover the program, including uncached/direct
+             * builder calls. vertexKey/fragmentKey are the keys its WGSL modules
              * are cached under: equal keys mean the same generated shader, hence
              * the same uniform layout and, for fixed function, the same
              * signature the values are read through. That is what makes point
@@ -10978,7 +5487,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
              * back out to a later draw.
              */
             const cached = state.lastConstants;
-            if (cached && cached.serial === this.commandSerial &&
+            if (cached && cached.serial === this.uniformSerial &&
                     cached.frameSerial === frame.serial &&
                     cached.vertexKey === program.vertexKey &&
                     cached.fragmentKey === program.fragmentKey) {
@@ -11003,7 +5512,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             if (program.pixelReflection) {
                 this.writeConstantRegisters(backing, pixelOffset,
                     program.pixelReflection, state.psConstF, state.psConstI,
-                    state.psConstB);
+                    state.psConstB, state);
             } else if (pixelBytes) {
                 this.writeFixedPixelUniforms(state, program, backing, pixelOffset);
             }
@@ -11023,7 +5532,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             const constants = { buffer: slot.buffer, dynamicOffset: slot.offset,
                 vertexBytes, pixelOffset, pixelBytes,
                 transient: slot.transient };
-            state.lastConstants = { serial: this.commandSerial,
+            state.lastConstants = { serial: this.uniformSerial,
                 frameSerial: frame.serial, vertexKey: program.vertexKey,
                 fragmentKey: program.fragmentKey, slot: constants };
             return constants;
@@ -11055,15 +5564,18 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             // blend_worlds, so what is pre-multiplied here stops at the view.
             const preVertex = blend ? view : multiply4x4(
                 state.transforms.get(D3DTS_WORLD) || IDENTITY4x4, view);
+            const legacyLighting = signature.lighting && signature.lighting.legacyWorld
+                ? legacyLightingMatrices(state.transforms.get(D3DTS_WORLD) || IDENTITY4x4, view) : null;
 
             if (blend) {
                 floats.set(multiply4x4(view,
                     state.transforms.get(D3DTS_PROJECTION) || IDENTITY4x4),
                     at("view_projection"));
-                const base = at("blend_worlds");
+                const base = at("blend_worlds"), normalBase = at("blend_normals");
                 for (let slot = 0; slot < blend.matrixSlots; ++slot) {
-                    floats.set(state.transforms.get(D3DTS_WORLD + slot) ||
-                        IDENTITY4x4, base + slot * 16);
+                    const world = state.transforms.get(D3DTS_WORLD + slot) || IDENTITY4x4;
+                    floats.set(world, base + slot * 16);
+                    if (normalBase >= 0) floats.set(inverseTranspose3x3(world), normalBase + slot * 16);
                 }
             } else {
                 floats.set(screenSpace ? IDENTITY4x4 : this.wvp(state),
@@ -11072,6 +5584,8 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     floats.set(state.transforms.get(D3DTS_WORLD) || IDENTITY4x4,
                         at("world_matrix"));
             }
+            if (layout.byName.has("tween_params"))
+                floats[at("tween_params")] = floatFromDWORD(rs.get(D3DRS_TWEENFACTOR) || 0);
             const viewport = at("viewport");
             floats[viewport] = state.viewport.width || 1;
             floats[viewport + 1] = state.viewport.height || 1;
@@ -11094,6 +5608,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 floats.set(preVertex, at(viewSpaceField));
                 floats.set(inverseTranspose3x3(preVertex), at("normal_matrix"));
             }
+            if (legacyLighting) {
+                floats.set(legacyLighting.position, at("lighting_position_matrix"));
+                floats.set(legacyLighting.normal, at("lighting_normal_matrix"));
+            }
             if (layout.byName.has("fog_params")) {
                 // FOGSTART/FOGEND/FOGDENSITY are floats carried inside a DWORD.
                 const asFloat = (id, fallback) => {
@@ -11108,7 +5626,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 floats[base + 2] = asFloat(D3DRS_FOGDENSITY, 1);
             }
             for (const stage of signature.coordStages) {
-                if (!stage.transformCount) continue;
+                if (!layout.byName.has("texture_transform" + stage.index)) continue;
                 floats.set(state.transforms.get(D3DTS_TEXTURE0 + stage.index) ||
                     IDENTITY4x4, at("texture_transform" + stage.index));
             }
@@ -11168,12 +5686,17 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 floats.set(light.diffuse, base);
                 floats.set(light.specular, base + 4);
                 floats.set(light.ambient, base + 8);
-                const position = transformPoint(view, light.position);
+                // D3D7 parallel-point lights use the normalized view-space
+                // position as a direction, with no range or attenuation.
+                const transformedPosition = legacyLighting
+                    ? light.position.map((value, index) => value - (light.type === D3DLIGHT_PARALLELPOINT ? 0 : legacyLighting.eye[index]))
+                    : transformPoint(view, light.position);
+                const position = light.type === D3DLIGHT_PARALLELPOINT ? normalize3(transformedPosition) : transformedPosition;
                 floats[base + 12] = position[0];
                 floats[base + 13] = position[1];
                 floats[base + 14] = position[2];
                 floats[base + 15] = 1;
-                const direction = normalize3(transformDirection(view, light.direction));
+                const direction = normalize3(legacyLighting ? light.direction : transformDirection(view, light.direction));
                 floats[base + 16] = direction[0];
                 floats[base + 17] = direction[1];
                 floats[base + 18] = direction[2];
@@ -11192,6 +5715,26 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             }
         }
 
+        writeSamplerLodBias(state, floats, offset, count) {
+            for (let index = 0; index < count; index++)
+                floats[offset + index] = lodBiasFor(state.samplerStates.get(index * 64 + D3DSAMP_MIPMAPLODBIAS) || 0);
+        }
+
+        writeFogUniforms(state, floats, color, params) {
+            const argb = state.renderStates.get(D3DRS_FOGCOLOR) || 0;
+            floats[color] = ((argb >>> 16) & 255) / 255;
+            floats[color + 1] = ((argb >>> 8) & 255) / 255;
+            floats[color + 2] = (argb & 255) / 255;
+            floats[color + 3] = 1;
+            if (params < 0) return;
+            const value = (id, fallback) => state.renderStates.has(id) ? floatFromDWORD(state.renderStates.get(id)) : fallback;
+            floats[params] = value(D3DRS_FOGSTART, 0);
+            floats[params + 1] = value(D3DRS_FOGEND, 1);
+            floats[params + 2] = value(D3DRS_FOGDENSITY, 1);
+            const projection = state.transforms.get(D3DTS_PROJECTION) || IDENTITY4x4;
+            floats[params + 3] = projection[3] === 0 && projection[7] === 0 && projection[11] === 0 && projection[15] === 1 ? 1 : 0;
+        }
+
         // Fills the fixed-function pixel block: only the fog inputs, texture
         // factor and per-stage constants the cascade actually reads.
         writeFixedPixelUniforms(state, program, backing, byteOffset) {
@@ -11206,23 +5749,15 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     ? ((argb >>> 24) & 0xff) / 255 : alpha;
             };
             for (const entry of layout.entries) {
-                if (entry.name === "fog_color") {
-                    // D3DRS_FOGCOLOR's alpha byte is defined as unused.
-                    writeColor(entry.offset / 4,
-                        state.renderStates.get(D3DRS_FOGCOLOR) || 0, 1);
+                if (entry.name === "sampler_lod_bias") {
+                    this.writeSamplerLodBias(state, floats, entry.offset / 4, entry.samplerBiasCount);
+                } else if (entry.name === "alpha_test") {
+                    new Uint32Array(backing, byteOffset + entry.offset, 4)[0] = (state.renderStates.get(D3DRS_ALPHAREF) || 0) & 255;
+                } else if (entry.name === "fog_color") {
+                    const params = layout.byName.get("fog_params");
+                    this.writeFogUniforms(state, floats, entry.offset / 4, params ? params.offset / 4 : -1);
                 } else if (entry.name === "fog_params") {
-                    // Table fog evaluates the equation per fragment, so its
-                    // start/end/density values belong to the pixel block.
-                    const asFloat = (id, fallback) => {
-                        const raw = state.renderStates.get(id);
-                        if (raw === undefined) return fallback;
-                        FLOAT_BITS_U32[0] = raw >>> 0;
-                        return FLOAT_BITS_F32[0];
-                    };
-                    const base = entry.offset / 4;
-                    floats[base] = asFloat(D3DRS_FOGSTART, 0);
-                    floats[base + 1] = asFloat(D3DRS_FOGEND, 1);
-                    floats[base + 2] = asFloat(D3DRS_FOGDENSITY, 1);
+                    // Written together with fog_color above.
                 } else if (entry.name === "texture_factor") {
                     writeColor(entry.offset / 4,
                         state.renderStates.get(D3DRS_TEXTUREFACTOR) === undefined
@@ -11257,11 +5792,11 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     floats[base + 2] = 0;
                     floats[base + 3] = 0;
                 } else {
-                    // stage_constant<N>; D3DTSS_CONSTANT defaults to opaque
-                    // black, unlike D3DRS_TEXTUREFACTOR's opaque white.
+                    // stage_constant<N>; zero is a valid RGBA constant and
+                    // must keep its transparent alpha when written as zero.
                     writeColor(entry.offset / 4,
                         state.textureStageStates.get(
-                            entry.source * 64 + D3DTSS_CONSTANT) || 0xff000000);
+                            entry.source * 64 + D3DTSS_CONSTANT) ?? 0);
                 }
             }
         }
@@ -11314,6 +5849,16 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     values.set((mask & (1 << plane))
                         ? state.clipPlanes[plane] : [0, 0, 0, 1],
                         base + plane * 4);
+            }
+            if (reflection.samplerLodBiasOffset >= 0 && state) {
+                this.writeSamplerLodBias(state, new Float32Array(backing, byteOffset), reflection.samplerLodBiasOffset / 4, reflection.samplerBiasCount);
+            }
+            if (reflection.alphaTestOffset >= 0 && state) {
+                new Uint32Array(backing, byteOffset + reflection.alphaTestOffset, 4)[0] = (state.renderStates.get(D3DRS_ALPHAREF) || 0) & 255;
+            }
+            if (reflection.fogOffset >= 0 && state) {
+                const floats = new Float32Array(backing, byteOffset);
+                this.writeFogUniforms(state, floats, reflection.fogOffset / 4, reflection.fogOffset / 4 + 4);
             }
             if (reflection.bumpStageCount && state) {
                 // ps_1_x texbem/texbeml read the D3DTSS_BUMPENVMAT* matrix of
@@ -11377,10 +5922,12 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         // command queued behind it along with it. A visibly wrong stage is a
         // far smaller fault than a silently truncated command stream.
         viewForStage(texture, stage, depth, dimension, unfilterable, wantsSRGB,
-                isCurrentDepthAttachment) {
+                isCurrentDepthAttachment, programmable) {
+            // A translated shader samples an unbound stage as opaque black; the
+            // fixed-function cascade keeps its neutral white stand-in.
             if (!texture)
                 return this.fallbackViewFor(depth ? "depth" : dimension,
-                    unfilterable);
+                    unfilterable, !!programmable && !depth);
             // WebGPU forbids a texture being an attachment and a sampled
             // resource in the same pass, and enforces it by failing the submit
             // rather than the draw. The normal shadow-map sequence unbinds the
@@ -11446,121 +5993,33 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         // Filtering is what makes the comparison a PCF tap rather than a hard
         // test, so it follows the stage's own filter state: a shadow map
         // sampled with POINT should not silently acquire soft edges.
-        comparisonSamplerFor(state, stage) {
+        comparisonSamplerFor(state, stage, compareFunction = "less-equal") {
+            // Fixed-function programs have null pixel reflection. Its absent
+            // comparison must use the same default as undefined reflection.
+            if (compareFunction === null) compareFunction = "less-equal";
             const get = (id, fallback) => {
                 const value = state.samplerStates.get(stage * 64 + id);
                 return value === undefined ? fallback : value;
             };
             const addressU = get(D3DSAMP_ADDRESSU, 1);
             const addressV = get(D3DSAMP_ADDRESSV, 1);
-            const linear = (get(D3DSAMP_MAGFILTER, 1) !== 0) &&
-                (get(D3DSAMP_MINFILTER, 1) !== 0);
+            const magFilter = FILTER_MODES[get(D3DSAMP_MAGFILTER, 1)] || "nearest";
+            const minFilter = FILTER_MODES[get(D3DSAMP_MINFILTER, 1)] || "nearest";
             const key = "cmp," + addressU + "," + addressV + "," +
-                (linear ? "linear" : "nearest");
+                magFilter + "," + minFilter + "," + compareFunction;
             const cached = this.samplerCache.get(key);
             if (cached) { ++this.stats.samplerHits; return cached; }
             const sampler = this.device.createSampler({
                 addressModeU: ADDRESS_MODES[addressU] || "repeat",
                 addressModeV: ADDRESS_MODES[addressV] || "repeat",
-                magFilter: linear ? "linear" : "nearest",
-                minFilter: linear ? "linear" : "nearest",
-                compare: "less-equal",
+                magFilter,
+                minFilter,
+                compare: compareFunction,
             });
             ++this.stats.samplersCreated;
             ++this.stats.comparisonSamplersCreated;
             this.samplerCache.set(key, sampler);
             return sampler;
-        }
-
-        sampledViewFor(texture, wantsSRGB) {
-            if (!wantsSRGB) return texture.view;
-            if (!texture.srgbFormat) {
-                ++this.stats.srgbTextureUnavailable;
-                this.warnOnce("srgb-no-sibling",
-                    "a stage asks for sRGB decoding on a texture whose format " +
-                    "has no -srgb equivalent in WebGPU, so it is sampled as " +
-                    "linear and comes out too bright", { format: texture.format,
-                        gpuFormat: texture.gpuFormat });
-                return texture.view;
-            }
-            if (!texture.srgbView) {
-                texture.srgbView = texture.gpuTexture.createView({
-                    format: texture.srgbFormat,
-                    dimension: texture.textureType === "cube" ? "cube" : "2d",
-                });
-                ++this.stats.srgbViewsCreated;
-            }
-            ++this.stats.srgbTextureSamples;
-            return texture.srgbView;
-        }
-
-        // A 1x1 opaque white stand-in per view dimension, for a stage the
-        // shader samples but the app left unbound. "depth" is not a view
-        // dimension but is threaded through the same cache because it plays
-        // the same role: the stand-in a depth slot reads when nothing usable
-        // is bound.
-        fallbackViewFor(dimension, unfilterable) {
-            if (dimension === "depth") return this.fallbackDepthView();
-            if ((dimension === "2d" || !dimension) && !unfilterable)
-                return this.fallbackView;
-            if (!this.fallbackViews) this.fallbackViews = new Map();
-            const key = (dimension || "2d") + (unfilterable ? "|f32" : "|u8");
-            let view = this.fallbackViews.get(key);
-            if (view) return view;
-            const layers = dimension === "cube" ? 6 : 1;
-            const texture = this.device.createTexture({
-                label: "D3D9 fallback white " + key,
-                size: { width: 1, height: 1, depthOrArrayLayers: layers },
-                format: unfilterable ? "rgba32float" : "rgba8unorm",
-                dimension: dimension === "3d" ? "3d" : "2d",
-                usage: TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING,
-            });
-            for (let layer = 0; layer < layers; ++layer) {
-                this.device.queue.writeTexture(
-                    { texture, origin: { x: 0, y: 0, z: layer } },
-                    unfilterable
-                        ? new Float32Array([1, 1, 1, 1])
-                        : new Uint8Array([255, 255, 255, 255]),
-                    { bytesPerRow: unfilterable ? 16 : 4, rowsPerImage: 1 },
-                    { width: 1, height: 1, depthOrArrayLayers: 1 });
-            }
-            view = texture.createView({ dimension: dimension || "2d" });
-            this.fallbackViews.set(key, view);
-            return view;
-        }
-
-        // The depth counterpart of the 1x1 white texture. It has to read as
-        // "nothing occludes this fragment", and for a less-equal comparison
-        // that means the far plane. A fresh WebGPU texture zero-initialises,
-        // which is the near plane and would come out fully shadowed, so it is
-        // cleared through an empty render pass -- depth formats cannot be
-        // written with writeTexture.
-        fallbackDepthView() {
-            if (this.fallbackDepth) return this.fallbackDepth;
-            const texture = this.device.createTexture({
-                label: "D3D9 fallback depth (far plane)",
-                size: { width: 1, height: 1, depthOrArrayLayers: 1 },
-                format: DEPTH_FORMAT,
-                usage: TEXTURE_USAGE_RENDER_ATTACHMENT |
-                    TEXTURE_USAGE_TEXTURE_BINDING,
-            });
-            const encoder = this.device.createCommandEncoder(
-                { label: "D3D9 fallback depth clear" });
-            encoder.beginRenderPass({
-                colorAttachments: [],
-                depthStencilAttachment: {
-                    view: texture.createView(),
-                    depthClearValue: 1.0,
-                    depthLoadOp: "clear",
-                    depthStoreOp: "store",
-                    stencilClearValue: 0,
-                    stencilLoadOp: "clear",
-                    stencilStoreOp: "store",
-                },
-            }).end();
-            this.device.queue.submit([encoder.finish()]);
-            this.fallbackDepth = texture.createView({ aspect: "depth-only" });
-            return this.fallbackDepth;
         }
 
         retireAfterSubmit(buffer) {
@@ -11639,9 +6098,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     : null;
                 const view = indexedView || this.viewForStage(texture, index,
                     depth, dimension, unfilterable, wantsSRGB,
-                    !!handle && handle === state.depthTargetHandle);
+                    !!handle && handle === state.depthTargetHandle, !program.pixelSignature);
                 const sampler = compare
-                    ? this.comparisonSamplerFor(state, index)
+                    ? this.comparisonSamplerFor(state, index, program.pixelReflection &&
+                        program.pixelReflection.samplers.find(sampler => sampler.index === index)?.compareFunction)
                     : this.samplerFor(state, index, depth || unfilterable,
                         texture);
                 entries.push(
@@ -11662,7 +6122,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     (state.samplerStates.get(binding.stage * 64 +
                         D3DSAMP_SRGBTEXTURE) || 0) !== 0;
                 const view = this.viewForStage(texture, binding.stage, false,
-                    binding.type, unfilterable, wantsSRGB);
+                    binding.type, unfilterable, wantsSRGB, false, true);
                 const sampler = this.samplerFor(state, binding.stage,
                     unfilterable, texture);
                 entries.push(
@@ -11688,8 +6148,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                     return { group: cached, dynamicOffsets };
                 }
             }
-            const group = this.device.createBindGroup(
-                { layout: pipeline._bindGroupLayout, entries });
+            const created = this.gpuErrors.scoped("bind group", () => this.device.createBindGroup(
+                { layout: pipeline._bindGroupLayout, entries }));
+            const group = created.object;
+            created.checked.then(error => { if (error) group._d9wgRejected = error; });
             ++this.stats.bindGroupCreations;
             if (cacheable) {
                 while (this.bindGroupCache.size >= this.maxBindGroups) {
@@ -11701,167 +6163,6 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 this.bindGroupCache.set(key, group);
             }
             return { group, dynamicOffsets };
-        }
-
-        // Builds the pipeline/uniform buffer/bind group eagerly (none of
-        // those are tied to the swapchain's current texture, so there is no
-        // staleness concern in creating them now) but only *records* the
-        // draw as a pending op -- see the comment on ensureFrame() for why
-        // the actual pass.draw()/drawIndexed() call must wait until
-        // finishFrame() replays it against a freshly-acquired texture.
-        //
-        // The stride each stream contributes is the one the application bound
-        // via SetStreamSource (or that a Draw*UP command carried). It must
-        // never be inferred from the vertex declaration: a declaration's
-        // consumed elements are only part of the vertex, so a computed stride
-        // is too small whenever the format carries anything the shader skips
-        // (NORMAL, extra texcoords, padding) and every vertex after the first
-        // would then be fetched from the wrong offset.
-        recordDraw(state, elements, which, geometry) {
-            const targets = this.renderTargetsFor(state);
-            if (!targets) {
-                this.noteDroppedDraw(which, state,
-                    ["no usable colour render target is bound"]);
-                return;
-            }
-            // D3DRS_FILLMODE. WebGPU has no polygon mode, so wireframe is
-            // reached by rewriting the topology and the indices instead: every
-            // triangle becomes its three edges as a line list. Done here, at
-            // the single funnel every draw path reaches, rather than at the
-            // four Draw* entry points -- and after the fan conversion above it,
-            // so a fan is already an ordinary triangle list by the time it
-            // arrives.
-            geometry = this.applyFillMode(state, geometry) || geometry;
-            // A draw against a stand-in depth attachment that nothing cleared
-            // is the one case where standing in changed the image; anything
-            // else has no earlier contents to have lost.
-            if (targets.substituteDepth &&
-                    (state.renderStates.get(D3DRS_ZENABLE) || 0) !== 0)
-                this.noteSubstituteDepthUse(targets, false);
-            const pipelineState = this.pipelineStateFor(state, targets);
-            // A point-list that came from D3DFILL_POINT is not a point
-            // sprite: sprite expansion is what D3DRS_POINTSPRITEENABLE asks
-            // for, and a wireframe-mode triangle mesh asked for neither.
-            const pointExpansion = geometry.topology === "point-list" &&
-                !geometry.indexInfo && !geometry.fromFillMode;
-            const instanceCount = this.drawInstanceCount(state);
-            const hasInstanceStream = Array.from(state.streams.values()).some(stream =>
-                (((stream.frequency ?? 1) >>> 0) &
-                    D3DSTREAMSOURCE_INSTANCEDATA) !== 0);
-            if (instanceCount > 1 && !geometry.indexInfo && !pointExpansion) {
-                this.noteDroppedDraw(which, state,
-                    ["D3D9 indexed instancing requires an indexed draw"]);
-                return;
-            }
-            if (pointExpansion && (instanceCount !== 1 || hasInstanceStream)) {
-                this.noteDroppedDraw(which, state,
-                    ["point expansion cannot share WebGPU instance slots with D3D9 instancing"]);
-                return;
-            }
-            const pointSprite = pointExpansion &&
-                (state.renderStates.get(D3DRS_POINTSPRITEENABLE) || 0) !== 0;
-            const program = this.programFor(state, elements, pipelineState,
-                { pointExpansion, pointSprite });
-            if (program.error) {
-                if (program.shaderError) ++this.stats.drawsSkippedForBadShader;
-                this.noteDroppedDraw(which, state, [program.error]);
-                return;
-            }
-            const pipeline = this.pipelineFor(program, pipelineState,
-                pointExpansion ? "triangle-list" : geometry.topology,
-                pointExpansion ? undefined : geometry.stripIndexFormat);
-            // The bind group captures concrete GPUTextureView objects. Create
-            // the frame first so bindGroupFor can mark those textures as read;
-            // a later UPDATE_TEXTURE can then rename instead of retroactively
-            // changing this already-recorded draw. A draw without a preceding
-            // Clear is legal and used by War3's UI passes, so relying on Clear
-            // to create the frame misses exactly those textures.
-            const frame = this.ensureFrame();
-            const constants = this.constantBufferFor(state, program);
-            const binding = this.bindGroupFor(state, pipeline, program, constants);
-            const prepared = this.prepareInstanceStreams(
-                geometry.streams, instanceCount);
-            if (prepared.error) {
-                this.noteDroppedDraw(which, state, [prepared.error]);
-                return;
-            }
-            geometry = { ...geometry, streams: prepared.streams };
-            // Bind each stream the pipeline declared a layout for, in the same
-            // order, so slot N in the pipeline is slot N here.
-            const vertexBuffers = [];
-            for (const layout of program.vertexBuffers) {
-                if (layout.stream === DEFAULT_ATTRIBUTE_STREAM) {
-                    vertexBuffers.push({ buffer: this.defaultAttributeBuffer(), offset: 0 });
-                    continue;
-                }
-                const binding = geometry.streams.get(layout.stream);
-                if (!binding) {
-                    this.noteDroppedDraw(which, state,
-                        ["stream " + layout.stream + " is referenced by the " +
-                         "declaration but not bound"]);
-                    return;
-                }
-                vertexBuffers.push({ buffer: binding.buffer, offset: binding.offset });
-            }
-            // Mark every buffer this draw reads as "observed at this frame's
-            // contents". applyBufferUpdate() uses that to notice a write that
-            // would retroactively change what an already-recorded draw sees.
-            for (const layout of program.vertexBuffers) {
-                const binding = geometry.streams.get(layout.stream);
-                if (binding && binding.resource)
-                    binding.resource.frameReferenced = frame.serial;
-            }
-            if (geometry.indexResource)
-                geometry.indexResource.frameReferenced = frame.serial;
-            // D3DRS_SCISSORTESTENABLE gates the rect; without it D3D9 ignores
-            // whatever SetScissorRect last set.
-            const scissorEnabled =
-                (state.renderStates.get(D3DRS_SCISSORTESTENABLE) || 0) !== 0 &&
-                !!state.scissorRect;
-            if (scissorEnabled) ++this.stats.drawsWithScissor;
-            const attachmentCount = Math.max(1, Math.min(4,
-                (targets.colors && targets.colors.length) || 1));
-            ++this.mrtAttachmentDraws[attachmentCount];
-            pipeline._d9wgDrawCount = (pipeline._d9wgDrawCount || 0) + 1;
-            const drawPath = (state.vertexShaderHandle ||
-                state.pixelShaderHandle) ? "programmable" : "fixed";
-            // References are retained, not expanded, on the hot draw path.
-            // blackScreenReport() serialises the two most recent paths only
-            // when explicitly requested, avoiding per-draw diagnostic copies
-            // during a real benchmark run.
-            this.lastDraws[drawPath] = {
-                which, state, elements, geometry, program, pipelineState,
-                targets, pipeline,
-            };
-            frame.ops.push({
-                kind: "draw", pipeline, bindGroup: binding.group,
-                dynamicOffsets: binding.dynamicOffsets, targets,
-                viewport: { ...state.viewport },
-                scissor: scissorEnabled ? { ...state.scissorRect } : null,
-                blendConstant: pipelineState.blendConstant,
-                stencilReference: pipelineState.stencilReference,
-                vertexBuffers, indexInfo: geometry.indexInfo,
-                vertexCount: pointExpansion ? 6 : geometry.vertexCount,
-                instanceCount: pointExpansion ? geometry.vertexCount : instanceCount,
-            });
-            if (pointExpansion) {
-                ++this.stats.pointSpriteDraws;
-                this.stats.pointSpriteInstances += geometry.vertexCount || 0;
-            }
-            if (!pointExpansion && instanceCount > 1) {
-                ++this.stats.instancedDraws;
-                this.stats.instancesDrawn += instanceCount;
-            }
-            // The pointer is almost always the final thing a frame draws, so
-            // the texture bound by the last draw is the quickest way to name
-            // the cursor's texture without hunting through the whole atlas set.
-            if (program.samplerIndices.length)
-                this.stats.lastDrawTexture =
-                    state.textures.get(program.samplerIndices[0]) || 0;
-            if (state.vertexShaderHandle || state.pixelShaderHandle)
-                ++this.stats.programmableDraws;
-            if (geometry.indexInfo) ++this.stats.indexedDrawCalls;
-            else ++this.stats.drawCalls;
         }
 
         // Every draw path below can bail out for several different reasons,
@@ -11932,10 +6233,9 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 const frequency = (binding.frequency ?? 1) >>> 0;
                 if ((frequency & D3DSTREAMSOURCE_INSTANCEDATA) === 0) continue;
                 const divisor = frequency & D3DSTREAMSOURCE_FREQUENCY_MASK;
-                if (!divisor)
-                    return { error: "instance stream " + streamIndex +
-                        " has a zero step rate" };
-                if (divisor === 1) continue;
+                // Zero stride already repeats one record for every instance,
+                // independently of its divisor; no expansion is necessary.
+                if (divisor === 1 || binding.stride === 0) continue;
                 const stride = binding.stride || 0;
                 const shadow = binding.resource && binding.resource.shadow;
                 if (!stride || !shadow)
@@ -11947,7 +6247,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 const output = new Uint8Array(alignUp(outputBytes, 4));
                 for (let instance = 0; instance < instanceCount; ++instance) {
                     const source = binding.offset +
-                        Math.floor(instance / divisor) * stride;
+                        (divisor ? Math.floor(instance / divisor) : 0) * stride;
                     if (source < 0 || source + stride > shadow.length)
                         return { error: "instance stream " + streamIndex +
                             " references data outside its vertex buffer" };
@@ -11990,6 +6290,11 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
             for (const [streamIndex, binding] of streams) {
                 const streamState = state.streams.get(streamIndex);
                 const stride = streamState && streamState.stride;
+                if (stride === 0) {
+                    // Index compaction cannot change a constant attribute.
+                    // Retain its resource so later updates still rename it.
+                    result.set(streamIndex, binding);continue;
+                }
                 const shadow = binding.resource && binding.resource.shadow;
                 if (!stride || !shadow) return null;
                 const outputBytes = indexCount * stride;
@@ -12015,10 +6320,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         }
 
         onDrawPrimitive(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const primitiveType = view.getUint32(offset + 4, true);
-            const startVertex = view.getUint32(offset + 8, true);
-            const primitiveCount = view.getUint32(offset + 12, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.DrawPrimitive.device_handle, true);
+            const primitiveType = view.getUint32(offset + D9WG.F.DrawPrimitive.primitive_type, true);
+            const startVertex = view.getUint32(offset + D9WG.F.DrawPrimitive.start_vertex, true);
+            const primitiveCount = view.getUint32(offset + D9WG.F.DrawPrimitive.primitive_count, true);
             const state = this.deviceState(deviceHandle);
             const elements = this.currentElements(state);
             if (!elements) {
@@ -12057,11 +6362,11 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         }
 
         onDrawIndexedPrimitive(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const primitiveType = view.getUint32(offset + 4, true);
-            const baseVertexIndex = view.getInt32(offset + 8, true);
-            const startIndex = view.getUint32(offset + 20, true);
-            const primitiveCount = view.getUint32(offset + 24, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.DrawIndexedPrimitive.device_handle, true);
+            const primitiveType = view.getUint32(offset + D9WG.F.DrawIndexedPrimitive.primitive_type, true);
+            const baseVertexIndex = view.getInt32(offset + D9WG.F.DrawIndexedPrimitive.base_vertex_index, true);
+            const startIndex = view.getUint32(offset + D9WG.F.DrawIndexedPrimitive.start_index, true);
+            const primitiveCount = view.getUint32(offset + D9WG.F.DrawIndexedPrimitive.primitive_count, true);
             const state = this.deviceState(deviceHandle);
             const elements = this.currentElements(state);
             const ib = this.resources.get(state.indexBufferHandle);
@@ -12112,23 +6417,26 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 return;
             }
             const topology = topologyFor(primitiveType);
+            const strip = isStripTopology(topology);
+            const indexBuffer = strip ? this.stripIndexBufferFor(ib) : ib.gpuBuffer;
+            const format = strip ? "uint32" : ib.indexFormat;
             this.recordDraw(state, elements, "DrawIndexedPrimitive", {
                 topology, streams,
-                stripIndexFormat: isStripTopology(topology) ? ib.indexFormat : undefined,
+                stripIndexFormat: strip ? format : undefined,
                 indexResource: ib,
-                indexInfo: { buffer: ib.gpuBuffer, format: ib.indexFormat, offset: 0,
+                indexInfo: { buffer: indexBuffer, format, offset: 0,
                     count: indexCount, firstIndex: startIndex,
                     baseVertex: baseVertexIndex },
             });
         }
 
         onDrawPrimitiveUP(bytes, view, offset, length) {
-            const deviceHandle = view.getUint32(offset, true);
-            const primitiveType = view.getUint32(offset + 4, true);
-            const primitiveCount = view.getUint32(offset + 8, true);
-            const stride = view.getUint32(offset + 12, true);
-            const vertexBytes = view.getUint32(offset + 20, true);
-            const dataOffset = view.getUint32(offset + 24, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.DrawPrimitiveUP.device_handle, true);
+            const primitiveType = view.getUint32(offset + D9WG.F.DrawPrimitiveUP.primitive_type, true);
+            const primitiveCount = view.getUint32(offset + D9WG.F.DrawPrimitiveUP.primitive_count, true);
+            const stride = view.getUint32(offset + D9WG.F.DrawPrimitiveUP.stride, true);
+            const vertexBytes = view.getUint32(offset + D9WG.F.DrawPrimitiveUP.vertex_bytes, true);
+            const dataOffset = view.getUint32(offset + D9WG.F.DrawPrimitiveUP.vertex_data_offset, true);
             const state = this.deviceState(deviceHandle);
             const elements = this.currentElements(state);
             if (!elements) {
@@ -12171,21 +6479,21 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
         }
 
         onDrawIndexedPrimitiveUP(bytes, view, offset) {
-            const deviceHandle = view.getUint32(offset, true);
-            const primitiveType = view.getUint32(offset + 4, true);
-            const primitiveCount = view.getUint32(offset + 16, true);
-            const indexFormatValue = view.getUint32(offset + 20, true);
+            const deviceHandle = view.getUint32(offset + D9WG.F.DrawIndexedPrimitiveUP.device_handle, true);
+            const primitiveType = view.getUint32(offset + D9WG.F.DrawIndexedPrimitiveUP.primitive_type, true);
+            const primitiveCount = view.getUint32(offset + D9WG.F.DrawIndexedPrimitiveUP.primitive_count, true);
+            const indexFormatValue = view.getUint32(offset + D9WG.F.DrawIndexedPrimitiveUP.index_format, true);
             // M1 never read `stride` out of this payload but referenced it
             // when recording the draw, so every DrawIndexedPrimitiveUP threw
             // a ReferenceError and took the whole batch down with it (the
             // batch's catch handler discarded the frame). War3's main menu
             // happens not to use this entry point, which is why it stayed
             // hidden.
-            const stride = view.getUint32(offset + 24, true);
-            const indexBytes = view.getUint32(offset + 32, true);
-            const vertexBytes = view.getUint32(offset + 36, true);
-            const indexDataOffset = view.getUint32(offset + 40, true);
-            const vertexDataOffset = view.getUint32(offset + 44, true);
+            const stride = view.getUint32(offset + D9WG.F.DrawIndexedPrimitiveUP.stride, true);
+            const indexBytes = view.getUint32(offset + D9WG.F.DrawIndexedPrimitiveUP.index_bytes, true);
+            const vertexBytes = view.getUint32(offset + D9WG.F.DrawIndexedPrimitiveUP.vertex_bytes, true);
+            const indexDataOffset = view.getUint32(offset + D9WG.F.DrawIndexedPrimitiveUP.index_data_offset, true);
+            const vertexDataOffset = view.getUint32(offset + D9WG.F.DrawIndexedPrimitiveUP.vertex_data_offset, true);
             const state = this.deviceState(deviceHandle);
             const elements = this.currentElements(state);
             if (!elements) {
@@ -12244,16 +6552,21 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 size: Math.max(4, alignUp(vertexBytes, 4)),
                 usage: BUFFER_USAGE_VERTEX | BUFFER_USAGE_COPY_DST,
             });
+            const topology = topologyFor(primitiveType);
+            const widen = isStripTopology(topology) && indexFormatValue !== D3DFMT_INDEX32;
+            const widened = widen ? new Uint32Array(elementCount) : null;
+            if (widen) for (let i = 0; i < elementCount; ++i)
+                widened[i] = view.getUint16(indexDataOffset + i * 2, true);
             const indexBuffer = this.device.createBuffer({
-                size: Math.max(4, alignUp(indexBytes, 4)),
+                size: Math.max(4, widen ? widened.byteLength : alignUp(indexBytes, 4)),
                 usage: BUFFER_USAGE_INDEX | BUFFER_USAGE_COPY_DST,
             });
             this.writeBufferAligned(vertexBuffer, 0, bytes, vertexDataOffset, vertexBytes);
-            this.writeBufferAligned(indexBuffer, 0, bytes, indexDataOffset, indexBytes);
+            if (widen) this.device.queue.writeBuffer(indexBuffer, 0, widened);
+            else this.writeBufferAligned(indexBuffer, 0, bytes, indexDataOffset, indexBytes);
             this.retireAfterSubmit(vertexBuffer);
             this.retireAfterSubmit(indexBuffer);
-            const format = indexFormatValue === D3DFMT_INDEX32 ? "uint32" : "uint16";
-            const topology = topologyFor(primitiveType);
+            const format = widen || indexFormatValue === D3DFMT_INDEX32 ? "uint32" : "uint16";
             if (primitiveType === D3DPT_TRIANGLEFAN) {
                 this.noteDroppedDraw("DrawIndexedPrimitiveUP", state,
                     ["indexed triangle fans are not converted on the UP path"]);
@@ -12264,24 +6577,10 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
                 streams: new Map([[0, { buffer: vertexBuffer, offset: 0 }]]),
                 stripIndexFormat: isStripTopology(topology) ? format : undefined,
                 indexInfo: { buffer: indexBuffer, format, offset: 0,
-                    count: elementCount, firstIndex: 0, baseVertex: 0 },
+                    count: elementCount, firstIndex: 0, baseVertex: 0,
+                    cpuIndices: widened },
             }, stride);
             ++this.stats.upDrawCalls;
-        }
-
-        // Draw*UP carries its own stride rather than having one bound through
-        // SetStreamSource, so vertexBufferLayoutsFor() -- which reads
-        // state.streams -- needs stream 0 temporarily standing in for it.
-        recordDrawWithStride(state, elements, which, geometry, stride) {
-            const saved = state.streams.get(0);
-            state.streams.set(0, { bufferHandle: 0, stride, offsetInBytes: 0,
-                frequency: 1 });
-            try {
-                this.recordDraw(state, elements, which, geometry);
-            } finally {
-                if (saved) state.streams.set(0, saved);
-                else state.streams.delete(0);
-            }
         }
 
         // (0,1,2), (0,2,3), (0,3,4)... -- the triangle list a fan of
@@ -12483,6 +6782,64 @@ fn fs_main(in: VSOut) -> @location(0) vec4<f32> {
     function isStripTopology(topology) {
         return topology === "triangle-strip" || topology === "line-strip";
     }
+
+    const presentMethods = presentFactory.createMethods({ TEXTURE_USAGE_RENDER_ATTACHMENT, TEXTURE_USAGE_COPY_SRC, TEXTURE_USAGE_COPY_DST, TEXTURE_USAGE_TEXTURE_BINDING, sampleCountForD3D, D3DMULTISAMPLE_NONE, D9WG, formatToGPU, D9WGStreamError, expandRowToGPU, D3DFMT_A8R8G8B8, sameVisibleRegion, D9WG_WINDOW_IS_WINDOW, D9WG_WINDOW_VISIBLE, D9WG_WINDOW_ICONIC, D9WG_WINDOW_FOREGROUND, D9WG_WINDOW_FULLSCREEN, D9WG_WINDOW_NO_SURFACE, D9WG_WINDOW_OCCLUDED, D9WG_WINDOW_REGION, readVisibleRegion, D9WG_WINDOW_STATE_BYTES });
+    for (const [name, value] of Object.entries(presentMethods))
+        Object.defineProperty(D3D9WebGPUExecutor.prototype, name, { value, writable: true, configurable: true });
+
+    const FrameReplayer = replayFactory.createClass({ D3DQUERYTYPE_OCCLUSION, MAX_QUERY_SET_COUNT, EMPTY_OFFSETS, intersectRects, alignUp, BUFFER_USAGE_QUERY_RESOLVE, BUFFER_USAGE_COPY_SRC, BUFFER_USAGE_COPY_DST, BUFFER_USAGE_MAP_READ, MAP_MODE_READ, D9WG_RESPONSE_FAILED, D9WG_RESPONSE_OK, D3DQUERYTYPE_EVENT, D3DQUERYTYPE_TIMESTAMP, D3DQUERYTYPE_TIMESTAMPFREQ, D3DQUERYTYPE_TIMESTAMPDISJOINT });
+    const recorderMethods = recorderFactory.createMethods({ D3DRS_ZENABLE, D3DSTREAMSOURCE_INSTANCEDATA, D3DRS_POINTSPRITEENABLE, DEFAULT_ATTRIBUTE_STREAM, D3DRS_SCISSORTESTENABLE, D3DQUERYTYPE_OCCLUSION });
+    for (const [name, value] of Object.entries(recorderMethods))
+        Object.defineProperty(D3D9WebGPUExecutor.prototype, name, { value, writable: true, configurable: true });
+
+    const pipelineMethods = pipelineFactory.createMethods({
+        D3DRS_ZENABLE, D3DZB_FALSE, D3DRS_ZWRITEENABLE, COMPARE_FUNCS,
+        D3DRS_ZFUNC, D3DRS_ALPHABLENDENABLE, BLEND_FACTORS, D3DRS_SRCBLEND,
+        D3DRS_DESTBLEND, D3DRS_BLENDOP, D3DRS_SEPARATEALPHABLENDENABLE, D3DRS_SRCBLENDALPHA,
+        D3DRS_DESTBLENDALPHA, D3DRS_BLENDOPALPHA, BLEND_OPS, D3DRS_BLENDFACTOR,
+        floatFromDWORD, D3DRS_DEPTHBIAS, D3DRS_SLOPESCALEDEPTHBIAS, D3DRS_STENCILENABLE,
+        STENCIL_OPS, D3DRS_STENCILFAIL, D3DRS_STENCILZFAIL, D3DRS_STENCILPASS,
+        D3DRS_STENCILFUNC, D3DRS_TWOSIDEDSTENCILMODE, D3DRS_CCW_STENCILFAIL, D3DRS_CCW_STENCILZFAIL,
+        D3DRS_CCW_STENCILPASS, D3DRS_CCW_STENCILFUNC, D3DRS_CULLMODE, D3DCULL_CCW,
+        D3DCULL_CW, D3DRS_COLORWRITEENABLE, D3DRS_COLORWRITEENABLE1, D3DRS_COLORWRITEENABLE2,
+        D3DRS_COLORWRITEENABLE3, D3DRS_ALPHATESTENABLE, D3DRS_ALPHAFUNC, D3DRS_ALPHAREF,
+        D3DRS_STENCILMASK, D3DRS_STENCILWRITEMASK, D3DRS_STENCILREF, D3DRS_MULTISAMPLEANTIALIAS,
+        D3DRS_MULTISAMPLEMASK, D3DRS_ADAPTIVETESS_Y, D3DFOURCC_ATOC, D3DSAMP_ADDRESSU,
+        D3DSAMP_ADDRESSV, D3DSAMP_ADDRESSW, D3DSAMP_MIPFILTER, D3DSAMP_MAGFILTER,
+        D3DSAMP_MINFILTER, D3DSAMP_MAXANISOTROPY, D3DSAMP_MAXMIPLEVEL, ADDRESS_MODES,
+        FILTER_MODES, SHADER_STAGE_VERTEX, SHADER_STAGE_FRAGMENT, isBlendableGPUFormat,
+        DEPTH_FORMAT, D9WG
+    });
+    for (const [name, value] of Object.entries(pipelineMethods))
+        Object.defineProperty(D3D9WebGPUExecutor.prototype, name, { value, writable: true, configurable: true });
+
+    const resourceMethods = resourceFactory.createMethods({
+        D9WG, RESOURCE_BUFFER_INDEX, BUFFER_USAGE_INDEX, BUFFER_USAGE_COPY_DST, BUFFER_USAGE_VERTEX,
+        alignUp, D3DFMT_INDEX32, D3DUSAGE_DEPTHSTENCIL, isFourCCDepthFormat, D3DUSAGE_RENDERTARGET,
+        D9WG_USAGE_DDRAW_INDEXED, D9WG_USAGE_DDRAW_XRGB_BITS, isPalettizedFormat, sampleCountForD3D, D3DUSAGE_AUTOGENMIPMAP, fullMipLevelCount, autoGenMipsSupported, autoGenDefaultFilter,
+        DEPTH_FORMAT, formatToGPU, isRenderableGPUFormat, srgbSiblingOf, TEXTURE_USAGE_RENDER_ATTACHMENT,
+        TEXTURE_USAGE_TEXTURE_BINDING, TEXTURE_USAGE_COPY_DST, TEXTURE_USAGE_COPY_SRC, isCompressedFormat, RESOURCE_TEXTURE_2D,
+        gpuBytesPerTexel, expandRowToGPU, blockAlignedCopyExtent, bcNeedsExpansion, expandBCBlocks, RESOURCE_TEXTURE_CUBE, RESOURCE_TEXTURE_VOLUME,
+        RESOURCE_VERTEX_DECLARATION, D9WGStreamError, shaderPipeline, RESOURCE_VERTEX_SHADER, RESOURCE_PIXEL_SHADER,
+        BUFFER_USAGE_UNIFORM, PALETTE_ENTRIES: surfaceFactory.PALETTE_ENTRIES, PALETTE_BYTES: surfaceFactory.PALETTE_BYTES
+    });
+    for (const [name, value] of Object.entries(resourceMethods))
+        Object.defineProperty(D3D9WebGPUExecutor.prototype, name, { value, writable: true, configurable: true });
+
+    const surfaceMethods = surfaceFactory.createMethods({
+        formatToGPU, SHADER_STAGE_FRAGMENT, isFloat32GPUFormat, SHADER_STAGE_VERTEX,
+          DEPTH_FORMAT, TEXTURE_USAGE_COPY_SRC, TEXTURE_USAGE_COPY_DST,
+        TEXTURE_USAGE_TEXTURE_BINDING, TEXTURE_USAGE_RENDER_ATTACHMENT, DDOVER_KEY_SOURCE: D9WG.C.D9WG_DDOVER_KEY_SOURCE, DDOVER_KEY_DESTINATION: D9WG.C.D9WG_DDOVER_KEY_DESTINATION,
+        DDOVER_MIRROR_X: D9WG.C.D9WG_DDOVER_MIRROR_X, DDOVER_MIRROR_Y: D9WG.C.D9WG_DDOVER_MIRROR_Y
+    });
+    for (const [name, value] of Object.entries(surfaceMethods))
+        Object.defineProperty(D3D9WebGPUExecutor.prototype, name, { value, writable: true, configurable: true });
+
+    for (const name of DIAGNOSTIC_REPORTS)
+        Object.defineProperty(D3D9WebGPUExecutor.prototype, name, {
+            configurable: true, writable: true,
+            value(...args) { return this.enableDiagnostics().then(() => this[name](...args)); },
+        });
 
     D3D9WebGPUExecutor.prototype["performanceTimingVersion"] = 1;
     global.D3D9WebGPUExecutor = D3D9WebGPUExecutor;

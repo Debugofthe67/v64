@@ -1,3 +1,4 @@
+import { pvrtc_bytes } from "./pvrtc.js";
 // The shadow state (docs/gles-proxy-plan.md "影子状态", E2): OpenGL ES 2.0's
 // state machine, written from the GLES 2.0 specification, on the CPU side,
 // so that the guest's queries are answered without waiting for the page:
@@ -99,7 +100,7 @@ function new_texture(target)
     return {
         target, images: new Map(), min_filter: external ? GL.LINEAR : GL.NEAREST_MIPMAP_LINEAR, mag_filter: GL.LINEAR,
         wrap_s: external ? GL.CLAMP_TO_EDGE : GL.REPEAT, wrap_t: external ? GL.CLAMP_TO_EDGE : GL.REPEAT,
-        generate_mipmap: 0, crop: [0, 0, 0, 0],
+        anisotropy: 1, generate_mipmap: 0, crop: [0, 0, 0, 0],
     };
 }
 
@@ -1071,16 +1072,23 @@ const HANDLERS = {
     {
         const t = image_target(c, target);
         if(!t) return REFUSED;
-        if(internalformat !== GL.ETC1_RGB8_OES) return fail(c, GL.INVALID_ENUM);
+        const pvrtc = internalformat >= 0x8C00 && internalformat <= 0x8C03;
+        if(!pvrtc && internalformat !== GL.ETC1_RGB8_OES) return fail(c, GL.INVALID_ENUM);
         if(!image_size_ok(c, target, level, width, height, border)) return REFUSED;
-        if(size !== etc1_bytes(width, height) || (data ? data.length : 0) < size) return fail(c, GL.INVALID_VALUE);
+        const expected = pvrtc ? pvrtc_bytes(width, height, !!(internalformat & 1)) : etc1_bytes(width, height);
+        if(!expected || size !== expected || (data ? data.length < size : !pvrtc)) return fail(c, GL.INVALID_VALUE);
         t.texture.images.set(t.face * 32 + level, { width, height, format: internalformat, type: GL.UNSIGNED_BYTE, compressed: true });
     },
     // (ETC1 has no partial updates: OES_compressed_ETC1_RGB8_texture)
-    "glCompressedTexSubImage2D": (shadow, c, [target]) =>
+    "glCompressedTexSubImage2D": (shadow, c, [target, level, x, y, width, height, format, size, data]) =>
     {
-        if(!image_target(c, target)) return REFUSED;
-        return fail(c, GL.INVALID_OPERATION);
+        const t = image_target(c, target);
+        if(!t) return REFUSED;
+        const image = t.texture.images.get(t.face * 32 + level);
+        if(!image || !image.compressed || format !== image.format || format < 0x8C00 || format > 0x8C03)
+            return fail(c, GL.INVALID_OPERATION);
+        if(x || y || width !== image.width || height !== image.height) return fail(c, GL.INVALID_OPERATION);
+        if(size !== pvrtc_bytes(width, height, !!(format & 1)) || !data || data.length < size) return fail(c, GL.INVALID_VALUE);
     },
     "glCopyTexImage2D": (shadow, c, [target, level, internalformat, x, y, width, height, border]) =>
     {
@@ -1155,7 +1163,7 @@ const HANDLERS = {
         if(!size) return fail(c, GL.INVALID_VALUE);
         const rb = c.group.renderbuffers.get(c.renderbuffer);
         if(!rb) return fail(c, GL.INVALID_OPERATION);
-        Object.assign(rb, { width: size.width, height: size.height, format: size.format === GL.RGB ? GL.RGB8_OES : GL.RGBA8_OES, image });
+        Object.assign(rb, { width: size.width, height: size.height, format: size.format === GL.RGB ? GL.RGB8_OES : GL.RGBA8_OES, image, color_buffer: 0 });
     },
 
     // ---- buffers
@@ -1234,7 +1242,7 @@ const HANDLERS = {
         if(width < 0 || height < 0 || width > MAX_SIZE || height > MAX_SIZE) return fail(c, GL.INVALID_VALUE);
         const rb = c.group.renderbuffers.get(c.renderbuffer);
         if(!rb) return fail(c, GL.INVALID_OPERATION);
-        Object.assign(rb, { width, height, format, image: 0 });
+        Object.assign(rb, { width, height, format, image: 0, color_buffer: 0 });
     },
     "glGetRenderbufferParameteriv": (shadow, c, [target, pname, params]) =>
     {
@@ -1688,6 +1696,11 @@ function tex_parameter(c, target, pname, params)
     const external = target === GL.TEXTURE_EXTERNAL_OES;
     switch(pname)
     {
+        case GL.TEXTURE_MAX_ANISOTROPY_EXT:
+            if(external) return fail(c, GL.INVALID_ENUM);
+            if(!Number.isFinite(value) || value < 1) return fail(c, GL.INVALID_VALUE);
+            texture.anisotropy = Math.min(16, value);
+            return undefined;
         case GL.TEXTURE_MIN_FILTER:
             if(!MIN_FILTERS.has(value) || external && value !== GL.NEAREST && value !== GL.LINEAR) return fail(c, GL.INVALID_ENUM);
             texture.min_filter = value;
@@ -1721,6 +1734,7 @@ function get_tex_parameter(shadow, c, target, pname, params, as)
     const values = {
         [GL.TEXTURE_MIN_FILTER]: [texture.min_filter], [GL.TEXTURE_MAG_FILTER]: [texture.mag_filter],
         [GL.TEXTURE_WRAP_S]: [texture.wrap_s], [GL.TEXTURE_WRAP_T]: [texture.wrap_t],
+        ...(target === GL.TEXTURE_EXTERNAL_OES ? {} : { [GL.TEXTURE_MAX_ANISOTROPY_EXT]: [texture.anisotropy || 1] }),
     };
     if(c.api === 1)
     {
@@ -1728,7 +1742,7 @@ function get_tex_parameter(shadow, c, target, pname, params, as)
         values[GL.TEXTURE_CROP_RECT_OES] = texture.crop;
     }
     if(!(pname in values)) { fail(c, GL.INVALID_ENUM); return; }
-    put(params, values[pname], as, "i");
+    put(params, values[pname], as, pname === GL.TEXTURE_MAX_ANISOTROPY_EXT ? "f" : "i");
 }
 
 function get_vertex_attrib(shadow, c, index, pname, params, as)
@@ -1794,7 +1808,7 @@ GLESShadow.prototype.bind_color_buffer = function(handle, color_buffer, texture)
     }
     const rb = c.group.renderbuffers.get(c.renderbuffer);
     if(!rb) return false;
-    Object.assign(rb, { width: cb.width, height: cb.height, format: format === GL.RGB ? GL.RGB8_OES : GL.RGBA8_OES, image: 0 });
+    Object.assign(rb, { width: cb.width, height: cb.height, format: format === GL.RGB ? GL.RGB8_OES : GL.RGBA8_OES, image: 0, color_buffer, samples: 0 });
     return true;
 };
 

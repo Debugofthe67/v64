@@ -12,6 +12,7 @@
 //   3 write: offset (u32), the bytes    4 done: seq (u32)
 //   5 lost: the reason (UTF-8)          6 ready (the renderer is up)
 //   8 log: a line of the renderer's     9 submit of a VX batch (Venus)
+//   10 caps: presentation/BC flags      11 hello: ask for renderer capabilities
 
 import http from "node:http";
 import fs from "node:fs";
@@ -22,7 +23,7 @@ import { createHash as create_hash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const TYPES = { submit: 1, reset: 2, write: 3, done: 4, lost: 5, ready: 6, submit_gx: 7, log: 8, submit_vx: 9 };
+const TYPES = { submit: 1, reset: 2, write: 3, done: 4, lost: 5, ready: 6, submit_gx: 7, log: 8, submit_vx: 9, caps: 10, hello: 11 };
 
 /** One binary WebSocket frame, server to client (not masked) */
 function frame(payload)
@@ -34,33 +35,71 @@ function frame(payload)
     return Buffer.concat([header, payload]);
 }
 
+// XOR complete aligned words with the rotated wire mask. The prefix/tail
+// retain byte semantics, including unaligned Buffer views and tiny messages.
+export function unmask_frame(payload, mask)
+{
+    let at=0;
+    if(payload.length<16)
+    {
+        for(;at<payload.length;at++)payload[at]^=mask[at&3];
+        return;
+    }
+    while((payload.byteOffset+at)&3) {payload[at]^=mask[at&3];at++;}
+    const rotated=Uint8Array.of(mask[at&3],mask[(at+1)&3],mask[(at+2)&3],mask[(at+3)&3]);
+    const key=new Uint32Array(rotated.buffer)[0];
+    const words=new Uint32Array(payload.buffer,payload.byteOffset+at,Math.floor((payload.length-at)/4));
+    for(let i=0;i<words.length;i++)words[i]^=key;
+    at+=words.length*4;
+    for(;at<payload.length;at++)payload[at]^=mask[at&3];
+}
+
 /**
  * The messages in what the client sent so far (masked frames, maybe
  * fragmented); keeps what is incomplete
  */
-function frame_reader(on_message)
+export function frame_reader(on_message)
 {
-    let pending = Buffer.alloc(0), fragments = [];
+    let pending = Buffer.alloc(65536), start = 0, end = 0, fragments = [];
     return chunk => {
-        pending = Buffer.concat([pending, chunk]);
+        // Readbacks arrive in many socket chunks. Recopying the entire
+        // incomplete frame on each chunk makes a large image quadratic.
+        const used=end-start;
+        if(pending.length-end<chunk.length)
+        {
+            if(pending.length>=used+chunk.length)pending.copy(pending,0,start,end);
+            else
+            {
+                const next=Buffer.allocUnsafe(Math.max(pending.length*2,used+chunk.length));
+                pending.copy(next,0,start,end);pending=next;
+            }
+            start=0;end=used;
+        }
+        chunk.copy(pending,end);end+=chunk.length;
         for(;;)
         {
-            if(pending.length < 2) return;
-            const fin = pending[0] & 0x80, opcode = pending[0] & 0xF, masked = pending[1] & 0x80;
-            let length = pending[1] & 0x7F, at = 2;
-            if(length === 126) { if(pending.length < 4) return; length = pending.readUInt16BE(2); at = 4; }
-            else if(length === 127) { if(pending.length < 10) return; length = Number(pending.readBigUInt64BE(2)); at = 10; }
+            const available=end-start;
+            if(available < 2) return;
+            const fin = pending[start] & 0x80, opcode = pending[start] & 0xF, masked = pending[start+1] & 0x80;
+            let length = pending[start+1] & 0x7F, at = start+2;
+            if(length === 126) { if(available < 4) return; length = pending.readUInt16BE(start+2); at = start+4; }
+            else if(length === 127) { if(available < 10) return; length = Number(pending.readBigUInt64BE(start+2)); at = start+10; }
             const mask = masked ? pending.subarray(at, at + 4) : null;
             if(masked) at += 4;
-            if(pending.length < at + length) return;
+            if(end < at + length) return;
             const payload = Buffer.from(pending.subarray(at, at + length));
-            if(mask) for(let i = 0; i < payload.length; i++) payload[i] ^= mask[i & 3];
-            pending = pending.subarray(at + length);
+            if(mask) unmask_frame(payload,mask);
+            start=at+length;
+            if(start===end)start=end=0;
             if(opcode === 8) { on_message(null); return; }
             if(opcode === 0 || opcode === 1 || opcode === 2)
             {
                 fragments.push(payload);
-                if(fin) { on_message(Buffer.concat(fragments)); fragments = []; }
+                if(fin)
+                {
+                    const message=fragments.length===1?fragments[0]:Buffer.concat(fragments);
+                    fragments=[];on_message(message);
+                }
             }
         }
     };
@@ -72,11 +111,12 @@ function frame_reader(on_message)
  */
 export async function create_remote_renderer(options = {})
 {
-    let socket = null, to_device = null, ready_resolve, ready_reject;
+    let socket = null, to_device = null, ready_resolve, ready_reject, closing = false;
     const ready = new Promise((resolve, reject) => { ready_resolve = resolve; ready_reject = reject; });
     const stats = { batches: 0, bytes: 0, writes: 0 };
 
     const server = http.createServer((req, res) => {
+        if(new URL(req.url,"http://localhost").pathname==="/favicon.ico") {res.writeHead(204).end();return;}
         const file = path.resolve(root, "." + new URL(req.url, "http://localhost").pathname);
         if(!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
         fs.readFile(file, (error, data) => {
@@ -94,7 +134,8 @@ export async function create_remote_renderer(options = {})
             if(!message) return;
             const type = message[0];
             if(type === TYPES.ready) { ready_resolve(); return; }
-            if(type === TYPES.log) { console.log("renderer: " + message.subarray(1).toString()); return; }
+            if(type === TYPES.log) { const line = message.subarray(1).toString(); if(options.on_log) options.on_log(line); else console.log("renderer: " + line); return; }
+            if(type === TYPES.lost) ready_reject(new Error(message.subarray(1).toString()));
             if(!to_device) return;
             if(type === TYPES.write)
             {
@@ -102,9 +143,19 @@ export async function create_remote_renderer(options = {})
                 to_device({ "type": "write", "offset": message.readUInt32LE(1), "bytes": new Uint8Array(message.subarray(5)) });
             }
             else if(type === TYPES.done) to_device({ "type": "done", "seq": message.readUInt32LE(1) });
+            else if(type === TYPES.caps && message.length>=5) {
+                const flags=message.readUInt32LE(1);
+                to_device({ "type":"caps", "present":!!(flags&1), "textureCompressionBC":!!(flags&2) });
+            }
             else if(type === TYPES.lost) to_device({ "type": "lost", "reason": message.subarray(1).toString() });
         }));
         connection.on("error", () => {});
+        connection.on("close", () => {
+            if(closing) return;
+            const reason = "GPU renderer connection closed";
+            ready_reject(new Error(reason));
+            if(to_device) to_device({type:"lost", reason});
+        });
     });
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     const port = server.address().port;
@@ -113,7 +164,8 @@ export async function create_remote_renderer(options = {})
         "--headless=new", "--enable-unsafe-webgpu", "--no-first-run", "--no-default-browser-check",
         "--disable-background-networking", "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
         `--user-data-dir=${profile}`,
-        `http://127.0.0.1:${port}/tests/glbridge/svga_remote_renderer.html?ws=ws://127.0.0.1:${port}/renderer`,
+        ...(process.env.GL_SWIFTSHADER === "1" ? ["--use-webgpu-adapter=swiftshader", "--use-gpu-in-tests"] : []),
+        `http://127.0.0.1:${port}/tests/glbridge/${options.page || "svga_remote_renderer.html"}?ws=ws://127.0.0.1:${port}/renderer`,
     ], { stdio: ["ignore", "ignore", "pipe"] });
     // A harness stopped by a signal skips close(); Chrome would outlive it
     const kill_browser = () => browser.kill("SIGKILL");
@@ -124,7 +176,7 @@ export async function create_remote_renderer(options = {})
     }
     let stderr = "";
     browser.stderr.on("data", data => { stderr = (stderr + data).slice(-4000); });
-    let closing = false;
+    browser.on("error", error => ready_reject(error));
     browser.on("exit", code => {
         ready_reject(new Error("Chrome exited (" + code + "): " + stderr));
         // after that, the device must not wait for it
@@ -134,6 +186,14 @@ export async function create_remote_renderer(options = {})
     try
     {
         await ready;
+    }
+    catch(error)
+    {
+        closing = true;
+        socket && socket.destroy();
+        kill_browser();process.off("exit", kill_browser);server.close();
+        await new Promise((resolve, reject) => setTimeout(() => fs.rm(profile, {recursive:true,force:true,maxRetries:5}, error => error ? reject(error) : resolve()), 2000));
+        throw error;
     }
     finally
     {
@@ -189,6 +249,7 @@ export async function create_remote_renderer(options = {})
             {
                 socket.write(frame(Buffer.from([TYPES.reset])));
             }
+            else if(message["type"] === "hello") socket.write(frame(Buffer.from([TYPES.hello])));
         },
         "listen": handler => { to_device = handler; },
     };
@@ -201,8 +262,10 @@ export async function create_remote_renderer(options = {})
             browser.kill();
             process.off("exit", kill_browser);
             server.close();
-            // (Chrome may still be writing its profile as it goes)
-            setTimeout(() => fs.rm(profile, { recursive: true, force: true, maxRetries: 5 }, () => {}), 1000).unref();
+            // Await this promise in a failing harness: an uncaught exception
+            // exits even with referenced timers and would leave the profile.
+            return new Promise((resolve, reject) => setTimeout(() => fs.rm(profile,
+                {recursive:true,force:true,maxRetries:5}, error => error ? reject(error) : resolve()), 1000));
         },
     };
 }

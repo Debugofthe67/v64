@@ -9,8 +9,9 @@
 import assert from "node:assert/strict";
 import { DEFAULT_FORM, settings_to_options } from "../../src/browser/vm_options.js";
 import { start_settings } from "../../src/browser/query_compat.js";
-import { FORMAT, VERSION, new_config, with_defaults, migrate, validate_config, check_config, config_to_options, uefi_vars_template } from "../../src/app/vm_config.js";
+import { FORMAT, VERSION, new_config, new_ios_config, with_defaults, migrate, validate_config, check_config, config_to_options, uefi_vars_template } from "../../src/app/vm_config.js";
 import { PRESETS, preset_config } from "../../src/app/guest_presets.js";
+import { N90_RESTORE } from "../../src/ios/catalog.js";
 
 let passed = 0;
 function test(name, fn)
@@ -240,6 +241,7 @@ const RULES = [
     ["VGA on virt", c => { Object.assign(c, arm64()); c.display.adapter = "bochs_vga"; }, "display.adapter"],
     ["video memory", c => { c.display.vram_mb = 12; }, "display.vram_mb"],
     ["512 MB of video memory", c => { c.display.vram_mb = 512; }, "display.vram_mb"],
+    ["GeForce memory", c => { c.display.adapter = "geforce_6800"; c.display.vram_mb = 64; }, "display.vram_mb"],
     ["the state's video memory without a state", c => { c.display.vram_mb = null; }, "display.vram_mb"],
     ["the proxy", c => { c.display.proxy = 1; }, "display.proxy"],
     ["Vulkan", c => { c.display.vulkan = 1; }, "display.vulkan"],
@@ -481,6 +483,22 @@ test("config_to_options: the backends, arm64, a file not chosen yet", () =>
     const f = new_config();
     f.disks = [disk({ image: { kind: "file", name: "c.img", size: 512, last_modified: 0 } })];
     assert.throws(() => config_to_options(f, Object.assign({}, ENV, { file: () => undefined })), /c\.img needs to be chosen again/);
+});
+
+test("iPhone 4 enables the ARM32 JIT by default and honors an explicit opt-out", () =>
+{
+    const c = new_ios_config("iPhone 4", { kind: "browser", path: "v86/disks/iphone.img", size: N90_RESTORE.nand_bytes }, true);
+    assert.deepEqual(validate_config(c), []);
+    assert.deepEqual(config_to_options(c, ENV).jit_switches, { a64_page: 1, a64_step_stats: 0 });
+    assert.equal(config_to_options(c, { ...ENV, debug: true }).jit_switches.a64_step_stats, 1);
+    assert.equal(config_to_options(c, ENV).memory_size, 512 * 1024 * 1024);
+    c.cpu.jit = false;
+    assert.deepEqual(validate_config(c), []);
+    assert.deepEqual(config_to_options(c, ENV).jit_switches, { a64_page: 0, a64_step_stats: 0 });
+    delete c.cpu.jit;
+    assert.deepEqual(config_to_options(migrate(c), ENV).jit_switches, { a64_page: 1, a64_step_stats: 0 });
+    c.cpu.jit = "false";
+    assert.equal(validate_config(c)[0].path, "cpu.jit");
 });
 
 test("UEFI: OVMF's images in place of the BIOS images; on i440FX with QEMU's layout; the library accepts both machines", () =>

@@ -27,13 +27,15 @@ const graphics = JSON.parse(await read_file(join(root, "build/glbridge/manifest.
 
 // (Makefile, PAGES_BUILD)
 const FILES = [
-    "index.html", "manifest.json", "192.png", "src/app/app.css",
-    "build/v86_app.js", "build/v86_app.js.map", "build/android-import-worker.js", "build/android-import-worker.js.map", "build/libv86.mjs", "build/cpu-worker.js", "build/vcpu-worker.js", "build/xterm.js",
+    "index.html", "manifest.json", "192.png", "src/app/app.css", "src/app/xterm.css",
+    "build/v86_app.js", "build/v86_app.js.map", "build/android-import-worker.js", "build/android-import-worker.js.map",
+    "build/ios-import-worker.js", "build/ios-import-worker.js.map", "build/ios-install-worker.js", "build/ios-install-worker.js.map", "build/libv86.mjs", "build/cpu-worker.js", "build/vcpu-worker.js", "build/xterm.js",
+    ...["v86-app-agent","libv86appbootstrap.dylib","libv86install.dylib"].map(n=>"build/ios-install-fixtures/"+n),
     "build/v86.wasm", "build/v86-fallback.wasm", "build/v86-parallel.wasm",
     "build/v86-arm64.wasm", "build/v86-arm64-fallback.wasm", "build/v86-arm64-parallel.wasm",
-    "build/v86-bochs-vga.js", "build/v86-vmware-svga.js", "build/v86-virtio-gpu.js", "build/v86-ne2k.js", "build/v86-e1000.js", "build/v86-sb16.js", "build/v86-hd-audio.js", "build/v86-usb.js",
+    "build/v86-bochs-vga.js", "build/v86-vmware-svga.js", "build/v86-virtio-gpu.js", "build/v86-geforce-6800.js", "build/v86-ne2k.js", "build/v86-e1000.js", "build/v86-sb16.js", "build/v86-hd-audio.js", "build/v86-usb.js",
     "build/v86-tpm.js", "build/libtpms.wasm", "bios/LIBTPMS-LICENSES.txt", "build/v86-gles.js", "build/glslang.wasm", "bios/GLSLANG-LICENSES.txt",
-    "bios/seabios.bin", "bios/vgabios.bin", "bios/bochs-bios.bin", "bios/bochs-vgabios.bin",
+    "bios/seabios.bin", "bios/vgabios.bin", "bios/vgabios-geforce6800.bin", "bios/bochs-bios.bin", "bios/bochs-vgabios.bin",
     // (the UEFI firmware, docs/uefi.md, with its licenses)
     "bios/ovmf-code.fd", "bios/ovmf-vars.fd", "bios/OVMF-LICENSES.txt",
     "bios/ovmf-secure-code.fd", "bios/ovmf-vars-ms.fd", "bios/SECUREBOOT-OBJECTS-LICENSE.txt",
@@ -51,6 +53,13 @@ for(const name of FILES)
     {
         throw new Error(name + " is missing (make pages builds it): " + error.message);
     }
+}
+
+// The graphics adapter remains an optional owner-built artifact.
+for(const name of ["build/ios-guest/libv86gles.dylib"])
+{
+    try { files.set(name, await read_file(join(root, name))); }
+    catch(error) { if(error.code !== "ENOENT") throw error; }
 }
 
 const hash = create_hash("sha256");

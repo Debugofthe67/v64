@@ -1,0 +1,174 @@
+{
+  "stage": "G4 original 03 D3D9 proxy nine fixed-frame reference captures",
+  "scope": "Original nine reference BMPs saved and extracted. Native four feature recaptures and final IQ review remain in progress.",
+  "settings": {
+    "resolution": "1024x768",
+    "antiAliasing": "None",
+    "filtering": "Optimal",
+    "postprocessing": false,
+    "softwareVS": false,
+    "forcePS11": false
+  },
+  "cases": [
+    {
+      "case": "GT1",
+      "frame": 1038,
+      "readbacks": 1,
+      "draws": 22097,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy03-fixed-iq-local/ui-GT1-success.txt",
+      "screenshot": "build/nv40-proxy03-fixed-iq-local/frame-00044.png",
+      "hostTime": "2026-11-15T04:24:32.110735+00:00"
+    },
+    {
+      "case": "GT2",
+      "frame": 1000,
+      "readbacks": 2,
+      "draws": 43698,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy03-fixed-iq-local/ui-GT2-success.txt",
+      "screenshot": "build/nv40-proxy03-fixed-iq-local/frame-00053.png",
+      "hostTime": "2026-11-15T04:27:32.215671+00:00"
+    },
+    {
+      "case": "GT3",
+      "frame": 1000,
+      "readbacks": 3,
+      "draws": 64603,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy03-fixed-iq-local/ui-GT3-success.txt",
+      "screenshot": "build/nv40-proxy03-fixed-iq-local/frame-00062.png",
+      "hostTime": "2026-11-15T04:30:32.672999+00:00"
+    },
+    {
+      "case": "GT4",
+      "frame": 1000,
+      "readbacks": 4,
+      "draws": 118728,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy03-fixed-iq-local/ui-GT4-success.txt",
+      "screenshot": "build/nv40-proxy03-fixed-iq-local/frame-00073.png",
+      "hostTime": "2026-11-15T04:34:13.184238+00:00"
+    },
+    {
+      "case": "fillrate1",
+      "frame": 60,
+      "readbacks": 5,
+      "draws": 139203,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy03-fixed-iq-local/ui-fillrate1-success.txt",
+      "screenshot": "build/nv40-proxy03-fixed-iq-local/frame-00080.png",
+      "hostTime": "2026-11-15T04:36:32.394562+00:00"
+    },
+    {
+      "case": "fillrate2",
+      "frame": 60,
+      "readbacks": 6,
+      "draws": 159780,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy03-fixed-iq-local/ui-fillrate2-success.txt",
+      "screenshot": "build/nv40-proxy03-fixed-iq-local/frame-00087.png",
+      "hostTime": "2026-11-15T04:38:51.685544+00:00"
+    },
+    {
+      "case": "VS",
+      "frame": 60,
+      "readbacks": 7,
+      "draws": 180990,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy03-fixed-iq-local/ui-VS-success.txt",
+      "screenshot": "build/nv40-proxy03-fixed-iq-local/frame-00094.png",
+      "hostTime": "2026-11-15T04:41:13.066117+00:00"
+    },
+    {
+      "case": "PS",
+      "frame": 660,
+      "readbacks": 8,
+      "draws": 201957,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy03-fixed-iq-local/ui-PS-success.txt",
+      "screenshot": "build/nv40-proxy03-fixed-iq-local/frame-00102.png",
+      "hostTime": "2026-11-15T04:43:52.458136+00:00"
+    },
+    {
+      "case": "Ragtroll",
+      "frame": 60,
+      "readbacks": 9,
+      "draws": 223617,
+      "idleVerifiedSeconds": 60,
+      "successUIFile": "build/nv40-proxy03-fixed-iq-local/ui-Ragtroll-success.txt",
+      "screenshot": "build/nv40-proxy03-fixed-iq-local/frame-00109.png",
+      "hostTime": "2026-11-15T04:46:11.847430+00:00"
+    }
+  ],
+  "images": [
+    {
+      "file": "iq/PX03GT1_01038.bmp",
+      "name": "iq_PX03GT1_01038.bmp",
+      "bytes": 2363392,
+      "sha256": "14453ee23a949b1eec7a8dfeedbda85a35b8b151bc35be1c4b4377a612992726"
+    },
+    {
+      "file": "iq/PX03IQ0201000.bmp",
+      "name": "iq_PX03IQ0201000.bmp",
+      "bytes": 2363392,
+      "sha256": "063d8f58340e9edd5659f8050431b770040580135d525f2a7f233d6cebd86086"
+    },
+    {
+      "file": "iq/PX03IQ0301000.bmp",
+      "name": "iq_PX03IQ0301000.bmp",
+      "bytes": 2363392,
+      "sha256": "972feabf39b9ba59a2f2ea838d6ca2710d34eea13e228366095df40d540189f2"
+    },
+    {
+      "file": "iq/PX03IQ0401000.bmp",
+      "name": "iq_PX03IQ0401000.bmp",
+      "bytes": 2363392,
+      "sha256": "2a78a77f1f8d5696bf3b89eeb589de45266927f1472179df90c9035793edba76"
+    },
+    {
+      "file": "iq/PX03IQ0500060.bmp",
+      "name": "iq_PX03IQ0500060.bmp",
+      "bytes": 2363392,
+      "sha256": "78b6d10cab1298748e47140f748ee26f20781361345a7c1423f2acaeb5610e35"
+    },
+    {
+      "file": "iq/PX03IQ0600060.bmp",
+      "name": "iq_PX03IQ0600060.bmp",
+      "bytes": 2363392,
+      "sha256": "95e200449081494561de659c074b181ef39cd3a3ad98df92ca8b1cc2516b1445"
+    },
+    {
+      "file": "iq/PX03IQ0700060.bmp",
+      "name": "iq_PX03IQ0700060.bmp",
+      "bytes": 2363392,
+      "sha256": "6835aa79881e27f23cb937f6d3c1ea16929a91e023d4ebaf50ccc6f06dbac475"
+    },
+    {
+      "file": "iq/PX03IQ0800660.bmp",
+      "name": "iq_PX03IQ0800660.bmp",
+      "bytes": 2363392,
+      "sha256": "f4b60b65792403c7b8352821529450e7dbd95df3295e1499327d99b3dd2c916c"
+    },
+    {
+      "file": "iq/PX03IQ0900060.bmp",
+      "name": "iq_PX03IQ0900060.bmp",
+      "bytes": 2363392,
+      "sha256": "4eb36cc85685d6d1f40f2f90615fdae29b20e2132c1cede971a62b303b5d042a"
+    }
+  ],
+  "extraction": {
+    "originalDiskBytes": 1073741824,
+    "chunks": 1024,
+    "chunkBytes": 1048576,
+    "completeContiguousHostChunksVerified": true,
+    "recoveredBeforeDeletion": true,
+    "allNineBMPHeadersPixelRowsSHA256Verified": true,
+    "temporaryChunksRemoved": true,
+    "note": "VM was closed too early while disk export was pending. All 1024 complete chunks had already been written; only export-finally VM resume failed. Original nine files were recovered from verified contiguous full-disk chunks, then chunks were removed."
+  },
+  "limits": [
+    "Original 03 default visible feature frames are 60 except Pixel Shader 660. First-frame fade-in captures are not accepted as these references.",
+    "Metrics are recorded without inferring an acceptance threshold."
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "date": "2026-11-14",
+  "change": "Default-off per-draw pixel diagnostics now select a bounded draw range and inspect RGB565/XRGB1555 plus raw D16/D24S8 depth values on linear targets.",
+  "bounds": {
+    "drawsDefault": 256,
+    "drawsMaximum": 4096,
+    "eventsMaximum": 256,
+    "firstInlineWords": 256,
+    "firstIndices": 64
+  },
+  "validation": {
+    "directory": "build/nv40-xp-2000-iq9-depth-pixel",
+    "settings": "Original 2000 IQ-only, 16-bit rendering; single-draw flush is investigation only.",
+    "GPU": {
+      "batches": 1022,
+      "draws": 1033,
+      "bytes": 199416776,
+      "readbacks": 1593,
+      "failures": 0,
+      "uploads": 1166,
+      "uploadBytes": 177400824
+    },
+    "graphFaults": [],
+    "nonSoftwareFifoFaults": [],
+    "colorHistoryUnchangedByDepthObservation": true,
+    "closestBlackBarrelPixel": {
+      "elapsed": 97.845049875,
+      "x": 600,
+      "y": 650,
+      "target": 125894656,
+      "format": 80,
+      "depth": true,
+      "before": [
+        65535
+      ],
+      "after": [
+        63017
+      ],
+      "draw": 891,
+      "mode": 5,
+      "fragment": 127482114
+    },
+    "correspondingDrawCapture": {
+      "draw": 892,
+      "ordinal": 292,
+      "sampledVertices": 64
+    }
+  },
+  "evidence": {
+    "draw-pixel-history.json": {
+      "bytes": 642627,
+      "sha256": "e20c248ceb3def6921a2f701d0f570621df37e8dcbd7c29a9e53937f396f1346"
+    },
+    "draw-captures.jsonl": {
+      "bytes": 24431531,
+      "sha256": "9e08aa5ab26a8dcf28ebe796442fb50725ca225069de955ce3c3bcb17350faf0"
+    }
+  },
+  "limits": [
+    "Only diagnostic mode performs extra copies and optional one-draw submissions.",
+    "No guest depth/color pixels or test results are changed.",
+    "This fixture locates the original drawing command; it does not itself establish the shader fix or full image acceptance."
+  ]
+}

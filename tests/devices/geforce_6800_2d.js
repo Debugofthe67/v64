@@ -1,0 +1,274 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { NVDMA } from "../../src/graphics_adapters/geforce_6800/nv_dma.js";
+import { NVGraph } from "../../src/graphics_adapters/geforce_6800/nv_graph.js";
+import { NVTrace } from "../../src/graphics_adapters/geforce_6800/nv_trace.js";
+const vram = new Uint8Array(2 << 20), ram = new Uint8Array(64 << 10), ramin = new DataView(vram.buffer, 1 << 20);
+const device = { vram: () => vram, vram_size: vram.length, registers: new Map([[0x200, 0xFFFFFFFF], [0x400720, 1]]),
+    trace: new NVTrace(), time: () => 0x123456780n, update_irq() {}, vga: { lfb_region: 1 },
+    machine: { is_bus_master: () => true, mmio_ram_mark_dirty() {},
+        validate_physical_range(at, n) { if(at < 0 || at + n > ram.length) throw new RangeError("RAM"); },
+        read_physical: (at, n) => ram.slice(at, at + n), write_physical: (bytes, at) => ram.set(bytes, at) } };
+device.dma = new NVDMA(device);
+const graph = new NVGraph(device), engine = graph.engine2d;
+function word(at, value) { ramin.setUint32(at, value >>> 0, true); }
+function object(at, type, methods)
+{
+    word(at,type);const o=graph.object(0,at);o.methods=new Map(methods);
+    if(o.methods.has(0x180))graph.method(0,0,at,0x180,o.methods.get(0x180));
+    return o;
+}
+function dma(at, flags, limit, pte) { word(at, flags); word(at + 4, limit); word(at + 8, pte); }
+function call(o, at, value) { assert(engine.method(o, at, value)); }
+const surface = object(0x5000, 0x3062, [[0x184, 0x100], [0x188, 0x100], [0x300, 10], [0x304, 0x200020], [0x308, 0], [0x30C, 0]]);
+dma(0x1000, 0x303D, 4095, 0x3); dma(0x1100, 0x2303D, 4095, 0x1002); dma(0x1200, 0x3003, 31, 0x8002);
+const rop = object(0x5100, 0x43, [[0x300, 0xCC]]);
+const gdi = object(0x5200, 0x4A, [[0x198, 0x500], [0x18C, 0x510], [0x2FC, 1], [0x3FC, 0x12345678]]);
+call(gdi, 0x400, 2 << 16 | 1); call(gdi, 0x404, 3 << 16 | 2);
+const view = new DataView(vram.buffer);
+for(let y = 0; y < 4; y++) for(let x = 0; x < 8; x++) assert.equal(view.getUint32(y * 32 + x * 4, true), x >= 2 && x < 5 && y >= 1 && y < 3 ? 0x12345678 : 0);
+// Exhaust the ROP3 truth table for all eight combinations of P,S,D.
+for(let code = 0; code < 256; code++) for(let combo = 0; combo < 8; combo++)
+    assert.equal(engine.rop(code, combo & 2 ? 0xFFFFFFFF : 0, combo & 1 ? 0xFFFFFFFF : 0, combo & 4 ? 0xFFFFFFFF : 0), code & 1 << combo ? 0xFFFFFFFF : 0);
+for(let i = 0; i < 8; i++) view.setUint32(i * 4, i + 1, true);
+const blit = object(0x5300, 0x9F, [[0x19C, 0x500], [0x2FC, 3], [0x300, 0], [0x304, 2]]);
+call(blit, 0x308, 1 << 16 | 6);
+assert.deepEqual(Array.from({length:8}, (_, i) => view.getUint32(i * 4, true)), [1,2,1,2,3,4,5,6], "overlap uses original source");
+const clip = object(0x5400, 0x19, [[0x300, 1 << 16 | 3], [0x304, 1 << 16 | 2]]);
+blit.methods.set(0x188, 0x540); blit.methods.set(0x304, 1 << 16); call(blit, 0x308, 1 << 16 | 8);
+assert.equal(view.getUint32(32 + 3 * 4, true), 2, "clip adjusts source origin");
+// 8-bit and 16-bit destinations use exactly their pixel width.
+for(const [format, bpp, color] of [[1, 1, 0xAB], [4, 2, 0xBEEF]])
+{
+    vram.fill(0, 0, 128); surface.methods.set(0x300, format); gdi.methods.set(0x3FC, color);
+    call(gdi, 0x400, 0); call(gdi, 0x404, 1 << 16 | 1);
+    assert.equal(bpp === 1 ? vram[0] : view.getUint16(0, true), color); assert.equal(vram[bpp], 0);
+}
+const copy = object(0x5500, 0x39, [[0x180, 0x120], [0x184, 0x110], [0x188, 0x100],
+    [0x30C, 8], [0x310, 128], [0x314, 16], [0x318, 12], [0x31C, 5], [0x320, 3], [0x324, 0x101]]);
+ram.set(Array.from({length:64}, (_, i) => i + 1), 0x1000); vram.fill(255, 0x8000, 0x8020);
+call(copy, 0x328, 0);
+for(let y = 0; y < 3; y++) assert.deepEqual(vram.slice(128 + y * 12, 133 + y * 12), ram.slice(0x1008 + y * 16, 0x100D + y * 16));
+assert.equal(view.getBigUint64(0x8010, true), device.time()); assert.equal(view.getUint32(0x801C, true), 0);
+assert.equal(view.getUint32(0x800C, true), 0xFFFFFFFF, "M2MF writes notifier at 0x10 only");
+vram.fill(77, 128, 160); word(0x1004, 140);
+assert.throws(() => call(copy, 0x328, 0), RangeError);
+assert.deepEqual([...vram.subarray(128, 160)], Array(32).fill(77), "late row fault leaves whole transfer unchanged");
+assert.equal(engine.method(gdi, 0x2000, 1), false);
+word(0x1004, 4095); surface.methods.set(0x300, 4); vram.fill(0, 0, 128);
+const ifc = object(0x5600, 0x308A, [[0x19C, 0x500], [0x2FC, 3], [0x300, 1], [0x304, 0], [0x308, 2 << 16 | 2]]);
+call(ifc, 0x30C, 2 << 16 | 3);
+call(ifc, 0x400, 0x07E0F800);
+assert.equal(view.getUint16(0,true),0xF800,"an IFC DWORD reaches VRAM before the row is complete");
+const streamState = graph.get_state(); graph.set_state(streamState);
+const resumed = graph.object(0, 0x5600);
+call(resumed, 0x400, 0xDEAD001F); // third pixel cropped; high word is row padding
+call(resumed, 0x400, 0xFFFF001F); call(resumed, 0x400, 0xBEEF0000);
+assert.equal(view.getUint16(0, true), 0xF800); assert.equal(view.getUint16(2, true), 0x07E0);
+assert.equal(view.getUint16(4, true), 0); assert.equal(view.getUint16(32, true), 0x001F);
+assert.equal(view.getUint16(34, true), 0xFFFF); assert.equal(view.getUint16(36, true), 0);
+// Transparent and opaque monochrome streams, including byte bit order and clipping.
+const mono = graph.object(0, 0x5200);
+mono.methods.set(0x3FC, 0); mono.methods.set(0x7F4, 0xFFFF); mono.methods.set(0x7F8, 1 << 16 | 8);
+mono.methods.set(0x7EC, 0); mono.methods.set(0x7F0, 4 << 16 | 8); mono.methods.set(0x304, 2);
+call(mono, 0x7FC, 2 << 16); call(mono, 0x800, 5);
+assert.equal(view.getUint16(64, true), 0xFFFF); assert.equal(view.getUint16(66, true), 0);
+assert.equal(view.getUint16(68, true), 0xFFFF);
+mono.methods.set(0xBE4, 0); mono.methods.set(0xBE8, 4 << 16 | 8);
+mono.methods.set(0xBEC, 0xF800); mono.methods.set(0xBF0, 0x07E0);
+mono.methods.set(0xBF4, 1 << 16 | 8); mono.methods.set(0xBF8, 1 << 16 | 8); mono.methods.set(0x304, 1);
+call(mono, 0xBFC, 3 << 16); call(mono, 0xC00, 0x80);
+assert.equal(view.getUint16(96, true), 0x07E0); assert.equal(view.getUint16(98, true), 0xF800);
+vram.fill(0, 64, 128); mono.methods.set(0x304, 1);
+call(mono, 0x5F4, 0); call(mono, 0x5F8, 4 << 16 | 8); call(mono, 0xBF0, 0xFFFF);
+call(mono, 0xBF4, 2 << 16 | 8); call(mono, 0xBF8, 2 << 16 | 8); call(mono, 0xBFC, 2 << 16);
+call(mono, 0x800, 0x4080);
+assert.equal(view.getUint16(64,true),0xFFFF); assert.equal(view.getUint16(96+2,true),0xFFFF);
+assert.equal(view.getUint16(96,true),0, "one DWORD spans multiple GDI bitmap rows");
+mono.methods.delete(0x304);word(mono.instance+4,0x31000000);vram.fill(0,64,128);
+call(mono,0xBFC,2<<16);call(mono,0x800,0x4080);
+assert.equal(view.getUint16(64,true),0xFFFF);assert.equal(view.getUint16(96+2,true),0xFFFF,"GDI uses bitmap order initialized directly in its RAMIN context");
+call(mono,0xFF4,1<<16|2);call(mono,0xFF8,3<<16|6);call(mono,0xFFC,0x1234);
+assert.equal(mono.methods.get(0x7EC),1<<16|2,"font clipping aliases the common GDI clip");
+assert.equal(mono.methods.get(0x7F0),3<<16|6);assert.equal(mono.methods.get(0x3FC),0x1234);
+const target = graph.object(0, 0x5000); target.methods.set(0x300, 10); target.methods.set(0x30C, 256);
+view.setUint32(0x1000, 0xFFFF0000, true); view.setUint32(0x1004, 0xFF00FF00, true);
+view.setUint32(0x1008, 0xFF0000FF, true); view.setUint32(0x100C, 0xFFFFFFFF, true);
+const scale = object(0x5700, 0x89, [[0x184, 0x100], [0x198, 0x500], [0x300, 3], [0x304, 3],
+    [0x308, 0], [0x30C, 4 << 16 | 4], [0x310, 0], [0x314, 4 << 16 | 4], [0x318, 0x80000], [0x31C, 0x80000],
+    [0x400, 2 << 16 | 2], [0x404, 1 << 16 | 8], [0x408, 0x1000]]);
+word(0x1004, 0x1FFF); call(scale, 0x40C, 0);
+assert.equal(view.getUint32(256, true), 0xFFFF0000); assert.equal(view.getUint32(268, true), 0xFF00FF00);
+assert.equal(view.getUint32(352, true), 0xFF0000FF); assert.equal(view.getUint32(364, true), 0xFFFFFFFF);
+scale.methods.set(0x404, 1 << 24 | 1 << 16 | 8); call(scale, 0x40C, 0);
+assert.equal(view.getUint32(256 + 32 + 4, true), 0xFF9F4040, "bilinear interpolation samples pixel centers");
+assert.deepEqual(engine.sample(new Uint8Array([16,128,235,128]), 2, 1, 4, 5, 0, 0), [0,0,0,255]);
+assert.deepEqual(engine.sample(new Uint8Array([16,128,235,128]), 2, 1, 4, 5, 1, 0), [255,255,255,255]);
+assert.deepEqual(engine.sample(new Uint8Array([128,16,128,235]), 2, 1, 4, 6, 1, 0), [255,255,255,255]);
+// SIFM's clamp width does not impose a minimum source row pitch.
+target.methods.set(0x300,4);vram.fill(0,256,384);
+for(const [at,value] of [[0x300,7],[0x400,3<<16|4],[0x404,1<<16|4],[0x30C,3<<16|2],
+    [0x314,3<<16|2],[0x318,0x100000],[0x31C,0x100000]])scale.methods.set(at,value);
+new Uint16Array(vram.buffer,0x1000,8).set([0xF800,0x07E0,0x001F,0xFFFF,0x1234,0x5678,0x9ABC,0xDEF0]);
+call(scale,0x40C,0);
+for(let y=0;y<3;y++) for(let x=0;x<2;x++)assert.equal(view.getUint16(256+y*32+x*2,true),view.getUint16(0x1000+y*4+x*2,true),"overlapping source rows");
+scale.methods.set(0x404,1<<16);call(scale,0x40C,0);
+for(let y=0;y<3;y++)assert.equal(view.getUint16(256+y*32,true),0xF800,"zero source pitch repeats the row");
+word(0x1004,0x1006);const beforeShort=vram.slice(256,384);
+call(scale,0x40C,0);assert.deepEqual(vram.subarray(256,384),beforeShort,"unused clamp texels beyond DMA limit are not read");
+word(0x1004,0x1002);
+assert.throws(()=>call(scale,0x40C,0),/limit/);assert.deepEqual(vram.subarray(256,384),beforeShort,"source bounds are checked before any destination writes");
+word(0x1004,0x1FFF);target.methods.set(0x300,10);
+// A large clamp can describe unmapped texels outside the actual copy.
+for(const [at,value] of [[0x300,4],[0x400,1023<<16|1024],[0x404,1<<16|8],
+    [0x30C,2<<16|2],[0x314,2<<16|2],[0x318,0x100000],[0x31C,0x100000]])scale.methods.set(at,value);
+const footprintColors=[0xFF102030,0xFF405060,0xFF708090,0xFFA0B0C0];
+footprintColors.forEach((value,index)=>view.setUint32(0x1000+index*4,value,true));
+word(0x1004,0x100F);call(scale,0x40C,0);
+for(let y=0;y<2;y++) for(let x=0;x<2;x++)assert.equal(view.getUint32(256+y*32+x*4,true),footprintColors[y*2+x]);
+// Native Win98 uploads use CORNER with POINT=(0.5,0.5). Rounding that
+// already centered coordinate again shifted both axes and read the next row.
+for(const filter of [0,1])
+{
+    if(filter)scale.methods.set(0x400,2<<16|2);
+    scale.methods.set(0x404,filter<<24|2<<16|8);call(scale,0x40C,0x80008);
+    for(let y=0;y<2;y++) for(let x=0;x<2;x++)assert.equal(view.getUint32(256+y*32+x*4,true),footprintColors[y*2+x],
+        "CORNER half-texel upload preserves each source pixel and its checked footprint");
+}
+scale.methods.set(0x400,1023<<16|1024);
+scale.methods.set(0x404,1<<16|8);
+const footprintBefore=vram.slice(256,384);word(0x1004,0x100B);
+assert.throws(()=>call(scale,0x40C,0),/limit/);assert.deepEqual(vram.subarray(256,384),footprintBefore,"late sampled-row fault leaves earlier destination rows unchanged");
+word(0x1004,0x1113);scale.methods.set(0x404,2<<16|64);
+scale.methods.set(0x318,4<<20);scale.methods.set(0x31C,4<<20);
+const sparseOffsets=[0x1000,0x1010,0x1100,0x1110],sourceReads=[],dmaRead=device.dma.read.bind(device.dma);
+sparseOffsets.forEach((at,index)=>view.setUint32(at,footprintColors[index],true));
+device.dma.read=(dma,at,length)=>{if(at>=0x1000)sourceReads.push([at,length]);return dmaRead(dma,at,length);};
+try {call(scale,0x40C,0);} finally {device.dma.read=dmaRead;}
+assert.deepEqual(sourceReads,sparseOffsets.map(at=>[at,4]),"point sampling skips unused columns and rows inside its footprint");
+scale.methods.set(0x318,-(4<<20));call(scale,0x40C,64);
+for(let y=0;y<2;y++) for(let x=0;x<2;x++)assert.equal(view.getUint32(256+y*32+x*4,true),footprintColors[y*2+1-x],"negative source steps preserve reflected sampling");
+scale.methods.set(0x400,0xFFFFFFFF);scale.methods.set(0x404,2<<16);
+scale.methods.set(0x318,2047<<20);scale.methods.set(0x31C,2047<<20);word(0x1004,0x2FFF);
+view.setUint32(0x2FFC,footprintColors[1],true);sourceReads.length=0;
+device.dma.read=(dma,at,length)=>{if(at>=0x1000)sourceReads.push([at,length]);return dmaRead(dma,at,length);};
+try {call(scale,0x40C,0);} finally {device.dma.read=dmaRead;}
+assert.deepEqual(sourceReads,[[0x1000,4],[0x2FFC,4]],"maximum clamp and sparse zero-pitch rows retain only two used texels");
+word(0x1004,0x1FFF);
+const swz = object(0x5800, 0x309E, [[0x184, 0x100], [0x300, 1 << 24 | 2 << 16 | 1], [0x304, 512]]);
+const upload = object(0x5900, 0x308A, [[0x19C, 0x580], [0x2FC, 3]]);
+engine.render(upload, engine.surface(upload, 0x19C), [0,0,4,2], (x,y) => x + y * 4, [0x18C, 0x190]);
+assert.deepEqual([...vram.subarray(512,520)], [0,1,4,5,2,3,6,7], "rectangular Morton layout");
+assert.deepEqual([...engine.readrow(engine.surface(upload, 0x19C), 0, 1, 4)], [4,5,6,7]);
+const blend = object(0x5A00, 0x4A, [[0x198, 0x500], [0x2FC, 5]]);
+view.setUint32(256, 0xFF0000FF, true);
+engine.render(blend, engine.surface(blend, 0x198), [0,0,1,1], () => [128,0,0,128], [0x188,0x18C,0x190,0x194]);
+assert.equal(view.getUint32(256,true), 0xFF80007F, "premultiplied source over destination");
+dma(0x1300,0x303D,1023,0x1003);
+view.setUint16(0x1002,0xF800,true);view.setUint16(0x1004,0x07E0,true);view.setUint16(0x1006,0x001F,true);
+target.methods.set(0x300,4);target.methods.set(0x30C,640);
+const indexed = object(0x5B00,0x3064,[[0x184,0x130],[0x1A0,0x500],[0x3E4,3],[0x3E8,1],[0x3EC,1],
+    [0x3F0,0],[0x3F4,0],[0x3F8,1<<16|3]]);
+call(indexed,0x3FC,1<<16|4);call(indexed,0x400,0x3012);
+assert.deepEqual([...vram.subarray(640,646)],[0,248,224,7,31,0],"I4 high nibble first with 16-bit LUT and output crop");
+call(indexed,0x3F4,1<<16);call(indexed,0x400,0x1032);
+assert.deepEqual([...vram.subarray(672,678)],[31,0,224,7,0,248],"INDEX point starts a new image with unchanged size");
+view.setUint16(0x1100,0x07E0,true);call(indexed,0x3EC,0);call(indexed,0x3F4,2<<16);
+call(indexed,0x400,0x00038001);
+assert.deepEqual([...vram.subarray(704,710)],[0,248,224,7,31,0],"INDEX_FORMAT zero uploads I8 and can read LUT entries above fifteen");
+call(resumed,0x304,2<<16);call(resumed,0x400,0x07E0F800);
+assert.deepEqual(resumed.stream,[0,0,248,224,7],"IFC point restarts upload using the configured image size");
+target.methods.set(0x300,10);target.methods.set(0x30C,800);
+const sifc = object(0x5C00,0x3066,[[0x198,0x500],[0x300,1],[0x304,2<<16|2],[0x308,0x200000],[0x30C,0x100000],
+    [0x310,0],[0x314,2<<16|4],[0x2FC,3]]);
+call(sifc,0x318,0);call(sifc,0x400,0x07E0F800);call(sifc,0x404,0xFFFF001F);
+assert.deepEqual(Array.from({length:4},(_,i)=>view.getUint32(800+i*4,true)),[0xFFFF0000,0xFFFF0000,0xFF00FF00,0xFF00FF00]);
+assert.equal(view.getUint32(832,true),0xFF0000FF);assert.equal(view.getUint32(844,true),0xFFFFFFFF);
+target.methods.set(0x300,4);target.methods.set(0x30C,900);view.setUint16(900,0x001F,true);
+const alphaIfc=object(0x5D00,0x308A,[[0x19C,0x500],[0x300,4],[0x304,0],[0x308,1<<16|1],[0x2FC,5]]);
+call(alphaIfc,0x30C,1<<16|1);call(alphaIfc,0x400,0x80800000);
+assert.equal(view.getUint16(900,true),0x800F,"ARGB upload keeps alpha while blending into RGB565");
+target.methods.set(0x300,1);target.methods.set(0x30C,1024);vram.fill(0,1024,1280);
+const lin=object(0x5E00,0x305C,[[0x198,0x500],[0x2FC,3],[0x304,7]]);
+call(lin,0x400,0);call(lin,0x404,2<<16|4);
+assert.equal(vram[1024],7);assert.equal(vram[1024+32+2],7);assert.equal(vram[1024+64+4],0,"line excludes endpoint");
+const tri=object(0x5F00,0x5D,[[0x198,0x500],[0x2FC,1],[0x18C,0x510],[0x304,255]]);
+graph.object(0,0x5100).methods.set(0x300,0x66);vram.fill(0,1024,1280);
+call(tri,0x310,0);call(tri,0x314,2);call(tri,0x318,2<<16);
+call(tri,0x310,2);call(tri,0x314,2<<16|2);call(tri,0x318,2<<16);
+for(let y=0;y<3;y++) for(let x=0;x<3;x++)assert.equal(vram[1024+y*32+x],x<2&&y<2?255:0,"top-left rule covers shared triangle edge once");
+console.log("PASS: NV40 8/16/32-bit fills, exhaustive ROP3, clipped/overlapping blits, PCI M2MF and atomic completion/faults");
+console.log("PASS: IFC row padding/crop and mid-row snapshot, GDI transparent/opaque bitmap expansion and bit order");
+console.log("PASS: nearest/bilinear scaling, both packed YUV orders, rectangular Morton surfaces and premultiplied blending");
+
+// A partial upload must not replay already committed pixels through ROP.
+target.methods.set(0x300,4);target.methods.set(0x30C,1400);vram.fill(0,1400,1416);
+const progressive=object(0x6100,0x308A,[[0x19C,0x500],[0x190,0x510],[0x300,1],[0x304,0],[0x308,1<<16|4],[0x2FC,1]]);
+graph.object(0,0x5100).methods.set(0x300,0x66);call(progressive,0x30C,1<<16|4);
+call(progressive,0x400,0x07E0F800);call(progressive,0x404,0xFFFF001F);
+assert.deepEqual([...vram.subarray(1400,1408)],[0,248,224,7,31,0,255,255],"later DWORDs do not XOR the preceding pixels again");
+target.methods.set(0x300,11);target.methods.set(0x30C,0);target.methods.set(0x304,0x10001000);
+call(progressive,0x2FC,3);call(progressive,0x300,4);call(progressive,0x308,32<<16|1024);call(progressive,0x30C,32<<16|1024);
+call(progressive,0x400,0x01001E81);
+assert.equal(view.getUint32(0,true),0x01001E81,"a shader word uploads immediately into a wide Y32 row");
+
+// Font DMA records use a size header and a fixed power-of-two record stride.
+target.methods.set(0x300,10);target.methods.set(0x304,0x200020);target.methods.set(0x30C,1800);
+const fonts=graph.object(0,0x5200),fontRam=new DataView(ram.buffer);
+fonts.methods.set(0x184,0x110);fonts.methods.set(0x198,0x500);call(fonts,0x2FC,3);call(fonts,0x304,2);
+call(fonts,0xFF0,3<<28|0x200);call(fonts,0xFF4,0);call(fonts,0xFF8,8<<16|8);call(fonts,0xFFC,0x12345678);
+fontRam.setUint32(0x1210,3<<16|3,true);fontRam.setUint32(0x1214,0x155,true);
+vram.fill(0,1800,2056);call(fonts,0x1000,1<<20|0xFFF<<8|2);
+for(let y=0;y<4;y++) for(let x=0;x<8;x++)assert.equal(view.getUint32(1800+y*32+x*4,true),
+    y>=1 && y<4 && x<2 && ((y-1)*3+x+1)%2===0?0x12345678:0,"F signed twelve-bit origin and transparent pixels");
+call(fonts,0x17F0,3<<28|0x200);call(fonts,0x17FC,0x87654321);
+fontRam.setUint32(0x1000+0x200+0x101*8,3<<16|3,true);fontRam.setUint32(0x1000+0x204+0x101*8,0x000080AA,true);
+call(fonts,0x304,1);call(fonts,0x1FF8,2<<16|1);
+const fontState=graph.get_state();graph.set_state(fontState);
+const restoredFonts=graph.object(0,0x5200);vram.fill(0,1800,2056);call(restoredFonts,0x1804,0xABCD0101);
+for(let y=0;y<8;y++) for(let x=0;x<8;x++)assert.equal(view.getUint32(1800+y*32+x*4,true),
+    y>=2 && y<5 && x>=1 && x<4 && ((y-2)*3+x-1)%2===0?0x87654321:0,
+    "G unsigned sixteen-bit index, shared aliased origin, CGA6 bit order and snapshot");
+const fontBefore=vram.slice(1800,2056);
+word(0x1104,0x200+0x101*8+6);
+assert.throws(()=>call(restoredFonts,0x1804,0x101),/limit/);
+assert.deepEqual(vram.slice(1800,2056),fontBefore,"a truncated font record leaves the destination unchanged");word(0x1104,4095);
+fontRam.setUint32(0x1000+0x200+0x101*8,0xFFFFFFFF,true);
+assert.throws(()=>call(restoredFonts,0x1804,0x101),/exceeds font record/);
+assert.deepEqual(vram.slice(1800,2056),fontBefore,"oversized glyph headers fault before drawing");
+fontRam.setUint32(0x1000+0x200+0x101*8,3<<16|3,true);word(0x1004,1800+3*32+31);
+assert.throws(()=>call(restoredFonts,0x1804,0x101),/limit/);
+assert.deepEqual(vram.slice(1800,2056),fontBefore,"a late destination row fault leaves the entire character unchanged");word(0x1004,4095);
+call(restoredFonts,0x2FC,1);call(restoredFonts,0xFFC,0x00FF00FF);call(restoredFonts,0x1800,0);
+for(let at=1800;at<2056;at+=4)view.setUint32(at,0x11223344,true);
+graph.object(0,0x5100).methods.set(0x300,0x66);call(restoredFonts,0x1804,0x101);
+assert.equal(view.getUint32(1800,true),0x11DD33BB);assert.equal(view.getUint32(1804,true),0x11223344,"font zero bits remain transparent under ROP");
+for(const pitch of [0,2,10,15])assert.throws(()=>call(restoredFonts,0xFF0,pitch<<28),/pitch/);
+console.log("PASS: GDI font DMA F/G records, signed origins, sixteen-bit indices, clipping, bit order, snapshots and atomic faults");
+
+// Native AA glyphs use I4 widths such as 12/14/18: only the complete image
+// is padded to a DWORD. Each word can finish one row and start the next.
+const packedTarget=graph.object(0,0x5000);
+packedTarget.methods.set(0x300,4);packedTarget.methods.set(0x304,0x200020);packedTarget.methods.set(0x30C,3000);
+for(let i=0;i<16;i++)view.setUint16(0x1000+i*2,i*0x1111,true);
+const packed=object(0x6200,0x3064,[[0x184,0x130],[0x1A0,0x500],[0x3E4,3],[0x3E8,1],[0x3EC,1],[0x3F0,0],[0x3F8,3<<16|5]]);
+call(packed,0x3FC,3<<16|6);call(packed,0x3F4,0);vram.fill(0,3000,3096);
+const indices=Array.from({length:24},(_,i)=>i<18?i%15+1:15);
+const indexWords=Array.from({length:3},(_,i)=>indices.slice(i*8,i*8+8).reduce((word,index,n)=>word|index<<((n>>>1)*8+((n&1)^1)*4),0)>>>0);
+const packedBefore=vram.slice(3000,3096);word(0x1004,3032);
+assert.throws(()=>call(packed,0x400,indexWords[0]),/limit/);
+assert.deepEqual(vram.slice(3000,3096),packedBefore,"a cross-row INDEX DWORD validates every destination before writing");word(0x1004,4095);
+call(packed,0x400,indexWords[0]);assert.equal(view.getUint16(3034,true),8*0x1111,"first DWORD already reaches the next INDEX row");
+const packedSnapshot=graph.get_state();graph.set_state(packedSnapshot);const packedRestored=graph.object(0,0x6200);
+call(packedRestored,0x404,indexWords[1]);call(packedRestored,0x408,indexWords[2]);
+for(let y=0;y<3;y++) for(let x=0;x<6;x++)assert.equal(view.getUint16(3000+y*32+x*2,true),x<5?indices[y*6+x]*0x1111:0,"packed I4 rows, output crop and final DWORD padding");
+assert.throws(()=>call(packedRestored,0x400,0),/excess/);
+call(packedRestored,0x3EC,0);call(packedRestored,0x3F8,2<<16|3);call(packedRestored,0x3FC,2<<16|3);call(packedRestored,0x3F4,0);vram.fill(0,3000,3096);
+call(packedRestored,0x400,0x04030201);call(packedRestored,0x404,0xFFFF0605);
+for(let y=0;y<2;y++) for(let x=0;x<3;x++)assert.equal(view.getUint16(3000+y*32+x*2,true),(y*3+x+1)*0x1111,"I8 DWORDs also span packed image rows");
+// Compatibility with a snapshot made by the previous per-row implementation.
+call(packedRestored,0x3FC,2<<16|6);call(packedRestored,0x3F8,2<<16|6);call(packedRestored,0x3F4,0);
+packedRestored.stream=[0,1,2,3,4];packedRestored.methods.set(0x40000,4);vram.fill(0,3000,3096);
+call(packedRestored,0x400,0x08070605);
+assert.equal(view.getUint16(3008,true),5*0x1111);assert.equal(view.getUint16(3034,true),8*0x1111,"old partial-row snapshots resume at their committed pixel");
+console.log("PASS: packed I4/I8 cross-row INDEX words, crop, snapshot continuation, final padding and atomic faults");

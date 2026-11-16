@@ -1,0 +1,72 @@
+{
+  "stage": "G4 original XP05 full16 lineage normal shutdown",
+  "functionalResult": "g4-xp-9371-05-native-all16.json",
+  "iqCapture": "g4-xp-9371-05-native-iq.json",
+  "sequence": [
+    "Restore healthy IQ-ready checkpoint after full16 original completion.",
+    "Capture native BC/CPU fixed-frame controls and verify original NV05N.3DR SHA unchanged.",
+    "Close original IQ dialogs through observed original enabled buttons.",
+    "Run stock shutdown.exe -s -t0; observe Saving your settings and established terminal EIP806F3048/HLT1/display null.",
+    "Save complete paired RAM/OS/game bundle before stopping the harness; verify original images unchanged.",
+    "Losslessly compress/verify RAM before deleting the decompressed temporary copy."
+  ],
+  "shutdown": {
+    "eip": "0x806F3048",
+    "halted": 1,
+    "displayMode": null,
+    "clockMode": "normal",
+    "draws": 2986,
+    "gpuFailures": 0,
+    "graphFaults": []
+  },
+  "bundle": {
+    "status": "complete",
+    "guest": "xp",
+    "vramMiB": 256,
+    "memoryMiB": 1024,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark05.img",
+    "state": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark05-bc-current-cpu/checkpoint-native-all16-normal-shutdown.state",
+      "bytes": 1122474776,
+      "sha256": "ea33bb6d0f8ec03d7a005035c4048ddbfeb00e25ac03503bc0d15c9b4e9291c7"
+    },
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark05-bc-current-cpu/checkpoint-native-all16-normal-shutdown.state.hda-overlay.bin",
+      "bytes": 121842084,
+      "sha256": "7792723764b9d0a3a43f7e81845141032ba7a360a981a6a32bd247ed98ba80b0"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark05-bc-current-cpu/checkpoint-native-all16-normal-shutdown.state.game-overlay.bin",
+      "bytes": 443794,
+      "sha256": "6ad832a3852cc39a507a1c0c389cc52216c5507d252c7b67c657b1e3b8f727b1"
+    }
+  },
+  "archive": {
+    "file": "build/nv40-xp-mark05-bc-current-cpu/checkpoint-native-all16-normal-shutdown.state.zst",
+    "bytes": 410513302
+  },
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark05-bc-current-cpu/result.json",
+      "bytes": 1574,
+      "sha256": "06f7b9e1405e8a8a1893b1b6fcb4e928980d82c75b4d1b85063a5d87b52821b4"
+    },
+    {
+      "file": "build/nv40-xp-mark05-bc-current-cpu/progress-trace.json",
+      "bytes": 2865288,
+      "sha256": "763bc304a85f08f4aab94f7fc9a5f9437249eff565c415ff155e9bdf6e2839f1"
+    },
+    {
+      "file": "build/nv40-xp-mark05-bc-current-cpu/capture-0063.png",
+      "bytes": 32381,
+      "sha256": "c15ead99efeac8efa19e254046dd326cc7e7f64a326b24d88dc6eca4260c3c98"
+    },
+    {
+      "file": "build/nv40-xp-mark05-bc-current-cpu/capture-0064.png",
+      "bytes": 6346,
+      "sha256": "f98dc3a08b2c22263dde39dfcbbf740011acb922f7814fae1957d803b26618f2"
+    }
+  ],
+  "limits": "Fixed-frame proxy reference and final isolated performance remain pending. The full16 run predates later XRGB-query correction; no silent retroactive image acceptance."
+}

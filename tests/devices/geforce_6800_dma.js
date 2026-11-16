@@ -1,0 +1,145 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { NVDMA } from "../../src/graphics_adapters/geforce_6800/nv_dma.js";
+
+const vram = new Uint8Array(2 << 20), ram = new Uint8Array(64 << 10);
+const ramin = new DataView(vram.buffer, 1 << 20);
+let master = false, dirty = 0;
+const machine = {
+    is_bus_master: () => master,
+    validate_physical_range: (at, size) => { if(at < 0 || at + size > ram.length) throw new RangeError("outside guest RAM"); },
+    read_physical: (at, size) => ram.slice(at, at + size),
+    write_physical: (bytes, at) => ram.set(bytes, at),
+    mmio_ram_mark_dirty: () => dirty++,
+};
+const device = { machine, vram_size: vram.length, vram: () => vram, vga: { lfb_region: 1 }, registers: new Map() };
+const engine = new NVDMA(device);
+const object = (at, flags, limit, ...ptes) => {
+    ramin.setUint32(at, flags, true); ramin.setUint32(at + 4, limit, true);
+    ptes.forEach((pte, i) => ramin.setUint32(at + 8 + i * 4, pte, true));
+    return engine.descriptor(at);
+};
+// Inclusive limits and adjustment within a physical page; a linear object can
+// cross page boundaries without consuming a second PTE.
+let d = object(0x100, 0xFF00303D, 63, 0x8002);
+const pattern = Uint8Array.from({ length: 64 }, (_, i) => i);
+engine.write(d, 0, pattern);
+assert.deepEqual(vram.subarray(0x8FF0, 0x9030), pattern);
+assert.deepEqual(engine.read(d, 0, 64), pattern);
+assert.throws(() => engine.read(d, 1, 64), /limit/);
+assert.throws(() => engine.read(d, -1, 1), /limit/);
+assert.throws(() => engine.read(d, 0, 1.5), /limit/);
+assert.equal(engine.read(d, 64, 0).length, 0);
+assert.equal(dirty, 1);
+
+// A linear VRAM object has one base PTE for the whole span. It needs neither
+// a copied page list nor hundreds of per-page subarray/set operations.
+d = object(0x180, 0x00F0303D, 0x8FFF, 0x10002);
+assert.deepEqual(engine.ranges(d,0xFFF,0x6001,false),[{at:0x1100E,count:0x6001,offset:0}],"linear VRAM span remains contiguous across every page boundary");
+const large=Uint8Array.from({length:0x6001},(_,i)=>i*13+7);
+engine.write(d,0xFFF,large);const copied=engine.read(d,0xFFF,large.length);
+assert.deepEqual(copied,large);copied[0]^=255;
+assert.equal(vram[0x1100E],large[0],"a bulk read remains an independent byte copy");
+const unchanged=vram.slice(0x1100E,0x1700F);
+assert.throws(()=>engine.read(d,0x3000,0x6001),/limit/);
+assert.deepEqual(vram.subarray(0x1100E,0x1700F),unchanged);
+d=object(0x180,0x303D,0x3FFF,0x1FF002);
+assert.throws(()=>engine.read(d,0,0x2000),/outside VRAM/);
+const tail=vram.slice(0x1FF000);
+assert.throws(()=>engine.write(d,0,new Uint8Array(0x2000).fill(0xEE)),/outside VRAM/);
+assert.deepEqual(vram.subarray(0x1FF000),tail,"a late VRAM boundary never partially writes the valid first page");
+d=object(0x180,0x303D,0x7FFF,0x10000);
+assert.throws(()=>engine.write(d,0,new Uint8Array(0x6000)),error=>error.nv_dma?.page===0 && /page access/.test(error.message));
+assert.deepEqual(vram.subarray(0x1100E,0x1700F),unchanged,"a rejected whole-span write changes no byte");
+
+// Paged objects can map adjacent logical pages to discontiguous physical pages.
+d = object(0x200, 0xFFC0103D, 15, 0xA003, 0xC003);
+engine.write(d, 0, pattern.subarray(0, 16));
+assert.deepEqual(vram.subarray(0xAFFC, 0xB000), pattern.subarray(0, 4));
+assert.deepEqual(vram.subarray(0xC000, 0xC00C), pattern.subarray(4, 16));
+assert.deepEqual(engine.read(d, 0, 16), pattern.subarray(0, 16));
+ramin.setUint32(0x20C, 0xC001, true); // read-only second page
+const before = vram.slice(0xAFFC, 0xB000);
+assert.throws(() => engine.write(d, 0, new Uint8Array(16).fill(255)), /page access/);
+assert.deepEqual(vram.subarray(0xAFFC, 0xB000), before, "a later page fault never partially writes");
+ramin.setUint32(0x20C, 0xC000, true);
+assert.throws(() => engine.read(d, 0, 16), /page access/);
+
+// Bus mastering gates system RAM only, not internal VRAM operations.
+d = object(0x300, 0x0002303D, 63, 0x1002);
+assert.throws(() => engine.read(d, 0, 1), /bus mastering/);
+master = true;
+engine.write(d, 0, pattern); assert.deepEqual(ram.subarray(0x1000, 0x1040), pattern);
+assert.deepEqual(engine.read(d, 0, 64), pattern);
+d = object(0x340, 0x0002303D, 8191, 0xF002);
+assert.throws(() => engine.read(d, 4096, 1), /outside guest RAM/);
+
+assert.throws(() => engine.descriptor(0xFFFFF), /outside RAMIN/);
+assert.throws(() => object(0x400, 0x3000, 1, 2), /class/);
+assert.throws(() => object(0x400, 0x3D, 1, 2), /page table/);
+d = object(0x400, 0x00007002, 63, 0x8000);
+assert.equal(engine.read(d, 0, 1).length, 1);
+assert.throws(() => engine.write(d, 0, new Uint8Array(1)), /access denied/);
+d = object(0x400, 0x0000B003, 63, 0x8002);
+assert.throws(() => engine.read(d, 0, 1), /access denied/);
+engine.write(d, 0, new Uint8Array([91])); assert.equal(vram[0x8000], 91);
+
+object(0x500, 0x00C2303D, 1023, 0x1002);
+engine.load_cache(0x500);
+assert.equal(device.registers.get(0x3230), 0x8002300C);
+assert.equal(device.registers.get(0x3234), 1023);
+assert.equal(device.registers.get(0x323C), 0x1002);
+
+// Scalar FIFO reads preserve byte order and adjusted, discontiguous mappings.
+for(const target of [0, 2])
+{
+    master = true;
+    d = object(0x600, 0xFFF0103D | target << 16, 7, 0x2003, 0x4003);
+    const memory = target ? ram : vram;
+    memory[0x2FFF] = 0x81; memory.set([0x23, 0x45, 0xE7, 0xAB, 0xCD, 0xEF, 0x09], 0x4000);
+    assert.equal(engine.read32(d, 0), 0xE7452381, "word split across two physical pages");
+    assert.equal(engine.read32(d, 0, false), 0x812345E7, "big-endian split word");
+    assert.equal(engine.read32(d, 1), 0xABE74523, "unaligned physical word within one page");
+    assert.equal(engine.read32(d, 1, false), 0x2345E7AB);
+    assert.throws(() => engine.read32(d, 5), /limit/);
+    ramin.setUint32(0x60C, 0x4000, true);
+    assert.throws(() => engine.read32(d, 0), /page access/, "PTE edits are checked on every scalar read");
+    ramin.setUint32(0x60C, 0x4003, true);
+    if(target)
+    {
+        master = false;
+        assert.throws(() => engine.read32(d, 1), /bus mastering/);
+    }
+}
+d = object(0x640, 0xB003, 7, 0x2003);
+assert.throws(() => engine.read32(d, 0), /access denied/);
+let scalarReads = 0, blobReads = 0;
+const readBlob = machine.read_physical, ramView = new DataView(ram.buffer);
+machine.read32_physical = at => {
+    scalarReads++;
+    machine.validate_physical_range(at, 4);
+    return ramView.getUint32(at, true);
+};
+machine.read_physical = (at, size) => { blobReads++; return readBlob(at, size); };
+master = true; d = object(0x680, 0x0002303D, 8191, 0x2002);
+ram.set([0x81, 0x23, 0x45, 0xE7, 0xAB], 0x2001);
+assert.equal(engine.read32(d, 1), 0xE7452381);
+assert.equal(engine.read32(d, 1, false), 0x812345E7);
+assert.equal(scalarReads, 2, "contiguous system-memory words use the checked physical scalar API");
+assert.equal(blobReads, 0, "scalar pusher reads allocate no copied byte buffer");
+ram.set([1, 2], 0x2FFE); ram.set([3, 4], 0x3000);
+assert.equal(engine.read32(d, 0xFFE), 0x04030201);
+assert.equal(scalarReads, 2, "cross-page words retain the checked multi-range reader");
+assert.equal(blobReads, 2);
+master = false; assert.throws(() => engine.read32(d, 1), /bus mastering/);
+master = true; ramin.setUint32(0x684, 1, true); d = engine.descriptor(0x680);
+assert.throws(() => engine.read32(d, 1), /limit/);
+d = object(0x6C0, 0x0002103D, 8191, 0x2003, 0x4003);
+ramin.setUint32(0x6C8, 0x2002, true);
+assert.throws(() => engine.read32(d, 1), /page access/);
+d = object(0x700, 0x00023003, 8191, 0x2003);
+assert.throws(() => engine.read32(d, 1), /access denied/);
+d = object(0x740, 0x0002303D, 8191, 0xF003);
+assert.throws(() => engine.read32(d, 4096), /outside guest RAM/);
+assert.equal(scalarReads, 2, "all DMA checks precede the physical scalar API");
+console.log("PASS: NV40 DMA inclusive limits, linear/paged mappings, permissions, PCI DMA and CACHE1 descriptor load");

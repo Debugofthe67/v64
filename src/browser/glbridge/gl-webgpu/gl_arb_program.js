@@ -13,7 +13,7 @@
 // built-ins use, so an ARB program and a fixed-function draw see one set of
 // matrices rather than two that can drift.
 //
-// See docs/opengl-webgpu-implementation-plan.zh-CN.md chapter 9.
+// See docs/opengl-webgpu-plan.md E2.
 
 (function(global) {
     "use strict";
@@ -25,17 +25,19 @@
     const translator = nodeRequire ? nodeRequire("./gl_shader_translator.js") :
         global.GLShaderTranslator;
 
-    const ARB_REVISION = 2;
+    const ARB_REVISION = 6;
 
     /*
-     * Twenty-eight, not the ARB minimum of twenty-four.
-     *
-     * openglproxy/README.md records why: WineD3D 1.7.52's fixed-function
-     * replacement writes program.env[27], and advertising 24 let it run four
-     * bytes past its own allocation. The number is part of the contract with
-     * the guest, which clamps to whatever is advertised here.
+     * Vertex programs require at least 96 parameters. Fragment programs
+     * retain 28 for WineD3D's program.env[27] (openglproxy/README.md).
+     * Storage has one shape for both stages; validation and advertised
+     * limits use the target's logical range.
      */
-    const MAX_PROGRAM_PARAMETERS = 28;
+    const MAX_PROGRAM_PARAMETERS = 96;
+    const MAX_FRAGMENT_PROGRAM_PARAMETERS = 28;
+    const MAX_PROGRAM_BINDINGS = 4096;
+    const MAX_ADDRESS_REGISTERS = 32;
+    const parameterLimit = target => target === "vertex" ? MAX_PROGRAM_PARAMETERS : MAX_FRAGMENT_PROGRAM_PARAMETERS;
     /* Group 1 binding 0 is the shared GL state block; each stage's ARB
      * parameter block gets a binding of its own. */
     const PARAMETER_BINDING = { vertex: 1, fragment: 2 };
@@ -172,8 +174,11 @@
             "fn arbLit(v : vec4<f32>) -> vec4<f32> {\n" +
             "    // ARB's lighting helper: (1, max(x,0), x>0 ? pow(max(y,0), w) : 0, 1)\n" +
             "    let diffuse = max(v.x, 0.0);\n" +
-            "    let specular = select(0.0, pow(max(v.y, 0.0), clamp(v.w, -128.0, 128.0)),\n" +
-            "        v.x > 0.0);\n" +
+            // (an exponent of 0 gives 1, as the extensions' power does; WGSL's
+            // pow(0, 0) is NaN)
+            "    let exponent = clamp(v.w, -128.0, 128.0);\n" +
+            "    let power = select(pow(max(v.y, 0.0), exponent), 1.0, exponent == 0.0);\n" +
+            "    let specular = select(0.0, power, v.x > 0.0);\n" +
             "    return vec4<f32>(1.0, diffuse, specular, 1.0);\n" +
             "}",
         arbLog:
@@ -237,6 +242,10 @@
             vector: "glState.backMaterial.diffuse" },
         "material.back.specular": { field: "backMaterial",
             vector: "glState.backMaterial.specular" },
+        "material.back.emission": { field: "backMaterial",
+            vector: "glState.backMaterial.emission" },
+        "material.back.shininess": { field: "backMaterial",
+            vector: "vec4<f32>(glState.backMaterial.shininess, 0.0, 0.0, 1.0)" },
         "lightmodel.ambient": { field: "lightModelAmbient",
             vector: "glState.lightModelAmbient" },
         "lightmodel.scenecolor": { field: "frontSceneColor",
@@ -270,6 +279,10 @@
         { pattern: /^lightprod\[(\d+)\]\.(ambient|diffuse|specular)$/,
           field: "frontLightProduct",
           expr: (index, member) => "glState.frontLightProduct[" + index + "]." +
+              member },
+        { pattern: /^lightprod\[(\d+)\]\.back\.(ambient|diffuse|specular)$/,
+          field: "backLightProduct",
+          expr: (index, member) => "glState.backLightProduct[" + index + "]." +
               member },
         { pattern: /^texenv\[(\d+)\]\.color$/, field: "texEnvColor",
           expr: index => "glState.texEnvColor[" + index + "]" },
@@ -324,6 +337,7 @@
 
     class Parser {
         constructor(source) {
+            this.text = source;
             this.tokens = lex(source);
             this.pos = 0;
             this.target = null;
@@ -335,6 +349,7 @@
             this.attribs = new Map();
             this.outputs = new Map();
             this.instructions = [];
+            this.declarations = new Set();
         }
 
         peek(offset) { return this.tokens[this.pos + (offset || 0)]; }
@@ -408,7 +423,8 @@
             }
             case "ADDRESS": {
                 this.next();
-                do { this.addresses.add(this.expectIdent()); }
+                if (this.target !== "vertex") throw new ARBError("fragment programs have no address registers", this.line);
+                do { const name = this.expectIdent(); this.declare(name); this.addresses.add(name); }
                 while (this.accept(","));
                 this.expect(";");
                 return;
@@ -417,23 +433,32 @@
                 this.next();
                 const name = this.expectIdent();
                 this.expect("=");
-                this.aliases.set(name, this.expectIdent());
+                const original = this.expectIdent();
+                if (!this.declarations.has(original)) throw new ARBError("alias refers to an undeclared variable", this.line);
+                this.declare(name); this.aliases.set(name, original);
                 this.expect(";");
                 return;
             }
             case "ATTRIB": {
                 this.next();
                 const name = this.expectIdent();
+                this.declare(name);
                 this.expect("=");
-                this.attribs.set(name, this.bindingPath());
+                const binding = this.bindingPath();
+                if (!binding.startsWith(this.target === "vertex" ? "vertex." : "fragment."))
+                    throw new ARBError("invalid attribute binding", this.line);
+                this.attribs.set(name, binding);
                 this.expect(";");
                 return;
             }
             case "OUTPUT": {
                 this.next();
                 const name = this.expectIdent();
+                this.declare(name);
                 this.expect("=");
-                this.outputs.set(name, this.bindingPath());
+                const binding = this.bindingPath();
+                if (!binding.startsWith("result.")) throw new ARBError("invalid output binding", this.line);
+                this.outputs.set(name, binding);
                 this.expect(";");
                 return;
             }
@@ -447,10 +472,16 @@
         }
 
         declareTemporary(name) {
+            this.declare(name);
             if (this.temporaries.size >= MAX_TEMPORARIES)
                 throw new ARBError("more than " + MAX_TEMPORARIES +
                     " temporaries", this.line);
             this.temporaries.add(name);
+        }
+
+        declare(name) {
+            if (this.declarations.has(name)) throw new ARBError("variable '" + name + "' declared twice", this.line);
+            this.declarations.add(name);
         }
 
         /*
@@ -477,14 +508,16 @@
                     continue;
                 }
                 if (this.at("[")) {
-                    this.next();
-                    let inner = "";
+                    // the text between the brackets as written: the lexer
+                    // reads 0..4 as two numbers and a.x-1 as a and -1
+                    // (review S2-48)
+                    const open = this.next();
                     while (!this.at("]")) {
                         const token = this.next();
                         if (token.type === "eof")
                             throw new ARBError("unterminated '['", token.line);
-                        inner += String(token.value);
                     }
+                    const inner = this.text.slice(open.at + 1, this.peek().at).replace(/\s+/g, "");
                     this.expect("]");
                     text += "[" + inner + "]";
                     continue;
@@ -507,10 +540,13 @@
          */
         paramStatement() {
             const name = this.expectIdent();
+            this.declare(name);
             let arraySize = 0;
             if (this.accept("[")) {
                 arraySize = this.at("]") ? -1 : this.next().value;
                 this.expect("]");
+                if (!Number.isInteger(arraySize) || arraySize !== -1 && arraySize < 1 || arraySize > MAX_PROGRAM_BINDINGS)
+                    throw new ARBError("invalid parameter array size", this.line);
             }
             this.expect("=");
             const items = [];
@@ -525,6 +561,7 @@
             let entries;
             if (!arraySize && items.every(item => item.kind === "number")) {
                 const values = items.map(item => item.value);
+                if (values.length > 4) throw new ARBError("a constant vector has more than four components", this.line);
                 /*
                  * ARB program scalar constants are scalar vector initialisers:
                  *
@@ -552,11 +589,24 @@
                                           item.value] };
                     if (item.kind === "vector") {
                         const values = item.values.slice();
+                        if (values.length > 4) throw new ARBError("a constant vector has more than four components", this.line);
                         while (values.length < 4)
                             values.push(values.length === 3 ? 1 : 0);
                         return { kind: "constant", values };
                     }
+                    if (!/^(state\.|program\.(env|local)\[)/.test(item.path)) throw new ARBError("invalid parameter binding", this.line);
                     return { kind: "binding", path: item.path };
+                });
+                // program.local[0..4]: one register a parameter (S2-48)
+                entries = entries.flatMap(entry => {
+                    const range = entry.kind === "binding" && /^(.*)\[(\d+)\.\.(\d+)\]$/.exec(entry.path);
+                    if (!range) return [entry];
+                    if (+range[3] < +range[2] || +range[3] - +range[2] >= MAX_PROGRAM_BINDINGS)
+                        throw new ARBError("invalid parameter range", this.line);
+                    const out = [];
+                    for (let i = +range[2]; i <= +range[3]; ++i)
+                        out.push({ kind: "binding", path: range[1] + "[" + i + "]" });
+                    return out;
                 });
             }
             this.params.set(name, { arraySize, entries });
@@ -603,16 +653,20 @@
                 throw new ARBError(opcode + " is fragment-program only", token.line);
 
             const instruction = { opcode, info, saturate, line: token.line,
-                                  sources: [] };
+                                  at: token.at, sources: [] };
             if (!info.kill) {
                 instruction.destination = this.destination();
                 this.expect(",");
             }
             const sourceCount = info.sources;
             for (let i = 0; i < sourceCount; ++i) {
-                instruction.sources.push(this.source(info.extendedSwizzle));
+                const source = this.source();
+                if (info.scalar && source.swizzle?.length !== 1)
+                    throw new ARBError(opcode + " requires one scalar source component", source.line, source.at);
+                instruction.sources.push(source);
                 if (i + 1 < sourceCount) this.expect(",");
             }
+            if (info.extendedSwizzle) instruction.extendedSwizzle = this.extendedSwizzle();
             if (info.texture) {
                 this.expect(",");
                 instruction.texture = this.bindingPath();       // texture[n]
@@ -628,34 +682,74 @@
             this.instructions.push(instruction);
         }
 
+        /*
+         * A constant written in an instruction, `MUL r, r, 2.0;` or
+         * `MOV r, {0, 0, 0, 1};`, as an anonymous PARAM (review S2-48: the
+         * parser wanted a name). A scalar stands for all four components; a
+         * short vector is filled out with 0 and a w of 1.
+         */
+        inlineConstant() {
+            const item = this.paramItem();
+            const values = item.kind === "vector" ? item.values.slice() :
+                [item.value, item.value, item.value, item.value];
+            if (values.length > 4) throw new ARBError("a constant vector has more than four components", this.line);
+            while (values.length < 4) values.push(values.length === 3 ? 1 : 0);
+            const name = "$constant" + this.params.size;
+            this.params.set(name, { arraySize: 0, entries: [{ kind: "constant", values }] });
+            return name;
+        }
+
+        // (each operand keeps where it starts: the generator's errors about
+        // it report that position)
         destination() {
+            const at = this.peek().at;
             const name = this.bindingPath(true);
             let mask = "xyzw";
             if (this.accept(".")) mask = normalizeMask(this.expectIdent());
-            return { name, mask, line: this.line };
+            if (!/^(?=.+)x?y?z?w?$/.test(mask)) throw new ARBError("invalid destination mask", this.line);
+            return { name, mask, line: this.line, at };
         }
 
-        source(extended) {
+        /*
+         * SWZ's four components after the source, `x,-y,0,1`: each a source
+         * component or 0 or 1, each with its own sign (review S2-48: read as
+         * a dotted swizzle).
+         */
+        extendedSwizzle() {
+            const components = [];
+            for (let i = 0; i < 4; ++i) {
+                this.expect(",");
+                let negate = false;
+                while (this.at("-") || this.at("+"))
+                    if (this.next().value === "-") negate = !negate;
+                const token = this.next();
+                let component = String(token.value);
+                if (token.type === "number" && token.value < 0) {
+                    negate = !negate;
+                    component = String(-token.value);
+                }
+                if (!/^(?:[01]|[xyzwrgba])$/.test(component))
+                    throw new ARBError("'" + component + "' is not an extended swizzle component", token.line);
+                components.push({ negate, component });
+            }
+            return components;
+        }
+
+        source() {
             let negate = false;
             let absolute = false;
             while (this.at("-") || this.at("+")) {
                 if (this.next().value === "-") negate = !negate;
             }
             if (this.accept("|")) absolute = true;
-            const name = this.bindingPath(true);
+            const at = this.peek().at;
+            const name = this.at("{") || this.peek().type === "number" ?
+                this.inlineConstant() : this.bindingPath(true);
             let swizzle = null;
-            if (this.accept(".")) {
-                const token = this.next();
-                swizzle = String(token.value);
-                if (extended) {
-                    // SWZ's extended swizzle allows 0 and 1 as components and a
-                    // sign per component, which arrives as several tokens.
-                    while (this.at(",") === false && this.peek().type !== "punct")
-                        swizzle += String(this.next().value);
-                }
-            }
+            if (this.accept(".")) swizzle = String(this.next().value);
+            if (swizzle && !/^[xyzwrgba]{1,4}$/.test(swizzle)) throw new ARBError("invalid source swizzle", this.line);
             if (absolute) this.expect("|");
-            return { name, swizzle, negate, absolute, line: this.line };
+            return { name, swizzle, negate, absolute, line: this.line, at };
         }
     }
 
@@ -668,11 +762,14 @@
             this.parsed = parsed;
             this.options = options || {};
             this.stage = parsed.target;
+            if (this.stage === "vertex" && !parsed.options.has("ARB_position_invariant"))
+                this.options = { ...this.options, clipPlaneCount: 0, clipPlaneMask: 0 };
             this.lines = [];
             this.helpers = new Set();
             this.stateFields = new Set();
             this.constants = [];          // local PARAM constants, inlined
             this.paramArrays = new Map();
+            this.registerArrays = new Map();   // relative addressing, by array name
             this.usedAttributes = new Map();
             this.usedResults = new Set();
             this.textureUnits = new Map();  // unit -> target
@@ -680,12 +777,32 @@
             this.usesAddress = false;
             this.envUsed = false;
             this.localUsed = false;
+            this.parameterBindings = new Set();
+            this.inputBindings = new Set();
+            this.resolvingSources = new Set();
+            this.relativeArrays = new Set();
+            this.relativeStates = new Set();
+            this.relativeConstants = new Set();
+            this.relativeConstantCopies = 0;
             this.temporary = 0;
+            for (const param of parsed.params.values()) {
+                const count = param.entries.reduce((n, entry) => n + (entry.kind === "binding" &&
+                    this.stateMatrix(entry.path.replace(/^state\./, "")) ? 4 : 1), 0);
+                if (param.arraySize > 0 && param.arraySize !== count || !param.arraySize && count !== 1)
+                    throw new ARBError("parameter array size does not match its initializer", 0);
+                for (const entry of param.entries)
+                    if (entry.kind === "binding" && !this.stateMatrix(entry.path.replace(/^state\./, ""))) this.resolveSource(entry.path);
+            }
+            for (const name of parsed.attribs.keys()) this.resolveSource(name);
+            for (const name of parsed.outputs.keys()) this.resolveDestination({ name, mask: "xyzw", line: 0 });
+            this.stateFields.clear(); this.usedAttributes.clear(); this.usedResults.clear();
+            this.envUsed = this.localUsed = false;
             // Declared here rather than where it is emitted: the state layout
             // is built before the shell, so a field added later would not be
             // in the struct the shell then reads from.
             if (parsed.options.has("ARB_position_invariant")) {
                 this.stateFields.add("mvp");
+                if (this.options.vertexCapture) this.stateFields.add("modelview");
                 this.useAttribute("vertex.position",
                     VERTEX_ATTRIBUTES["vertex.position"]);
             }
@@ -696,7 +813,11 @@
         generate() {
             const body = [];
             for (const instruction of this.parsed.instructions)
-                body.push(...this.instruction(instruction));
+                body.push(...this.located(instruction, () => this.instruction(instruction)));
+            if (this.parsed.instructions.length > 4096) throw new ARBError("too many program instructions", 0);
+            if (this.parsed.addresses.size > MAX_ADDRESS_REGISTERS) throw new ARBError("too many address registers", 0);
+            if (this.parameterCount() > MAX_PROGRAM_BINDINGS)
+                throw new ARBError("too many parameter bindings", 0);
 
             // WebGPU validates the inter-stage interface strictly. Desktop GL
             // leaves an unwritten ARB vertex result undefined, so when a
@@ -704,6 +825,8 @@
             // materialise its missing output using this shell's existing zero
             // value for undefined results.
             if (this.stage === "vertex") {
+                if (this.options.vertexCapture) this.usedResults.add("texcoord0");
+                if (this.options.vertexCaptureRaster) for (let i = 1; i < 8; ++i) this.usedResults.add("texcoord" + i);
                 for (const unit of this.options.forceVertexTexCoords || []) {
                     if (unit >= 0 && unit < MAX_TEXTURE_UNITS)
                         this.usedResults.add("texcoord" + unit);
@@ -714,8 +837,17 @@
             // module even when the stages read different pieces of GL state.
             for (const field of this.options.forceStateFields || [])
                 this.stateFields.add(field);
+            if (this.stage === "fragment" && this.fogMode()) {
+                this.stateFields.add("fogParams");
+                this.stateFields.add("fogColor");
+            }
 
+            if (this.textureUnits.size) this.stateFields.add("samplerState");
+            if (this.options.pointSprite) for (const field of ["pointParams", "viewportParams"]) this.stateFields.add(field);
+            if (this.options.clipPlaneCount) for (const field of ["modelview", "clipPlanes"]) this.stateFields.add(field);
+            if (this.options.alphaTest && !["always", "never"].includes(this.options.alphaTest)) this.stateFields.add("alphaRef");
             const out = [];
+            out.push("diagnostic(off, derivative_uniformity);");
             out.push("// generated by gl_arb_program.js r" + ARB_REVISION +
                 " (" + this.stage + " program)");
             out.push("");
@@ -754,34 +886,69 @@
                 out.push("@group(2) @binding(" + (unit * 2) + ") var t" + unit +
                     " : " + wgslTextureType(target) + ";");
                 out.push("@group(2) @binding(" + (unit * 2 + 1) + ") var s" +
-                    unit + " : sampler;");
+                    unit + " : " + (target.startsWith("SHADOW") ? "sampler_comparison" : "sampler") + ";");
             }
             if (this.textureUnits.size) out.push("");
+            for (const [unit, target] of this.textureUnits) out.push(stateLayout.textureSamplingWGSL("gl_arb_sample_" + unit,
+                target === "CUBE" ? "Cube" : target === "3D" ? "3D" : "2D", target.startsWith("SHADOW"), "fragment"));
             for (const helper of this.helpers) out.push(HELPERS[helper], "");
+            if (this.stage === "fragment" && this.options.logicOp && this.options.logicOp !== 0x1503) {
+                for (let i = 0; i < (this.options.colorTargets || 1); ++i) out.push("@group(3) @binding(" + i + ") var glLogicTarget" + i + " : texture_2d<f32>;");
+                out.push("fn glApplyLogic(src:vec4<f32>,dst:vec4<f32>)->vec4<f32>{",
+                    "let s=vec4<u32>(round(clamp(src,vec4<f32>(0.0),vec4<f32>(1.0))*255.0));",
+                    "let d=vec4<u32>(round(clamp(dst,vec4<f32>(0.0),vec4<f32>(1.0))*255.0));",
+                    "return vec4<f32>((" + translator.logicOpExpression(this.options.logicOp) + ")&vec4<u32>(255u))/255.0;}");
+            }
 
             if (this.stage === "vertex") this.emitVertexShell(out, body);
             else this.emitFragmentShell(out, body);
             return out.join("\n") + "\n";
         }
 
+        // the OPTION ARB_fog_* a fragment program asks for, or null
+        fogMode() {
+            const options = this.parsed.options;
+            return options.has("ARB_fog_linear") ? "linear" : options.has("ARB_fog_exp") ? "exp" :
+                options.has("ARB_fog_exp2") ? "exp2" : null;
+        }
+
         emitVertexShell(out, body) {
+            const capture = !!this.options.vertexCapture;
             const flatLocations = new Set(this.options.forceFlatVaryings || []);
             const varying = location => (flatLocations.has(location) ?
                 "    @interpolate(flat) " : "    ") +
                 "@location(" + location + ") ";
+            if (this.options.pointSprite && !capture) out.push(stateLayout.pointRasterWGSL(true, this.options.depthClamp, this.options.pointRasterRounded));
             out.push("struct VSIn {");
             for (const [, info] of this.usedAttributes)
-                out.push("    @location(" + info.location + ") " + info.field +
+                out.push("    " + (capture ? "" : "@location(" + info.location + ") ") + info.field +
                     " : " + vecType(info.components || 4) + ",");
-            if (!this.usedAttributes.size)
-                out.push("    @builtin(vertex_index) vertexIndex : u32,");
+            if (this.options.pointSprite && !capture) out.push("    @builtin(vertex_index) cornerIndex:u32,");
+            else if (!this.usedAttributes.size)
+                out.push("    " + (capture ? "" : "@builtin(vertex_index) ") + "vertexIndex : u32,");
             out.push("}");
             out.push("");
+            if (capture) {
+                out.push(translator.vertexCaptureBindings(this.options.vertexCaptureRaster));
+                out.push("@compute @workgroup_size(" + translator.VERTEX_CAPTURE.workgroupSize + ")");
+                out.push("fn capture_main(@builtin(global_invocation_id) id : vec3<u32>) {");
+                out.push("    if (id.x >= arrayLength(&glCaptureOutput)) { return; }");
+                out.push("    var vin : VSIn;");
+                for (const [, info] of this.usedAttributes)
+                    out.push("    vin." + info.field + " = glCaptureInput[id.x].attributes[" + info.location + "]." + "xyzw".slice(0, info.components || 4) + ";");
+            } else {
             out.push("struct VSOut {");
             out.push("    @invariant @builtin(position) position : vec4<f32>,");
             out.push(varying(0) + "frontColor : vec4<f32>,");
             out.push(varying(1) + "frontSecondary : vec4<f32>,");
             out.push(varying(2) + "fogCoord : vec4<f32>,");
+            if (this.options.twoSided) {
+                out.push(varying(11) + "backColor:vec4<f32>,");
+                out.push(varying(12) + "backSecondary:vec4<f32>,");
+            }
+            if (this.options.pointSprite) out.push("    @location(13) pointCoord:vec2<f32>,");
+            if (this.options.clipPlaneCount) out.push("    @location(14) clipDist:vec4<f32>,");
+            if (this.options.clipPlaneCount > 4) out.push("    @location(15) clipExtra:vec2<f32>,");
             for (let i = 0; i < 8; ++i)
                 if (this.usedResults.has("texcoord" + i))
                     out.push(varying(3 + i) + "texcoord" + i +
@@ -790,6 +957,7 @@
             out.push("");
             out.push("@vertex");
             out.push("fn vs_main(vin : VSIn) -> VSOut {");
+            }
             out.push("    var result_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);");
             out.push("    var frontColor = vec4<f32>(1.0);");
             out.push("    var frontSecondary = vec4<f32>(0.0);");
@@ -804,6 +972,7 @@
                 out.push("    var " + safe(name) + " = vec4<f32>(0.0);");
             for (const name of this.parsed.addresses)
                 out.push("    var " + safe(name) + " = vec4<i32>(0);");
+            for (const declaration of this.registerArrays.values()) out.push("    " + declaration);
             for (const line of body) out.push("    " + line);
             if (this.parsed.options.has("ARB_position_invariant")) {
                 // The option says the program does not write result.position
@@ -811,13 +980,47 @@
                 // be the *same* expression, or a depth pre-pass z-fights.
                 out.push("    result_position = glState.mvp * vin.gl_Vertex;");
             }
+            if (capture) {
+                out.push("    glCaptureOutput[id.x].clip = result_position;");
+                out.push("    glCaptureOutput[id.x].color = saturate(frontColor);");
+                out.push("    glCaptureOutput[id.x].backColor = saturate(backColor);");
+                out.push("    glCaptureOutput[id.x].tex = texcoord0;");
+                // ARB_vertex_program 2.11 disables user clip planes unless
+                // ARB_position_invariant supplies the fixed transformation.
+                out.push("    glCaptureOutput[id.x].eye = " + (this.parsed.options.has("ARB_position_invariant") ?
+                    "glState.modelview * vin.gl_Vertex" : "vec4<f32>(0.0)") + ";");
+                if (this.options.vertexCaptureRaster) {
+                    out.push("    glCaptureOutput[id.x].secondary = saturate(frontSecondary);");
+                    out.push("    glCaptureOutput[id.x].fog = fogCoordValue;");
+                    for (let i = 1; i < 8; ++i) out.push("    glCaptureOutput[id.x].texExtra[" + (i - 1) + "] = texcoord" + i + ";");
+                }
+                out.push("}");
+                return;
+            }
             out.push("    var out : VSOut;");
             out.push("    var clip = result_position;");
+            if (this.options.pointSprite) {
+                out.push("    let corner=gl_point_corner(vin.cornerIndex);");
+                out.push("    let size=clamp(" + (this.options.programPointSize ? "pointSize.x" : "glState.pointParams.x") + ",1.0,64.0);");
+                out.push("    clip=gl_point_position(clip,size,corner,glState.viewportParams);");
+                out.push("    out.pointCoord=vec2<f32>(corner.x*0.5+0.5," + (this.options.pointCoordLowerLeft ? "corner.y*0.5+0.5" : "0.5-corner.y*0.5") + ");");
+            }
             out.push("    clip.z = (clip.z + clip.w) * 0.5;");
             out.push("    clip.y = -clip.y;");
             out.push("    out.position = clip;");
-            out.push("    out.frontColor = frontColor;");
-            out.push("    out.frontSecondary = frontSecondary;");
+            // (colours are clamped to [0, 1] before they are interpolated)
+            out.push("    out.frontColor = saturate(frontColor);");
+            out.push("    out.frontSecondary = saturate(frontSecondary);");
+            if (this.options.twoSided) {
+                out.push("    out.backColor=saturate(backColor);");
+                out.push("    out.backSecondary=saturate(backSecondary);");
+            }
+            if (this.options.clipPlaneCount) {
+                const mask = this.options.clipPlaneMask ?? (1 << this.options.clipPlaneCount) - 1,
+                    distance = i => mask & 1 << i ? "dot(glState.modelview*vin.gl_Vertex,glState.clipPlanes[" + i + "])" : "1.0";
+                out.push("    out.clipDist=vec4<f32>(" + Array.from({ length: 4 }, (_, i) => distance(i)).join(",") + ");");
+                if (this.options.clipPlaneCount > 4) out.push("    out.clipExtra=vec2<f32>(" + [4, 5].map(distance).join(",") + ");");
+            }
             out.push("    out.fogCoord = fogCoordValue;");
             for (let i = 0; i < 8; ++i)
                 if (this.usedResults.has("texcoord" + i))
@@ -829,9 +1032,19 @@
         emitFragmentShell(out, body) {
             out.push("struct FSIn {");
             out.push("    @builtin(position) position : vec4<f32>,");
-            out.push("    @location(0) frontColor : vec4<f32>,");
-            out.push("    @location(1) frontSecondary : vec4<f32>,");
+            const flat = new Set(this.options.forceFlatVaryings || []), varying = slot => "    " + (flat.has(slot) ? "@interpolate(flat) " : "") + "@location(" + slot + ") ";
+            out.push(varying(0) + "frontColor : vec4<f32>,");
+            out.push(varying(1) + "frontSecondary : vec4<f32>,");
+            if (this.options.twoSided) {
+                out.push("    @builtin(front_facing) frontFacing:bool,");
+                out.push(varying(11) + "backColor:vec4<f32>,");
+                out.push(varying(12) + "backSecondary:vec4<f32>,");
+            }
             out.push("    @location(2) fogCoord : vec4<f32>,");
+            if (this.options.pointSprite) out.push("    @location(13) pointCoord:vec2<f32>,");
+            if (this.options.clipPlaneCount) out.push("    @location(14) clipDist:vec4<f32>,");
+            if (this.options.clipPlaneCount > 4) out.push("    @location(15) clipExtra:vec2<f32>,");
+
             for (let i = 0; i < 8; ++i)
                 if (this.usedResults.has("in_texcoord" + i))
                     out.push("    @location(" + (3 + i) + ") texcoord" + i +
@@ -839,20 +1052,37 @@
             out.push("}");
             out.push("");
             out.push("struct FSOut {");
-            out.push("    @location(0) color0 : vec4<f32>,");
+            for (let i = 0; i < (this.options.colorTargets || 1); ++i) out.push("    @location(" + i + ") color" + i + " : vec4<f32>,");
             if (this.usedResults.has("depth"))
                 out.push("    @builtin(frag_depth) depth : f32,");
             out.push("}");
             out.push("");
             out.push("@fragment");
             out.push("fn fs_main(fin : FSIn) -> FSOut {");
+            if (this.options.clipPlaneCount) out.push("    if(any(fin.clipDist<vec4<f32>(0.0))){discard;}");
+            if (this.options.clipPlaneCount > 4) out.push("    if(any(fin.clipExtra<vec2<f32>(0.0))){discard;}");
             out.push("    var color0 = vec4<f32>(0.0, 0.0, 0.0, 1.0);");
             out.push("    var depthValue = fin.position.z;");
             for (const name of this.parsed.temporaries)
                 out.push("    var " + safe(name) + " = vec4<f32>(0.0);");
             for (const line of body) out.push("    " + line);
+            const fog = this.fogMode();
+            if (fog) {
+                // OPTION ARB_fog_*: the fixed fog after the program, from
+                // fragment.fogcoord (review S2-50: ignored)
+                const c = "fin.fogCoord.x";
+                const factor = fog === "linear" ? "(glState.fogParams.z - " + c + ") * glState.fogParams.w" :
+                    fog === "exp" ? "exp(-glState.fogParams.x * " + c + ")" :
+                        "exp(-(glState.fogParams.x * " + c + ") * (glState.fogParams.x * " + c + "))";
+                out.push("    color0 = vec4<f32>(mix(glState.fogColor.rgb, color0.rgb, clamp(" + factor +
+                    ", 0.0, 1.0)), color0.a);");
+            }
             out.push("    var out : FSOut;");
-            out.push("    out.color0 = color0;");
+            if (this.options.alphaTest === "never") out.push("    discard;");
+            const alpha = {less:"<",equal:"==",lequal:"<=",greater:">",notequal:"!=",gequal:">="}[this.options.alphaTest];
+            if (alpha) out.push("    if(!(color0.a " + alpha + " glState.alphaRef.x)){discard;}");
+            for (let i = 0; i < (this.options.colorTargets || 1); ++i) out.push("    out.color" + i + " = " +
+                (this.options.logicOp && this.options.logicOp !== 0x1503 ? "glApplyLogic(color0,textureLoad(glLogicTarget" + i + ",vec2<i32>(floor(fin.position.xy)),0))" : "color0") + ";");
             if (this.usedResults.has("depth"))
                 out.push("    out.depth = depthValue;");
             out.push("    return out;");
@@ -871,11 +1101,19 @@
             }
 
             let value;
-            if (info.texture) {
+            if (instruction.extendedSwizzle) {
+                const source = this.sourceExpression(instruction.sources[0]);
+                value = "vec4<f32>(" + instruction.extendedSwizzle.map(({ negate, component }) => {
+                    const c = component === "0" ? "0.0" : component === "1" ? "1.0" :
+                        "(" + source + ")." + "xyzw"["xyzwrgba".indexOf(component) % 4];
+                    return negate ? "-(" + c + ")" : c;
+                }).join(", ") + ")";
+            } else if (info.texture) {
                 value = this.textureInstruction(instruction);
             } else if (info.address) {
                 const source = this.sourceExpression(instruction.sources[0]);
                 const target = this.resolveDestination(instruction.destination);
+                if (!target.address || !["x", "xyzw"].includes(instruction.destination.mask)) throw new ARBError("ARL must write an address register's x component", instruction.line);
                 this.usesAddress = true;
                 lines.push(target.name + " = vec4<i32>(i32(floor(" + source +
                     ".x)));");
@@ -892,8 +1130,13 @@
                 value = "clamp(" + value + ", vec4<f32>(0.0), vec4<f32>(1.0))";
 
             const destination = this.resolveDestination(instruction.destination);
+            if (destination.address) throw new ARBError("only ARL can write an address register", instruction.line);
             const mask = instruction.destination.mask;
-            if (mask === "xyzw" || mask === "") {
+            if (destination.name === "depthValue") {
+                // result.depth is a scalar: its z component is the depth
+                // (review S2-49: .z and whole writes made invalid WGSL)
+                if (mask === "" || mask.includes("z")) lines.push("depthValue = (" + value + ").z;");
+            } else if (mask === "xyzw" || mask === "") {
                 lines.push(destination.name + " = " + value + ";");
             } else {
                 const temporary = "_a" + (this.temporary++);
@@ -910,18 +1153,16 @@
             const target = normalizeTextureTarget(instruction.textureTarget);
             this.textureUnits.set(unit, target);
             const source = this.sourceExpression(instruction.sources[0]);
-            const coordinate = target === "CUBE" || target === "3D" ?
-                source + ".xyz" : source + ".xy";
-            if (instruction.info.texture === "proj") {
-                const divided = target === "CUBE" || target === "3D" ?
-                    "(" + source + ".xyz / " + source + ".w)" :
-                    "(" + source + ".xy / " + source + ".w)";
-                return "textureSample(t" + unit + ", s" + unit + ", " + divided + ")";
-            }
-            if (instruction.info.texture === "bias")
-                return "textureSampleBias(t" + unit + ", s" + unit + ", " +
-                    coordinate + ", " + source + ".w)";
-            return "textureSample(t" + unit + ", s" + unit + ", " + coordinate + ")";
+            const shadow = target.startsWith("SHADOW"), one = target === "1D" || target === "SHADOW1D",
+                triple = target === "CUBE" || target === "3D", projected = instruction.info.texture === "proj",
+                bias = instruction.info.texture === "bias" ? "(" + source + ").w" : "0.0",
+                q = projected ? " / (" + source + ").w" : "",
+                rawCoordinate = one ? "vec2<f32>((" + source + ").x" + q + ", 0.5)" :
+                    "(" + source + ")." + (triple ? "xyz" : "xy") + q,
+                coordinate = target.endsWith("RECT") ? "(" + rawCoordinate + " / vec2<f32>(textureDimensions(t" + unit + ")))" : rawCoordinate,
+                call = "gl_arb_sample_" + unit + "(t" + unit + ", s" + unit + ", " + coordinate + ", " + unit +
+                    "u, 0.0, " + bias + ", false" + (shadow ? ", (" + source + ").z" + q : "") + ")";
+            return shadow ? "vec4<f32>(vec3<f32>(" + call + "), 1.0)" : call;
         }
 
         textureUnit(path) {
@@ -934,8 +1175,22 @@
             return unit;
         }
 
+        // An error from fn without a position of its own is at `operand`
+        located(operand, fn) {
+            try {
+                return fn();
+            } catch (error) {
+                if (error instanceof ARBError && error.arbOffset < 0 && operand.at !== undefined) {
+                    error.arbOffset = operand.at;
+                    if (!error.arbLine) error.arbLine = operand.line;
+                }
+                throw error;
+            }
+        }
+
         sourceExpression(source) {
-            let text = this.resolveSource(source.name);
+            let text = this.located(source, () => this.resolveSource(source.name));
+            this.recordBindings(source.name, text);
             if (source.swizzle) text = applySwizzle(text, source.swizzle);
             if (source.absolute) text = "abs(" + text + ")";
             if (source.negate) text = "(-(" + text + "))";
@@ -943,6 +1198,46 @@
         }
 
         resolveSource(name) {
+            if (this.resolvingSources.has(name)) throw new ARBError("cyclic source alias '" + name + "'", 0);
+            this.resolvingSources.add(name);
+            try { return this.resolveSourceValue(name); }
+            finally { this.resolvingSources.delete(name); }
+        }
+
+        recordBindings(name, expression) {
+            while (this.parsed.aliases.has(name) || this.parsed.attribs.has(name))
+                name = this.parsed.aliases.get(name) || this.parsed.attribs.get(name);
+            const indexed = /^([A-Za-z_$][A-Za-z0-9_$]*)\[(.+)\]$/.exec(name);
+            if (indexed && this.parsed.params.has(indexed[1]) && !/^\d+$/.test(indexed[2].trim())) {
+                const array = indexed[1];
+                if (!this.relativeArrays.has(array)) {
+                    this.relativeArrays.add(array);
+                    for (const value of this.paramRegisters(array)) {
+                        this.parameterBindings.add(value);
+                        if (/^vec4<f32>\([0-9+eE., \-]+\)$/.test(value)) {
+                            this.relativeConstants.add(value); ++this.relativeConstantCopies;
+                        } else {
+                            if (this.relativeStates.has(value)) throw new ARBError("state bound twice in relatively addressed arrays", 0);
+                            this.relativeStates.add(value);
+                        }
+                    }
+                }
+            } else if (name.startsWith("program.") || name.startsWith("state.") || this.parsed.params.has(name) ||
+                    indexed && this.parsed.params.has(indexed[1])) {
+                const relative = /^program\.(env|local)\[(.+)\]$/.exec(name);
+                if (relative && !/^\d+$/.test(relative[2].trim())) {
+                    for (let i = 0; i < parameterLimit(this.stage); ++i)
+                        this.parameterBindings.add("arbParams." + relative[1] + "[" + i + "]");
+                } else this.parameterBindings.add(expression);
+            }
+            if (name.startsWith("fragment.")) this.inputBindings.add(expression);
+        }
+
+        parameterCount() {
+            return this.parameterBindings.size + this.relativeConstantCopies - this.relativeConstants.size;
+        }
+
+        resolveSourceValue(name) {
             const alias = this.parsed.aliases.get(name);
             if (alias) return this.resolveSource(alias);
 
@@ -954,9 +1249,19 @@
             if (indexed && this.parsed.params.has(indexed[1])) {
                 const registers = this.paramRegisters(indexed[1]);
                 const index = /^\s*(\d+)\s*$/.exec(indexed[2]);
-                if (!index)
-                    throw new ARBError("a PARAM array needs a constant index; '" +
-                        indexed[2] + "' is not one", 0);
+                if (!index) {
+                    // relative addressing, A0.x + k (review S2-48): the
+                    // registers as an array the address register indexes,
+                    // out of range reading as zero
+                    const relative = this.relativeIndex(indexed[2]);
+                    this.usesAddress = true;
+                    const array = safe(indexed[1]) + "_registers";
+                    if (!this.registerArrays.has(array))
+                        this.registerArrays.set(array, "var " + array + " = array<vec4<f32>, " +
+                            (registers.length + 1) + ">(" + registers.join(", ") + ", vec4<f32>(0.0));");
+                    return array + "[select(" + registers.length + ", " + relative + ", " + relative +
+                        " >= 0 && " + relative + " < " + registers.length + ")]";
+                }
                 const at = parseInt(index[1], 10);
                 if (at >= registers.length)
                     throw new ARBError("PARAM " + indexed[1] + "[" + at +
@@ -1002,14 +1307,16 @@
                 }
             } else {
                 if (name === "fragment.color" || name === "fragment.color.primary")
-                    return "fin.frontColor";
-                if (name === "fragment.color.secondary") return "fin.frontSecondary";
+                    return this.options.twoSided ? "select(fin.backColor,fin.frontColor," + (this.options.backFacing ? "false" : "fin.frontFacing") + ")" : "fin.frontColor";
+                if (name === "fragment.color.secondary") return this.options.twoSided ? "select(fin.backSecondary,fin.frontSecondary," + (this.options.backFacing ? "false" : "fin.frontFacing") + ")" : "fin.frontSecondary";
                 if (name === "fragment.fogcoord") return "fin.fogCoord";
                 if (name === "fragment.position") return "fin.position";
                 const texcoord = /^fragment\.texcoord\[?(\d*)\]?$/.exec(name);
                 if (texcoord) {
                     const unit = texcoord[1] ? parseInt(texcoord[1], 10) : 0;
+                    if (unit >= MAX_TEXTURE_UNITS) throw new ARBError("texture coordinate is out of range", 0);
                     this.usedResults.add("in_texcoord" + unit);
+                    if (this.options.pointSprite && this.options.pointCoordReplace?.includes(unit)) return "vec4<f32>(fin.pointCoord,0.0,1.0)";
                     return "fin.texcoord" + unit;
                 }
             }
@@ -1020,22 +1327,22 @@
             const numeric = /^\d+$/.exec(text.trim());
             if (numeric) {
                 const index = parseInt(numeric[0], 10);
-                if (index >= MAX_PROGRAM_PARAMETERS)
+                if (index >= parameterLimit(this.stage))
                     throw new ARBError("program parameter " + index +
-                        " is beyond the " + MAX_PROGRAM_PARAMETERS +
+                        " is beyond the " + parameterLimit(this.stage) +
                         " this implementation provides", 0);
                 return String(index);
             }
             // Relative addressing: A0.x + k. WGSL indexes uniform arrays
             // dynamically, so this maps straight across.
-            const relative = /^([A-Za-z_$][A-Za-z0-9_$]*)\.([xyzw])\s*(?:\+\s*(\d+))?$/
-                .exec(text.trim());
-            if (!relative)
-                throw new ARBError("unsupported parameter index '" + text + "'", 0);
             this.usesAddress = true;
-            const offset = relative[3] ? " + " + relative[3] : "";
-            return "clamp(" + safe(relative[1]) + "." + relative[2] + offset +
-                ", 0, " + (MAX_PROGRAM_PARAMETERS - 1) + ")";
+            return "clamp(" + this.relativeIndex(text) + ", 0, " + (parameterLimit(this.stage) - 1) + ")";
+        }
+
+        relativeIndex(text) {
+            const index = addressIndex(text), name = /^([A-Za-z_$][A-Za-z0-9_$]*)\.x(?:[+-]\d+)?$/.exec(text.replace(/\s+/g, ""));
+            if (!name || !this.parsed.addresses.has(name[1])) throw new ARBError("relative access needs a declared address register's x component", 0);
+            return index;
         }
 
         /* Flattens a PARAM declaration into the registers it occupies. */
@@ -1069,7 +1376,8 @@
         /* The matrix behind a state.matrix.* binding, or null if the path is
          * not a whole matrix. */
         stateMatrix(path) {
-            const binding = STATE_BINDINGS[path];
+            path = normalizeStatePath(path);
+            const binding = STATE_BINDINGS[path] || arrayMatrixBinding(path);
             return binding && binding.matrix ? binding : null;
         }
 
@@ -1088,7 +1396,8 @@
         }
 
         resolveState(path) {
-            const direct = STATE_BINDINGS[path];
+            path = normalizeStatePath(path);
+            const direct = STATE_BINDINGS[path] || arrayMatrixBinding(path);
             if (direct) {
                 this.stateFields.add(direct.field);
                 if (direct.vector) return direct.vector;
@@ -1098,12 +1407,13 @@
                     direct.matrix + "[1][0], " + direct.matrix + "[2][0], " +
                     direct.matrix + "[3][0])";
             }
-            const row = /^(matrix\.[a-z.]*?)(?:\.row\[(\d+)\]|\[(\d+)\])$/.exec(path);
+            const row = /^(matrix\..*?)\.row\[(\d+)\]$/.exec(path);
             if (row) {
-                const binding = STATE_BINDINGS[row[1]];
+                const binding = STATE_BINDINGS[row[1]] || arrayMatrixBinding(row[1]);
                 if (binding && binding.matrix) {
                     this.stateFields.add(binding.field);
-                    const index = parseInt(row[2] !== undefined ? row[2] : row[3], 10);
+                    const index = parseInt(row[2], 10);
+                    if (index > 3) throw new ARBError("matrix row is out of range", 0);
                     // ARB rows are the matrix's rows; WGSL indexes columns, so
                     // the row is gathered rather than indexed.
                     return "vec4<f32>(" + [0, 1, 2, 3].map(c =>
@@ -1113,6 +1423,8 @@
             for (const entry of INDEXED_STATE) {
                 const match = entry.pattern.exec(path);
                 if (!match) continue;
+                const max = { lights: 8, frontLightProduct: 8, backLightProduct: 8, texEnvColor: 8, clipPlanes: 6, texGenPlanes: 8 }[entry.field];
+                if (+match[1] >= max) throw new ARBError("state index is out of range", 0);
                 this.stateFields.add(entry.field);
                 return entry.expr(match[1], match[2], match[3]);
             }
@@ -1120,6 +1432,7 @@
         }
 
         useAttribute(path, info) {
+            if (info.location < 0 || info.location >= 16) throw new ARBError("vertex attribute is out of range", 0);
             const field = info.name;
             if (!this.usedAttributes.has(field))
                 this.usedAttributes.set(field, {
@@ -1134,11 +1447,15 @@
         }
 
         resolveDestination(destination) {
+            return this.located(destination, () => this.resolveDestinationName(destination));
+        }
+
+        resolveDestinationName(destination) {
             const name = destination.name;
             const alias = this.parsed.aliases.get(name);
             if (alias) return this.resolveDestination({ ...destination, name: alias });
             if (this.parsed.temporaries.has(name)) return { name: safe(name) };
-            if (this.parsed.addresses.has(name)) return { name: safe(name) };
+            if (this.parsed.addresses.has(name)) return { name: safe(name), address: true };
             const output = this.parsed.outputs.get(name);
             if (output) return this.resolveDestination({ ...destination, name: output });
 
@@ -1146,6 +1463,7 @@
                 const texcoord = /^result\.texcoord\[?(\d*)\]?$/.exec(name);
                 if (texcoord) {
                     const unit = texcoord[1] ? parseInt(texcoord[1], 10) : 0;
+                    if (unit >= MAX_TEXTURE_UNITS) throw new ARBError("texture coordinate result is out of range", 0);
                     this.usedResults.add("texcoord" + unit);
                     return { name: "texcoord" + unit };
                 }
@@ -1171,6 +1489,40 @@
     }
 
     /* GL writes masks in xyzw or rgba; the generator only speaks xyzw. */
+    /*
+     * The spellings ARB_vertex_program allows for one binding, reduced to the
+     * table's (review S2-48): matrix.modelview[0] is the modelview (it was
+     * read as row 0), matrix.texture the unit's 0, lightprod and material
+     * name a face, texgen without an index is unit 0's.
+     */
+    function normalizeStatePath(path) {
+        return path
+            .replace(/^matrix\.modelview\[0\]/, "matrix.modelview")
+            .replace(/^matrix\.texture(?!\[)/, "matrix.texture[0]")
+            .replace(/^lightprod\[(\d+)\]\.front\./, "lightprod[$1].")
+            .replace(/^material\.front\./, "material.")
+            .replace(/^texgen\.(eye|object)\./, "texgen[0].$1.");
+    }
+
+    // Program and texture state share the same row/modifier grammar. The
+    // inverse variants are computed by the renderer, since WGSL has no inverse.
+    function arrayMatrixBinding(path) {
+        const match = /^matrix\.(texture|program)\[(\d+)\](?:\.(inverse|transpose|invtrans))?$/.exec(path);
+        if (!match || +match[2] >= (match[1] === "program" ? stateLayout.MAX_PROGRAM_MATRICES : MAX_TEXTURE_UNITS)) return null;
+        const suffix = { inverse: "Inverse", transpose: "Transpose", invtrans: "InverseTranspose" }[match[3]] || "";
+        const field = match[1] + "Matrix" + suffix;
+        return { field, matrix: "glState." + field + "[" + match[2] + "]" };
+    }
+
+    // `A0.x`, `A0.x+3`, `A0.x-1` as a WGSL integer expression
+    function addressIndex(text) {
+        const relative = /^([A-Za-z_$][A-Za-z0-9_$]*)\.([xyzw])(?:([+-])(\d+))?$/.exec(text.replace(/\s+/g, ""));
+        if (!relative)
+            throw new ARBError("unsupported parameter index '" + text + "'", 0);
+        return "(" + safe(relative[1]) + "." + relative[2] + (relative[3] ? " " + relative[3] + " " +
+            relative[4] : "") + ")";
+    }
+
     function normalizeMask(text) {
         return String(text).replace(/[rgba]/g,
             ch => "xyzw"["rgba".indexOf(ch)]);
@@ -1190,6 +1542,7 @@
     }
 
     function wgslTextureType(target) {
+        if (target.startsWith("SHADOW")) return "texture_depth_2d";
         switch (target) {
         case "CUBE": return "texture_cube<f32>";
         case "3D": return "texture_3d<f32>";
@@ -1198,12 +1551,9 @@
     }
 
     function normalizeTextureTarget(text) {
-        const upper = String(text).toUpperCase();
-        if (upper.indexOf("CUBE") >= 0) return "CUBE";
-        if (upper.indexOf("3D") >= 0) return "3D";
-        if (upper.indexOf("1D") >= 0) return "1D";
-        if (upper.indexOf("RECT") >= 0) return "RECT";
-        return "2D";
+        const upper = String(text);
+        if (["1D", "2D", "3D", "CUBE", "RECT", "SHADOW1D", "SHADOW2D", "SHADOWRECT"].includes(upper)) return upper;
+        throw new ARBError("unknown texture target '" + text + "'", 0);
     }
 
     /* ARB swizzles are one to four components, and a single component
@@ -1231,6 +1581,34 @@
     /* Public API                                                         */
     /* ================================================================== */
 
+    // ARB_fragment_program 3.11.6 counts sequential nodes, including a
+    // write-after-ALU-read hazard, rather than just texture dataflow depth.
+    function instructionCounts(parsed) {
+        const written = new Set(), aluUsed = new Set();
+        let texture = 0, indirections = 1;
+        const temporary = operand => {
+            let name = operand && operand.name;
+            while (parsed.aliases.has(name)) name = parsed.aliases.get(name);
+            return parsed.temporaries.has(name) ? name : null;
+        };
+        for (const instruction of parsed.instructions) {
+            const isTexture = instruction.info.texture || instruction.opcode === "KIL";
+            const dest = temporary(instruction.destination), sources = instruction.sources.map(temporary).filter(Boolean);
+            if (isTexture) {
+                ++texture;
+                if (sources.some(name => written.has(name)) || dest && aluUsed.has(dest)) {
+                    ++indirections; written.clear(); aluUsed.clear();
+                }
+            } else {
+                for (const name of sources) aluUsed.add(name);
+                if (dest) aluUsed.add(dest);
+            }
+            if (dest) written.add(dest);
+        }
+        return { textureInstructionCount: texture, aluInstructionCount: parsed.instructions.length - texture,
+            textureIndirections: indirections };
+    }
+
     function compileARBProgram(source, options) {
         const result = { ok: false, log: "", target: null, errorPosition: -1 };
         const parser = new Parser(source);
@@ -1241,18 +1619,25 @@
             result.target = parsed.target;
             result.stage = parsed.target;
             result.reflection = {
+                ...instructionCounts(parsed),
                 stateFields: [...generator.stateFields],
                 attributes: [...generator.usedAttributes.values()],
                 textures: [...generator.textureUnits.entries()].map(
                     ([unit, target]) => ({ unit, target })),
+                // the texture coordinates a fragment program reads
+                fragmentTexCoords: [...generator.usedResults].filter(name => name.startsWith("in_texcoord"))
+                    .map(name => Number(name.slice(11))).sort((a, b) => a - b),
                 usesKill: generator.usesKill,
                 usesAddress: generator.usesAddress,
                 usesEnv: generator.envUsed,
                 usesLocal: generator.localUsed,
                 instructionCount: parsed.instructions.length,
                 temporaryCount: parsed.temporaries.size,
+                parameterCount: generator.parameterCount(),
+                attributeCount: parsed.target === "vertex" ? new Set([...generator.usedAttributes.values()].map(a => a.location)).size : generator.inputBindings.size,
+                addressRegisterCount: parsed.addresses.size,
                 positionInvariant: parsed.options.has("ARB_position_invariant"),
-                maxParameters: MAX_PROGRAM_PARAMETERS,
+                maxParameters: parameterLimit(parsed.target),
             };
             result.ok = true;
         } catch (error) {
@@ -1266,7 +1651,7 @@
     }
 
     const api = {
-        ARB_REVISION, MAX_PROGRAM_PARAMETERS, MAX_TEMPORARIES,
+        ARB_REVISION, MAX_PROGRAM_PARAMETERS, MAX_FRAGMENT_PROGRAM_PARAMETERS, MAX_PROGRAM_BINDINGS, MAX_ADDRESS_REGISTERS, parameterLimit, MAX_TEMPORARIES,
         PARAMETER_BINDING,
         compileARBProgram, lex, Parser, Generator, ARBError,
         INSTRUCTIONS, STATE_BINDINGS, applySwizzle,

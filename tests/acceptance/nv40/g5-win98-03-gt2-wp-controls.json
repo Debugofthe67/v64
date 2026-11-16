@@ -1,0 +1,200 @@
+{
+  "scope": "G5/G6 bounded read-only diagnosis of an already-stuck native Win98 GT2 loading state. Not benchmark acceptance.",
+  "runs": [
+    {
+      "directory": "build/nv40-win98-gt2-fixed-wp-control",
+      "samples": 512,
+      "medianMIPS": 100.97917399825825,
+      "cpuPCDistribution": [
+        [
+          "0xc0001100",
+          389
+        ],
+        [
+          "0x804b8ad2",
+          36
+        ],
+        [
+          "0x804b8c56",
+          15
+        ],
+        [
+          "0x804b92ef",
+          9
+        ],
+        [
+          "0x804b8994",
+          7
+        ],
+        [
+          "0x804b7875",
+          5
+        ],
+        [
+          "0x804b8bdd",
+          4
+        ],
+        [
+          "0x804b7865",
+          3
+        ],
+        [
+          "0x804b8c43",
+          3
+        ],
+        [
+          "0x804b89a7",
+          3
+        ]
+      ],
+      "gpu": {
+        "batches": 0,
+        "draws": 0,
+        "bytes": 0,
+        "readbacks": 0,
+        "failures": 0,
+        "uploads": 0,
+        "uploadBytes": 0,
+        "resourceHits": 0,
+        "resourceMisses": 0,
+        "resourceEvictions": 0,
+        "coldUploadBytes": 0,
+        "resourceBytes": 0,
+        "peakResourceBytes": 0,
+        "nativeBCUploads": 0,
+        "nativeBCUploadBytes": 0
+      },
+      "graphFaults": [],
+      "fifoFaults": [],
+      "clock": {
+        "mode": "normal",
+        "elapsedMs": 86924.82666698191,
+        "hostElapsedMs": 90432.22404199999,
+        "host_pause_count": 0,
+        "discarded_host_ms": 0,
+        "host_backwards_count": 0,
+        "committed_instructions": 0,
+        "idle_ms": 0
+      }
+    },
+    {
+      "directory": "build/nv40-win98-gt2-before-wp-control",
+      "samples": 512,
+      "medianMIPS": 84.59276544930388,
+      "cpuPCDistribution": [
+        [
+          "0xc0001100",
+          403
+        ],
+        [
+          "0x804b8ad2",
+          37
+        ],
+        [
+          "0x804b8994",
+          7
+        ],
+        [
+          "0x804b8c56",
+          7
+        ],
+        [
+          "0x804b7875",
+          7
+        ],
+        [
+          "0x804b89a7",
+          4
+        ],
+        [
+          "0xc00011a0",
+          4
+        ],
+        [
+          "0x804b7865",
+          4
+        ],
+        [
+          "0x804b92ef",
+          3
+        ],
+        [
+          "0x804b8c3b",
+          3
+        ]
+      ],
+      "gpu": {
+        "batches": 0,
+        "draws": 0,
+        "bytes": 0,
+        "readbacks": 0,
+        "failures": 0,
+        "uploads": 0,
+        "uploadBytes": 0,
+        "resourceHits": 0,
+        "resourceMisses": 0,
+        "resourceEvictions": 0,
+        "coldUploadBytes": 0,
+        "resourceBytes": 0,
+        "peakResourceBytes": 0,
+        "nativeBCUploads": 0,
+        "nativeBCUploadBytes": 0
+      },
+      "graphFaults": [],
+      "fifoFaults": [],
+      "clock": {
+        "mode": "normal",
+        "elapsedMs": 88180.13333401503,
+        "hostElapsedMs": 90543.24183300001,
+        "host_pause_count": 0,
+        "discarded_host_ms": 0,
+        "host_backwards_count": 0,
+        "committed_instructions": 0,
+        "idle_ms": 0
+      }
+    }
+  ],
+  "inference": "Both cores continue retiring instructions in the same USER message/timer loop without new draws. This does not support an ongoing permission-cache execution stall. It does not reverse earlier guest state and cannot rule out how the stuck state was first reached.",
+  "next": "Fresh fixed-core cold boot with original native memory/process diagnostic and guest screen-saver/power settings inspected before full-suite launch.",
+  "date": "2026-11-15",
+  "matchingCheckpoint": {
+    "status": "complete",
+    "guest": "win98",
+    "vramMiB": 128,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windows98/windows98hdd.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/v86/build/nv40-original03-runtime.img",
+    "state": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-mark03-gt2-segmented-diagnostic/checkpoint-before-fixed-wp-control-comparison.state",
+      "bytes": 696548876,
+      "sha256": "9924bf5bcbce3077468e3dc5dbc504a59d72f72cc8ffbdfa896219df0d04dfdf"
+    },
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-mark03-gt2-segmented-diagnostic/checkpoint-before-fixed-wp-control-comparison.state.hda-overlay.bin",
+      "bytes": 198800388,
+      "sha256": "f6179e31ec58f3bcbc9c9dcfb7c7c49be74b22647992e55f3f351d5e99a45f1d"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-mark03-gt2-segmented-diagnostic/checkpoint-before-fixed-wp-control-comparison.state.game-overlay.bin",
+      "bytes": 69694,
+      "sha256": "b59d634ae84ada564df35d5174a413cebf711c701f72b0f2c669f0c5028dbebc"
+    }
+  },
+  "cpuVariants": [
+    {
+      "wasm": "build/nv40-wp-fixed.wasm",
+      "bytes": 3035311,
+      "sha256": "808c5fc9f0858ea23baf6a13d53f6c876e970f0de0427a4f3d48d57d820c2ff8"
+    },
+    {
+      "wasm": "build/nv40-wp-before-control.wasm",
+      "bytes": 3035287,
+      "sha256": "c2b1f2cfa29a2c98d8ed8b4dcc52f5fc12ad90a8ea943a234492142b4cb751f5",
+      "source": "Isolated export of current Rust inputs with cpu.rs from96e2b20c parent; refactor CPU fix stays applied."
+    }
+  ],
+  "limits": [
+    "Independent WP0 architecture RED/GREEN evidence remains valid; this already-stuck-state comparison is not a cold A/B test and cannot rule out earlier differences.",
+    "Counter deltas use adjacent100ms samples to handle32-bit wrap; concurrent host load means rates are diagnostic, not accepted performance.",
+    "IDT lookup identifies C0001100 as vector50h, the native timer IRQ entry; its sampled predominance alone does not identify the original loader blocker."
+  ]
+}

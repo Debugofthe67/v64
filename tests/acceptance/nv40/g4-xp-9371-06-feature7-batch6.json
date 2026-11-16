@@ -1,0 +1,207 @@
+{
+  "date": "2026-11-15",
+  "status": "Original XP06 seven feature and six batch tests completed with thirteen positive status0 results. IQ, shutdown and isolated performance gates remain open.",
+  "environment": {
+    "guest": "Windows XP SP3",
+    "driver": "Original NVIDIA93.71",
+    "memoryMiB": 1024,
+    "vramMiB": 256,
+    "cpu": "WP-fixed production Wasm",
+    "graphicsRevision": "2f19ee38e",
+    "settings": {
+      "resolution": "1280x1024",
+      "antialiasing": "None",
+      "filtering": "Optimal",
+      "selection": "SM2=0/2, CPU=0/2, HDR=0/2, feature=7/7, batch=6/6"
+    },
+    "idlePolicy": "Native APIs verified screen saver inactive and all six display/idle/S4 timeouts0"
+  },
+  "originalProject": {
+    "file": "build/nv40-xp-mark06-batch8-sparse-constants/NV06B.3DR",
+    "sha256": "1c1e87bceaf6e7e1bfe665ed80dc1e809c92d408b86b452822e5a663f89f5117",
+    "zipCRC": "passed",
+    "selectedResults": [
+      {
+        "name": "Fill Rate - Single-Texturing",
+        "value": "1954.813232422",
+        "unit": "texels/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      },
+      {
+        "name": "Fill Rate - Multi-Texturing",
+        "value": "3802.522216797",
+        "unit": "texels/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      },
+      {
+        "name": "Pixel Shader",
+        "value": "11.044775963",
+        "unit": "FPS",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "0"
+        }
+      },
+      {
+        "name": "Vertex Shader - Simple",
+        "value": "5.510784149",
+        "unit": "vertices/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      },
+      {
+        "name": "Vertex Shader - Complex",
+        "value": "2.772610188",
+        "unit": "vertices/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      },
+      {
+        "name": "Shader Particles (SM3.0)",
+        "value": "2.813097715",
+        "unit": "FPS",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "0"
+        }
+      },
+      {
+        "name": "Perlin Noise (SM3.0)",
+        "value": "23.344123840",
+        "unit": "FPS",
+        "status": "0",
+        "statusText": "",
+        "category": "Feature Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "0"
+        }
+      },
+      {
+        "name": "8 Triangles",
+        "value": "0.037311886",
+        "unit": "triangles/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      },
+      {
+        "name": "32 Triangles",
+        "value": "0.140767351",
+        "unit": "triangles/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      },
+      {
+        "name": "128 Triangles",
+        "value": "0.558347106",
+        "unit": "triangles/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      },
+      {
+        "name": "512 Triangles",
+        "value": "2.356045008",
+        "unit": "triangles/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      },
+      {
+        "name": "2048 Triangles",
+        "value": "3.628464699",
+        "unit": "triangles/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      },
+      {
+        "name": "32768 Triangles",
+        "value": "5.413502216",
+        "unit": "triangles/s",
+        "status": "0",
+        "statusText": "",
+        "category": "Batch Size Tests",
+        "valueScale": {
+          "base": "10",
+          "exp": "6"
+        }
+      }
+    ]
+  },
+  "defaultSixProject": {
+    "file": "build/nv40-xp-mark06-batch8-sparse-constants/NV06N.3DR",
+    "sha256": "cf896645ce21232a01a267cde4d1e18d16b07e65be3184c439353537ca039dcb",
+    "retainedUnchanged": true
+  },
+  "lastContinuation": {
+    "newDraws": 497668,
+    "gpuFailures": 0,
+    "graphFaults": [],
+    "nonSoftwareFifoFaults": [],
+    "normalResultDialog": true,
+    "savedViaOriginalSaveAs": true
+  },
+  "lineage": [
+    "Original supplemental13 GUI selection, all seven feature shader workloads observed before Batch8.",
+    "Only matching healthy RAM/OS/game bundles before original watchdog failures were continued. Failed RAM was not repaired into a success.",
+    "Earlier runs failed with genuine100000EA; measured attachment/constant/shader-preparation batching optimizations were introduced in host code. No guest, driver, graphics API, benchmark, clock or watchdog patches.",
+    "Newest donor retained: build/nv40-xp-mark06-batch8-wide-batches/checkpoint-native-feature13-batch8-after-bounded-batches.state.zst; original pre-run and first failure bundles retained. Superseded intermediate RAM/disk copies intentionally discarded to control disk use."
+  ],
+  "limits": [
+    "Default-only overall score is separately preserved; the supplemental-only project appropriately has no combined Graphics/CPU score.",
+    "Numeric values and original unit/base/exp metadata are preserved, but concurrent execution and checkpoints disqualify original FPS/performance claims.",
+    "Completion does not isolate a single causal watchdog fix or establish image correctness.",
+    "Private registration and full result XML remain ignored build artifacts; this fixture contains only whitelisted result rows and settings."
+  ]
+}

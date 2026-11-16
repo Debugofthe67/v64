@@ -8,7 +8,7 @@ import { DisplaySinkRecorder } from "../display.js";
 export function start_cpu_worker()
 {
     let emulator, epoch = 1;
-    let screen_commands = [], screen_scheduled = false, frame_layers = [];
+    let screen_commands = [], screen_scheduled = false, frame_layers = null, frame_changed = false;
     let timer, command_chain = Promise.resolve();
     let audio_port = null, audio_reset_done = null, audio_enabled = false, audio_rate = 22050;
     let audio_sequence = 0;
@@ -35,6 +35,14 @@ export function start_cpu_worker()
         if(!screen_scheduled) { screen_scheduled = true; globalThis.queueMicrotask(flush_screen); }
     };
     const screen = new DisplaySinkRecorder(screen_call, layers => {
+        // Devices may render on their own retrace. The page only accepts
+        // pixels in response to a frame request; keep a repaint marker
+        // instead of copying unrequested frames into an unbounded queue.
+        if(!frame_layers)
+        {
+            if(layers.length) frame_changed = true;
+            return;
+        }
         for(const l of layers)
         {
             const w = l.buffer_width, h = l.buffer_height;
@@ -250,7 +258,7 @@ export function start_cpu_worker()
         "restart": async reason => { await change_epoch(); await emulator.restart(reason); await audio_reset(); flush_screen(); stats(); },
         "power_button": () => emulator.power_button(),
         "power_state": () => emulator.power_state(),
-        "get_diagnostics": () => emulator.get_diagnostics(),
+        "get_diagnostics": include_steps => emulator.get_diagnostics(include_steps),
         "destroy": async () => { clearInterval(timer); await emulator.destroy(); audio_port?.close(); },
         "read_memory": (offset, length) => emulator.read_memory(offset, length).slice(),
         "write_memory": (bytes, offset) => emulator.write_memory(bytes, offset),
@@ -293,6 +301,14 @@ export function start_cpu_worker()
         "audio-info": () => ({ ...audio_stats, "direct": !!audio_port, "sample_rate": audio_rate }),
         "get_instruction_stats": () => emulator.get_instruction_stats(),
         "get_jit_info": () => emulator.get_jit_info(),
+        "ios_install_status": () => emulator["ios_install_status"](),
+        "ios_install_begin": manifest => emulator["ios_install_begin"](manifest),
+        "ios_install_write": (id, offset, data) => emulator["ios_install_write"](id, offset, data),
+        "ios_install_stage": id => emulator["ios_install_stage"](id),
+        "ios_install_commit": id => emulator["ios_install_commit"](id),
+        "ios_install_cancel": id => emulator["ios_install_cancel"](id),
+        "ios_install_lookup": bundle => emulator["ios_install_lookup"](bundle),
+        "ios_open_application": bundle => emulator["ios_open_application"](bundle),
     };
     globalThis.onmessage = e => {
         const m = e.data;
@@ -318,12 +334,18 @@ export function start_cpu_worker()
                 case "event":
                     if(m["name"] !== "dac-request-data" || !audio_port) emulator.bus.send(m["name"], m["value"]);
                     break;
-                case "frame":
+                case "frame": {
+                    const full = !!m["full"] || frame_changed;
+                    frame_changed = false;
                     frame_layers = [];
-                    emulator.v86.cpu.devices.display?.request_frame(!!m["full"]);
-                    send("frame", { "layers": frame_layers }, frame_layers.map(l => l["pixels"].buffer));
-                    frame_layers = [];
+                    try
+                    {
+                        emulator.v86.cpu.devices.display?.request_frame(full);
+                        send("frame", { "layers": frame_layers }, frame_layers.map(l => l["pixels"].buffer));
+                    }
+                    finally { frame_layers = null; }
                     break;
+                }
                 case "device": {
                     const handler = device_handlers.get(m["name"]);
                     if(handler) handler(m["message"]);

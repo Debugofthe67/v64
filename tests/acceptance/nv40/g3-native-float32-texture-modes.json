@@ -1,0 +1,46 @@
+{
+  "status": "native R32F channel and wide RGBA32F sampling fixed; original benchmark image rerun next",
+  "cause": [
+    "Format1c scalar R32F was expanded into the wrong crossbar storage component: original93.71 identity AAE4 returned zero in red.",
+    "Original93.71 TEX_FILTER_OPTIMIZATION mode4 with format1c is a16-byte RGBA32F view, sampled with separate masked TEX instructions. Old decoding always read4 bytes."
+  ],
+  "evidenceQualification": "Wide mode4 is inferred from unchanged original native API/driver streams; envytools documents the field validity without naming its meaning.",
+  "nativeProbe": {
+    "source": "tests/devices/geforce_float_texture.c",
+    "originalFailure": "build/nv40-xp-native-float-texture-v2-control",
+    "fixed": "build/nv40-xp-native-float-texture-v3-fixed",
+    "supportedFormats": [
+      112,
+      113,
+      114,
+      116
+    ],
+    "supportedDraws": 6,
+    "allSupportedCreateDrawReadbackLockHRESULTs": 0,
+    "oldR32F": "ff000000",
+    "fixedR32F": "ff202020",
+    "oldRGBA32F": "ff000040",
+    "fixedRGBA32F": "ff204080",
+    "fixedFailures": 0,
+    "rawFragmentInstructionsUnchanged": true,
+    "unsupportedR16F": {
+      "format": 111,
+      "checkDeviceFormat": "8876086a D3DERR_NOTAVAILABLE",
+      "status": "explicitly recorded; no rendering pass claimed",
+      "oldProbeCounter": "old total7 includes one unsupported-format creation rejection plus6 wrong RGB channels; they are not7 GPU command errors"
+    },
+    "checkpoint": "build/nv40-xp-native-float-texture-v3-fixed/checkpoint-native-float32-six-supported-draws-pass.state.bundle.json",
+    "archive": "build/nv40-xp-native-float-texture-v3-fixed/checkpoint-native-float32-six-supported-draws-pass.state.zst"
+  },
+  "validation": {
+    "red": "native R32F unit read0 instead of0x3e000000 before fix; original driver RGB controls failed with all APIs successful",
+    "green": "scalar channel, mode4 width/order, unchanged padded scalar view, exact NaN/Inf/signed-zero bits, DMA bounds and filtering refusals pass",
+    "realGPU": "Original native scalar TEX/MOV and wide three-TEX/MOV sequences produce exact expected channels; complete NV40 GPU rendering regression passed",
+    "releaseBuild": "Closure0 errors/0 warnings",
+    "strictC": "MinGW -Wall -Wextra -Werror"
+  },
+  "limits": [
+    "Original06 HDR and05 GT3 fixed frames must be retaken with this change; earlier captures remain failure evidence.",
+    "Conventional format1a/1b decoding is unchanged; no driver bytecode, API, guest memory, watchdog or clock was patched."
+  ]
+}

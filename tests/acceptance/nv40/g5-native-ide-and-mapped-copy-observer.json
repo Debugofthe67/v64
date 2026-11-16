@@ -1,0 +1,66 @@
+{
+  "date": "2026-11-15",
+  "scope": "Optional read-only host IDE transfer and native memory/mapped-file diagnostics; no benchmark acceptance or Win98 cache root-cause claim.",
+  "controls": {
+    "disk": "Original 470748903-byte DAT remains unchanged; read-only base image with RAM overlay.",
+    "observer": "Hash overlapping game-disk callbacks and the real post-write ordinary RAM bytes; retain payload, error, callback order and other CPUs. No guest PTE edits, CPU watch arming, injected IRQ or clock changes.",
+    "bounds": "2097152 NDJSON records maximum, with dropped/loggingErrors counters. Mapped hold only in an explicit standalone build, limited to 0..60000ms; default0."
+  },
+  "validation": {
+    "unit": "node tests/devices/geforce_ide_watch.mjs: asynchronous/nested callbacks, source identity/options/returns, source offsets, DMA return/exception identity, other CPU isolation, hook restoration and logging failure.",
+    "build": "Strict freestanding MinGW -Wall -Wextra -Werror: native memory watcher and mapped-hold file checker; harness syntax passes.",
+    "native": {
+      "environment": "Cold Win98 81.98 with production WP-fixed CPU and IDE task-file/block-progress fixes. Native helper runs separately before original 03, 256MiB RAM.",
+      "memoryWatcher": "At least7 normal one-minute samples written with GlobalMemoryStatus, GetTickCount and C free clusters. No memory-pressure conclusion from desktop-only samples.",
+      "ide": {
+        "callbacks": 1024,
+        "bytes": 1048576,
+        "sourceHashesMatchOriginal": true,
+        "physicalCopies": 1024,
+        "physicalMismatches": 0,
+        "loggingErrors": 0,
+        "dropped": 0
+      },
+      "mappedRange": {
+        "fileOffset": 16777216,
+        "bytes": 1048576,
+        "sourceDiskFirst": 1229312,
+        "crc32": "d27713d7",
+        "copies": {
+          "NVDATA.BIN": {
+            "bytes": 1048576,
+            "crc32": "d27713d7",
+            "sha256": "5660f076a79ac02e7183527bbdd3715fd40dd5008d6cd1b5bcf0609b03e2796f",
+            "equalsSource": true
+          },
+          "NVMAP.BIN": {
+            "bytes": 1048576,
+            "crc32": "d27713d7",
+            "sha256": "5660f076a79ac02e7183527bbdd3715fd40dd5008d6cd1b5bcf0609b03e2796f",
+            "equalsSource": true
+          },
+          "held-view-physical.bin": {
+            "bytes": 1048576,
+            "crc32": "d27713d7",
+            "sha256": "5660f076a79ac02e7183527bbdd3715fd40dd5008d6cd1b5bcf0609b03e2796f",
+            "equalsSource": true
+          }
+        },
+        "heldView": {
+          "address": 2219102208,
+          "nativeCRC": "0xd27713d7",
+          "bytes": 1048576,
+          "equal": true,
+          "physicalSHA256": "5660f076a79ac02e7183527bbdd3715fd40dd5008d6cd1b5bcf0609b03e2796f",
+          "hostSHA256": "5660f076a79ac02e7183527bbdd3715fd40dd5008d6cd1b5bcf0609b03e2796f"
+        }
+      }
+    }
+  },
+  "limits": [
+    "This fresh 1MiB read/write case passes. It does not establish why prior post-GT2 states had corrupt cached source pages or inconsistent mapped-copy output.",
+    "Observer hashing/logging and the separate native helper add host/guest work, so this run is diagnostic and does not supply a release FPS gate.",
+    "Original full Win98 03 still requires a successful run and result export."
+  ],
+  "evidence": "build/nv40-win98-mark03-ide-fixed-cold-io-watch; held mapping coherent checkpoint and pre-run desktop checkpoint losslessly archived with verified decompressed SHA256; paired overlays/bundles retained."
+}

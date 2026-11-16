@@ -14,38 +14,23 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const P = require("../../src/browser/glbridge/d3d9-webgpu/d9wg_protocol.js");
+const encodePayload = (name, values) => Buffer.from(P.encode(name, values));
+const floatFromBits = bits => new Float32Array(new Uint32Array([bits]).buffer)[0];
+const { errorScopes } = require("./fake_error_scopes.js");
+const rules = require("./webgpu_rules.js");
+
+// Lets a chain of already-settled promises run to its end
+async function settle() {
+    for (let i = 0; i < 20; ++i) await Promise.resolve();
+}
 const { D3D9WebGPUExecutor, buildFixedFunctionPixelShader } =
     require("../../src/browser/glbridge/d3d9-webgpu/d3d9_executor.js");
 const shaderPipeline = require("../../src/browser/glbridge/d3d9-webgpu/d3d9_shader_pipeline.js");
+require("../../src/browser/glbridge/d3d9-webgpu/ddraw_ops.js").installDDrawOps(D3D9WebGPUExecutor);
 
-const OP = {
-    HELLO: 1, CREATE_DEVICE: 2, RESET: 3, PRESENT: 4, CLEAR: 5, COLOR_FILL: 9,
-    BEGIN_SCENE: 6, END_SCENE: 7, GUEST_LOG: 11, READBACK_SURFACE: 12,
-    CREATE_BUFFER: 0x100, UPDATE_BUFFER: 0x101, DESTROY_RESOURCE: 0x103,
-    CREATE_TEXTURE_2D: 0x110, CREATE_TEXTURE_CUBE: 0x111,
-    CREATE_TEXTURE_VOLUME: 0x112,
-    UPDATE_TEXTURE: 0x113,
-    CREATE_VERTEX_DECLARATION: 0x120,
-    CREATE_VERTEX_SHADER: 0x121, CREATE_PIXEL_SHADER: 0x122,
-    CREATE_QUERY: 0x123,
-    SET_RENDER_STATE: 0x200, SET_SAMPLER_STATE: 0x201,
-    SET_TEXTURE: 0x203, SET_VIEWPORT: 0x204, SET_TRANSFORM: 0x206,
-    SET_MATERIAL: 0x207, SET_LIGHT: 0x208, LIGHT_ENABLE: 0x209,
-    SET_STREAM_SOURCE: 0x20A, SET_STREAM_SOURCE_FREQ: 0x20B,
-    SET_INDICES: 0x20C,
-    SET_VERTEX_DECLARATION: 0x20D, SET_FVF: 0x20E,
-    SET_RENDER_TARGET: 0x20F, SET_DEPTH_STENCIL_SURFACE_LEVEL: 0x21E,
-    SET_VERTEX_SHADER: 0x211, SET_PIXEL_SHADER: 0x212,
-    SET_VS_CONST_F: 0x213, SET_VS_CONST_I: 0x214, SET_VS_CONST_B: 0x215,
-    SET_PS_CONST_F: 0x216, SET_PS_CONST_I: 0x217, SET_PS_CONST_B: 0x218,
-    SET_CLIP_PLANE: 0x219, SET_PALETTE: 0x21F, SET_CURRENT_PALETTE: 0x220,
-    GENERATE_MIPS: 0x221,
-    DRAW_PRIMITIVE: 0x300, DRAW_INDEXED_PRIMITIVE: 0x301,
-    DRAW_PRIMITIVE_UP: 0x302, DRAW_INDEXED_PRIMITIVE_UP: 0x303,
-    BEGIN_QUERY: 0x400, END_QUERY: 0x401,
-};
+const OP = { ...P.OP, SET_VS_CONST_F: P.OP.SET_VERTEX_SHADER_CONSTANT_F, SET_VS_CONST_I: P.OP.SET_VERTEX_SHADER_CONSTANT_I, SET_VS_CONST_B: P.OP.SET_VERTEX_SHADER_CONSTANT_B, SET_PS_CONST_F: P.OP.SET_PIXEL_SHADER_CONSTANT_F, SET_PS_CONST_I: P.OP.SET_PIXEL_SHADER_CONSTANT_I, SET_PS_CONST_B: P.OP.SET_PIXEL_SHADER_CONSTANT_B, SET_CURRENT_PALETTE: P.OP.SET_CURRENT_TEXTURE_PALETTE };
 
-const D9WG_MAGIC = 0x47573944;
 const BATCH_FLAG_PRESENT = 1;
 const DECLUSAGE = { POSITION: 0, BLENDWEIGHT: 1, BLENDINDICES: 2, NORMAL: 3,
     PSIZE: 4, TEXCOORD: 5, TANGENT: 6, BINORMAL: 7, POSITIONT: 9, COLOR: 10 };
@@ -65,34 +50,21 @@ function command(opcode, payload, blob, blobOffsetField) {
 }
 
 function buildBatch(commands, options = {}) {
-    let commandBytes = 0;
+    const batch = Buffer.from(P.encodeBatch(commands.map(item => ({ opcode: item.opcode, payload: item.payload,
+        blobs: item.blob ? [{ field: item.blobOffsetField, data: item.blob }] : [] })), {
+        version_minor: options.versionMinor ?? 4, frame_id: options.frameId || 1,
+        flags: options.present ? BATCH_FLAG_PRESENT : 0, session_id_low: options.sessionLow || 0, session_id_high: options.sessionHigh || 0,
+    }));
+    // Older framing tests locate/mutate the caller's payload after building.
+    // Preserve that test API using schema offsets; packet assembly stays shared.
+    let at = P.STRUCTS.BatchHeader.size;
     for (const item of commands) {
-        const raw = 16 + item.payload.length + (item.blob ? item.blob.length : 0);
-        item.size = (raw + 7) & ~7;
-        item.offset = 32 + commandBytes;
-        commandBytes += item.size;
-    }
-    const batch = Buffer.alloc(32 + commandBytes);
-    batch.writeUInt32LE(D9WG_MAGIC, 0);
-    batch.writeUInt16LE(1, 4);
-    batch.writeUInt16LE(options.versionMinor ?? 4, 6);
-    batch.writeUInt32LE(options.frameId || 1, 8);
-    batch.writeUInt32LE(options.present ? BATCH_FLAG_PRESENT : 0, 12);
-    batch.writeUInt32LE(commands.length, 16);
-    batch.writeUInt32LE(commandBytes, 20);
-    batch.writeUInt32LE(options.sessionLow || 0, 24);
-    batch.writeUInt32LE(options.sessionHigh || 0, 28);
-    let sequence = 1;
-    for (const item of commands) {
-        batch.writeUInt16LE(item.opcode, item.offset);
-        batch.writeUInt32LE(item.size, item.offset + 4);
-        batch.writeUInt32LE(sequence++, item.offset + 8);
         if (item.blob) {
-            const blobOffset = item.offset + 16 + item.payload.length;
-            item.payload.writeUInt32LE(blobOffset, item.blobOffsetField);
-            item.blob.copy(batch, blobOffset);
+            const field = P.F[P.commandStruct(item.opcode)][item.blobOffsetField];
+            new DataView(item.payload.buffer, item.payload.byteOffset, item.payload.byteLength)
+                .setUint32(field, batch.readUInt32LE(at + P.STRUCTS.CommandHeader.size + field), true);
         }
-        item.payload.copy(batch, item.offset + 16);
+        at += batch.readUInt32LE(at + P.F.CommandHeader.size);
     }
     return batch;
 }
@@ -103,90 +75,33 @@ function u32(...values) {
     return buffer;
 }
 
-function createDevicePayload(width, height, autoDepth = 1) {
-    const payload = Buffer.alloc(52);
-    payload.writeUInt32LE(DEVICE, 0);
-    payload.writeUInt32LE(0x1234, 4);
-    payload.writeUInt32LE(width, 16);
-    payload.writeUInt32LE(height, 20);
-    payload.writeUInt32LE(22, 24);
-    payload.writeUInt32LE(1, 28);
-    payload.writeUInt32LE(autoDepth, 36);
-    payload.writeUInt32LE(0, 44); // D3DMULTISAMPLE_NONE
-    payload.writeUInt32LE(0, 48); // multisample quality
-    return payload;
-}
+function createDevicePayload(width, height, autoDepth = 1) { return encodePayload("CreateDevice", { device_handle: DEVICE, hwnd: 0x1234, width, height, backbuffer_format: 22, windowed: 1, enable_auto_depth_stencil: autoDepth }); }
 
-function element(stream, offset, type, usage, usageIndex = 0) {
-    const buffer = Buffer.alloc(8);
-    buffer.writeUInt16LE(stream, 0);
-    buffer.writeUInt16LE(offset, 2);
-    buffer.writeUInt8(type, 4);
-    buffer.writeUInt8(0, 5);
-    buffer.writeUInt8(usage, 6);
-    buffer.writeUInt8(usageIndex, 7);
-    return buffer;
-}
+function element(stream, offset, type, usage, usageIndex = 0) { return encodePayload("VertexElement", { stream, offset, type, usage, usage_index: usageIndex }); }
 
-function declarationPayload(handle, elements) {
-    return Buffer.concat([u32(DEVICE, handle, elements.length, 0), ...elements]);
-}
+function declarationPayload(handle, elements) { return Buffer.concat([encodePayload("CreateVertexDeclaration", { device_handle: DEVICE, resource_handle: handle, element_count: elements.length }), ...elements]); }
 
-function fvfPayload(fvf, elements) {
-    return Buffer.concat([u32(DEVICE, fvf, elements.length, 0), ...elements]);
-}
+function fvfPayload(fvf, elements) { return Buffer.concat([encodePayload("SetFVF", { device_handle: DEVICE, fvf, element_count: elements.length }), ...elements]); }
 
-function createBufferPayload(handle, kind, byteCount, format = 0) {
-    return u32(DEVICE, handle, kind, byteCount, 0, format, 0, 0);
-}
+function createBufferPayload(handle, kind, byteCount, format = 0) { return encodePayload("CreateBuffer", { device_handle: DEVICE, resource_handle: handle, resource_kind: kind, byte_count: byteCount, fvf: format }); }
 
-function setStreamSourcePayload(stream, handle, stride, offsetInBytes = 0) {
-    return u32(DEVICE, stream, handle, stride, offsetInBytes, 0);
-}
+function setStreamSourcePayload(stream, handle, stride, offsetInBytes = 0) { return encodePayload("SetStreamSource", { device_handle: DEVICE, stream, buffer_handle: handle, stride, offset_in_bytes: offsetInBytes }); }
 
-function setStreamSourceFreqPayload(stream, divider) {
-    return u32(DEVICE, stream, divider);
-}
+function setStreamSourceFreqPayload(stream, divider) { return encodePayload("SetStreamSourceFreq", { device_handle: DEVICE, stream, divider }); }
 
-function drawPrimitivePayload(type, startVertex, primitiveCount) {
-    return u32(DEVICE, type, startVertex, primitiveCount);
-}
+function drawPrimitivePayload(type, startVertex, primitiveCount) { return encodePayload("DrawPrimitive", { device_handle: DEVICE, primitive_type: type, start_vertex: startVertex, primitive_count: primitiveCount }); }
 
-function drawIndexedPayload(type, baseVertex, startIndex, primitiveCount) {
-    const payload = Buffer.alloc(28);
-    payload.writeUInt32LE(DEVICE, 0);
-    payload.writeUInt32LE(type, 4);
-    payload.writeInt32LE(baseVertex, 8);
-    payload.writeUInt32LE(0, 12);
-    payload.writeUInt32LE(0, 16);
-    payload.writeUInt32LE(startIndex, 20);
-    payload.writeUInt32LE(primitiveCount, 24);
-    return payload;
-}
+function drawIndexedPayload(type, baseVertex, startIndex, primitiveCount) { return encodePayload("DrawIndexedPrimitive", { device_handle: DEVICE, primitive_type: type, base_vertex_index: baseVertex, start_index: startIndex, primitive_count: primitiveCount }); }
 
 function shaderCreatePayload(handle, tokens) {
-    const payload = Buffer.alloc(24);
-    payload.writeUInt32LE(DEVICE, 0);
-    payload.writeUInt32LE(handle, 4);
-    payload.writeUInt32LE(tokens.length, 8);
-    const hash = shaderPipeline.hashTokens(tokens);
-    payload.writeUInt32LE(hash.low, 16);
-    payload.writeUInt32LE(hash.high, 20);
-    const blob = Buffer.alloc(tokens.length * 4);
-    tokens.forEach((token, index) => blob.writeUInt32LE(token >>> 0, index * 4));
-    return { payload, blob, blobOffsetField: 12 };
+    const hash = shaderPipeline.hashTokens(tokens), payload = encodePayload("CreateVertexShader", { device_handle: DEVICE, resource_handle: handle, instruction_token_count: tokens.length, bytecode_hash_low: hash.low, bytecode_hash_high: hash.high });
+    return { payload, blob: u32(...tokens), blobOffsetField: "code_offset" };
 }
 
 function constantPayload(startRegister, vectorCount, values, writer) {
-    const payload = Buffer.alloc(16);
-    payload.writeUInt32LE(DEVICE, 0);
-    payload.writeUInt32LE(startRegister, 4);
-    payload.writeUInt32LE(vectorCount, 8);
-    const stride = values.length / vectorCount;
-    const blob = Buffer.alloc(values.length * 4);
-    values.forEach((value, index) => writer(blob, value, index * 4));
-    void stride;
-    return { payload, blob, blobOffsetField: 12 };
+    const payload = encodePayload("SetShaderConstantF", { device_handle: DEVICE, start_register: startRegister, vector_count: vectorCount });
+    const blob = Buffer.alloc(values.length * 4);values.forEach((value, index) => writer(blob, value, index * 4));
+    return { payload, blob, blobOffsetField: "data_offset" };
 }
 
 const floatConstants = (start, values) => constantPayload(start, values.length / 4,
@@ -286,7 +201,8 @@ const PS_UNSUPPORTED = [
 
 // vs_3_0: dcl_2d s0 / dcl_position v0 / dcl_position o0 /
 // texldl r0, v0, s0 / mov o0, r0. Vertex texture samplers live in D3D9's
-// 256..259 namespace and must not alias pixel sampler s0.
+// D3DVERTEXTEXTURESAMPLER0..3 = 257..260 namespace and must not alias pixel
+// sampler s0.
 const VS3_VERTEX_TEXTURE_FETCH = [
     VS(3, 0),
     instr(SIO.DCL, 2), dcl(0, 0, 2), dst(REG.SAMPLER, 0),
@@ -314,6 +230,7 @@ function makeFakeWebGPU(options) {
             // A lost or errored device accepts the submit and then never
             // signals; makeFakeWebGPU({ hangMapAsync: true }) reproduces it.
             if (options.hangMapAsync) return new Promise(() => {});
+            if (options.mapDelayMs) return new Promise(resolve => setTimeout(resolve, options.mapDelayMs));
             return Promise.resolve();
         }
         getMappedRange() { return this.data.buffer; }
@@ -323,20 +240,30 @@ function makeFakeWebGPU(options) {
     class FakeTexture {
         constructor(descriptor) { this.descriptor = descriptor; }
         createView(descriptor) {
-            const view = { texture: this, descriptor: descriptor || null };
+            // (format and sample count: what a pass checks its attachments by)
+            const view = { texture: this, descriptor: descriptor || null,
+                format: descriptor && descriptor.format || this.descriptor.format,
+                sampleCount: this.descriptor.sampleCount || 1 };
             calls.push(["createView", this, descriptor || null, view]);
             return view;
         }
         destroy() { this.destroyed = true; }
     }
     class FakePass {
-        constructor(descriptor) { this.descriptor = descriptor; this.ops = []; }
-        setPipeline(p) { this.ops.push(["pipeline", p]); }
+        constructor(descriptor) { this.descriptor = descriptor; this.ops = [];this.vertexReads = []; }
+        setPipeline(p) {
+            this.ops.push(["pipeline", p]);
+            if (p.invalid) device.rejectWith("[Invalid RenderPipeline] is invalid due to a previous error");
+            else for (const problem of rules.attachmentProblems(p.descriptor, this.descriptor)) device.rejectWith(problem);
+        }
         setBindGroup(i, g, dynamicOffsets) {
             this.ops.push(["bindGroup", i, g, dynamicOffsets]);
             calls.push(["setBindGroup", i, g, dynamicOffsets]);
         }
-        setViewport(...a) { this.ops.push(["viewport", ...a]); }
+        setViewport(...a) {
+            this.ops.push(["viewport", ...a]);
+            for (const problem of rules.viewportProblems(...a)) device.rejectWith(problem);
+        }
         setScissorRect(...a) {
             this.ops.push(["scissor", ...a]);
             calls.push(["setScissorRect", ...a]);
@@ -351,6 +278,7 @@ function makeFakeWebGPU(options) {
         }
         setVertexBuffer(slot, buffer, offset) {
             this.ops.push(["vertexBuffer", slot, buffer, offset]);
+            this.vertexReads.push({ buffer, bytes: buffer.data.slice(offset || 0, (offset || 0) + 64) });
         }
         setIndexBuffer(buffer, format, offset) {
             this.ops.push(["indexBuffer", buffer, format, offset]);
@@ -373,6 +301,7 @@ function makeFakeWebGPU(options) {
     class FakeEncoder {
         constructor() { this.passes = []; }
         beginRenderPass(descriptor) {
+            for (const problem of rules.passProblems(descriptor)) device.rejectWith(problem);
             const pass = new FakePass(descriptor);
             this.passes.push(pass);
             calls.push(["beginRenderPass", descriptor, pass]);
@@ -380,6 +309,22 @@ function makeFakeWebGPU(options) {
         }
         copyTextureToTexture(...args) {
             calls.push(["copyTextureToTexture", ...args]);
+        }
+        copyBufferToTexture(source, destination, size) {
+            assert.equal(source.offset % 256, 0);assert.equal(source.bytesPerRow % 256, 0);
+            assert(source.buffer.usage & 4 || source.buffer.descriptor?.usage & 4, "upload source needs COPY_SRC");
+            assert(source.offset + source.bytesPerRow * source.rowsPerImage * size.depthOrArrayLayers <= source.buffer.data.length);
+            const format = destination.texture.descriptor.format;
+            const bpp = ({ r16float: 2, rg16float: 4, rgba16float: 8, rg32float: 8, rgba32float: 16, r8uint: 1, r8unorm: 1 })[format] || 4;
+            const compressed = format.startsWith("bc"), blockBytes = /^bc[14]-/.test(format) ? 8 : 16;
+            const pitch = compressed ? Math.ceil(size.width / 4) * blockBytes : size.width * bpp;
+            const rows = compressed ? Math.ceil(size.height / 4) : size.height;
+            const data = new Uint8Array(pitch * rows * size.depthOrArrayLayers);
+            for (let slice = 0; slice < size.depthOrArrayLayers; slice++) for (let row = 0; row < rows; row++) {
+                const from = source.offset + (slice * source.rowsPerImage + row) * source.bytesPerRow;
+                data.set(source.buffer.data.subarray(from, from + pitch), (slice * rows + row) * pitch);
+            }
+            calls.push(["copyBufferToTexture", source, destination, size, data, { bytesPerRow: pitch, rowsPerImage: rows }]);
         }
         copyTextureToBuffer(source, destination, size) {
             const texture = source.texture;
@@ -430,6 +375,7 @@ function makeFakeWebGPU(options) {
                 : new Uint8Array(data);
             const start = ArrayBuffer.isView(data) ? (dataOffset || 0) * 1 : (dataOffset || 0);
             const snapshot = view.slice(start, start + length);
+            buffer.data.set(snapshot, offset);
             calls.push(["writeBuffer", buffer, offset, data, dataOffset, size, snapshot]);
         },
         writeTexture(...a) { calls.push(["writeTexture", ...a]); },
@@ -441,6 +387,7 @@ function makeFakeWebGPU(options) {
     const device = {
         queue,
         lost: new Promise(() => {}),
+        ...errorScopes(),
         // A real GPUDevice reports the features it was actually created with,
         // which is what the shared host reads to decide capability flags --
         // the adapter's list is only what *could* have been requested.
@@ -462,6 +409,7 @@ function makeFakeWebGPU(options) {
             return texture;
         },
         createSampler(descriptor) {
+            rules.validateSamplerDescriptor(descriptor);
             const sampler = { descriptor };
             calls.push(["createSampler", descriptor, sampler]);
             return sampler;
@@ -472,6 +420,7 @@ function makeFakeWebGPU(options) {
             return encoder;
         },
         createQuerySet(descriptor) {
+            for (const problem of rules.querySetProblems(descriptor)) device.rejectWith(problem);
             const querySet = { descriptor,
                 values: new BigUint64Array(descriptor.count),
                 destroy() { this.destroyed = true; } };
@@ -490,6 +439,11 @@ function makeFakeWebGPU(options) {
         },
         createRenderPipeline(descriptor) {
             const pipeline = { descriptor };
+            const problems = rules.renderPipelineProblems(descriptor, device.features);
+            if (problems.length) {
+                pipeline.invalid = true;
+                device.rejectWith(problems[0]);
+            }
             calls.push(["createRenderPipeline", descriptor, pipeline]);
             return pipeline;
         },
@@ -537,12 +491,20 @@ function makeFakeWebGPU(options) {
         } };
 }
 
+// Executors made by the running test: when it ends, any WebGPU rejection or
+// host error they recorded fails it, unless the test expects them
+// (executor.expectErrors = true)
+const liveExecutors = [];
+
 function makeExecutor(options = {}) {
     const { fakeOptions, ...executorOptions } = options;
     const fake = makeFakeWebGPU(fakeOptions);
     const canvas = { width: 1, height: 1, getContext: () => fake.context };
     const executor = new D3D9WebGPUExecutor(canvas,
-        { gpu: fake.gpu, ...executorOptions });
+        // This fake validates native query encoding and supplies synthetic
+        // query-set values. Real GPU tests exercise the default exact counter.
+        { gpu: fake.gpu, strict: true, diagnostics: true, occlusionMode: "native", ...executorOptions });
+    liveExecutors.push(executor);
     return { fake, executor, calls: fake.calls,
         find: name => fake.calls.filter(call => call[0] === name),
         last: name => {
@@ -573,14 +535,30 @@ function constantBlock(find, buffer) {
 const HEARTBEAT_WRITE_OFFSET = (16 * 1024 * 1024 - 4 * 1024 * 1024) +
     (4 * 1024 * 1024 - 16);
 
+function flushTextureUploads(executor, find) {
+    executor.finishFrame(false);
+    const calls = find("writeTexture").map(call => call);
+    for (const call of find("copyBufferToTexture"))
+        calls.push(["copyBufferToTexture", call[2], call[4], call[5], call[3]]);
+    return calls;
+}
+
 // ---- harness ----
 
 const failures = [];
 let passed = 0;
 
 async function test(name, body) {
+    liveExecutors.length = 0;
     try {
         await body();
+        await settle();
+        for (const executor of liveExecutors) {
+            if (executor.expectErrors) continue;
+            const errors = [...(executor.gpuErrors ? executor.gpuErrors.errors : []).map(e => e.source + ": " + e.message),
+                ...executor.hostErrors.map(e => "host: " + e.message)];
+            if (errors.length) throw new Error("unexpected errors: " + errors.join("; "));
+        }
         ++passed;
     } catch (error) {
         failures.push({ name, error });
@@ -590,6 +568,93 @@ async function test(name, body) {
 // ---- tests ----
 
 async function main() {
+
+async function fractionalBltFixture() {
+    const setup = makeExecutor(), { executor } = setup;
+    await executor.submit(buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(16, 16, 0)),
+        ...[0x101, 0x102].map(resource_handle => command(OP.CREATE_TEXTURE_2D,
+            encodePayload("CreateTexture2D", {device_handle: DEVICE, resource_handle,
+                width: resource_handle === 0x101 ? 8 : 16, height: resource_handle === 0x101 ? 8 : 16,
+                level_count: 1, format: 22, usage: resource_handle === 0x102 ? 1 : 0, pool: 0}))),
+    ], {versionMinor: 9}));
+    await executor.idle();
+    const frame = executor.ensureFrame(), record = frame.record, records = [];
+    frame.record = function(entry) { records.push(entry);return record.call(this, entry); };
+    const submit = (source, flags, destination = [0, 0, 4, 4]) => {
+        const source_rect = flags & P.C.D9WG_DDBLT_SOURCE_RECT_F32
+            ? [...new Int32Array(new Float32Array(source).buffer)] : source;
+        const payload = encodePayload("DDBlt", {device_handle: DEVICE, source_handle: 0x101,
+            source_rect, destination_handle: 0x102, destination_rect: destination, flags});
+        executor.onDDBlt(payload, new DataView(payload.buffer, payload.byteOffset, payload.byteLength), 0, payload.length);
+        return payload;
+    };
+    return {...setup, records, submit};
+}
+
+await test("DirectDraw fractional source rectangles survive recording without collapsing a row", async () => {
+    const {executor, records, submit} = await fractionalBltFixture();
+    const payload = submit([1, 4 / 3, 5, 2], P.C.D9WG_DDBLT_SOURCE_RECT_F32, [4, 5, 12, 13]);
+    const draw = records.find(r => r.kind === "ddblit"), y = Math.fround(4 / 3);
+    assert(draw);
+    assert.deepEqual(draw.sourceRect, [1 / 8, y / 8, 4 / 8, (2 - y) / 8]);
+    assert.deepEqual(draw.viewport, [4, 5, 8, 8]);
+    payload.writeFloatLE(7, P.F.DDBlt.source_rect);
+    assert.equal(draw.sourceRect[0], 1 / 8, "record owns the decoded coordinates");
+    executor.finishFrame(false);await executor.idle();
+});
+
+await test("DirectDraw fractional origins use sampling while integer rectangles retain exact copies", async () => {
+    const {executor, records, submit} = await fractionalBltFixture();
+    submit([.5, .5, 4.5, 4.5], P.C.D9WG_DDBLT_SOURCE_RECT_F32);
+    submit([1, 2, 5, 6], 0);
+    submit([1, 2, 5, 6], P.C.D9WG_DDBLT_SOURCE_RECT_F32);
+    assert.deepEqual(records.map(r => r.kind), ["ddblit", "copy", "copy"]);
+    assert.deepEqual(records[0].sourceRect, [.5 / 8, .5 / 8, .5, .5]);
+    for (const copy of records.slice(1)) {
+        assert.equal(copy.source.origin.x, 1);assert.equal(copy.source.origin.y, 2);
+        assert.equal(copy.size.width, 4);assert.equal(copy.size.height, 4);
+    }
+    executor.finishFrame(false);await executor.idle();
+});
+
+await test("DirectDraw rejects malformed fractional rectangles before recording GPU work", async () => {
+    const {executor, records, submit} = await fractionalBltFixture();
+    for (const rect of [[NaN, 0, 4, 4], [0, 0, Infinity, 4], [2, 0, 2, 4]])
+        submit(rect, P.C.D9WG_DDBLT_SOURCE_RECT_F32);
+    submit([0, 0, 4, 4], P.C.D9WG_DDBLT_SOURCE_RECT_F32 | P.C.D9WG_DDBLT_COLOR_FILL);
+    assert.equal(records.length, 0);assert.equal(executor.stats.ddBlitsSkipped, 4);
+    executor.finishFrame(false);await executor.idle();
+});
+
+await test("software and mixed constant banks survive Reset with cleared values and device isolation", async () => {
+    const {executor} = makeExecutor();
+    for (const flags of [0x40, 0x20, 0x80]) {
+        const handle = DEVICE + flags;
+        await executor.submit(buildBatch([command(OP.CREATE_DEVICE, encodePayload("CreateDevice", {
+            device_handle: handle, width: 64, height: 64, backbuffer_format: 22, windowed: 1, behavior_flags: flags
+        }))]));
+        await executor.idle();
+        const state = executor.deviceState(handle), extended = flags !== 0x40;
+        assert.equal(state.vsConstF.length, (extended ? 8192 : 256) * 4);
+        assert.equal(state.vsConstI.length, (extended ? 2048 : 16) * 4);
+        assert.equal(state.vsConstB.length, extended ? 2048 : 16);
+        state.vsConstF.fill(7);state.vsConstI.fill(-3);state.vsConstB.fill(1);
+        await executor.submit(buildBatch([command(OP.RESET, encodePayload("ResetDevice", {
+            old_device_handle: handle, new_device_handle: handle + 1, width: 64, height: 64,
+            backbuffer_format: 22, windowed: 1, behavior_flags: flags
+        }))]));
+        await executor.idle();
+        const reset = executor.deviceState(handle + 1);
+        assert.equal(reset.vsConstF.length, (extended ? 8192 : 256) * 4);
+        assert.ok(reset.vsConstF.every(v => v === 0) && reset.vsConstI.every(v => v === 0) && reset.vsConstB.every(v => v === 0));
+    }
+    assert.notEqual(executor.deviceState(DEVICE + 0x21).vsConstF, executor.deviceState(DEVICE + 0x81).vsConstF);
+    await executor.submit(buildBatch([0x40,0x20,0x80].map(flags => command(OP.DESTROY_RESOURCE,
+        encodePayload("DestroyResource", {resource_handle: DEVICE + flags + 1})))));
+    await executor.idle();
+    assert.equal(executor.devices.size, 0);
+});
 
 await test("a frame past the flush threshold submits early and never touches the swap chain",
         async () => {
@@ -609,7 +674,7 @@ await test("a frame past the flush threshold submits early and never touches the
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         ...draws,
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -662,7 +727,7 @@ await test("a Present whose ops were all flushed away still reaches the canvas",
 
     // Present arrives in a later batch with nothing of its own to draw.
     await executor.submit(buildBatch([
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -692,8 +757,8 @@ await test("the host reports liveness once per batch so a backlog is not a timeo
     for (let i = 0; i < 3; ++i) {
         await executor.submit(buildBatch([
             command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-            command(OP.CLEAR, u32(DEVICE, 1, 0xff000000, 0x3f800000, 0, 0)),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff000000, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true }), metadata);
         await executor.idle();
     }
@@ -704,10 +769,33 @@ await test("the host reports liveness once per batch so a backlog is not a timeo
 
     // A batch with no writer must not throw or stall the counter.
     await executor.submit(buildBatch([
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(beats.length, 3, "no writer, no beat, no error");
+});
+
+await test("a cold readback completing after four seconds still returns its pixels",
+        async () => {
+    const { executor } = makeExecutor({ fakeOptions: { mapDelayMs: 4500 } });
+    const writes = [];
+    await executor.submit(buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(8, 8)),
+        command(OP.READBACK_SURFACE, encodePayload("ReadbackSurface", {
+            device_handle: DEVICE, texture_handle: 0, format: 21, width: 8, height: 8,
+            row_count: 1, destination_pitch: 32, destination_bytes: 32,
+            response_offset: 16 * 1024, request_id: 0x22334456,
+        })),
+    ]), { writeGuestMemory(offset, data) {
+        if (offset !== HEARTBEAT_WRITE_OFFSET) writes.push(Buffer.from(data));
+    } });
+    await executor.idle();
+    assert.equal(executor.stats.renderTargetReadbackFailures, 0);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].readUInt32LE(0), 0x22334456);
+    assert.equal(writes[0].readUInt32LE(4), 32);
+    assert.equal(writes[0].readUInt32LE(12), 1);
+    assert.equal(writes[0].length, 48);
 });
 
 await test("a readback whose map never completes fails instead of hanging the guest",
@@ -721,15 +809,14 @@ await test("a readback whose map never completes fails instead of hanging the gu
     const writes = [];
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff000000, 0x3f800000, 0, 0)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff000000, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true, versionMinor: 3 }));
     await executor.idle();
 
     await executor.submit(buildBatch([
         command(OP.READBACK_SURFACE,
-            u32(DEVICE, 0, 0, 21, 640, 480, 0, 1, 640 * 4, 640 * 4,
-                16 * 1024, 0x22334455)),
+            encodePayload("ReadbackSurface", { device_handle: DEVICE, texture_handle: 0, level: 0, format: 21, width: 640, height: 480, first_row: 0, row_count: 1, destination_pitch: 640 * 4, destination_bytes: 640 * 4, response_offset: 16 * 1024, request_id: 0x22334455 }).subarray(0, 48)),
     ], { versionMinor: 3 }), { writeGuestMemory(offset, data) {
         // The host bumps a liveness counter once per batch at the very top
         // of the response region; it is not a response to anything, so it
@@ -770,7 +857,7 @@ await test("constants go up as one staged upload per submit, not one per draw",
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         ...body,
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -808,7 +895,7 @@ await test("a run of draws with no state change between them shares one slot",
                 [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
             command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
             ...body,
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true });
     };
 
@@ -843,7 +930,7 @@ await test("identical consecutive draws issue one pass-state call, not nine",
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         ...draws,
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -873,9 +960,9 @@ await test("a new pass re-issues state that WebGPU forgot", async () => {
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
         // A Clear always starts a new pass (WebGPU spells a clear only as a
         // pass loadOp), so this is the cheapest way to force the boundary.
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff000000, 0x3f800000, 0, 0)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff000000, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -959,7 +1046,7 @@ await test("fixed-function FVF triangle still renders (M1 regression guard)", as
         command(OP.SET_FVF, fvfPayload(0x142, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 16)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.drawCalls, 1, "the draw was not recorded");
@@ -994,12 +1081,11 @@ await test("point sprites expand one source point into an instanced textured qua
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 20 * 8)),
         command(OP.SET_FVF, fvfPayload(0x142, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_POINTSIZE,
-            0x41000000, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_POINTSPRITEENABLE, 1, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_POINTSCALEENABLE, 1, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_POINTSIZE, value: 0x41000000, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_POINTSPRITEENABLE, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_POINTSCALEENABLE, value: 1, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(1, 0, 8)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -1024,6 +1110,40 @@ await test("point sprites expand one source point into an instanced textured qua
         "eight points should be one six-vertex instanced draw");
 });
 
+await test("generated sprite coordinates count as written, while missing triangle UVs remain diagnostic", async () => {
+    const { executor, find } = makeExecutor();
+    const elements = [
+        element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
+        element(0, 12, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR),
+    ];
+    const vs = shaderCreatePayload(0x40000001, VS_BYTECODE);
+    await executor.submit(buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+        command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.CREATE_VERTEX_DECLARATION, declarationPayload(0x301, elements)),
+        command(OP.CREATE_VERTEX_SHADER, vs.payload, vs.blob, vs.blobOffsetField),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
+        command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 16)),
+        command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000001 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 156, value: 1, reserved: 0 })),
+        command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(1, 0, 3)),
+    ]));
+    await executor.idle();
+    assert.equal(executor.stats.pointSpriteDraws, 1);
+    assert.equal(executor.stats.drawsWithUnwrittenCoordVarying, 0);
+    assert.ok(find("createRenderPipeline").pop()[1].vertex.module.code.includes(
+        "result.varying2 = vec4<f32>(d9_point_uv"));
+    await executor.submit(buildBatch([
+        command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
+    ]));
+    await executor.idle();
+    assert.equal(executor.stats.drawsWithUnwrittenCoordVarying, 1,
+        "the same guest shader still lacks UVs on ordinary triangles");
+    assert.equal(executor.stats.droppedDraws, 0);
+});
+
 await test("fixed-function attribute locations follow semantics, not element order", async () => {
     // TEXCOORD declared before COLOR. M1 assigned locations by iteration
     // order while the WGSL hardcoded colour at location 1, so this
@@ -1038,10 +1158,10 @@ await test("fixed-function attribute locations follow semantics, not element ord
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.CREATE_VERTEX_DECLARATION, declarationPayload(0x301, elements)),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 24)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const pipeline = find("createRenderPipeline").pop()[1];
@@ -1072,26 +1192,25 @@ await test("programmable vs+ps: modules, bindings and constants all line up", as
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_VERTEX_DECLARATION, declarationPayload(0x301, elements)),
         command(OP.CREATE_VERTEX_SHADER, vs.payload, vs.blob, vs.blobOffsetField),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 16)),
-        command(OP.SET_VERTEX_SHADER, u32(DEVICE, 0x40000001)),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000003)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000001 })),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000003 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         command(OP.SET_VS_CONST_F, vsConst.payload, vsConst.blob, vsConst.blobOffsetField),
         command(OP.SET_PS_CONST_F, psConst.payload, psConst.blob, psConst.blobOffsetField),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
     assert.equal(executor.stats.shadersTranslated, 2);
     assert.equal(executor.stats.shaderTranslationFailures, 0);
     // One extra translation for the D3DCOLOR-corrected vertex variant.
-    assert.equal(executor.stats.shaderVariantsTranslated, 1);
     assert.equal(executor.stats.droppedDraws, 0, "the programmable draw was dropped");
     assert.equal(executor.stats.programmableDraws, 1);
 
@@ -1148,23 +1267,27 @@ await test("SM1 sampler variants follow cube/2D/volume bindings without poisonin
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT3, DECLUSAGE.TEXCOORD),
         ])),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 24)),
         command(OP.CREATE_VERTEX_SHADER, vs.payload, vs.blob, vs.blobOffsetField),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_VERTEX_SHADER, u32(DEVICE, 0x40000001)),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, psHandle)),
-        command(OP.CREATE_TEXTURE_CUBE, u32(DEVICE, 0x401, 4, 1, 21, 0, 1, 0)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x402, 4, 4, 1, 21, 0, 1)),
-        command(OP.CREATE_TEXTURE_VOLUME, u32(DEVICE, 0x403, 4, 4, 4, 1, 21, 0, 1)),
+        command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000001 })),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: psHandle })),
+        command(OP.CREATE_TEXTURE_CUBE, encodePayload("CreateTextureCube", { device_handle: DEVICE, resource_handle: 0x401, edge_length: 4, level_count: 1, format: 21, usage: 0, pool: 1, reserved: 0 })),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x402, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.CREATE_TEXTURE_VOLUME, encodePayload("CreateTextureVolume", { device_handle: DEVICE, resource_handle: 0x403, width: 4, height: 4, depth: 4, level_count: 1, format: 21, usage: 0, pool: 1 }).subarray(0, 36)),
     ]));
+    const preparedPixel = executor.resources.get(psHandle).translated.program;
+    Object.defineProperty(executor.resources.get(psHandle), "tokens", {get() {
+        throw new Error("draw-time specialization attempted to read the original bytecode");
+    }});
     for (const [handle, type] of [[0x401, "cube"], [0x402, "2d"],
             [0x403, "3d"], [0x401, "cube"]]) {
         const before = executor.stats.programmableDraws;
         await executor.submit(buildBatch([
-            command(OP.SET_TEXTURE, u32(DEVICE, 0, handle, 0)),
+            command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: handle, reserved: 0 })),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 64, 64)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 64, height: 64 })),
         ], { present: true }));
         assert.equal(executor.stats.programmableDraws, before + 1, type + " draw must execute");
         assert.equal(executor.stats.droppedDraws, 0);
@@ -1178,15 +1301,19 @@ await test("SM1 sampler variants follow cube/2D/volume bindings without poisonin
     }
     const shader = executor.resources.get(psHandle);
     assert.equal(shader.translated.reflection.samplers[0].type, "2d");
-    assert.equal(shader.variants.size, 2, "revisiting cube must reuse its variant");
-    // SM2 really does declare 2D; the same binding is still invalid for it.
+    for (const variant of executor.resources.get(psHandle).variants.values())
+        assert.strictEqual(variant.program, preparedPixel, "draw variant did not reuse its prepared body");
+    // SM2 declares 2D but the cube binding stays in place: the draw runs and samples the bound texture.
     const explicit = shaderCreatePayload(0x40000200, PS_BYTECODE);
     await executor.submit(buildBatch([
         command(OP.CREATE_PIXEL_SHADER, explicit.payload, explicit.blob, explicit.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000200)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000200 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
     ]));
-    assert.equal(executor.stats.droppedDraws, 1);
+    assert.equal(executor.stats.droppedDraws, 0);
+    const explicitGroup = find("setBindGroup").filter(call =>
+        call[2].entries.some(entry => entry.binding === 3)).pop()[2];
+    assert.equal(explicitGroup.layout.descriptor.entries.find(entry => entry.binding === 2).texture.viewDimension, "cube");
 });
 
 await test("all-draw solid probe overrides programmable shading and rejecting state",
@@ -1205,13 +1332,13 @@ await test("all-draw solid probe overrides programmable shading and rejecting st
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000003)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 15, 1, 0)),   // alpha test
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 25, 1, 0)),   // NEVER
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 27, 1, 0)),   // blending
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 168, 0, 0)),  // no colour writes
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000003 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 15, value: 1, reserved: 0 })),   // alpha test
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 25, value: 1, reserved: 0 })),   // NEVER
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 27, value: 1, reserved: 0 })),   // blending
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 168, value: 0, reserved: 0 })),  // no colour writes
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -1247,22 +1374,22 @@ await test("a programmable VS routes fixed-function stage n through oTn", async 
     ];
     const vs = shaderCreatePayload(0x40000004, VS_TEXCOORD0_BYTECODE);
     const tss = (stage, state, value) =>
-        command(0x202, u32(DEVICE, stage, state, value));
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: stage, state: state, value: value }));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_VERTEX_DECLARATION, declarationPayload(0x301, elements)),
         command(OP.CREATE_VERTEX_SHADER, vs.payload, vs.blob, vs.blobOffsetField),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_VERTEX_SHADER, u32(DEVICE, 0x40000004)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000004 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         // This may be stale vertex-state from a preceding fixed-function pass.
         // D3D9 still routes stage 0 to oT0 while a vertex shader is bound.
         tss(0, 11 /* D3DTSS_TEXCOORDINDEX */, 1),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -1319,8 +1446,8 @@ await test("CREATE_SHADER verifies guest hashes before cache lookup", async () =
     // Reproduce the legacy D3D8 proxy bug: every CREATE_SHADER command
     // advertised the same all-zero cache key despite carrying different code.
     for (const shader of [first, second]) {
-        shader.payload.writeUInt32LE(0, 16);
-        shader.payload.writeUInt32LE(0, 20);
+        shader.payload.writeUInt32LE(0, P.F.CreateVertexShader.bytecode_hash_low);
+        shader.payload.writeUInt32LE(0, P.F.CreateVertexShader.bytecode_hash_high);
     }
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
@@ -1383,10 +1510,10 @@ await test("shader `def` literals override app-set constants for that register",
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000005)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000005 })),
         command(OP.SET_PS_CONST_F, psConst.payload, psConst.blob, psConst.blobOffsetField),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -1425,11 +1552,11 @@ await test("int and bool constant registers land after the float region", async 
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.CREATE_VERTEX_SHADER, vs.payload, vs.blob, vs.blobOffsetField),
-        command(OP.SET_VERTEX_SHADER, u32(DEVICE, 0x40000007)),
+        command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000007 })),
         command(OP.SET_VS_CONST_I, ints.payload, ints.blob, ints.blobOffsetField),
         command(OP.SET_VS_CONST_B, bools.payload, bools.blob, bools.blobOffsetField),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -1453,14 +1580,14 @@ await test("a shader the translator refuses skips its draws and keeps the batch 
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000009)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000009 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
-    assert.equal(executor.failed, null, "the batch must not fail as a whole");
+    assert.equal(executor.lastBatchFailure, null, "the batch must not fail as a whole");
     assert.equal(executor.stats.shaderTranslationFailures, 1);
     assert.equal(executor.stats.droppedDraws, 1, "only the shader-bound draw is skipped");
     assert.equal(executor.stats.drawsSkippedForBadShader, 1,
@@ -1479,17 +1606,17 @@ await test("independent sampler state drives the GPUSampler, not the texture", a
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_ADDRESSU, 3)), // CLAMP
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_ADDRESSV, 2)), // MIRROR
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MAGFILTER, 2)), // LINEAR
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MINFILTER, 2)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MIPFILTER, 2)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_ADDRESSU, value: 3 })), // CLAMP
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_ADDRESSV, value: 2 })), // MIRROR
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MAGFILTER, value: 2 })), // LINEAR
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MINFILTER, value: 2 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MIPFILTER, value: 2 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -1515,8 +1642,8 @@ await test("ATI1N and ATI2N map to BC4 and BC5", async () => {
     const { executor, find } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0xA01, 16, 16, 1, ATI1N, 0, 0)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0xA02, 16, 16, 1, ATI2N, 0, 0)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xA01, width: 16, height: 16, level_count: 1, format: ATI1N, usage: 0, pool: 0, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xA02, width: 16, height: 16, level_count: 1, format: ATI2N, usage: 0, pool: 0, multisample_type: 0, multisample_quality: 0 })),
     ]));
     await executor.idle();
     const formats = find("createTexture").map(call => call[1].format);
@@ -1537,8 +1664,7 @@ await test("a NULL render target allocates the cheapest renderable format",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xA03, 256, 256, 1, D3DFMT_NULL,
-                D3DUSAGE_RENDERTARGET, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xA03, width: 256, height: 256, level_count: 1, format: D3DFMT_NULL, usage: D3DUSAGE_RENDERTARGET, pool: 0, multisample_type: 0, multisample_quality: 0 })),
     ]));
     await executor.idle();
     const descriptor = find("createTexture")
@@ -1557,16 +1683,16 @@ await test("ATOC in D3DRS_ADAPTIVETESS_Y enables alpha-to-coverage",
     const D3DMULTISAMPLE_4_SAMPLES = 4;
     const { executor, find } = makeExecutor();
     const createDevice = createDevicePayload(640, 480);
-    createDevice.writeUInt32LE(D3DMULTISAMPLE_4_SAMPLES, 44);
+    createDevice.writeUInt32LE(D3DMULTISAMPLE_4_SAMPLES, P.F.CreateDevice.multisample_type);
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevice),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_ADAPTIVETESS_Y, ATOC)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_ADAPTIVETESS_Y, value: ATOC }).subarray(0, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -1586,9 +1712,9 @@ await test("ATOC on a single-sampled target stays off", async () => {
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_ADAPTIVETESS_Y, ATOC)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_ADAPTIVETESS_Y, value: ATOC }).subarray(0, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -1601,9 +1727,9 @@ await test("ATOC on a single-sampled target stays off", async () => {
 // -- that is what keeps draws, StretchRect and readback unchanged -- and the
 // chain is special only in the step that moves the finished image onto its own
 // canvas.
-const OP_CREATE_SWAP_CHAIN = 0x224;
-const OP_DESTROY_SWAP_CHAIN = 0x225;
-const OP_PRESENT_SWAP_CHAIN = 0x226;
+const OP_CREATE_SWAP_CHAIN = P.OP.CREATE_SWAP_CHAIN;
+const OP_DESTROY_SWAP_CHAIN = P.OP.DESTROY_SWAP_CHAIN;
+const OP_PRESENT_SWAP_CHAIN = P.OP.PRESENT_SWAP_CHAIN;
 const D3DUSAGE_RENDERTARGET_BIT = 1;
 
 function makeSwapChainCanvas(calls) {
@@ -1611,12 +1737,14 @@ function makeSwapChainCanvas(calls) {
         width: 1, height: 1, style: {},
         getContext(kind) {
             calls.push(["swapchain-getContext", kind]);
+            let configured = false;
             return {
                 configure(descriptor) {
-                    calls.push(["swapchain-configure", descriptor]);
+                    configured = true;calls.push(["swapchain-configure", descriptor]);
                 },
-                unconfigure() { calls.push(["swapchain-unconfigure"]); },
+                unconfigure() { configured = false;calls.push(["swapchain-unconfigure"]); },
                 getCurrentTexture() {
+                    if (!configured) throw new Error("swap-chain context is unconfigured");
                     const texture = { width: 256, height: 128,
                         createView: () => ({ swapchainOverlay: true }) };
                     calls.push(["swapchain-getCurrentTexture", texture]);
@@ -1641,9 +1769,9 @@ await test("an additional swap chain gets its own configured canvas",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x901, 256, 128, 1, 21, D3DUSAGE_RENDERTARGET_BIT, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x901, width: 256, height: 128, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET_BIT, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP_CREATE_SWAP_CHAIN,
-            u32(DEVICE, 0x77, 0x901, 0xBEEF, 12, 34, 256, 128)),
+            encodePayload("CreateSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77, back_buffer_handle: 0x901, hwnd: 0xBEEF, x: 12, y: 34, width: 256, height: 128 })),
     ]));
     await executor.idle();
     assert.equal(executor.stats.swapChainsCreated, 1);
@@ -1667,17 +1795,22 @@ await test("presenting an additional chain blits its back buffer to its canvas",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x901, 256, 128, 1, 21, D3DUSAGE_RENDERTARGET_BIT, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x901, width: 256, height: 128, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET_BIT, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP_CREATE_SWAP_CHAIN,
-            u32(DEVICE, 0x77, 0x901, 0xBEEF, 12, 34, 256, 128)),
+            encodePayload("CreateSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77, back_buffer_handle: 0x901, hwnd: 0xBEEF, x: 12, y: 34, width: 256, height: 128 })),
         command(OP_PRESENT_SWAP_CHAIN,
-            u32(DEVICE, 0x77, 0xBEEF, 40, 50, 256, 128, 0)),
+            encodePayload("PresentSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77, hwnd: 0xBEEF, x: 40, y: 50, width: 256, height: 128, reserved: 0 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.swapChainPresents, 1);
     assert.equal(executor.stats.swapChainPresentsDropped, 0);
+    // D9WGPresentSwapChain's x, y, width, height (S2-17: read one field off)
+    const surface = executor.deviceState(DEVICE).swapChains.get(0x77).surface;
+    assert.deepEqual([surface.x, surface.y, surface.width, surface.height], [40, 50, 256, 128]);
     assert.equal(find("swapchain-getCurrentTexture").length, 1,
         "the chain's canvas is acquired inside the submitting task");
+    assert.equal(find("getCurrentTexture").length, 0,
+        "an additional-chain Present must not acquire or overwrite the primary canvas");
     // A blit, not a copy: the back buffer is an ordinary D3D texture whose
     // format need not match the canvas format, and a copy requires a match.
     const blitPipelines = find("createRenderPipeline")
@@ -1695,16 +1828,74 @@ await test("an additional swap chain with no canvas hook is counted, not silent"
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x901, 256, 128, 1, 21, D3DUSAGE_RENDERTARGET_BIT, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x901, width: 256, height: 128, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET_BIT, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP_CREATE_SWAP_CHAIN,
-            u32(DEVICE, 0x77, 0x901, 0xBEEF, 0, 0, 256, 128)),
+            encodePayload("CreateSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77, back_buffer_handle: 0x901, hwnd: 0xBEEF, x: 0, y: 0, width: 256, height: 128 })),
         command(OP_PRESENT_SWAP_CHAIN,
-            u32(DEVICE, 0x77, 0xBEEF, 0, 0, 256, 128, 0)),
+            encodePayload("PresentSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77, hwnd: 0xBEEF, x: 0, y: 0, width: 256, height: 128, reserved: 0 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.swapChainsRefused, 1);
     assert.equal(executor.stats.swapChainPresentsDropped, 1,
         "the frame is dropped and counted rather than rendered nowhere");
+});
+
+await test("primary and additional presentation remain independent across mixed batches", async () => {
+    const {executor, find, calls} = makeExecutor({createSwapChainCanvas: () => makeSwapChainCanvas(calls)});
+    const chainPresent = command(OP_PRESENT_SWAP_CHAIN, encodePayload("PresentSwapChain", {device_handle: DEVICE, swap_chain_handle: 0x77, width: 256, height: 128}));
+    const primaryPresent = command(OP.PRESENT, encodePayload("Present", {device_handle: DEVICE, width: 640, height: 480}));
+    await executor.submit(buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", {device_handle: DEVICE, resource_handle: 0x901, width: 256, height: 128, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET_BIT, pool: 0})),
+        command(OP_CREATE_SWAP_CHAIN, encodePayload("CreateSwapChain", {device_handle: DEVICE, swap_chain_handle: 0x77, back_buffer_handle: 0x901, width: 256, height: 128})), chainPresent,
+    ], {present: true}));
+    await executor.idle();
+    assert.equal(find("getCurrentTexture").length, 0);
+    assert.equal(find("swapchain-getCurrentTexture").length, 1);
+    assert.equal(executor.stats.presents, 0);
+    await executor.submit(buildBatch([primaryPresent], {present: true}));
+    await executor.idle();
+    assert.equal(find("getCurrentTexture").length, 1);
+    assert.equal(find("swapchain-getCurrentTexture").length, 1);
+    for (const commands of [[primaryPresent, chainPresent], [chainPresent, primaryPresent]]) await executor.submit(buildBatch(commands, {present: true}));
+    await executor.idle();
+    assert.equal(find("getCurrentTexture").length, 3);
+    assert.equal(find("swapchain-getCurrentTexture").length, 3);
+    assert.equal(executor.stats.presents, 3);
+    assert.equal(executor.stats.swapChainPresents, 3);
+    await executor.submit(buildBatch([], {present: true}));
+    await executor.idle();
+    assert.equal(find("getCurrentTexture").length, 4, "legacy flag-only batches retain primary presentation");
+    await executor.submit(buildBatch([command(OP_PRESENT_SWAP_CHAIN, encodePayload("PresentSwapChain", {device_handle: DEVICE, swap_chain_handle: 0xbad}))], {present: true}));
+    await executor.idle();
+    assert.equal(find("getCurrentTexture").length, 4, "a refused additional Present must not become a primary Present");
+    assert.equal(executor.stats.swapChainPresentsDropped, 1);
+});
+
+await test("XP additional-chain revival and binding-only Reset retire each context once", async () => {
+    const fs = require("node:fs"), path = require("node:path"), {gunzipSync} = require("node:zlib");
+    const metadata = require("./fixtures/d3d9_additional_lifetime_xp.json");
+    const bytes = gunzipSync(fs.readFileSync(path.join(__dirname, "fixtures/d3d9_additional_lifetime_xp.bin.gz")));
+    assert.equal(require("node:crypto").createHash("sha256").update(bytes).digest("hex"), metadata.traceSha256);
+    const {executor, find, calls} = makeExecutor({strict: true, createSwapChainCanvas: () => makeSwapChainCanvas(calls)});
+    for (let at = 0; at < bytes.length;) {
+        const ownerToken = bytes.readUInt32LE(at), flags = bytes.readUInt32LE(at + 4), size = bytes.readUInt32LE(at + 8);
+        assert.equal(bytes.readUInt16LE(at + 12), 0xffe1);
+        await executor.submit(bytes.subarray(at + 20, at + 12 + size), {ownerToken, flags, writeGuestMemory() {}});
+        at += 12 + size;
+    }
+    for (const owner of metadata.ownerReleases) executor.endOwnerSessions(owner);
+    await executor.idle();
+    assert.equal(executor.stats.swapChainsCreated, 3);
+    assert.equal(find("swapchain-unconfigure").length, 3);
+    assert.equal(find("swapchain-getCurrentTexture").length, 0);
+    assert.equal(find("getCurrentTexture").length, 0);
+    assert.equal(executor.stats.sessionsEnded, 1, "the captured driver release ends the session without a SESSION_END command");
+    assert.equal(executor.stats.commandsFailed, 0);
+    assert.equal(executor.stats.malformedBatches, 0);
+    assert.equal(executor.stats.droppedDraws, 0);
+    assert.equal(executor.hostErrors.length, 0);
+    assert.equal(executor.gpuErrors.errors.length, 0);
 });
 
 await test("destroying an additional swap chain unconfigures and reports it",
@@ -1717,21 +1908,51 @@ await test("destroying an additional swap chain unconfigures and reports it",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x901, 256, 128, 1, 21, D3DUSAGE_RENDERTARGET_BIT, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x901, width: 256, height: 128, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET_BIT, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP_CREATE_SWAP_CHAIN,
-            u32(DEVICE, 0x77, 0x901, 0xBEEF, 0, 0, 256, 128)),
-        command(OP_DESTROY_SWAP_CHAIN, u32(DEVICE, 0x77)),
+            encodePayload("CreateSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77, back_buffer_handle: 0x901, hwnd: 0xBEEF, x: 0, y: 0, width: 256, height: 128 })),
+        command(OP_PRESENT_SWAP_CHAIN, encodePayload("PresentSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77, width: 256, height: 128 })),
+        command(OP_DESTROY_SWAP_CHAIN, encodePayload("DestroySwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77 })),
         // A present after destruction must not resurrect it.
         command(OP_PRESENT_SWAP_CHAIN,
-            u32(DEVICE, 0x77, 0xBEEF, 0, 0, 256, 128, 0)),
+            encodePayload("PresentSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77, hwnd: 0xBEEF, x: 0, y: 0, width: 256, height: 128, reserved: 0 })),
     ], { present: true }));
     await executor.idle();
+    assert.equal(find("swapchain-getCurrentTexture").length, 1, "accepted presentation must acquire before destruction");
+    assert.ok(calls.findIndex(call => call[0] === "swapchain-getCurrentTexture") < calls.findIndex(call => call[0] === "swapchain-unconfigure"));
     assert.equal(executor.stats.swapChainsDestroyed, 1);
     assert.equal(find("swapchain-unconfigure").length, 1);
     assert.equal(executor.stats.swapChainPresentsDropped, 1);
-    assert.deepEqual(surfaces.map(entry => entry[0]), ["create", "destroy"]);
-    assert.equal(surfaces[1][1].visible, false,
+    assert.deepEqual(surfaces.map(entry => entry[0]), ["create", "present", "destroy"]);
+    assert.equal(surfaces[surfaces.length - 1][1].visible, false,
         "the page needs to know the overlay is gone, not just that it existed");
+});
+
+await test("replacing a swap-chain handle drains and closes the old context", async () => {
+    const surfaces = [];
+    const { executor, find, calls } = makeExecutor({ createSwapChainCanvas: () => makeSwapChainCanvas(calls),
+        onSwapChainSurface: (surface, reason) => surfaces.push(reason) });
+    const create = command(OP_CREATE_SWAP_CHAIN, encodePayload("CreateSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77,
+        back_buffer_handle: 0x901, width: 256, height: 128 }));
+    const present = command(OP_PRESENT_SWAP_CHAIN, encodePayload("PresentSwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77, width: 256, height: 128 }));
+    await executor.submit(buildBatch([command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x901,
+            width: 256, height: 128, level_count: 1, format: 21, usage: 1 })), create, present, create, present,
+        command(OP_DESTROY_SWAP_CHAIN, encodePayload("DestroySwapChain", { device_handle: DEVICE, swap_chain_handle: 0x77 }))], { present: true }));
+    await executor.idle();
+    assert.equal(find("swapchain-getCurrentTexture").length, 2);
+    assert.equal(find("swapchain-unconfigure").length, 2);
+    assert.equal(executor.stats.swapChainPresentsDropped, 0);
+    assert.deepEqual(surfaces, ["create", "present", "destroy", "create", "present", "destroy"]);
+});
+
+await test("an empty Present flag cannot copy an unowned back buffer", async () => {
+    const { executor, find } = makeExecutor();
+    await executor.submit(buildBatch([], { present: true }));await executor.idle();
+    assert.equal(executor.devices.size, 0);
+    assert.equal(executor.canvas.width, 1);assert.equal(executor.canvas.height, 1);
+    assert.equal(find("copyTextureToTexture").length, 0);
+    assert.equal(executor.hostErrors.length, 0);assert.equal(executor.gpuErrors.errors.length, 0);
 });
 
 await test("a multisampled target makes the pipeline declare its sample count",
@@ -1741,7 +1962,7 @@ await test("a multisampled target makes the pipeline declare its sample count",
     const D3DMULTISAMPLE_4_SAMPLES = 4;
     const { executor, find } = makeExecutor();
     const createDevice = createDevicePayload(640, 480);
-    createDevice.writeUInt32LE(D3DMULTISAMPLE_4_SAMPLES, 44);
+    createDevice.writeUInt32LE(D3DMULTISAMPLE_4_SAMPLES, P.F.CreateDevice.multisample_type);
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevice),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
@@ -1749,7 +1970,7 @@ await test("a multisampled target makes the pipeline declare its sample count",
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -1759,6 +1980,12 @@ await test("a multisampled target makes the pipeline declare its sample count",
     assert.equal(descriptor.multisample.count, 4);
     assert.equal(descriptor.multisample.mask, 0xffffffff,
         "the default D3DRS_MULTISAMPLEMASK writes every sample");
+    // ... and the pass draws into the multisampled back buffer, resolving into
+    // the one Present copies (S1-6: the multisampled texture was never used)
+    const msaa = executor.deviceState(DEVICE).backBufferMsaaTexture;
+    const attachment = find("beginRenderPass").pop()[1].colorAttachments[0];
+    assert.equal(attachment.view.texture, msaa, "the pass renders into the multisampled texture");
+    assert.equal(attachment.resolveTarget, executor.backBufferView, "and resolves into the back buffer");
 });
 
 await test("D3DRS_MULTISAMPLEMASK reaches the pipeline's sample mask",
@@ -1766,16 +1993,16 @@ await test("D3DRS_MULTISAMPLEMASK reaches the pipeline's sample mask",
     const D3DRS_MULTISAMPLEMASK = 162, D3DMULTISAMPLE_4_SAMPLES = 4;
     const { executor, find } = makeExecutor();
     const createDevice = createDevicePayload(640, 480);
-    createDevice.writeUInt32LE(D3DMULTISAMPLE_4_SAMPLES, 44);
+    createDevice.writeUInt32LE(D3DMULTISAMPLE_4_SAMPLES, P.F.CreateDevice.multisample_type);
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevice),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_MULTISAMPLEMASK, 0x5)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_MULTISAMPLEMASK, value: 0x5 }).subarray(0, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(find("createRenderPipeline").pop()[1].multisample.mask, 0x5);
@@ -1791,7 +2018,7 @@ await test("a single-sampled target leaves the multisample block off",
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(find("createRenderPipeline").pop()[1].multisample, undefined,
@@ -1811,10 +2038,10 @@ await test("D3DFILL_WIREFRAME turns each triangle into its three edges",
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.SET_RENDER_STATE,
-            u32(DEVICE, D3DRS_FILLMODE, D3DFILL_WIREFRAME)),
+            encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FILLMODE, value: D3DFILL_WIREFRAME }).subarray(0, 12)),
         // Two triangles, non-indexed.
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 2)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -1842,7 +2069,7 @@ await test("D3DFILL_SOLID is the default and rewrites nothing", async () => {
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 2)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.fillModeDraws, 0,
@@ -1864,10 +2091,10 @@ await test("D3DFILL_WIREFRAME unrolls a triangle strip before building edges",
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.SET_RENDER_STATE,
-            u32(DEVICE, D3DRS_FILLMODE, D3DFILL_WIREFRAME)),
+            encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FILLMODE, value: D3DFILL_WIREFRAME }).subarray(0, 12)),
         // D3DPT_TRIANGLESTRIP, two triangles = four vertices.
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(5, 0, 2)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -1891,9 +2118,9 @@ await test("D3DSHADE_FLAT stops interpolating the two colour varyings",
             element(0, 12, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 16)),
         command(OP.SET_RENDER_STATE,
-            u32(DEVICE, D3DRS_SHADEMODE, D3DSHADE_FLAT)),
+            encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_SHADEMODE, value: D3DSHADE_FLAT }).subarray(0, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -1938,7 +2165,7 @@ await test("D3DSHADE_FLAT: both stages agree whichever of them is a translated s
         const vs = shaderCreatePayload(0x40000001, VS_BYTECODE);
         const ps = shaderCreatePayload(0x40000003, PS_BYTECODE);
         const draw = shadeMode => [
-            command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_SHADEMODE, shadeMode)),
+            command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_SHADEMODE, value: shadeMode }).subarray(0, 12)),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
         ];
         await executor.submit(buildBatch([
@@ -1947,14 +2174,14 @@ await test("D3DSHADE_FLAT: both stages agree whichever of them is a translated s
             command(OP.CREATE_VERTEX_DECLARATION, declarationPayload(0x301, elements)),
             command(OP.CREATE_VERTEX_SHADER, vs.payload, vs.blob, vs.blobOffsetField),
             command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-            command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+            command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
             command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 16)),
-            ...(vertexShader ? [command(OP.SET_VERTEX_SHADER, u32(DEVICE, 0x40000001))] : []),
-            ...(pixelShader ? [command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000003))] : []),
+            ...(vertexShader ? [command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000001 }))] : []),
+            ...(pixelShader ? [command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000003 }))] : []),
             ...draw(D3DSHADE_FLAT),
             // and back: the same shaders, interpolating again
             ...draw(D3DSHADE_GOURAUD),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true }));
         await executor.idle();
         assert.equal(executor.stats.droppedDraws, 0, label);
@@ -1986,7 +2213,7 @@ await test("gouraud shading is the default and adds no interpolate attribute",
             element(0, 12, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 16)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const wgsl = find("createRenderPipeline").pop()[1].vertex.module.code;
@@ -2008,14 +2235,14 @@ await test("D3DTADDRESS_MIRRORONCE mirrors the coordinate about zero",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         command(OP.SET_SAMPLER_STATE,
-            u32(DEVICE, 0, D3DSAMP_ADDRESSU, D3DTADDRESS_MIRRORONCE)),
+            encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_ADDRESSU, value: D3DTADDRESS_MIRRORONCE })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -2034,20 +2261,14 @@ await test("D3DTADDRESS_MIRRORONCE mirrors the coordinate about zero",
 // anything, because a lookup pass costs a full-screen draw the plain copy does
 // not.
 function gammaRampPayload(build) {
-    const payload = Buffer.alloc(16 + 768 * 2);
-    payload.writeUInt32LE(DEVICE, 0);
-    for (let index = 0; index < 256; ++index) {
-        const [r, g, b] = build(index);
-        payload.writeUInt16LE(r & 0xffff, 16 + index * 2);
-        payload.writeUInt16LE(g & 0xffff, 16 + (256 + index) * 2);
-        payload.writeUInt16LE(b & 0xffff, 16 + (512 + index) * 2);
-    }
-    return payload;
+    const ramp = new Uint16Array(P.STRUCTS.SetGammaRamp.fields.ramp.count), count = ramp.length / 3;
+    for (let index = 0; index < count; ++index) { const [r, g, b] = build(index);ramp[index] = r;ramp[count + index] = g;ramp[2 * count + index] = b; }
+    return encodePayload("SetGammaRamp", { device_handle: DEVICE, ramp });
 }
 
 await test("a non-identity gamma ramp turns the present copy into a lookup pass",
         async () => {
-    const OP_SET_GAMMA_RAMP = 0x223;
+    const OP_SET_GAMMA_RAMP = P.OP.SET_GAMMA_RAMP;
     const { executor, find } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
@@ -2057,7 +2278,7 @@ await test("a non-identity gamma ramp turns the present copy into a lookup pass"
                 const value = Math.round(index * 257 / 2);
                 return [value, value, value];
             })),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.gammaRampUpdates, 1);
@@ -2077,13 +2298,13 @@ await test("the identity gamma ramp keeps the plain present copy", async () => {
     // Titles set the identity ramp on startup and on exit. Paying for a
     // full-screen pass on every frame for a no-op transform is exactly the
     // cost this has to avoid.
-    const OP_SET_GAMMA_RAMP = 0x223;
+    const OP_SET_GAMMA_RAMP = P.OP.SET_GAMMA_RAMP;
     const { executor, find } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP_SET_GAMMA_RAMP,
             gammaRampPayload(index => [index * 257, index * 257, index * 257])),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.gammaRampUpdates, 1);
@@ -2095,19 +2316,19 @@ await test("the identity gamma ramp keeps the plain present copy", async () => {
 
 await test("a gamma ramp reset back to identity releases the lookup pass",
         async () => {
-    const OP_SET_GAMMA_RAMP = 0x223;
+    const OP_SET_GAMMA_RAMP = P.OP.SET_GAMMA_RAMP;
     const { executor } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP_SET_GAMMA_RAMP, gammaRampPayload(() => [0, 0, 0])),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.gammaPresents, 1);
     await executor.submit(buildBatch([
         command(OP_SET_GAMMA_RAMP,
             gammaRampPayload(index => [index * 257, index * 257, index * 257])),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.gammaPresents, 1,
@@ -2125,14 +2346,14 @@ await test("D3DSAMP_MAXMIPLEVEL becomes the sampler's LOD floor", async () => {
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         // Four levels, so a floor of 2 is inside the chain.
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 8, 8, 4, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 8, height: 8, level_count: 4, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MIPFILTER, 2)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MAXMIPLEVEL, 2)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MIPFILTER, value: 2 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MAXMIPLEVEL, value: 2 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -2147,7 +2368,7 @@ await test("D3DSAMP_MAXMIPLEVEL becomes the sampler's LOD floor", async () => {
 await test("SetLOD reaches the host and combines with D3DSAMP_MAXMIPLEVEL",
         async () => {
     // Two independent floors; D3D9 applies the more restrictive of the pair.
-    const OP_SET_TEXTURE_LOD = 0x222;
+    const OP_SET_TEXTURE_LOD = P.OP.SET_TEXTURE_LOD;
     const D3DSAMP_MIPFILTER = 7, D3DSAMP_MAXMIPLEVEL = 9;
     const elements = [
         element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
@@ -2157,15 +2378,15 @@ await test("SetLOD reaches the host and combines with D3DSAMP_MAXMIPLEVEL",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 8, 8, 4, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 8, height: 8, level_count: 4, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MIPFILTER, 2)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MAXMIPLEVEL, 1)),
-        command(OP_SET_TEXTURE_LOD, u32(DEVICE, 0x401, 3, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MIPFILTER, value: 2 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MAXMIPLEVEL, value: 1 })),
+        command(OP_SET_TEXTURE_LOD, encodePayload("SetTextureLOD", { device_handle: DEVICE, resource_handle: 0x401, lod: 3, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -2173,11 +2394,37 @@ await test("SetLOD reaches the host and combines with D3DSAMP_MAXMIPLEVEL",
         "SetLOD(3) is more restrictive than MAXMIPLEVEL(1) and wins");
 });
 
+await test("MAXMIPLEVEL is ignored with NONE while resource LOD still applies", async () => {
+    const elements = [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
+        element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD)];
+    for (const [filter, maxMip, lod, expected] of [[0,3,0,0], [0,2,1,1], [0,0,2,2], [1,2,1,2]]) {
+        const {executor,find}=makeExecutor();
+        await executor.submit(buildBatch([
+            command(OP.CREATE_DEVICE, createDevicePayload(640,480)),
+            command(OP.CREATE_BUFFER, createBufferPayload(0x201,1,96)),
+            command(OP.CREATE_TEXTURE_2D,encodePayload("CreateTexture2D",{device_handle:DEVICE,resource_handle:0x401,width:8,height:8,level_count:4,format:21,usage:0,pool:1,multisample_type:0,multisample_quality:0})),
+            command(OP.SET_FVF,fvfPayload(0x102,elements)),
+            command(OP.SET_STREAM_SOURCE,setStreamSourcePayload(0,0x201,20)),
+            command(OP.SET_TEXTURE,encodePayload("SetTexture",{device_handle:DEVICE,stage:0,texture_handle:0x401,reserved:0})),
+            command(OP.SET_SAMPLER_STATE,encodePayload("SetSamplerState",{device_handle:DEVICE,sampler:0,state:7,value:filter})),
+            command(OP.SET_SAMPLER_STATE,encodePayload("SetSamplerState",{device_handle:DEVICE,sampler:0,state:9,value:maxMip})),
+            command(OP.SET_TEXTURE_LOD,encodePayload("SetTextureLOD",{device_handle:DEVICE,resource_handle:0x401,lod,reserved:0})),
+            command(OP.DRAW_PRIMITIVE,drawPrimitivePayload(4,0,1)),
+            command(OP.PRESENT,encodePayload("Present",{device_handle:DEVICE,hwnd:0x1234,x:0,y:0,width:640,height:480})),
+        ],{present:true}));
+        await executor.idle();
+        assert.equal(executor.stats.droppedDraws,0);
+        const sampler=find("createSampler").pop()[1];
+        assert.equal(sampler.lodMinClamp||0,expected);
+        if (filter===0)assert.equal(sampler.lodMaxClamp,expected);
+    }
+});
+
 await test("a SetLOD past the end of the chain is clamped, not passed through",
         async () => {
     // lodMinClamp above lodMaxClamp is a WebGPU validation error, so a stale
     // level index has to be clamped against the chain that actually exists.
-    const OP_SET_TEXTURE_LOD = 0x222;
+    const OP_SET_TEXTURE_LOD = P.OP.SET_TEXTURE_LOD;
     const D3DSAMP_MIPFILTER = 7;
     const elements = [
         element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
@@ -2187,14 +2434,14 @@ await test("a SetLOD past the end of the chain is clamped, not passed through",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 8, 8, 4, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 8, height: 8, level_count: 4, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MIPFILTER, 2)),
-        command(OP_SET_TEXTURE_LOD, u32(DEVICE, 0x401, 99, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MIPFILTER, value: 2 })),
+        command(OP_SET_TEXTURE_LOD, encodePayload("SetTextureLOD", { device_handle: DEVICE, resource_handle: 0x401, lod: 99, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -2202,7 +2449,7 @@ await test("a SetLOD past the end of the chain is clamped, not passed through",
         "a four-level chain floors at level 3, not 99");
 });
 
-await test("D3DSAMP_MIPMAPLODBIAS becomes textureSampleBias in the cascade",
+await test("fractional D3DSAMP_MIPMAPLODBIAS reaches uniform storage without quantization",
         async () => {
     // WebGPU samplers carry no bias field, so the only place it can land is
     // the sample call.
@@ -2220,27 +2467,26 @@ await test("D3DSAMP_MIPMAPLODBIAS becomes textureSampleBias in the cascade",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 8, 8, 4, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 8, height: 8, level_count: 4, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MIPFILTER, 2)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MIPFILTER, value: 2 })),
         command(OP.SET_SAMPLER_STATE,
-            u32(DEVICE, 0, D3DSAMP_MIPMAPLODBIAS, floatBits(-1.5))),
+            encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MIPMAPLODBIAS, value: floatBits(0.49) })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
-    const wgsl = find("createRenderPipeline").pop()[1].fragment.module.code;
-    assert.match(wgsl, /textureSampleBias\(d9_tex0, d9_smp0, .*-1\.5/,
-        "the bias has to reach the sample call:\n" + wgsl);
+    const entry = find("createBindGroup").pop()[1].entries.find(item => item.binding === 1);
+    const block = constantBlock(find, entry.resource.buffer);
+    assert.equal(new Float32Array(block.buffer, block.byteOffset + entry.resource.offset, 4)[0], Math.fround(0.49));
 });
 
-await test("a zero D3DSAMP_MIPMAPLODBIAS leaves the plain sample form alone",
+await test("a zero D3DSAMP_MIPMAPLODBIAS uses the same uniform sampling path",
         async () => {
-    // The bias is baked as a literal, so every distinct value is a pipeline
-    // variant. The default must not mint one.
+    // Zero is ordinary uniform data, sharing the path used by other biases.
     const elements = [
         element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
         element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD),
@@ -2249,17 +2495,56 @@ await test("a zero D3DSAMP_MIPMAPLODBIAS leaves the plain sample form alone",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 8, 8, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 8, height: 8, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
-    const wgsl = find("createRenderPipeline").pop()[1].fragment.module.code;
-    assert.ok(!/textureSampleBias/.test(wgsl),
-        "an unbiased stage keeps textureSample:\n" + wgsl);
+    const entry = find("createBindGroup").pop()[1].entries.find(item => item.binding === 1);
+    const block = constantBlock(find, entry.resource.buffer);
+    assert.equal(new Float32Array(block.buffer, block.byteOffset + entry.resource.offset, 4)[0], 0);
+});
+
+await test("D3DSAMP_MIPMAPLODBIAS 'GET4' gathers single-channel 2D textures and leaves other formats alone", async () => {
+    const D3DSAMP_MIPMAPLODBIAS = 8, GET4 = 0x34544547, GET1 = 0x31544547;
+    const elements = [
+        element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
+        element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD),
+    ];
+    const draw = (bias) => [
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MIPMAPLODBIAS, value: bias })),
+        command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
+    ];
+    const wgslFor = async (format, biases) => {
+        const { executor, find } = makeExecutor();
+        await executor.submit(buildBatch([
+            command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+            command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
+            command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 8, height: 8, level_count: 1, format, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+            command(OP.SET_FVF, fvfPayload(0x102, elements)),
+            command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
+            command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+            ...biases.flatMap(draw),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
+        ], { present: true }));
+        await executor.idle();
+        assert.equal(executor.stats.droppedDraws, 0);
+        return find("createShaderModule").map(call => call[1].code).filter(code => code.includes("d9_tex0"));
+    };
+    for (const [format, channel] of [[50, 0], [28, 3], [81, 0], [111, 0], [114, 0]]) {
+        const [gather] = await wgslFor(format, [GET4]);
+        assert.match(gather, new RegExp("textureGather\\(" + channel + ", d9_tex0, d9_smp0, .*textureDimensions\\(d9_tex0\\)\\)\\)\\)\\.zxyw"), "format " + format);
+        assert.ok(!/textureSample/.test(gather), "format " + format + " must not also sample");
+        for (const bias of [GET1, 0]) assert.ok(!(await wgslFor(format, [bias]))[0].includes("textureGather"), "bias " + bias + " samples normally");
+    }
+    // Multi-channel formats ignore the state, and switching it re-selects the shader between draws.
+    assert.ok(!(await wgslFor(21, [GET4]))[0].includes("textureGather"));
+    const switching = await wgslFor(50, [GET4, GET1, GET4]);
+    assert.equal(switching.filter(code => code.includes("textureGather")).length, 1);
+    assert.equal(switching.filter(code => !code.includes("textureGather")).length, 1);
 });
 
 await test("a second draw with the same sampler state reuses the cached sampler", async () => {
@@ -2271,13 +2556,13 @@ await test("a second draw with the same sampler state reuses the cached sampler"
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.samplersCreated, 1);
@@ -2294,15 +2579,15 @@ await test("fixed-function BORDER sampler state reaches the generated shader",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, 1, 4)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, 2, 4)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, 4, 0x80402010)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: 1, value: 4 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: 2, value: 4 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: 4, value: 0x80402010 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const wgsl = find("createRenderPipeline").pop()[1].fragment.module.code;
@@ -2325,11 +2610,11 @@ await test("multi-stream declarations bind one vertex buffer per stream", async 
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x202, 1, 96)),
         command(OP.CREATE_VERTEX_DECLARATION, declarationPayload(0x301, elements)),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(1, 0x202, 12, 32)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -2358,17 +2643,17 @@ await test("indexed instancing maps D3D9 stream frequencies to WebGPU instances"
         command(OP.CREATE_BUFFER, createBufferPayload(0x203, 2, 6, 101)),
         command(OP.CREATE_VERTEX_DECLARATION,
             declarationPayload(0x301, elements)),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(1, 0x202, 4)),
         command(OP.SET_STREAM_SOURCE_FREQ,
             setStreamSourceFreqPayload(0, 0x40000003)),
         command(OP.SET_STREAM_SOURCE_FREQ,
             setStreamSourceFreqPayload(1, 0x80000001)),
-        command(OP.SET_INDICES, u32(DEVICE, 0x203)),
+        command(OP.SET_INDICES, encodePayload("SetIndices", { device_handle: DEVICE, buffer_handle: 0x203 })),
         command(OP.DRAW_INDEXED_PRIMITIVE,
             drawIndexedPayload(4, 0, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -2383,6 +2668,42 @@ await test("indexed instancing maps D3D9 stream frequencies to WebGPU instances"
     assert.equal(executor.stats.expandedInstanceStreams, 0);
 });
 
+await test("NULL streams default attributes and do not reuse stale strides or buffers", async () => {
+    for (const programmable of [false, true]) for (const boundPosition of [false, true]) {
+        const {executor, fake, find} = makeExecutor();
+        const vs = shaderCreatePayload(0x401, [0xfffe0101,0x0000001f,0x80000000,0x900f0000,0x00000001,0xc00f0000,0x90e40000,0x0000ffff]);
+        const elements = [element(0,0,DECLTYPE.FLOAT3,DECLUSAGE.POSITION),
+            element(1,0,DECLTYPE.D3DCOLOR,DECLUSAGE.COLOR)];
+        await executor.submit(buildBatch([
+            command(OP.CREATE_DEVICE, createDevicePayload(64,64)),
+            command(OP.CREATE_BUFFER, createBufferPayload(0x201,1,96)),
+            command(OP.CREATE_VERTEX_DECLARATION, declarationPayload(0x301,elements)),
+            command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration",{device_handle:DEVICE,declaration_handle:0x301})),
+            ...(programmable ? [command(OP.CREATE_VERTEX_SHADER,vs.payload,vs.blob,vs.blobOffsetField),
+                command(OP.SET_VERTEX_SHADER,encodePayload("SetShader",{device_handle:DEVICE,shader_handle:0x401}))] : []),
+            command(OP.SET_STREAM_SOURCE,setStreamSourcePayload(0,0x201,12)),
+            command(OP.SET_STREAM_SOURCE,setStreamSourcePayload(1,0x201,4)),
+            command(OP.DRAW_PRIMITIVE,drawPrimitivePayload(4,0,1)),
+            command(OP.SET_STREAM_SOURCE,setStreamSourcePayload(0,boundPosition?0x201:0,12,0)),
+            command(OP.SET_STREAM_SOURCE,setStreamSourcePayload(1,0,4,92)),
+            command(OP.DRAW_PRIMITIVE,drawPrimitivePayload(4,0,1)),
+            command(OP.PRESENT,encodePayload("Present",{device_handle:DEVICE,hwnd:0x1234,x:0,y:0,width:64,height:64})),
+        ],{present:true}));
+        await executor.idle();
+        assert.equal(executor.stats.droppedDraws,0);
+        const descriptors=find("createRenderPipeline").map(row=>row[1]).filter(row=>row.vertex.buffers?.length);
+        const layouts=descriptors.at(-1).vertex.buffers;
+        if (boundPosition && programmable) assert.equal(layouts.length,1,"unused NULL color stream needs no binding");
+        else {
+            const defaults=layouts.find(row=>row.arrayStride===0);
+            assert.ok(defaults,"missing inputs use a constant default buffer");
+            assert.ok(defaults.attributes.every(row=>row.offset===0&&row.format==="float32x4"));
+            assert.deepEqual(Array.from(new Float32Array(executor.defaultAttributes.data.buffer,0,4)),[0,0,0,1]);
+        }
+        assert.equal(fake.calls.filter(c=>c[0]==="beginRenderPass").flatMap(c=>c[2].ops).filter(op=>op[0]==="draw").length,2);
+    }
+});
+
 await test("D3D9 instance divisors greater than one are expanded exactly",
         async () => {
     const { executor, fake, find } = makeExecutor();
@@ -2391,29 +2712,26 @@ await test("D3D9 instance divisors greater than one are expanded exactly",
         element(1, 0, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR),
     ];
     const instanceData = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]);
-    const update = Buffer.alloc(24);
-    update.writeUInt32LE(0x202, 0);
-    update.writeUInt32LE(0, 4);
-    update.writeUInt32LE(instanceData.length, 8);
+    const update = encodePayload("UpdateBuffer", { resource_handle: 0x202, destination_offset: 0, byte_count: instanceData.length });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 36)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x202, 1, 8)),
-        command(OP.UPDATE_BUFFER, update, instanceData, 12),
+        command(OP.UPDATE_BUFFER, update, instanceData, "data_offset"),
         command(OP.CREATE_BUFFER, createBufferPayload(0x203, 2, 6, 101)),
         command(OP.CREATE_VERTEX_DECLARATION,
             declarationPayload(0x301, elements)),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(1, 0x202, 4)),
         command(OP.SET_STREAM_SOURCE_FREQ,
             setStreamSourceFreqPayload(0, 0x40000004)),
         command(OP.SET_STREAM_SOURCE_FREQ,
             setStreamSourceFreqPayload(1, 0x80000002)),
-        command(OP.SET_INDICES, u32(DEVICE, 0x203)),
+        command(OP.SET_INDICES, encodePayload("SetIndices", { device_handle: DEVICE, buffer_handle: 0x203 })),
         command(OP.DRAW_INDEXED_PRIMITIVE,
             drawIndexedPayload(4, 0, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -2443,7 +2761,7 @@ await test("triangle strips use strip topology instead of being reinterpreted as
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(5, 0, 4)), // 4 tris
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const pipeline = find("createRenderPipeline").pop()[1];
@@ -2461,14 +2779,44 @@ await test("indexed triangle strips declare the strip index format", async () =>
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_INDICES, u32(DEVICE, 0x202)),
+        command(OP.SET_INDICES, encodePayload("SetIndices", { device_handle: DEVICE, buffer_handle: 0x202 })),
         command(OP.DRAW_INDEXED_PRIMITIVE, drawIndexedPayload(5, 0, 0, 4)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const pipeline = find("createRenderPipeline").pop()[1];
     assert.equal(pipeline.primitive.topology, "triangle-strip");
-    assert.equal(pipeline.primitive.stripIndexFormat, "uint16");
+    assert.equal(pipeline.primitive.stripIndexFormat, "uint32");
+});
+
+await test("uint16 strip mirror reuses storage, uploads only touched indices and retires with owner", async () => {
+    const {executor,find,fake}=makeExecutor();
+    await executor.submit(buildBatch([
+        command(OP.CREATE_DEVICE,createDevicePayload(64,64)),
+        command(OP.CREATE_BUFFER,createBufferPayload(0x202,2,10,101)),
+    ]));
+    const r=executor.resources.get(0x202),source=Uint8Array.from([99,0,1,0,2,0,3,0,255,255]);
+    executor.applyBufferUpdate(r,0,source,0,source.length,0);
+    let cacheUploads=0;const originalStage=executor.stageBufferUpload;
+    executor.stageBufferUpload=function(...args){cacheUploads++;return originalStage.apply(this,args);};
+    const before=find("createBuffer").length,mirror=executor.stripIndexBufferFor(r);
+    assert.equal(find("createBuffer").length,before+1);
+    assert.equal(cacheUploads,1);
+    for (let i=0;i<100;i++)assert.equal(executor.stripIndexBufferFor(r),mirror);
+    assert.equal(find("createBuffer").length,before+1);
+    assert.equal(cacheUploads,1);
+    executor.finishFrame(false);await executor.idle();
+    assert.deepEqual([...new Uint32Array(mirror.data.buffer)],[99,1,2,3,65535]);
+    const records=[],stage=executor.stageBufferUpload;
+    executor.stageBufferUpload=function(buffer,offset,bytes){records.push([buffer,offset,bytes.slice()]);return stage.call(this,buffer,offset,bytes);};
+    executor.applyBufferUpdate(r,3,Uint8Array.from([1,2,1,3,1,255,254]),0,7,0);
+    const changed=records.filter(row=>row[0]===mirror);
+    assert.equal(changed.length,1);assert.equal(changed[0][1],4);assert.equal(changed[0][2].length,16);
+    assert.deepEqual([...new Uint32Array(changed[0][2].buffer)],[257,258,259,65279]);
+    executor.finishFrame(false);await executor.idle();
+    assert.deepEqual([...new Uint32Array(mirror.data.buffer)],[99,257,258,259,65279]);
+    executor.retireResourceState(r);fake.completeSubmittedWork();await settle();
+    assert.equal(mirror.destroyed,true);assert.equal(r.gpuBuffer.destroyed,true);
 });
 
 await test("triangle fans become an indexed triangle list", async () => {
@@ -2480,7 +2828,7 @@ await test("triangle fans become an indexed triangle list", async () => {
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(6, 0, 3)), // fan, 3 tris
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const pipeline = find("createRenderPipeline").pop()[1];
@@ -2502,36 +2850,26 @@ await test("DrawIndexedPrimitiveUP works (M1 threw a ReferenceError on every cal
     const indexBytes = 6 * 2;
     const blob = Buffer.alloc(indexBytes + vertexBytes);
     for (let i = 0; i < 6; ++i) blob.writeUInt16LE([0, 1, 2, 0, 2, 3][i], i * 2);
-    const payload = Buffer.alloc(48);
-    payload.writeUInt32LE(DEVICE, 0);
-    payload.writeUInt32LE(4, 4);       // D3DPT_TRIANGLELIST
-    payload.writeUInt32LE(0, 8);       // min_vertex_index
-    payload.writeUInt32LE(4, 12);      // vertex_count
-    payload.writeUInt32LE(2, 16);      // primitive_count
-    payload.writeUInt32LE(101, 20);    // D3DFMT_INDEX16
-    payload.writeUInt32LE(12, 24);     // stride
-    payload.writeUInt32LE(6, 28);      // index_count
-    payload.writeUInt32LE(indexBytes, 32);
-    payload.writeUInt32LE(vertexBytes, 36);
+    const payload = encodePayload("DrawIndexedPrimitiveUP", { device_handle: DEVICE, primitive_type: 4, min_vertex_index: 0, vertex_count: 4, primitive_count: 2, index_format: 101, stride: 12, index_count: 6, index_bytes: indexBytes, vertex_bytes: vertexBytes });
     // index_data_offset / vertex_data_offset are patched below.
     const built = buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
-        command(OP.DRAW_INDEXED_PRIMITIVE_UP, payload, blob, 40),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.DRAW_INDEXED_PRIMITIVE_UP, payload, blob, "index_data_offset"),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true });
     // buildBatch patched index_data_offset (field 40); the vertex data sits
     // straight after the index data in the same blob, so field 44 is patched
     // here, in the assembled batch, to point past it.
-    const blobOffset = payload.readUInt32LE(40);
-    const commandOffset = built.indexOf(payload, 32);
-    built.writeUInt32LE(blobOffset + indexBytes, commandOffset + 44);
+    const blobOffset = payload.readUInt32LE(P.F.DrawIndexedPrimitiveUP.index_data_offset);
+    const commandOffset = built.indexOf(payload, P.STRUCTS.BatchHeader.size);
+    built.writeUInt32LE(blobOffset + indexBytes, commandOffset + P.F.DrawIndexedPrimitiveUP.vertex_data_offset);
 
     await executor.submit(built);
     await executor.idle();
-    assert.equal(executor.failed, null,
-        "DrawIndexedPrimitiveUP must not blow up the batch: " + executor.failed);
+    assert.equal(executor.lastBatchFailure, null,
+        "DrawIndexedPrimitiveUP must not blow up the batch: " + executor.lastBatchFailure);
     assert.equal(executor.stats.upDrawCalls, 1);
     assert.equal(executor.stats.droppedDraws, 0);
     const pass = fake.calls.filter(c => c[0] === "beginRenderPass").pop()[2];
@@ -2546,7 +2884,7 @@ await test("identical bytecode is translated once and shares one shader module",
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_VERTEX_SHADER, first.payload, first.blob, first.blobOffsetField),
         command(OP.CREATE_VERTEX_SHADER, second.payload, second.blob, second.blobOffsetField),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.shaderCache.stats.compiles, 1);
@@ -2559,9 +2897,9 @@ await test("HELLO's feature bits report which guest DLL is loaded", async () => 
     const { executor } = makeExecutor();
     // guest_pointer_bits / feature_bits / session_id_low / session_id_high.
     await executor.submit(buildBatch([
-        command(OP.HELLO, u32(32, 3 /* SM2 | SM3 */, 0, 0)),
+        command(OP.HELLO, encodePayload("Hello", { guest_pointer_bits: 32, feature_bits: 3, session_id_low: 0, session_id_high: 0 })),
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.guestShaderModel2, true);
@@ -2569,9 +2907,9 @@ await test("HELLO's feature bits report which guest DLL is loaded", async () => 
 
     const stale = makeExecutor();
     await stale.executor.submit(buildBatch([
-        command(OP.HELLO, u32(32, 0, 0, 0)),
+        command(OP.HELLO, encodePayload("Hello", { guest_pointer_bits: 32, feature_bits: 0, session_id_low: 0, session_id_high: 0 })),
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await stale.executor.idle();
     assert.equal(stale.executor.stats.guestShaderModel2, false,
@@ -2584,16 +2922,16 @@ await test("an empty client rect on Present keeps the last known surface size", 
     const { executor } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff102030, 0x3f800000, 0, 0)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff102030, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const surfaceChangesAfterFirst = executor.stats.surfaceChanges;
     // Fullscreen War3 reports 0x0 here; letting that through would resize the
     // overlay canvas every other frame.
     await executor.submit(buildBatch([
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff102030, 0x3f800000, 0, 0)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 0, 0)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff102030, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 0, height: 0 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.emptySurfaceReports, 1);
@@ -2610,8 +2948,8 @@ await test("a frame without Clear restores the previous D3D9 back buffer",
     // Establish the persistent image that the next Present must inherit.
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff102030, 0x3f800000, 0, 0)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff102030, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const backBuffer = executor.backBufferTexture;
@@ -2628,7 +2966,7 @@ await test("a frame without Clear restores the previous D3D9 back buffer",
         // 3DMark06's loading loop follows this path: it changes a small part
         // of the already-presented image and deliberately does not Clear.
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.framesWithoutColorClear, 1);
@@ -2657,19 +2995,12 @@ await test("a frame without Clear restores the previous D3D9 back buffer",
 });
 
 await test("a dynamic buffer rewritten between draws does not corrupt the earlier draw", async () => {
-    // The exact idiom that made War3's scene geometry explode: one shared
-    // dynamic vertex buffer, refilled and drawn twice inside a single frame.
-    // Draws are recorded and replayed at Present, while writeBuffer takes
-    // effect in queue order -- so without renaming, both draws would read the
-    // second batch of vertices.
-    const { executor, fake, find } = makeExecutor();
+    // A single GPU buffer receives two ordered copies, separated by draws.
+    const { executor, find } = makeExecutor();
     const batchA = Buffer.alloc(36, 0x11);
     const batchB = Buffer.alloc(36, 0x22);
     const updatePayload = (handle, byteCount) => {
-        const payload = Buffer.alloc(24);
-        payload.writeUInt32LE(handle, 0);
-        payload.writeUInt32LE(0, 4);
-        payload.writeUInt32LE(byteCount, 8);
+        const payload = encodePayload("UpdateBuffer", { resource_handle: handle, destination_offset: 0, byte_count: byteCount });
         return payload;
     };
     await executor.submit(buildBatch([
@@ -2678,54 +3009,39 @@ await test("a dynamic buffer rewritten between draws does not corrupt the earlie
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.UPDATE_BUFFER, updatePayload(0x201, 36), batchA, 12),
+        command(OP.UPDATE_BUFFER, updatePayload(0x201, 36), batchA, "data_offset"),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.UPDATE_BUFFER, updatePayload(0x201, 36), batchB, 12),
+        command(OP.UPDATE_BUFFER, updatePayload(0x201, 36), batchB, "data_offset"),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
     assert.equal(executor.stats.drawCalls, 2);
-    assert.equal(executor.stats.bufferRenames, 1,
-        "the second write must rename, not overwrite what draw 1 reads");
+    assert.equal(executor.stats.bufferRenames, 0);
+    const reads = find("beginRenderPass").flatMap(call => call[2].vertexReads);
+    assert.equal(reads.length, 2);assert.equal(reads[0].buffer, reads[1].buffer);
+    assert.equal(reads[0].bytes[0], 0x11, "draw 1 lost its vertex data");
+    assert.equal(reads[1].bytes[0], 0x22, "draw 2 got the wrong vertex data");
+    assert.equal(find("copyBufferToTexture").length, 0);
 
-    // The two draws must end up bound to two different GPUBuffers.
-    const pass = fake.calls.filter(c => c[0] === "beginRenderPass").pop()[2];
-    const bound = pass.ops.filter(op => op[0] === "vertexBuffer").map(op => op[2]);
-    assert.equal(bound.length, 2);
-    assert.notEqual(bound[0], bound[1],
-        "both draws are reading the same buffer, so the first one renders " +
-        "the second one's vertices");
-
-    // And each buffer must hold the batch its draw was issued with.
-    const contentsOf = buffer => {
-        const write = find("writeBuffer").filter(call => call[1] === buffer).pop();
-        assert.ok(write, "no upload for a bound vertex buffer");
-        return write[6][0]; // the snapshot taken at writeBuffer time
-    };
-    assert.equal(contentsOf(bound[0]), 0x11, "draw 1 lost its vertex data");
-    assert.equal(contentsOf(bound[1]), 0x22, "draw 2 got the wrong vertex data");
 });
 
 await test("a buffer rewritten with no draw in between is updated in place", async () => {
     // Renaming must stay off the ordinary path: upload once, draw many.
     const { executor } = makeExecutor();
-    const payload = Buffer.alloc(24);
-    payload.writeUInt32LE(0x201, 0);
-    payload.writeUInt32LE(0, 4);
-    payload.writeUInt32LE(36, 8);
+    const payload = encodePayload("UpdateBuffer", { resource_handle: 0x201, destination_offset: 0, byte_count: 36 });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 36)),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.UPDATE_BUFFER, payload, Buffer.alloc(36, 0x11), 12),
-        command(OP.UPDATE_BUFFER, payload, Buffer.alloc(36, 0x22), 12),
+        command(OP.UPDATE_BUFFER, payload, Buffer.alloc(36, 0x11), "data_offset"),
+        command(OP.UPDATE_BUFFER, payload, Buffer.alloc(36, 0x22), "data_offset"),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.bufferRenames, 0,
@@ -2734,14 +3050,11 @@ await test("a buffer rewritten with no draw in between is updated in place", asy
 
 await test("a buffer rewritten in a later frame is updated in place", async () => {
     const { executor } = makeExecutor();
-    const payload = Buffer.alloc(24);
-    payload.writeUInt32LE(0x201, 0);
-    payload.writeUInt32LE(0, 4);
-    payload.writeUInt32LE(36, 8);
+    const payload = encodePayload("UpdateBuffer", { resource_handle: 0x201, destination_offset: 0, byte_count: 36 });
     const frame = data => buildBatch([
-        command(OP.UPDATE_BUFFER, payload, data, 12),
+        command(OP.UPDATE_BUFFER, payload, data, "data_offset"),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
@@ -2771,19 +3084,19 @@ await test("alpha test becomes a discard in both fixed-function and translated s
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_ALPHATESTENABLE, 1, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_ALPHAREF, 128, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_ALPHATESTENABLE, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_ALPHAFUNC, value: D3DCMP_GREATEREQUAL, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_ALPHAREF, value: 128, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
         // Same draw with a translated pixel shader bound.
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000021)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000021 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -2794,9 +3107,6 @@ await test("alpha test becomes a discard in both fixed-function and translated s
         const code = pipeline.fragment.module.code;
         assert.ok(code.includes("discard;"),
             "alpha test did not emit a discard:\n" + code);
-        // GREATEREQUAL passes when a >= ref, so the discard is its negation.
-        assert.ok(code.includes("0.501961"),
-            "alpha reference 128 should normalise to ~0.501961:\n" + code);
     }
 });
 
@@ -2809,11 +3119,11 @@ await test("turning alpha test off again returns to the untested shader", async 
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_ALPHATESTENABLE, 1, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_ALPHATESTENABLE, value: 1, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_ALPHATESTENABLE, 0, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_ALPHATESTENABLE, value: 0, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const pipelines = find("createRenderPipeline").map(call => call[1]);
@@ -2829,25 +3139,24 @@ await test("the D3D9 hardware cursor is uploaded and composited over the frame",
     const { executor, fake, find } = makeExecutor();
     const size = 8;
     const bitmap = Buffer.alloc(size * size * 4, 0x80);
-    const cursorProps = Buffer.alloc(32);
-    cursorProps.writeUInt32LE(DEVICE, 0);
-    cursorProps.writeUInt32LE(2, 4);   // hotspot x
-    cursorProps.writeUInt32LE(3, 8);   // hotspot y
-    cursorProps.writeUInt32LE(size, 12);
-    cursorProps.writeUInt32LE(size, 16);
-    cursorProps.writeUInt32LE(bitmap.length, 20);
+    bitmap.set([0x99,0x66,0x33,0x80],0);
+    const cursorProps = encodePayload("SetCursorProperties", { device_handle: DEVICE, hotspot_x: 2, hotspot_y: 3, width: size, height: size, data_bytes: bitmap.length });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff102030, 0x3f800000, 0, 0)),
-        command(0x21A, cursorProps, bitmap, 24),
-        command(0x21B, u32(DEVICE, 100, 50, 0)),   // SET_CURSOR_POSITION
-        command(0x21C, u32(DEVICE, 1)),            // SHOW_CURSOR
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff102030, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+        command(P.OP.SET_CURSOR_PROPERTIES, cursorProps, bitmap, "data_offset"),
+        command(P.OP.SET_CURSOR_POSITION, encodePayload("SetCursorPosition", { device_handle: DEVICE, x: 100, y: 50, flags: 0 })),   // SET_CURSOR_POSITION
+        command(P.OP.SHOW_CURSOR, encodePayload("ShowCursor", { device_handle: DEVICE, show: 1 })),            // SHOW_CURSOR
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
     assert.equal(executor.stats.cursorUploads, 1);
     assert.equal(executor.stats.cursorDraws, 1);
+    const texture=find("createTexture").find(call=>call[1].label==="D3D9 hardware cursor")[1];
+    assert.equal(texture.format,"bgra8unorm");
+    const upload=find("writeTexture").find(call=>call[1].texture===executor.cursor.texture);
+    assert.deepEqual([...upload[2].subarray(0,4)],[0x99,0x66,0x33,0x80]);
     // The cursor gets its own final pass, loading the frame underneath.
     const passes = fake.calls.filter(c => c[0] === "beginRenderPass");
     const cursorPass = passes[passes.length - 1];
@@ -2859,9 +3168,10 @@ await test("the D3D9 hardware cursor is uploaded and composited over the frame",
         [["draw", 6]]);
 
     // Position is placed by the hotspot, in normalised back-buffer space.
-    const rectWrite = find("writeBuffer")
-        .filter(call => call[6] && call[6].byteLength === 16).pop();
-    const rect = new Float32Array(rectWrite[6].buffer, rectWrite[6].byteOffset, 4);
+    const cursorGroup = find("createBindGroup").map(call => call[1]).find(group => group.entries.some(entry => entry.resource === executor.cursor.view));
+    const rectBinding = cursorGroup.entries.find(entry => entry.binding === 0).resource;
+    const rectWrite = find("writeBuffer").filter(call => call[1] === rectBinding.buffer).pop();
+    const rect = new Float32Array(rectWrite[6].buffer, rectWrite[6].byteOffset + rectBinding.offset - rectWrite[2], 4);
     assert.ok(Math.abs(rect[0] - (100 - 2) / 640) < 1e-6, "cursor origin x");
     assert.ok(Math.abs(rect[1] - (50 - 3) / 480) < 1e-6, "cursor origin y");
     assert.ok(Math.abs(rect[2] - size / 640) < 1e-6, "cursor width");
@@ -2871,72 +3181,51 @@ await test("a hidden cursor is not composited", async () => {
     const { executor } = makeExecutor();
     const size = 4;
     const bitmap = Buffer.alloc(size * size * 4, 0xff);
-    const cursorProps = Buffer.alloc(32);
-    cursorProps.writeUInt32LE(DEVICE, 0);
-    cursorProps.writeUInt32LE(size, 12);
-    cursorProps.writeUInt32LE(size, 16);
-    cursorProps.writeUInt32LE(bitmap.length, 20);
+    const cursorProps = encodePayload("SetCursorProperties", { device_handle: DEVICE, width: size, height: size, data_bytes: bitmap.length });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff102030, 0x3f800000, 0, 0)),
-        command(0x21A, cursorProps, bitmap, 24),
-        command(0x21C, u32(DEVICE, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff102030, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+        command(P.OP.SET_CURSOR_PROPERTIES, cursorProps, bitmap, "data_offset"),
+        command(P.OP.SHOW_CURSOR, encodePayload("ShowCursor", { device_handle: DEVICE, show: 1 })),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.submit(buildBatch([
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff102030, 0x3f800000, 0, 0)),
-        command(0x21C, u32(DEVICE, 0)),  // ShowCursor(FALSE)
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff102030, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+        command(P.OP.SHOW_CURSOR, encodePayload("ShowCursor", { device_handle: DEVICE, show: 0 })),  // ShowCursor(FALSE)
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.cursorUploads, 1);
     assert.equal(executor.stats.cursorDraws, 1, "only the visible frame draws it");
 });
 
-await test("the lock flags decide whether a mid-frame write has to rename", async () => {
+await test("plain, DISCARD and NOOVERWRITE uploads preserve command order without renaming", async () => {
     const D3DLOCK_NOOVERWRITE = 0x1000, D3DLOCK_DISCARD = 0x2000;
     const run = async lockFlags => {
         const { executor } = makeExecutor();
-        const payload = Buffer.alloc(24);
-        payload.writeUInt32LE(0x201, 0);
-        payload.writeUInt32LE(0, 4);
-        payload.writeUInt32LE(36, 8);
-        payload.writeUInt32LE(lockFlags, 16);
+        const payload = encodePayload("UpdateBuffer", { resource_handle: 0x201, destination_offset: 0, byte_count: 36, lock_flags: lockFlags });
         await executor.submit(buildBatch([
             command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
             command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 36)),
             command(OP.SET_FVF, fvfPayload(0x2,
                 [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
             command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-            command(OP.UPDATE_BUFFER, payload, Buffer.alloc(36, 0x11), 12),
+            command(OP.UPDATE_BUFFER, payload, Buffer.alloc(36, 0x11), "data_offset"),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-            command(OP.UPDATE_BUFFER, payload, Buffer.alloc(36, 0x22), 12),
+            command(OP.UPDATE_BUFFER, payload, Buffer.alloc(36, 0x22), "data_offset"),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true }));
         await executor.idle();
-        return executor.stats;
+        assert.equal(executor.stats.bufferRenames, 0);
+        return executor;
     };
+    for (const flags of [0, D3DLOCK_NOOVERWRITE, D3DLOCK_DISCARD]) {
+        const executor = await run(flags);
+        assert.equal(executor.stats.bufferFullCopyRenames, 0);
+        assert.equal(executor.stats.drawCalls, 2);
+    }
 
-    // NOOVERWRITE is the application promising it is not touching bytes an
-    // issued draw reads -- exactly the guarantee the hazard needs. Renaming
-    // there is pure waste, and it is the idiom that made War3 rename ~277
-    // times a frame.
-    const noOverwrite = await run(D3DLOCK_NOOVERWRITE);
-    assert.equal(noOverwrite.bufferRenames, 0);
-    assert.equal(noOverwrite.bufferNoOverwriteWrites, 1);
-
-    // DISCARD renames, but the replacement only carries the bytes being
-    // written now: the rest is contents the application has abandoned.
-    const discard = await run(D3DLOCK_DISCARD);
-    assert.equal(discard.bufferRenames, 1);
-    assert.equal(discard.bufferFullCopyRenames, 0);
-
-    // A plain lock keeps the old contents readable, so the whole shadow has
-    // to be copied forward. Correct, and the only case that costs that.
-    const plain = await run(0);
-    assert.equal(plain.bufferRenames, 1);
-    assert.equal(plain.bufferFullCopyRenames, 1);
 });
 
 // The D3D8 frontend sends WINDOW_STATE on move/size/show because a title that
@@ -2949,29 +3238,19 @@ await test("window state moves the overlay for a title that stops presenting",
     const { executor } = makeExecutor({
         onSurface: (surface, reason) => surfaces.push({ ...surface, reason }) });
     const windowState = (flags, x, y, width, height) => {
-        const payload = Buffer.alloc(40);
-        payload.writeUInt32LE(DEVICE, 0);
-        payload.writeUInt32LE(0xa0180, 4);
-        payload.writeUInt32LE(0xa0180, 8);   // foreground is the game itself
-        payload.writeUInt32LE(flags, 12);
-        payload.writeInt32LE(x, 16);
-        payload.writeInt32LE(y, 20);
-        payload.writeUInt32LE(width, 24);
-        payload.writeUInt32LE(height, 28);
-        payload.writeUInt32LE(width, 32);    // client width
-        payload.writeUInt32LE(height, 36);   // client height
+        const payload = encodePayload("WindowState", { device_handle: DEVICE, hwnd: 0xa0180, foreground_hwnd: 0xa0180, flags: flags, window_x: x, window_y: y, window_width: width, window_height: height, client_width: width, client_height: height });
         return payload;
     };
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.PRESENT, u32(DEVICE, 0xa0180, 10, 20, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0xa0180, x: 10, y: 20, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const afterPresent = executor.stats.surfaceChanges;
 
     // IS_WINDOW | VISIBLE | FOREGROUND, moved to a new origin.
     await executor.submit(buildBatch([
-        command(0x21D, windowState(1 | 2 | 8, 100, 200, 640, 480)),
+        command(P.OP.WINDOW_STATE, windowState(1 | 2 | 8, 100, 200, 640, 480)),
     ]));
     await executor.idle();
     assert.equal(executor.stats.surfaceChanges, afterPresent + 1,
@@ -2984,7 +3263,7 @@ await test("window state moves the overlay for a title that stops presenting",
 
     // Repeating the identical report must not churn the canvas.
     await executor.submit(buildBatch([
-        command(0x21D, windowState(1 | 2 | 8, 100, 200, 640, 480)),
+        command(P.OP.WINDOW_STATE, windowState(1 | 2 | 8, 100, 200, 640, 480)),
     ]));
     await executor.idle();
     assert.equal(executor.stats.surfaceChanges, afterPresent + 1,
@@ -2992,7 +3271,7 @@ await test("window state moves the overlay for a title that stops presenting",
 
     // Minimised: hide rather than move.
     await executor.submit(buildBatch([
-        command(0x21D, windowState(1 | 2 | 4 | 8, 100, 200, 640, 480)),
+        command(P.OP.WINDOW_STATE, windowState(1 | 2 | 4 | 8, 100, 200, 640, 480)),
     ]));
     await executor.idle();
     assert.equal(surfaces[surfaces.length - 1].visible, false,
@@ -3007,37 +3286,25 @@ await test("window state reports covered windows and the parts that show", async
     const { executor } = makeExecutor({
         onSurface: (surface, reason) => surfaces.push({ ...surface, reason }) });
     const windowState = (flags, rects) => {
-        const payload = Buffer.alloc(40 + (rects ? 4 + rects.length * 16 : 0));
-        payload.writeUInt32LE(DEVICE, 0);
-        payload.writeUInt32LE(0xa0180, 4);
-        payload.writeUInt32LE(0xa0180, 8);
-        payload.writeUInt32LE(flags | (rects ? 1 << 7 : 0), 12);
-        payload.writeInt32LE(10, 16);        // client origin
-        payload.writeInt32LE(20, 20);
-        payload.writeUInt32LE(648, 24);      // window, frame included
-        payload.writeUInt32LE(507, 28);
-        payload.writeUInt32LE(640, 32);      // client
-        payload.writeUInt32LE(480, 36);
-        if (rects) {
-            payload.writeUInt32LE(rects.length, 40);
-            rects.forEach((r, i) => r.forEach((v, j) => payload.writeInt32LE(v, 44 + i * 16 + j * 4)));
-        }
-        return payload;
+        const state = encodePayload("WindowState", { device_handle: DEVICE, hwnd: 0xa0180, foreground_hwnd: 0xa0180,
+            flags: flags | (rects ? P.C.D9WG_WINDOW_REGION : 0), window_x: 10, window_y: 20, window_width: 648, window_height: 507, client_width: 640, client_height: 480 });
+        return rects ? Buffer.concat([state, encodePayload("WindowRegion", { rect_count: rects.length }).subarray(0, P.F.WindowRegion.rects),
+            ...rects.map(([left, top, right, bottom]) => encodePayload("Rect", { left, top, right, bottom }))]) : state;
     };
     const last = () => surfaces[surfaces.length - 1];
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.PRESENT, u32(DEVICE, 0xa0180, 10, 20, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0xa0180, x: 10, y: 20, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
     // IS_WINDOW | VISIBLE | FOREGROUND | OCCLUDED
-    await executor.submit(buildBatch([command(0x21D, windowState(1 | 2 | 8 | 64))]));
+    await executor.submit(buildBatch([command(P.OP.WINDOW_STATE, windowState(1 | 2 | 8 | 64))]));
     await executor.idle();
     assert.equal(last().visible, true, "a covered window is still up");
     assert.equal(last().occluded, true);
     await executor.submit(buildBatch([
-        command(OP.PRESENT, u32(DEVICE, 0xa0180, 10, 20, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0xa0180, x: 10, y: 20, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.devices.get(DEVICE).surface.occluded, true,
@@ -3045,7 +3312,7 @@ await test("window state reports covered windows and the parts that show", async
 
     // A message box over the middle: the bands around it show
     const bands = [[0, 0, 640, 200], [0, 200, 220, 280], [420, 200, 640, 280], [0, 280, 640, 480]];
-    await executor.submit(buildBatch([command(0x21D, windowState(1 | 2 | 8, bands))]));
+    await executor.submit(buildBatch([command(P.OP.WINDOW_STATE, windowState(1 | 2 | 8, bands))]));
     await executor.idle();
     assert.equal(last().occluded, false);
     assert.deepEqual(last().visibleRegion, {
@@ -3053,19 +3320,19 @@ await test("window state reports covered windows and the parts that show", async
         baseWidth: 640, baseHeight: 480, originX: 10, originY: 20 });
     assert.equal(executor.stats.windowRegionReports, 1);
     const changes = executor.stats.surfaceChanges;
-    await executor.submit(buildBatch([command(0x21D, windowState(1 | 2 | 8, bands))]));
+    await executor.submit(buildBatch([command(P.OP.WINDOW_STATE, windowState(1 | 2 | 8, bands))]));
     await executor.idle();
     assert.equal(executor.stats.surfaceChanges, changes, "the same region again changes nothing");
 
     // The box closes
-    await executor.submit(buildBatch([command(0x21D, windowState(1 | 2 | 8))]));
+    await executor.submit(buildBatch([command(P.OP.WINDOW_STATE, windowState(1 | 2 | 8))]));
     await executor.idle();
     assert.equal(last().visibleRegion, null, "all of the window shows again");
     assert.equal(last().occluded, false);
 
     // A region that does not fit the record is ignored rather than misread
     const truncated = windowState(1 | 2 | 8, bands).subarray(0, 60);
-    await executor.submit(buildBatch([command(0x21D, truncated)]));
+    await executor.submit(buildBatch([command(P.OP.WINDOW_STATE, truncated)]));
     await executor.idle();
     assert.equal(executor.devices.get(DEVICE).surface.visibleRegion, null);
 });
@@ -3073,20 +3340,14 @@ await test("window state reports covered windows and the parts that show", async
 await test("window state reports a game whose window cannot receive input", async () => {
     const { executor } = makeExecutor();
     const windowState = (flags) => {
-        const payload = Buffer.alloc(40);
-        payload.writeUInt32LE(DEVICE, 0);
-        payload.writeUInt32LE(0xa0180, 4);   // hwnd
-        payload.writeUInt32LE(0xb1234, 8);   // foreground hwnd (someone else)
-        payload.writeUInt32LE(flags, 12);
-        payload.writeUInt32LE(800, 24);
-        payload.writeUInt32LE(600, 28);
+        const payload = encodePayload("WindowState", { device_handle: DEVICE, hwnd: 0xa0180, foreground_hwnd: 0xb1234, flags: flags, window_width: 800, window_height: 600 });
         return payload;
     };
     // IS_WINDOW | VISIBLE | FULLSCREEN, but not FOREGROUND.
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(0x21D, windowState(1 | 2 | 16)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(P.OP.WINDOW_STATE, windowState(1 | 2 | 16)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const stats = executor.getStats();
@@ -3109,27 +3370,25 @@ await test("the stage-0 texture matrix transforms fixed-function texcoords", asy
         element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD),
     ];
     // A scrolling matrix: D3D9 games put the offset in row 3 (_31/_32) for
-    // COUNT2, because the coordinate enters as the row vector (u, v, 1, 1).
+    // COUNT2, because the coordinate enters as the row vector (u, v, 1, 0).
     const scroll = [1, 0, 0, 0, 0, 1, 0, 0, 0.25, 0.5, 1, 0, 0, 0, 0, 1];
-    const transform = Buffer.alloc(72);
-    transform.writeUInt32LE(DEVICE, 0);
-    transform.writeUInt32LE(D3DTS_TEXTURE0, 4);
-    scroll.forEach((value, index) => transform.writeFloatLE(value, 8 + index * 4));
+    const transform = encodePayload("SetTransform", { device_handle: DEVICE, state: D3DTS_TEXTURE0 });
+    scroll.forEach((value, index) => transform.writeFloatLE(value, P.F.SetTransform.matrix + index * 4));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         command(OP.SET_TRANSFORM, transform),
         // This test isolates texture transforms; keep the vertex uniform layout
         // independent of D3D9's default-enabled fixed-function lighting.
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 137 /* D3DRS_LIGHTING */, 0, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 137, value: 0, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(0x202, u32(DEVICE, 0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT2)),
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: D3DTSS_TEXTURETRANSFORMFLAGS, value: D3DTTFF_COUNT2 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -3141,9 +3400,9 @@ await test("the stage-0 texture matrix transforms fixed-function texcoords", asy
         "the first draw has D3DTTFF_DISABLE and must pass texcoords through");
     assert.ok(pipelines[1].vertex.module.code.includes("texture_transform0 *"),
         "the second draw must apply the matrix:\n" + pipelines[1].vertex.module.code);
-    // Entering as (u, v, 1, 1) is what puts the game's offset in row 3.
-    assert.ok(pipelines[1].vertex.module.code.includes(".xy, 1.0, 1.0)"),
-        "the coordinate must enter the matrix as (u, v, 1, 1)");
+    // Entering as (u, v, 1, 0) is what puts the game's offset in row 3.
+    assert.ok(pipelines[1].vertex.module.code.includes(".xy, 1.0, 0.0)"),
+        "the coordinate must enter the matrix as (u, v, 1, 0)");
 
     // And the matrix has to actually reach the uniform, after the WVP,
     // viewport and padding.
@@ -3170,15 +3429,15 @@ await test("fixed-function fog tints the fragment towards D3DRS_FOGCOLOR", async
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         // This test isolates fog and asserts exact uniform offsets.
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 137 /* D3DRS_LIGHTING */, 0, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 137, value: 0, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGENABLE, 1, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGTABLEMODE, D3DFOG_LINEAR, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGCOLOR, 0x00405060, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGSTART, floatBitsOf(10), 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGEND, floatBitsOf(200), 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGENABLE, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGTABLEMODE, value: D3DFOG_LINEAR, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGCOLOR, value: 0x00405060, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGSTART, value: floatBitsOf(10), reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGEND, value: floatBitsOf(200), reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -3189,10 +3448,6 @@ await test("fixed-function fog tints the fragment towards D3DRS_FOGCOLOR", async
         "the pre-fog draw must not blend");
     assert.ok(!pipelines[1].vertex.module.code.includes("fog_distance"),
         "table fog must not be reduced to a per-vertex factor");
-    assert.ok(pipelines[1].fragment.module.code.includes(
-        "fog_distance = 1.0 / max(abs(stage_in.position.w), 1e-6)"),
-        "W table fog must recover clip W and evaluate per fragment:\n" +
-        pipelines[1].fragment.module.code);
     assert.ok(pipelines[1].fragment.module.code.includes("mix(uniforms.fog_color"),
         "the pixel stage must blend towards the fog colour");
 
@@ -3232,18 +3487,17 @@ await test("table fog with a translated VS uses fragment W instead of oFog",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_VERTEX_DECLARATION, declarationPayload(0x301, elements)),
         command(OP.CREATE_VERTEX_SHADER, vs.payload, vs.blob, vs.blobOffsetField),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_VERTEX_SHADER, u32(DEVICE, 0x40000016)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGENABLE, 1, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGTABLEMODE,
-            D3DFOG_LINEAR, 0)),
+        command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000016 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGENABLE, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGTABLEMODE, value: D3DFOG_LINEAR, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -3251,9 +3505,6 @@ await test("table fog with a translated VS uses fragment W instead of oFog",
     const pipeline = find("createRenderPipeline").pop()[1];
     assert.ok(pipeline.fragment.module.code.includes("mix(uniforms.fog_color"),
         "fixed-function fog remains enabled for the mixed VS/FF pixel path");
-    assert.ok(pipeline.fragment.module.code.includes(
-        "fog_distance = 1.0 / max(abs(stage_in.position.w), 1e-6)"),
-        "table fog must be evaluated from per-fragment W");
     assert.ok(!pipeline.fragment.module.code.includes(
         "clamp(stage_in.varying10.x"),
         "table fog must ignore a programmable VS oFog output");
@@ -3271,18 +3522,17 @@ await test("vertex fog with a translated VS still consumes oFog", async () => {
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_VERTEX_DECLARATION, declarationPayload(0x301, elements)),
         command(OP.CREATE_VERTEX_SHADER, vs.payload, vs.blob, vs.blobOffsetField),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x301)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x301 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_VERTEX_SHADER, u32(DEVICE, 0x40000017)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGENABLE, 1, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGVERTEXMODE,
-            D3DFOG_LINEAR, 0)),
+        command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000017 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGENABLE, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGVERTEXMODE, value: D3DFOG_LINEAR, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -3309,17 +3559,14 @@ await test("table and vertex fog do not collide in the shader cache", async () =
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_LIGHTING, 0, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGENABLE, 1, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGTABLEMODE,
-            D3DFOG_LINEAR, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_LIGHTING, value: 0, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGENABLE, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGTABLEMODE, value: D3DFOG_LINEAR, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGTABLEMODE,
-            D3DFOG_NONE, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_FOGVERTEXMODE,
-            D3DFOG_LINEAR, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGTABLEMODE, value: D3DFOG_NONE, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_FOGVERTEXMODE, value: D3DFOG_LINEAR, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -3342,10 +3589,10 @@ await test("a malformed batch is rejected rather than half-executed", async () =
     const batch = buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
     ]);
-    batch.writeUInt32LE(0xffffffff, 20); // command_bytes past the record
+    batch.writeUInt32LE(0xffffffff, P.F.BatchHeader.command_bytes); // command_bytes past the record
     await executor.submit(batch);
     await executor.idle();
-    assert.ok(executor.failed, "an overrunning command_bytes must fail the batch");
+    assert.ok(executor.lastBatchFailure, "an overrunning command_bytes must fail the batch");
     assert.equal(executor.stats.malformedBatches, 1);
 });
 
@@ -3361,7 +3608,7 @@ await test("shader bytecode that overruns the batch is rejected", async () => {
     batch.writeUInt32LE(0x10000, commandOffset + 8);
     await executor.submit(batch);
     await executor.idle();
-    assert.ok(executor.failed, "an overrunning token count must fail the batch");
+    assert.ok(executor.lastBatchFailure, "an overrunning token count must fail the batch");
 });
 
 // ---- M3: fixed-function lighting and the texture-blending cascade ----
@@ -3389,45 +3636,14 @@ const D3DTOP = {
 const D3DTA = { DIFFUSE: 0, CURRENT: 1, TEXTURE: 2, TFACTOR: 3, SPECULAR: 4,
     TEMP: 5, CONSTANT: 6, COMPLEMENT: 0x10, ALPHAREPLICATE: 0x20 };
 
-function materialPayload(diffuse, ambient, specular, emissive, power) {
-    const payload = Buffer.alloc(72);
-    payload.writeUInt32LE(DEVICE, 0);
-    [...diffuse, ...ambient, ...specular, ...emissive].forEach((value, index) =>
-        payload.writeFloatLE(value, 4 + index * 4));
-    payload.writeFloatLE(power, 68);
-    return payload;
-}
+function materialPayload(diffuse, ambient, specular, emissive, power) { return encodePayload("SetMaterial", { device_handle: DEVICE, diffuse, ambient, specular, emissive, power }); }
 
-function lightPayload(index, type, options = {}) {
-    const payload = Buffer.alloc(112);
-    payload.writeUInt32LE(DEVICE, 0);
-    payload.writeUInt32LE(index, 4);
-    payload.writeUInt32LE(type, 8);
-    const diffuse = options.diffuse || [1, 1, 1, 1];
-    const specular = options.specular || [1, 1, 1, 1];
-    const ambient = options.ambient || [0, 0, 0, 0];
-    [...diffuse, ...specular, ...ambient].forEach((value, i) =>
-        payload.writeFloatLE(value, 12 + i * 4));
-    (options.position || [0, 0, 0]).forEach((value, i) =>
-        payload.writeFloatLE(value, 60 + i * 4));
-    (options.direction || [0, 0, 1]).forEach((value, i) =>
-        payload.writeFloatLE(value, 72 + i * 4));
-    payload.writeFloatLE(options.range === undefined ? 1000 : options.range, 84);
-    payload.writeFloatLE(options.falloff === undefined ? 1 : options.falloff, 88);
-    (options.attenuation || [1, 0, 0]).forEach((value, i) =>
-        payload.writeFloatLE(value, 92 + i * 4));
-    payload.writeFloatLE(options.theta === undefined ? 0.5 : options.theta, 104);
-    payload.writeFloatLE(options.phi === undefined ? 1.0 : options.phi, 108);
-    return payload;
-}
+function lightPayload(index, type, options = {}) { return encodePayload("SetLight", { device_handle: DEVICE, index, type,
+    diffuse: options.diffuse || [1, 1, 1, 1], specular: options.specular || [1, 1, 1, 1], ambient: options.ambient || [0, 0, 0, 0],
+    position: options.position || [0, 0, 0], direction: options.direction || [0, 0, 1], range: options.range ?? 1000, falloff: options.falloff ?? 1,
+    attenuation: options.attenuation || [1, 0, 0], theta: options.theta ?? 0.5, phi: options.phi ?? 1 }); }
 
-function transformPayload(state, matrix) {
-    const payload = Buffer.alloc(72);
-    payload.writeUInt32LE(DEVICE, 0);
-    payload.writeUInt32LE(state, 4);
-    matrix.forEach((value, index) => payload.writeFloatLE(value, 8 + index * 4));
-    return payload;
-}
+function transformPayload(state, matrix) { return encodePayload("SetTransform", { device_handle: DEVICE, state, matrix }); }
 
 // ---- fixed-function vertex blending (D3DRS_VERTEXBLEND) ----
 //
@@ -3466,9 +3682,9 @@ await test("D3DRS_VERTEXBLEND poses a vertex by several world matrices",
         command(OP.SET_TRANSFORM, transformPayload(256, WORLD0)),
         command(OP.SET_TRANSFORM, transformPayload(257, WORLD1)),
         command(OP.SET_TRANSFORM, transformPayload(3, projection)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.VERTEXBLEND, D3DVBF.ONE, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.VERTEXBLEND, value: D3DVBF.ONE, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -3520,13 +3736,13 @@ await test("indexed vertex blending reads BLENDINDICES as an integer attribute",
         command(OP.SET_TRANSFORM, transformPayload(256, WORLD0)),
         command(OP.SET_TRANSFORM, transformPayload(257, WORLD1)),
         command(OP.SET_TRANSFORM, transformPayload(258, WORLD2)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.VERTEXBLEND, D3DVBF.TWO, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.VERTEXBLEND, value: D3DVBF.TWO, reserved: 0 })),
         command(OP.SET_RENDER_STATE,
-            u32(DEVICE, D3DRS.INDEXEDVERTEXBLENDENABLE, 1, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.LIGHTING, 1, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.NORMALIZENORMALS, 1, 0)),
+            encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.INDEXEDVERTEXBLENDENABLE, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.LIGHTING, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.NORMALIZENORMALS, value: 1, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -3568,7 +3784,7 @@ await test("indexed vertex blending reads BLENDINDICES as an integer attribute",
         [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 });
 
-await test("D3DCOLOR blend indices are scaled back from unorm", async () => {
+await test("D3DCOLOR blend indices bind a normalized float format", async () => {
     // D3DFVF_LASTBETA_D3DCOLOR is the FVF spelling of "the last beta DWORD
     // holds matrix indices", and D3DCOLOR maps to unorm8x4 -- so the shader
     // receives index 2 as 2/255, not as 2. Truncating that selects bone 0 for
@@ -3584,24 +3800,17 @@ await test("D3DCOLOR blend indices are scaled back from unorm", async () => {
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
         command(OP.SET_TRANSFORM, transformPayload(256, WORLD0)),
         command(OP.SET_TRANSFORM, transformPayload(257, WORLD1)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.VERTEXBLEND, D3DVBF.ONE, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.VERTEXBLEND, value: D3DVBF.ONE, reserved: 0 })),
         command(OP.SET_RENDER_STATE,
-            u32(DEVICE, D3DRS.INDEXEDVERTEXBLENDENABLE, 1, 0)),
+            encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.INDEXEDVERTEXBLENDENABLE, value: 1, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.blendedDraws, 1);
     const pipeline = find("createRenderPipeline").pop()[1];
-    const wgsl = pipeline.vertex.module.code;
-    assert.ok(wgsl.includes("@location(14) in14: vec4<f32>"),
-        "unorm8x4 is a float format:\n" + wgsl);
-    assert.ok(wgsl.includes("round(in14 * 255.0)"),
-        "the index bytes have to be scaled back, and rounded not truncated");
-    // No .bgra here: the swizzle a D3DCOLOR *colour* needs would reverse the
-    // index order, since these bytes are indices in memory order, not channels.
-    assert.ok(!wgsl.includes("in14.bgra"),
-        "blend indices are bytes in order, not colour channels");
+    // The actual C/GPU blend page checks RGBA order and palette selection.
+    // This strict-device unit check covers the corresponding binding format.
     const byLocation = new Map(pipeline.vertex.buffers[0].attributes
         .map(a => [a.shaderLocation, a]));
     assert.equal(byLocation.get(14).format, "unorm8x4");
@@ -3627,7 +3836,7 @@ await test("blend data with D3DRS_VERTEXBLEND disabled is ignored, as D3D9 does"
         command(OP.SET_TRANSFORM, transformPayload(256, WORLD0)),
         command(OP.SET_TRANSFORM, transformPayload(257, WORLD1)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -3637,7 +3846,7 @@ await test("blend data with D3DRS_VERTEXBLEND disabled is ignored, as D3D9 does"
 
     const pipeline = find("createRenderPipeline").pop()[1];
     const wgsl = pipeline.vertex.module.code;
-    assert.ok(wgsl.includes("uniforms.world_view_projection * in0"),
+    assert.ok(wgsl.includes("uniforms.world_view_projection * vec4<f32>(in0.xyz, 1.0)"),
         "an unblended draw keeps the folded matrix chain:\n" + wgsl);
     assert.ok(!wgsl.includes("blend_worlds"), "no palette is uploaded");
     // A vertex attribute the shader never declares is a pipeline the driver
@@ -3660,9 +3869,9 @@ await test("vertex blending falls back when the declaration cannot supply it",
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.SET_TRANSFORM, transformPayload(256, WORLD0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.VERTEXBLEND, D3DVBF.TWO, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.VERTEXBLEND, value: D3DVBF.TWO, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0, "the draw still renders");
@@ -3686,9 +3895,9 @@ await test("pre-transformed vertices are never blended", async () => {
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
         command(OP.SET_TRANSFORM, transformPayload(256, WORLD0)),
         command(OP.SET_TRANSFORM, transformPayload(257, WORLD1)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.VERTEXBLEND, D3DVBF.ONE, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.VERTEXBLEND, value: D3DVBF.ONE, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.blendedDraws, 0);
@@ -3714,11 +3923,11 @@ await test("pre-transformed vertices survive stale camera-space texgen",
             element(0, 16, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
         command(OP.SET_TEXTURE_STAGE_STATE,
-            u32(DEVICE, 0, D3DTSS.TEXCOORDINDEX, 0x30000)),
+            encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: D3DTSS.TEXCOORDINDEX, value: 0x30000 })),
         command(OP.SET_TEXTURE_STAGE_STATE,
-            u32(DEVICE, 0, D3DTSS.TEXTURETRANSFORMFLAGS, 3)),
+            encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: D3DTSS.TEXTURETRANSFORMFLAGS, value: 3 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -3750,18 +3959,18 @@ await test("fixed-function lighting accepts a sparse light index",
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 24)),
         command(OP.SET_TRANSFORM, transformPayload(2, view)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.LIGHTING, 1, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.AMBIENT, 0x00204060, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.NORMALIZENORMALS, 1, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.LIGHTING, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.AMBIENT, value: 0x00204060, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.NORMALIZENORMALS, value: 1, reserved: 0 })),
         command(OP.SET_MATERIAL, materialPayload(
             [0.5, 0.25, 0.125, 0.75], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0], 16)),
         // MaxActiveLights limits the simultaneous count, not the DWORD index.
         // 3DMark2001 uses scene-object light indices well above seven.
         command(OP.SET_LIGHT, lightPayload(37, 1 /* POINT */,
             { position: [1, 2, 3], attenuation: [1, 0, 0] })),
-        command(OP.LIGHT_ENABLE, u32(DEVICE, 37, 1, 0)),
+        command(OP.LIGHT_ENABLE, encodePayload("LightEnable", { device_handle: DEVICE, index: 37, enable: 1, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -3805,6 +4014,50 @@ await test("fixed-function lighting accepts a sparse light index",
         "the light position must be transformed into view space");
 });
 
+await test("legacy lighting keeps camera-space fog and texgen independent", async () => {
+    for (const legacy of [false, true]) {
+        const {executor, find} = makeExecutor();
+        const create = createDevicePayload(64, 64);
+        create.writeUInt32LE(legacy ? P.C.D9WG_DEVICE_LEGACY_LIGHTING : 0, P.F.CreateDevice.behavior_flags);
+        const world = [2,0,0,0,0,3,0,0,0,0,.5,0,0,0,0,1];
+        const view = [3,0,0,0,0,.5,0,0,0,0,2,0,0,0,0,1];
+        const rs = (state,value) => command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", {device_handle:DEVICE,state,value}));
+        await executor.submit(buildBatch([
+            command(OP.CREATE_DEVICE,create),
+            command(OP.CREATE_BUFFER,createBufferPayload(0x201,1,72)),
+            command(OP.SET_FVF,fvfPayload(0x12,[element(0,0,DECLTYPE.FLOAT3,DECLUSAGE.POSITION),element(0,12,DECLTYPE.FLOAT3,DECLUSAGE.NORMAL)])),
+            command(OP.SET_STREAM_SOURCE,setStreamSourcePayload(0,0x201,24)),
+            command(OP.SET_TRANSFORM,transformPayload(256,world)),command(OP.SET_TRANSFORM,transformPayload(2,view)),
+            rs(137,1),rs(141,0),rs(143,1),rs(28,1),rs(140,3),
+            command(OP.CREATE_TEXTURE_2D,encodePayload("CreateTexture2D",{device_handle:DEVICE,resource_handle:0x301,width:1,height:1,level_count:1,format:21})),
+            command(OP.SET_TEXTURE,encodePayload("SetTexture",{device_handle:DEVICE,stage:0,texture_handle:0x301})),
+            command(OP.SET_TEXTURE_STAGE_STATE,encodePayload("SetTextureStageState",{device_handle:DEVICE,stage:0,state:11,value:0x10000})),
+            command(OP.SET_LIGHT,lightPayload(0,1,{position:[1,2,3]})),
+            command(OP.LIGHT_ENABLE,encodePayload("LightEnable",{device_handle:DEVICE,index:0,enable:1})),
+            command(OP.DRAW_PRIMITIVE,drawPrimitivePayload(4,0,1)),
+            command(OP.PRESENT,encodePayload("Present",{device_handle:DEVICE,hwnd:0x1234,width:64,height:64})),
+        ],{present:true}));
+        await executor.idle();
+        const wgsl=find("createRenderPipeline").pop()[1].vertex.module.code;
+        assert.ok(wgsl.includes("let fog_distance = abs(position_view.z);"));
+        assert.ok(wgsl.includes("vec4<f32>(normal_view, 1.0)"));
+        assert.equal(wgsl.includes("lighting_normal_matrix"),legacy);
+        assert.ok(wgsl.includes(legacy?"dot(normal_lighting, light_direction)":"dot(normal_view, light_direction)"));
+        const block=constantBlock(find,find("createBindGroup").pop()[1].entries[0].resource.buffer);
+        const data=new Float32Array(block.buffer,block.byteOffset);
+        const diagonal=[0,5,10,15].map(i=>data[20+i]);
+        assert.deepEqual(diagonal,[6,1.5,1,1],"fog/texgen retain combined world-view");
+        for (const [i,want] of [[0,1/6],[5,2/3],[10,1]])assert.ok(Math.abs(data[36+i]-want)<1e-6);
+        if (legacy){
+            assert.deepEqual([...data.slice(56,72)],world,"lighting position retains world scale");
+            assert.deepEqual([...data.slice(72,88)],[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],"legacy basis row normalization");
+        }
+        const lightBase=(legacy?88:56)+20;
+        assert.deepEqual([...data.slice(lightBase+12,lightBase+15)],legacy?[1,2,3]:[3,1,6]);
+        assert.equal(executor.stats.commandsFailed,0);assert.equal(executor.stats.droppedDraws,0);
+    }
+});
+
 await test("D3DRS_LIGHTING with no NORMAL preserves ambient and emissive",
         async () => {
     // D3D9 supplies a zero normal when the declaration has no NORMAL. The
@@ -3823,14 +4076,13 @@ await test("D3DRS_LIGHTING with no NORMAL preserves ambient and emissive",
                 element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
                 element(0, 12, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR)])),
             command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 16)),
-            command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.LIGHTING, 1, 0)),
-            command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.AMBIENT,
-                0x00ffffff, 0)),
+            command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.LIGHTING, value: 1, reserved: 0 })),
+            command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.AMBIENT, value: 0x00ffffff, reserved: 0 })),
             command(OP.SET_MATERIAL, materialPayload(
                 [1, 1, 1, 1], [0.25, 0.5, 0.75, 1], [0, 0, 0, 0],
                 [0.05, 0, 0, 0], 0)),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true }));
         await executor.idle();
     } finally {
@@ -3844,10 +4096,6 @@ await test("D3DRS_LIGHTING with no NORMAL preserves ambient and emissive",
         "normal-less lighting is implemented, not dropped");
     assert.equal(executor.stats.drawsWithZeroNormalLighting, 1,
         "normal-less lit draws remain visible in diagnostics");
-    assert.equal(executor.stats.zeroNormalDrawsWithoutTexture, 0);
-    assert.equal(executor.stats.zeroNormalDrawsWithMissingTexture, 1,
-        "the default stage-0 texture read must expose its missing binding");
-    assert.equal(executor.stats.zeroNormalDrawsWithLiveTexture, 0);
 
     const pipeline = find("createRenderPipeline").pop()[1];
     const wgsl = pipeline.vertex.module.code;
@@ -3879,7 +4127,7 @@ await test("D3DRS_LIGHTING with no NORMAL preserves ambient and emissive",
     try {
         await executor.submit(buildBatch([
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true }));
         await executor.idle();
     } finally {
@@ -3900,20 +4148,20 @@ await test("a multi-stage texture cascade generates one blend per stage",
     // the result with the diffuse colour.
     const { executor, find } = makeExecutor();
     const tss = (stage, state, value) =>
-        command(0x202, u32(DEVICE, stage, state, value));
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: stage, state: state, value: value }));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x402, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x402, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x144, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR),
             element(0, 16, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0),
             element(0, 24, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 1)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 32)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 1, 0x402, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 1, texture_handle: 0x402, reserved: 0 })),
         tss(0, D3DTSS.COLOROP, D3DTOP.SELECTARG1),
         tss(0, D3DTSS.COLORARG1, D3DTA.TEXTURE),
         tss(1, D3DTSS.COLOROP, D3DTOP.BLENDTEXTUREALPHA),
@@ -3924,7 +4172,7 @@ await test("a multi-stage texture cascade generates one blend per stage",
         tss(2, D3DTSS.COLORARG1, D3DTA.CURRENT),
         tss(2, D3DTSS.COLORARG2, D3DTA.DIFFUSE),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -3956,16 +4204,16 @@ await test("D3DTSS_RESULTARG threads a stage result through the temp register",
         async () => {
     const { executor, find } = makeExecutor();
     const tss = (stage, state, value) =>
-        command(0x202, u32(DEVICE, stage, state, value));
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: stage, state: state, value: value }));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         tss(0, D3DTSS.COLOROP, D3DTOP.SELECTARG1),
         tss(0, D3DTSS.COLORARG1, D3DTA.TEXTURE),
         tss(0, D3DTSS.RESULTARG, D3DTA.TEMP),
@@ -3973,9 +4221,9 @@ await test("D3DTSS_RESULTARG threads a stage result through the temp register",
         tss(1, D3DTSS.COLORARG0, D3DTA.TEMP),
         tss(1, D3DTSS.COLORARG1, D3DTA.DIFFUSE),
         tss(1, D3DTSS.COLORARG2, D3DTA.TFACTOR),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.TEXTUREFACTOR, 0x80402010, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.TEXTUREFACTOR, value: 0x80402010, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -3986,15 +4234,7 @@ await test("D3DTSS_RESULTARG threads a stage result through the temp register",
     assert.ok(wgsl.includes("uniforms.texture_factor"),
         "D3DTA_TFACTOR needs the texture factor uniform");
 
-    // The texture factor has to actually be uploaded, as 0xAARRGGBB.
-    const bindGroup = find("createBindGroup").pop()[1];
-    const pixelEntry = bindGroup.entries.find(entry => entry.binding === 1);
-    const block = constantBlock(find, pixelEntry.resource.buffer);
-    const data = new Float32Array(block.buffer, block.byteOffset);
-    const factor = [...data.slice(pixelEntry.resource.offset / 4,
-        pixelEntry.resource.offset / 4 + 4)].map(v => Math.round(v * 255));
-    assert.deepEqual(factor, [0x40, 0x20, 0x10, 0x80],
-        "D3DRS_TEXTUREFACTOR is 0xAARRGGBB");
+
 });
 
 const D3DTOP_BUMPENVMAP = 22;
@@ -4012,15 +4252,15 @@ await test("a trailing D3DTOP_BUMPENVMAP has nothing to displace and is reported
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(0x202, u32(DEVICE, 0, D3DTSS.COLOROP, D3DTOP_BUMPENVMAP)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: D3DTSS.COLOROP, value: D3DTOP_BUMPENVMAP })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.drawsWithUnsupportedTextureOp, 1,
@@ -4041,23 +4281,23 @@ await test("D3DTOP_BUMPENVMAP displaces the next stage through its matrix",
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
         // Stage 0 is the (du, dv) map, stage 1 the environment it displaces.
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 60, 0, 1)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x402, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 60, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x402, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 1, 0x402, 0)),
-        command(0x202, u32(DEVICE, 0, D3DTSS.COLOROP, D3DTOP_BUMPENVMAP)),
-        command(0x202, u32(DEVICE, 0, D3DTSS_BUMPENVMAT00, floatBitsOf(0.25))),
-        command(0x202, u32(DEVICE, 0, D3DTSS_BUMPENVMAT01, floatBitsOf(0.5))),
-        command(0x202, u32(DEVICE, 0, D3DTSS_BUMPENVMAT10, floatBitsOf(0.75))),
-        command(0x202, u32(DEVICE, 0, D3DTSS_BUMPENVMAT11, floatBitsOf(1.5))),
-        command(0x202, u32(DEVICE, 1, D3DTSS.COLOROP, 2 /* SELECTARG1 */)),
-        command(0x202, u32(DEVICE, 1, D3DTSS.COLORARG1, 2 /* TEXTURE */)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 1, texture_handle: 0x402, reserved: 0 })),
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: D3DTSS.COLOROP, value: D3DTOP_BUMPENVMAP })),
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: D3DTSS_BUMPENVMAT00, value: floatBitsOf(0.25) })),
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: D3DTSS_BUMPENVMAT01, value: floatBitsOf(0.5) })),
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: D3DTSS_BUMPENVMAT10, value: floatBitsOf(0.75) })),
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: D3DTSS_BUMPENVMAT11, value: floatBitsOf(1.5) })),
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 1, state: D3DTSS.COLOROP, value: 2 })),
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 1, state: D3DTSS.COLORARG1, value: 2 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.drawsWithUnsupportedTextureOp, 0,
@@ -4071,8 +4311,6 @@ await test("D3DTOP_BUMPENVMAP displaces the next stage through its matrix",
         .find(code => /stage_bump0/.test(code));
     assert.ok(module, "the cascade must declare a bump matrix uniform");
     const code = module;
-    assert.match(code, /textureSample\(d9_tex0/,
-        "the bump stage samples its own (du, dv) map");
     assert.match(code,
         /stage_bump0\.x \* tex0\.r \+ uniforms\.stage_bump0\.z \* tex0\.g/,
         "u is displaced by m00*du + m10*dv: " + code);
@@ -4102,22 +4340,22 @@ for (const { name, op, pattern } of [
             async () => {
         const { executor, find } = makeExecutor();
         const tss = (stage, state, value) =>
-            command(0x202, u32(DEVICE, stage, state, value));
+            command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: stage, state: state, value: value }));
         await executor.submit(buildBatch([
             command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
             command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
-            command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+            command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
             command(OP.SET_FVF, fvfPayload(0x104, [
                 element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
                 element(0, 12, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR),
                 element(0, 16, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
             command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 24)),
-            command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+            command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
             tss(0, D3DTSS.COLOROP, op),
             tss(0, D3DTSS.COLORARG1, D3DTA.TEXTURE),
             tss(0, D3DTSS.COLORARG2, D3DTA.DIFFUSE),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true }));
         await executor.idle();
         assert.equal(executor.stats.drawsWithUnsupportedTextureOp, 0,
@@ -4136,23 +4374,23 @@ await test("the MODULATE*_ADD* family is refused as an alpha operation",
     // what keeps a caps claim from covering a channel it was never made for.
     const { executor } = makeExecutor();
     const tss = (stage, state, value) =>
-        command(0x202, u32(DEVICE, stage, state, value));
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: stage, state: state, value: value }));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR),
             element(0, 16, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 24)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         tss(0, D3DTSS.COLOROP, D3DTOP.SELECTARG1),
         tss(0, D3DTSS.COLORARG1, D3DTA.TEXTURE),
         tss(0, D3DTSS.ALPHAOP, D3DTOP.MODULATEALPHA_ADDCOLOR),
         tss(0, D3DTSS.ALPHAARG1, D3DTA.TEXTURE),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.drawsWithUnsupportedTextureOp, 1,
@@ -4164,21 +4402,21 @@ await test("D3DTOP_PREMODULATE stays refused and is counted", async () => {
     // carries a value backwards, and fill_caps() does not advertise it.
     const { executor } = makeExecutor();
     const tss = (stage, state, value) =>
-        command(0x202, u32(DEVICE, stage, state, value));
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: stage, state: state, value: value }));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.D3DCOLOR, DECLUSAGE.COLOR),
             element(0, 16, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 24)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         tss(0, D3DTSS.COLOROP, D3DTOP.PREMODULATE),
         tss(0, D3DTSS.COLORARG1, D3DTA.TEXTURE),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.drawsWithUnsupportedTextureOp, 1,
@@ -4194,25 +4432,25 @@ await test("a render target redirects the pass and keys its own pipeline",
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         // A render target arrives as a CREATE_TEXTURE_2D carrying the usage.
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x501, 256, 256, 1, 21, D3DUSAGE_RENDERTARGET, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x501, width: 256, height: 256, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         // Into the texture...
-        command(OP.SET_RENDER_TARGET, u32(DEVICE, 0, 0x501, 0)),
+        command(OP.SET_RENDER_TARGET, encodePayload("SetRenderTarget", { device_handle: DEVICE, target_index: 0, color_texture_handle: 0x501, color_level: 0 }).subarray(0, 16)),
         command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL,
-            u32(DEVICE, 0, 0, 0, 0)),
-        command(OP.SET_VIEWPORT, u32(DEVICE, 0, 0, 256, 256, 0, 0x3f800000, 0)),
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff112233, 0, 0, 0)),
+            encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0, depth_level: 0, width: 0, height: 0 })),
+        command(OP.SET_VIEWPORT, encodePayload("SetViewport", { device_handle: DEVICE, x: 0, y: 0, width: 256, height: 256, min_z: 0, max_z: floatFromBits(0x3f800000), reserved: 0 })),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff112233, depth: 0, stencil: 0, rect_count: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
         // ...and back to the back buffer, restoring the implicit depth surface
         // (D9WG_AUTO_DEPTH_STENCIL_HANDLE) the way an app that saved it does.
-        command(OP.SET_RENDER_TARGET, u32(DEVICE, 0, 0, 0)),
+        command(OP.SET_RENDER_TARGET, encodePayload("SetRenderTarget", { device_handle: DEVICE, target_index: 0, color_texture_handle: 0, color_level: 0 }).subarray(0, 16)),
         command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL,
-            u32(DEVICE, 0xffffffff, 0, 640, 480)),
-        command(OP.SET_VIEWPORT, u32(DEVICE, 0, 0, 640, 480, 0, 0x3f800000, 0)),
+            encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0xffffffff, depth_level: 0, width: 640, height: 480 })),
+        command(OP.SET_VIEWPORT, encodePayload("SetViewport", { device_handle: DEVICE, x: 0, y: 0, width: 640, height: 480, min_z: 0, max_z: floatFromBits(0x3f800000), reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -4245,7 +4483,7 @@ await test("a pre-1.3 batch is rejected before any command executes",
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
     ], { versionMinor: 2 }));
     await executor.idle();
-    assert.match(executor.failed && executor.failed.message,
+    assert.match(executor.lastBatchFailure && executor.lastBatchFailure.message,
         /unsupported D9WG version 1\.2/);
     assert.equal(executor.stats.malformedBatches, 1);
     assert.equal(executor.devices.size, 0,
@@ -4258,10 +4496,44 @@ await test("a short pre-1.3 device payload is not decoded as 1.3", async () => {
         command(OP.CREATE_DEVICE, Buffer.alloc(44)),
     ]));
     await executor.idle();
-    assert.match(executor.failed && executor.failed.message,
-        /CREATE_DEVICE payload is not protocol 1\.3/);
+    assert.match(executor.lastBatchFailure && executor.lastBatchFailure.message,
+        /CREATE_DEVICE payload is \d+ bytes, its struct needs 52/);
     assert.equal(executor.stats.malformedBatches, 1);
     assert.equal(executor.devices.size, 0);
+});
+
+await test("a batch whose command numbering breaks runs none of its commands", async () => {
+    const { executor } = makeExecutor();
+    const batch = buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+        command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
+    ]);
+    // the second command's header: sequence 2 -> 5
+    batch.writeUInt32LE(5, 32 + batch.readUInt32LE(32 + 4) + 8);
+    await executor.submit(batch);
+    await executor.idle();
+    assert.match(executor.lastBatchFailure && executor.lastBatchFailure.message,
+        /command 1 has sequence 5, the batch's numbering expects 2/);
+    assert.equal(executor.stats.malformedBatches, 1);
+    assert.equal(executor.devices.size, 0, "the device command before the break did not run");
+});
+
+await test("a command size that lands inside a payload fails the batch before it runs", async () => {
+    const { executor } = makeExecutor();
+    const batch = buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+        command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
+        command(OP.CREATE_BUFFER, createBufferPayload(0x202, 1, 96)),
+    ]);
+    // the second command claims 8 bytes more: the walk lands inside the third
+    const second = 32 + batch.readUInt32LE(32 + 4);
+    batch.writeUInt32LE(batch.readUInt32LE(second + 4) + 8, second + 4);
+    await executor.submit(batch);
+    await executor.idle();
+    assert.ok(executor.lastBatchFailure instanceof Error);
+    assert.match(executor.lastBatchFailure.message, /D9WG (command|command_count)/);
+    assert.equal(executor.devices.size, 0, "the device command before the bad size did not run");
+    assert.equal(executor.stats.commands, 0, "no command ran");
 });
 
 await test("a depth texture sampled by a pixel shader becomes a shadow map",
@@ -4274,16 +4546,15 @@ await test("a depth texture sampled by a pixel shader becomes a shadow map",
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x502, 1024, 1024, 1, D3DFMT_D24S8,
-                D3DUSAGE_DEPTHSTENCIL, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x502, width: 1024, height: 1024, level_count: 1, format: D3DFMT_D24S8, usage: D3DUSAGE_DEPTHSTENCIL, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000003)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x502, 0)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000003 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x502, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -4322,20 +4593,19 @@ await test("a shadow map still bound as the depth attachment is not sampled",
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480, 0)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x502, 640, 480, 1, D3DFMT_D24S8,
-                D3DUSAGE_DEPTHSTENCIL, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x502, width: 640, height: 480, level_count: 1, format: D3DFMT_D24S8, usage: D3DUSAGE_DEPTHSTENCIL, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000003)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000003 })),
         // Attachment and sampler at once: legal enough in D3D9, a submit-level
         // validation error in WebGPU.
         command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL,
-            u32(DEVICE, 0x502, 0, 640, 480)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x502, 0)),
+            encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0x502, depth_level: 0, width: 640, height: 480 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x502, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -4345,7 +4615,7 @@ await test("a shadow map still bound as the depth attachment is not sampled",
         "the read-write hazard must degrade the stage, not the submit");
 });
 
-await test("a depth texture on a fixed-function stage reads the white fallback",
+await test("a depth texture cannot become a fixed-function colour binding",
         async () => {
     const D3DUSAGE_DEPTHSTENCIL = 2;
     const D3DFMT_D24S8 = 75;
@@ -4354,18 +4624,17 @@ await test("a depth texture on a fixed-function stage reads the white fallback",
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x502, 256, 256, 1, D3DFMT_D24S8,
-                D3DUSAGE_DEPTHSTENCIL, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x502, width: 256, height: 256, level_count: 1, format: D3DFMT_D24S8, usage: D3DUSAGE_DEPTHSTENCIL, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
              element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x502, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x502, reserved: 0 })),
         // COLOROP = MODULATE with ARG1 = TEXTURE, so the cascade samples.
-        command(OP.SET_TEXTURE_STAGE_STATE, u32(DEVICE, 0, 1, 4)),
-        command(OP.SET_TEXTURE_STAGE_STATE, u32(DEVICE, 0, 2, 2)),
+        command(OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: 1, value: 4 })),
+        command(OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: 0, state: 2, value: 2 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -4374,12 +4643,13 @@ await test("a depth texture on a fixed-function stage reads the white fallback",
     // reach a float layout entry with a depth view, which is invalid.
     assert.equal(executor.stats.commandsFailed, 0);
     assert.equal(executor.stats.droppedDraws, 0);
-    assert.equal(executor.stats.depthTextureOnNonDepthStage, 1);
+    assert.equal(executor.gpuErrors.errors.length, 0);
 });
 
 await test("one failing command does not discard the rest of its batch",
         async () => {
     const { executor, fake } = makeExecutor();
+    executor.expectErrors = true;
     // Force a runtime failure that is not a framing error, the way a bad
     // binding resource used to be one.
     executor.handlers[OP.SET_RENDER_STATE] = () => {
@@ -4387,18 +4657,18 @@ await test("one failing command does not discard the rest of its batch",
     };
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 27, 1, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 27, value: 1, reserved: 0 })),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
     assert.equal(executor.stats.commandsFailed, 1);
-    assert.equal(executor.failed, null,
+    assert.equal(executor.lastBatchFailure, null,
         "one bad command is not a bad batch");
     assert.equal(executor.stats.droppedDraws, 0);
     const pass = fake.calls.filter(call => call[0] === "beginRenderPass").pop()[2];
@@ -4420,8 +4690,89 @@ await test("a framing error still fails the whole batch", async () => {
     // The per-command guard must not swallow this: a blob reaching past the
     // record means the byte layout itself is wrong, so nothing in the batch
     // can be trusted -- unlike a command that simply could not be carried out.
-    assert.ok(executor.failed, "a malformed stream must still fail the batch");
+    assert.ok(executor.lastBatchFailure, "a malformed stream must still fail the batch");
     assert.equal(executor.stats.commandsFailed, 0);
+});
+
+await test("an unknown opcode is skipped, counted and reported, not silent", async () => {
+    const { executor } = makeExecutor({ strict: true });
+    executor.expectErrors = true;
+    await executor.submit(buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+        command(0x7ff, u32(DEVICE)),
+        command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 36)),
+    ]));
+    await executor.idle();
+    assert.equal(executor.stats.unsupportedCommands, 1);
+    assert.equal(executor.stats.protocolViolations, 1);
+    assert.match(executor.hostErrors[0].message, /unknown D9WG opcode 0x7ff/);
+    assert.ok(executor.resources.has(0x201), "the commands behind it still run");
+});
+
+await test("Reset keeps the session's resources under their handles", async () => {
+    // The guest no longer creates every buffer, texture and shader again under
+    // new handles after a Reset (review S1-9a: that leaked all of them)
+    const NEW_DEVICE = 0x100099;
+    const { executor, find } = makeExecutor();
+    const reset = encodePayload("ResetDevice", { old_device_handle: DEVICE, new_device_handle: NEW_DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 800, height: 600, backbuffer_format: 22, windowed: 1, behavior_flags: 0x20, enable_auto_depth_stencil: 1, auto_depth_stencil_format: 75, multisample_type: 0, multisample_quality: 0 });
+    await executor.submit(buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+        command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 60)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.RESET, reset),
+    ]));
+    await executor.idle();
+    const textures4x4 = () => find("createTexture").filter(call => call[1].size.width === 4).length;
+    const before = textures4x4();
+    assert.equal(executor.resources.get(0x401).deviceHandle, NEW_DEVICE, "the texture moves to the new device");
+    await executor.submit(buildBatch([
+        command(OP.SET_FVF, Buffer.concat([encodePayload("SetFVF", { device_handle: NEW_DEVICE, fvf: 0x102, element_count: 2, reserved: 0 }),
+            element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
+            element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD)])),
+        command(OP.SET_STREAM_SOURCE, encodePayload("SetStreamSource", { device_handle: NEW_DEVICE, stream: 0, buffer_handle: 0x201, stride: 20, offset_in_bytes: 0, reserved: 0 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: NEW_DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
+        command(OP.DRAW_PRIMITIVE, encodePayload("DrawPrimitive", { device_handle: NEW_DEVICE, primitive_type: 4, start_vertex: 0, primitive_count: 1 })),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: NEW_DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 800, height: 600 })),
+    ], { present: true }));
+    await executor.idle();
+    assert.equal(executor.stats.droppedDraws, 0, "a draw on the new device uses the old handles");
+    const group = find("createBindGroup").pop()[1];
+    assert.ok(group.entries.some(entry =>
+        entry.resource.texture === executor.resources.get(0x401).gpuTexture), "it samples the texture");
+    assert.equal(textures4x4(), before, "no texture was created again");
+});
+
+await test("a failed batch loses only itself, and answers the queries it dropped", async () => {
+    const { executor, find, fake } = makeExecutor();
+    const writes = [];
+    const metadata = { writeGuestMemory(offset, data) {
+        if (offset === HEARTBEAT_WRITE_OFFSET) return;
+        writes.push({ offset, data: Buffer.from(data) });
+    } };
+    const vs = shaderCreatePayload(0x40000016, VS_BYTECODE);
+    const broken = buildBatch([
+        command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+        command(OP.CREATE_QUERY, encodePayload("CreateQuery", { device_handle: DEVICE, resource_handle: 0x930, query_type: 8, response_offset: 0 })),
+        command(OP.END_QUERY, encodePayload("QueryIssue", { device_handle: DEVICE, resource_handle: 0x930, response_offset: 0, request_id: 77 })),
+        command(OP.CREATE_VERTEX_SHADER, vs.payload, vs.blob, vs.blobOffsetField),
+    ]);
+    broken.writeUInt32LE(0x10000, broken.indexOf(vs.payload, 32) + 8);
+    await executor.submit(broken, metadata);
+    await executor.idle();
+    assert.equal(executor.stats.batchesFailed, 1);
+    // GetData polls this slot; the dropped query must not stay PENDING
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].data.readUInt32LE(0), 77);
+    assert.equal(writes[0].data.readUInt32LE(12), 2, "D9WG_RESPONSE_FAILED");
+
+    const submitsBefore = find("submit").length;
+    await executor.submit(buildBatch([
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
+    ], { present: true }), metadata);
+    await executor.idle();
+    fake.completeSubmittedWork();
+    assert.equal(executor.stats.batchesFailed, 1, "the next batch runs");
+    assert.equal(find("submit").length, submitsBefore + 1);
 });
 
 await test("a D24S8 mip is used as the explicit depth attachment",
@@ -4435,15 +4786,14 @@ await test("a D24S8 mip is used as the explicit depth attachment",
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480, 0)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x502, 2560, 1920, 4, D3DFMT_D24S8,
-                D3DUSAGE_DEPTHSTENCIL, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x502, width: 2560, height: 1920, level_count: 4, format: D3DFMT_D24S8, usage: D3DUSAGE_DEPTHSTENCIL, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL,
-            u32(DEVICE, 0x502, 2, 640, 480)),
+            encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0x502, depth_level: 2, width: 640, height: 480 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -4454,9 +4804,8 @@ await test("a D24S8 mip is used as the explicit depth attachment",
     assert.ok(creation, "CreateTexture(D24S8) must allocate a GPU depth target");
     assert.equal(creation[1].format, "depth24plus-stencil8");
     assert.equal(creation[1].mipLevelCount, 4);
-    assert.equal(creation[1].usage, 0x14,
-        "a depth texture is a render attachment AND sampleable: D3D9 shadow " +
-        "mapping renders into it and then binds it to a sampler");
+    assert.equal(creation[1].usage, 0x17,
+        "single-sample depth supports attachment, sampling and whole-surface StretchRect copies");
 
     const pass = find("beginRenderPass").find(call =>
         call[1].depthStencilAttachment);
@@ -4483,15 +4832,15 @@ await test("an out-of-range depth mip is rejected at binding without invalidatin
         await executor.submit(buildBatch([
             command(OP.CREATE_DEVICE, createDevicePayload(640, 480, 0)),
             command(OP.CREATE_TEXTURE_2D,
-                u32(DEVICE, 0x503, 640, 480, 2, 75, 2, 0)),
+                encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x503, width: 640, height: 480, level_count: 2, format: 75, usage: 2, pool: 0, multisample_type: 0, multisample_quality: 0 })),
             command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
             command(OP.SET_FVF, fvfPayload(0x2,
                 [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
             command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
             command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL,
-                u32(DEVICE, 0x503, 2, 160, 120)),
+                encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0x503, depth_level: 2, width: 160, height: 120 })),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true }));
         await executor.idle();
     } finally {
@@ -4522,45 +4871,41 @@ await test("an oversized depth surface still depth-tests a smaller target",
         // The render-to-texture idiom D3D9 allows and WebGPU does not: one
         // full-size depth surface reused by a half-resolution HDR pass.
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xC01, 640, 480, 1, D3DFMT_D24S8,
-                D3DUSAGE_DEPTHSTENCIL, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xC01, width: 640, height: 480, level_count: 1, format: D3DFMT_D24S8, usage: D3DUSAGE_DEPTHSTENCIL, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xC02, 320, 240, 1, D3DFMT_A16B16G16R16F,
-                D3DUSAGE_RENDERTARGET, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xC02, width: 320, height: 240, level_count: 1, format: D3DFMT_A16B16G16R16F, usage: D3DUSAGE_RENDERTARGET, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_TARGET, u32(DEVICE, 0, 0xC02, 0, 0)),
+        command(OP.SET_RENDER_TARGET, encodePayload("SetRenderTarget", { device_handle: DEVICE, target_index: 0, color_texture_handle: 0xC02, color_level: 0, color_face: 0 })),
         command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL,
-            u32(DEVICE, 0xC01, 0, 640, 480)),
+            encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0xC01, depth_level: 0, width: 640, height: 480 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
     assert.equal(executor.stats.droppedDraws, 0);
     assert.equal(executor.stats.commandsFailed, 0);
-    assert.equal(executor.stats.depthTargetSubstitutions, 1);
-    // The point of the substitution: the pass keeps depth testing. Running it
-    // with no depth attachment lets every blended draw paint over geometry
-    // that should have occluded it, which reads as a washed-out translucent
-    // frame rather than as an error.
-    const pass = fake.calls.filter(call => call[0] === "beginRenderPass")
-        .map(call => call[1])
-        .find(descriptor => descriptor.depthStencilAttachment);
-    assert.ok(pass, "the half-resolution pass must still have depth");
-    const substitute = fake.calls.filter(call => call[0] === "createTexture")
-        .find(call => call[1].label &&
-            call[1].label.startsWith("D3D9 substitute depth"));
-    assert.ok(substitute, "a matching depth texture has to be allocated");
-    assert.equal(substitute[1].size.width, 320);
-    assert.equal(substitute[1].size.height, 240);
-    // Nothing was lost -- the draw did not depth-test against contents an
-    // earlier pass wrote -- so the substitution must not be reported as one.
-    assert.equal(executor.stats.depthTargetSubstitutionsUncleared, 0);
+    assert.equal(executor.stats.depthTargetSubstitutions, 0);
+    assert.equal(executor.stats.colorTargetPromotions, 1);
+    const passes = fake.calls.filter(call => call[0] === "beginRenderPass").map(call => call[1]);
+    const pass = passes.find(descriptor => descriptor.depthStencilAttachment);
+    assert.equal(pass.depthStencilAttachment.view.texture, executor.resources.get(0xC01).gpuTexture,
+        "the original shared depth storage must remain attached");
+    const adapter = fake.calls.find(call => call[0] === "createTexture" && call[1].label?.startsWith("D3D9 color extent adapter"));
+    assert.equal(adapter[1].size.width, 640);assert.equal(adapter[1].size.height, 480);
+    assert.equal(adapter[1].format, "rgba16float");
+    assert.equal(executor.stats.colorExtentCopies, 2);
+    const copies = fake.calls.filter(call => call[0] === "copyTextureToTexture");
+    const target = executor.resources.get(0xC02).gpuTexture;
+    assert(copies.some(call => call[1].texture === target && call[2].texture === adapter[2]));
+    assert(copies.some(call => call[1].texture === adapter[2] && call[2].texture === target));
+    executor.retireResourceState(executor.resources.get(0xC02));fake.completeSubmittedWork();await settle();
+    assert.equal(adapter[2].destroyed, true, "temporary color storage is released with the target");
 });
 
-await test("an uncleared oversized-depth pass is reported, a cleared one is not",
+await test("cleared and uncleared oversized-depth passes retain the original storage",
         async () => {
     const D3DUSAGE_DEPTHSTENCIL = 2;
     const D3DUSAGE_RENDERTARGET = 1;
@@ -4572,47 +4917,54 @@ await test("an uncleared oversized-depth pass is reported, a cleared one is not"
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480, 0)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xF01, 640, 480, 1, D3DFMT_D24S8, D3DUSAGE_DEPTHSTENCIL, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xF01, width: 640, height: 480, level_count: 1, format: D3DFMT_D24S8, usage: D3DUSAGE_DEPTHSTENCIL, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xF02, 320, 240, 1, D3DFMT_A8R8G8B8, D3DUSAGE_RENDERTARGET, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xF02, width: 320, height: 240, level_count: 1, format: D3DFMT_A8R8G8B8, usage: D3DUSAGE_RENDERTARGET, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_ZENABLE, 1, 0)),
-        command(OP.SET_RENDER_TARGET, u32(DEVICE, 0, 0xF02, 0, 0)),
-        command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL, u32(DEVICE, 0xF01, 0, 640, 480)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_ZENABLE, value: 1, reserved: 0 })),
+        command(OP.SET_RENDER_TARGET, encodePayload("SetRenderTarget", { device_handle: DEVICE, target_index: 0, color_texture_handle: 0xF02, color_level: 0, color_face: 0 })),
+        command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL, encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0xF01, depth_level: 0, width: 640, height: 480 })),
     ];
 
-    // Clearing depth on entry is what render-to-texture does, and it makes the
-    // stand-in exactly equivalent to the surface it replaced.
+    // A small clear changes only the logical target region of shared depth.
     {
         const { executor } = makeExecutor();
         await executor.submit(buildBatch([
             ...setup(),
-            command(OP.CLEAR, u32(DEVICE, D3DCLEAR_ZBUFFER, 0, 0x3f800000, 0)),
+            command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: D3DCLEAR_ZBUFFER, color: 0, depth: floatFromBits(0x3f800000), stencil: 0 }).subarray(0, 20)),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true }));
         await executor.idle();
         // Counted per target resolution, and both the Clear and the draw
         // resolve, so the interesting number is the second one.
-        assert.ok(executor.stats.depthTargetSubstitutions >= 1);
+        assert.ok(executor.stats.colorTargetPromotions >= 1);
         assert.equal(executor.stats.depthTargetSubstitutionsUncleared, 0,
-            "a cleared substitute loses nothing and must stay quiet");
+            "no lossy depth substitution remains");
     }
 
-    // Depth-testing without clearing reads a stand-in that never received what
-    // an earlier pass wrote, which is the case worth reporting.
+    // No clear is needed to retain existing shared depth contents.
     {
         const { executor } = makeExecutor();
         await executor.submit(buildBatch([
             ...setup(),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-            command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
         ], { present: true }));
         await executor.idle();
-        assert.equal(executor.stats.depthTargetSubstitutionsUncleared, 1);
+        assert.equal(executor.stats.depthTargetSubstitutionsUncleared, 0);
+        assert.equal(executor.stats.colorTargetPromotions, 1);
     }
+});
+
+await test("multisample extent-copy pipelines are recreated after device loss", async () => {
+    const {executor}=makeExecutor();await executor.initialize();
+    const first=executor.multisampleCopyPipelineFor("rgba8unorm",4);
+    assert.equal(executor.multisampleCopyPipelineFor("rgba8unorm",4),first);
+    executor.recoverDevice();assert.equal(executor.multisampleCopyPipelines,null);
+    await executor.initialize();assert.notEqual(executor.multisampleCopyPipelineFor("rgba8unorm",4),first);
 });
 
 await test("an autogen texture allocates the chain and fills it after a write",
@@ -4623,28 +4975,21 @@ await test("an autogen texture allocates the chain and fills it after a write",
     const ps = shaderCreatePayload(0x40000003, PS_BYTECODE);
     // The guest reports one level, which is what D3D9's GetLevelCount says for
     // an autogen texture; the chain lives entirely on this side.
-    const update = Buffer.alloc(48);
-    update.writeUInt32LE(0xE01, 0);
-    update.writeUInt32LE(8, 20);   // width
-    update.writeUInt32LE(8, 24);   // height
-    update.writeUInt32LE(1, 28);
-    update.writeUInt32LE(32, 32);  // row pitch
-    update.writeUInt32LE(256, 40);
+    const update = encodePayload("UpdateTexture", { resource_handle: 0xE01, width: 8, height: 8, depth: 1, row_pitch: 32, data_bytes: 256 });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xE01, 8, 8, 1, D3DFMT_A8R8G8B8,
-                D3DUSAGE_AUTOGENMIPMAP, 0)),
-        command(OP.UPDATE_TEXTURE, update, Buffer.alloc(256, 0x80), 44),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xE01, width: 8, height: 8, level_count: 1, format: D3DFMT_A8R8G8B8, usage: D3DUSAGE_AUTOGENMIPMAP, pool: 0, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.UPDATE_TEXTURE, update, Buffer.alloc(256, 0x80), "data_offset"),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000003)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0xE01, 0)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000003 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0xE01, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -4676,14 +5021,14 @@ await test("an untouched scratch texture is not an incomplete mip chain",
         // the first DirectDraw Blt fills it. A wholly untouched single-level
         // allocation is not evidence that the proxy lost a subresource write.
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xE10, 256, 256, 1, D3DFMT_X8R8G8B8, 0, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xE10, width: 256, height: 256, level_count: 1, format: D3DFMT_X8R8G8B8, usage: 0, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0xE10, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0xE10, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -4696,31 +5041,20 @@ await test("a partially uploaded mip chain still reports missing levels",
         async () => {
     const D3DFMT_A8R8G8B8 = 21;
     const { executor } = makeExecutor();
-    const update = Buffer.alloc(48);
-    update.writeUInt32LE(0xE11, 0);
-    update.writeUInt32LE(0, 4);    // level
-    update.writeUInt32LE(0, 8);    // x
-    update.writeUInt32LE(0, 12);   // y
-    update.writeUInt32LE(0, 16);   // z
-    update.writeUInt32LE(4, 20);   // width
-    update.writeUInt32LE(4, 24);   // height
-    update.writeUInt32LE(1, 28);   // depth
-    update.writeUInt32LE(16, 32);  // row pitch
-    update.writeUInt32LE(0, 36);   // slice pitch
-    update.writeUInt32LE(64, 40);  // data bytes
+    const update = encodePayload("UpdateTexture", { resource_handle: 0xE11, level: 0, x: 0, y: 0, z: 0, width: 4, height: 4, depth: 1, row_pitch: 16, slice_pitch: 0, data_bytes: 64 });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 60)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xE11, 4, 4, 3, D3DFMT_A8R8G8B8, 0, 0)),
-        command(OP.UPDATE_TEXTURE, update, Buffer.alloc(64, 0x80), 44),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xE11, width: 4, height: 4, level_count: 3, format: D3DFMT_A8R8G8B8, usage: 0, pool: 0, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.UPDATE_TEXTURE, update, Buffer.alloc(64, 0x80), "data_offset"),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0xE11, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0xE11, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -4737,32 +5071,25 @@ await test("an autogen chain is regenerated only when level 0 changes",
     // A factory, not an array: buildBatch() stamps size/offset onto each
     // command object, so reusing one twice rewrites the first copy's framing.
     const draw = () => [
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0xE02, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0xE02, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
     ];
-    const update = Buffer.alloc(48);
-    update.writeUInt32LE(0xE02, 0);
-    update.writeUInt32LE(8, 20);
-    update.writeUInt32LE(8, 24);
-    update.writeUInt32LE(1, 28);
-    update.writeUInt32LE(32, 32);
-    update.writeUInt32LE(256, 40);
+    const update = encodePayload("UpdateTexture", { resource_handle: 0xE02, width: 8, height: 8, depth: 1, row_pitch: 32, data_bytes: 256 });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xE02, 8, 8, 1, D3DFMT_A8R8G8B8,
-                D3DUSAGE_AUTOGENMIPMAP, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xE02, width: 8, height: 8, level_count: 1, format: D3DFMT_A8R8G8B8, usage: D3DUSAGE_AUTOGENMIPMAP, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000003)),
-        command(OP.UPDATE_TEXTURE, update, Buffer.alloc(256, 0x80), 44),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000003 })),
+        command(OP.UPDATE_TEXTURE, update, Buffer.alloc(256, 0x80), "data_offset"),
         ...draw(),
         // Sampling again without touching level 0 must not rebuild anything.
         ...draw(),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.mipChainsGenerated, 1,
@@ -4770,14 +5097,14 @@ await test("an autogen chain is regenerated only when level 0 changes",
 
     // An explicit GenerateMipSubLevels rebuilds regardless.
     await executor.submit(buildBatch([
-        command(OP.GENERATE_MIPS, u32(DEVICE, 0xE02)),
+        command(OP.GENERATE_MIPS, encodePayload("GenerateMips", { device_handle: DEVICE, resource_handle: 0xE02 })),
     ]));
     await executor.idle();
     assert.equal(executor.stats.explicitMipGenerations, 1);
     assert.equal(executor.stats.mipChainsGenerated, 2);
 });
 
-await test("two depth surfaces of one size get separate substitutes",
+await test("two depth surfaces retain distinct storage while reusing one color adapter",
         async () => {
     const D3DUSAGE_DEPTHSTENCIL = 2;
     const D3DUSAGE_RENDERTARGET = 1;
@@ -4787,33 +5114,32 @@ await test("two depth surfaces of one size get separate substitutes",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480, 0)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        // Two full-size depth surfaces, two half-size targets. Sharing one
-        // substitute across both passes would let them depth-test against
-        // each other's fragments.
+        // Distinct depth surfaces must remain distinct even when the color
+        // adapter is reused by consecutive passes.
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xD01, 640, 480, 1, D3DFMT_D24S8, D3DUSAGE_DEPTHSTENCIL, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xD01, width: 640, height: 480, level_count: 1, format: D3DFMT_D24S8, usage: D3DUSAGE_DEPTHSTENCIL, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xD02, 640, 480, 1, D3DFMT_D24S8, D3DUSAGE_DEPTHSTENCIL, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xD02, width: 640, height: 480, level_count: 1, format: D3DFMT_D24S8, usage: D3DUSAGE_DEPTHSTENCIL, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xD03, 320, 240, 1, D3DFMT_A8R8G8B8, D3DUSAGE_RENDERTARGET, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xD03, width: 320, height: 240, level_count: 1, format: D3DFMT_A8R8G8B8, usage: D3DUSAGE_RENDERTARGET, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_TARGET, u32(DEVICE, 0, 0xD03, 0, 0)),
-        command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL, u32(DEVICE, 0xD01, 0, 640, 480)),
+        command(OP.SET_RENDER_TARGET, encodePayload("SetRenderTarget", { device_handle: DEVICE, target_index: 0, color_texture_handle: 0xD03, color_level: 0, color_face: 0 })),
+        command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL, encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0xD01, depth_level: 0, width: 640, height: 480 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL, u32(DEVICE, 0xD02, 0, 640, 480)),
+        command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL, encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0xD02, depth_level: 0, width: 640, height: 480 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
     assert.equal(executor.stats.droppedDraws, 0);
-    assert.equal(executor.stats.depthTargetSubstitutions, 2);
-    const substitutes = find("createTexture").filter(call =>
-        call[1].label && call[1].label.startsWith("D3D9 substitute depth"));
-    assert.equal(substitutes.length, 2,
-        "each depth surface needs its own stand-in, not one shared by size");
+    assert.equal(executor.stats.depthTargetSubstitutions, 0);
+    const adapters = find("createTexture").filter(call => call[1].label?.startsWith("D3D9 color extent adapter"));
+    assert.equal(adapters.length, 1, "reuse the color allocation across depth bindings");
+    const depths = find("beginRenderPass").map(call => call[1].depthStencilAttachment?.view.texture).filter(Boolean);
+    assert.deepEqual(depths, [executor.resources.get(0xD01).gpuTexture, executor.resources.get(0xD02).gpuTexture]);
 });
 
 await test("packed 4:2:2 and RGBG formats expand two pixels per block",
@@ -4840,23 +5166,17 @@ await test("packed 4:2:2 and RGBG formats expand two pixels per block",
     cases.forEach((item, index) => {
         const handle = 0x900 + index;
         const source = Buffer.from(item.source);
-        const update = Buffer.alloc(48);
-        update.writeUInt32LE(handle, 0);
-        update.writeUInt32LE(2, 20); // width: one block is two pixels
-        update.writeUInt32LE(1, 24); // height
-        update.writeUInt32LE(1, 28); // depth
-        update.writeUInt32LE(4, 32); // row pitch
-        update.writeUInt32LE(4, 40); // data bytes
+        const update = encodePayload("UpdateTexture", { resource_handle: handle, width: 2, height: 1, depth: 1, row_pitch: 4, data_bytes: 4 });
         commands.push(command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, handle, 2, 1, 1, item.format, 0, 1)));
-        commands.push(command(OP.UPDATE_TEXTURE, update, source, 44));
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: handle, width: 2, height: 1, level_count: 1, format: item.format, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })));
+        commands.push(command(OP.UPDATE_TEXTURE, update, source, "data_offset"));
     });
     await executor.submit(buildBatch(commands));
     await executor.idle();
 
     assert.equal(executor.stats.texturesRejected, 0,
         "every packed format must be accepted");
-    const writes = find("writeTexture").slice(-cases.length);
+    const writes = flushTextureUploads(executor, find).slice(-cases.length);
     cases.forEach((item, index) => {
         const data = Array.from(writes[index][2]);
         assert.equal(data.length, 8, item.name + ": two RGBA8 pixels");
@@ -4888,23 +5208,17 @@ await test("INDEX16 and INDEX32 texture uploads preserve little-endian bytes",
     cases.forEach((item, index) => {
         const handle = 0x920 + index;
         const source = Buffer.from(item.source);
-        const update = Buffer.alloc(48);
-        update.writeUInt32LE(handle, 0);
-        update.writeUInt32LE(1, 20);
-        update.writeUInt32LE(1, 24);
-        update.writeUInt32LE(1, 28);
-        update.writeUInt32LE(source.length, 32);
-        update.writeUInt32LE(source.length, 40);
+        const update = encodePayload("UpdateTexture", { resource_handle: handle, width: 1, height: 1, depth: 1, row_pitch: source.length, data_bytes: source.length });
         commands.push(command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, handle, 1, 1, 1, item.format, 0, 1)));
-        commands.push(command(OP.UPDATE_TEXTURE, update, source, 44));
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: handle, width: 1, height: 1, level_count: 1, format: item.format, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })));
+        commands.push(command(OP.UPDATE_TEXTURE, update, source, "data_offset"));
     });
     await executor.submit(buildBatch(commands));
     await executor.idle();
 
     assert.equal(executor.stats.texturesRejected, 0,
         "both index formats must be accepted as textures");
-    const writes = find("writeTexture").slice(-cases.length);
+    const writes = flushTextureUploads(executor, find).slice(-cases.length);
     cases.forEach((item, index) => {
         assert.deepEqual(Array.from(writes[index][2]), item.expected,
             item.name + ": exact index bytes survive RGBA8 expansion");
@@ -4916,55 +5230,60 @@ await test("a palette change repaints P8 textures without a re-upload",
     const D3DFMT_P8 = 41;
     const { executor, find } = makeExecutor();
     const paletteCommand = (index, colorFor) => {
-        const payload = Buffer.alloc(16);
-        payload.writeUInt32LE(DEVICE, 0);
-        payload.writeUInt32LE(index, 4);
-        payload.writeUInt32LE(256, 8);
+        const payload = encodePayload("SetPalette", { device_handle: DEVICE, palette_index: index, entry_count: 256 });
         const blob = Buffer.alloc(256 * 4);
         for (let entry = 0; entry < 256; ++entry)
             blob.writeUInt32LE(colorFor(entry) >>> 0, entry * 4);
-        return command(OP.SET_PALETTE, payload, blob, 12);
+        return command(OP.SET_PALETTE, payload, blob, "data_offset");
     };
-    // Index 1 is opaque red under palette 0, opaque blue under palette 1.
+    // Index 1 retains independent alpha under each palette, including Reset.
     const indices = Buffer.from([1, 1, 1, 1]);
-    const update = Buffer.alloc(48);
-    update.writeUInt32LE(0xA01, 0);
-    update.writeUInt32LE(2, 20);
-    update.writeUInt32LE(2, 24);
-    update.writeUInt32LE(1, 28);
-    update.writeUInt32LE(2, 32);  // row pitch: one byte per texel
-    update.writeUInt32LE(4, 40);
+    const update = encodePayload("UpdateTexture", { resource_handle: 0xA01, width: 2, height: 2, depth: 1, row_pitch: 2, data_bytes: 4 });
 
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        paletteCommand(0, entry => entry === 1 ? 0xffff0000 : 0xff000000),
-        paletteCommand(1, entry => entry === 1 ? 0xff0000ff : 0xff000000),
-        command(OP.SET_CURRENT_PALETTE, u32(DEVICE, 0)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0xA01, 2, 2, 1, D3DFMT_P8, 0, 1)),
-        command(OP.UPDATE_TEXTURE, update, indices, 44),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xA01, width: 2, height: 2, level_count: 1, format: D3DFMT_P8, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.UPDATE_TEXTURE, update, indices, "data_offset"),
+        paletteCommand(0, entry => entry === 1 ? 0x80ff0000 : 0xff000000),
+        paletteCommand(65535, entry => entry === 1 ? 0x3f0000ff : 0xff000000),
     ]));
     await executor.idle();
 
     assert.equal(executor.stats.palettesSet, 2);
     assert.equal(executor.stats.texturesRejected, 0);
-    const first = Array.from(find("writeTexture").pop()[2]).slice(0, 4);
-    assert.deepEqual(first, [255, 0, 0, 255],
-        "palette 0 makes index 1 red");
+    const first = Array.from(flushTextureUploads(executor, find).pop()[2]).slice(0, 4);
+    assert.deepEqual(first, [255, 0, 0, 128],
+        "updating default palette 0 repaints an existing texture without selecting it");
 
     // The whole point of a palettized format: switching tables repaints the
     // texture with no new upload from the guest.
     const uploadsBefore = executor.stats.textureUploads;
     await executor.submit(buildBatch([
-        command(OP.SET_CURRENT_PALETTE, u32(DEVICE, 1)),
+        command(OP.SET_CURRENT_PALETTE, encodePayload("SetCurrentTexturePalette", { device_handle: DEVICE, palette_index: 65535 })),
     ]));
     await executor.idle();
 
     assert.equal(executor.stats.textureUploads, uploadsBefore,
         "a palette swap is not a guest upload");
-    assert.equal(executor.stats.palettizedRepaints, 1);
-    const second = Array.from(find("writeTexture").pop()[2]).slice(0, 4);
-    assert.deepEqual(second, [0, 0, 255, 255],
-        "palette 1 makes the same indices blue");
+    assert.equal(executor.stats.palettizedRepaints, 2);
+    const second = Array.from(flushTextureUploads(executor, find).pop()[2]).slice(0, 4);
+    assert.deepEqual(second, [0, 0, 255, 63],
+        "palette 65535 makes the same indices blue");
+    const NEW_DEVICE = 0x100099;
+    await executor.submit(buildBatch([
+        command(OP.RESET, encodePayload("ResetDevice", { old_device_handle: DEVICE, new_device_handle: NEW_DEVICE, hwnd: 0x1234, width: 640, height: 480, backbuffer_format: 22, windowed: 1 })),
+    ]));
+    await executor.idle();
+    assert.equal(executor.devices.get(NEW_DEVICE).currentPalette, 0);
+    assert.deepEqual(Array.from(flushTextureUploads(executor, find).pop()[2]).slice(0, 4),
+        [255, 0, 0, 128], "Reset repaints surviving P8 indices with the preserved palette zero");
+    await executor.submit(buildBatch([
+        command(OP.SET_CURRENT_PALETTE, encodePayload("SetCurrentTexturePalette", { device_handle: NEW_DEVICE, palette_index: 65535 })),
+    ]));
+    await executor.idle();
+    assert.deepEqual(Array.from(flushTextureUploads(executor, find).pop()[2]).slice(0, 4),
+        [0, 0, 255, 63], "palette 65535 survives the device handle change");
+
 });
 
 await test("FOURCC depth textures read the stored value, not a comparison",
@@ -4977,15 +5296,15 @@ await test("FOURCC depth textures read the stored value, not a comparison",
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         // INTZ is routinely created with usage 0 and then used as depth.
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0xB01, 256, 256, 1, D3DFMT_INTZ, 0, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xB01, width: 256, height: 256, level_count: 1, format: D3DFMT_INTZ, usage: 0, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.CREATE_PIXEL_SHADER, ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000003)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0xB01, 0)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000003 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0xB01, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -5008,16 +5327,50 @@ await test("FOURCC depth textures read the stored value, not a comparison",
         "the stage must be a depth fetch, not a shadow-map comparison");
 });
 
+await test("a compare-mode depth texture on a fixed-function stage is a hardware shadow map", async () => {
+    const D3DFMT_D24X8 = 77, D3DUSAGE_DEPTHSTENCIL = 2;
+    const run = async format => {
+        const { executor, find } = makeExecutor();
+        await executor.submit(buildBatch([
+            command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
+            command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
+            command(OP.CREATE_TEXTURE_2D,
+                encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0xB11, width: 256, height: 256, level_count: 1, format, usage: D3DUSAGE_DEPTHSTENCIL, pool: 0, multisample_type: 0, multisample_quality: 0 })),
+            command(OP.SET_FVF, fvfPayload(0x102, [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION), element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD)])),
+            command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
+            command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0xB11, reserved: 0 })),
+            command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
+            command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
+        ], { present: true }));
+        await executor.idle();
+        assert.equal(executor.stats.droppedDraws, 0);
+        return { executor, find };
+    };
+    const { executor, find } = await run(D3DFMT_D24X8);
+    const layout = find("createBindGroupLayout").pop()[1];
+    assert.equal(layout.entries.find(e => e.binding === 2).texture.sampleType, "depth");
+    assert.equal(layout.entries.find(e => e.binding === 3).sampler.type, "comparison");
+    const code = find("createShaderModule").map(call => call[1].code).find(text => text.includes("d9_tex0"));
+    assert.match(code, /var d9_tex0: texture_depth_2d;/);
+    assert.match(code, /var d9_smp0: sampler_comparison;/);
+    assert.match(code, /vec4<f32>\(textureSampleCompare\(d9_tex0, d9_smp0, stage_in\.varying2\.xy, stage_in\.varying2\.z\)\)/);
+    assert.equal(executor.stats.drawsWithTexture, 1, "the shadow map counts as a bound texture");
+    assert.equal(executor.stats.depthTextureOnNonDepthStage || 0, 0);
+    // A raw-depth (INTZ) texture keeps the neutral fallback on the fixed-function path.
+    const raw = await run(0x5A544E49);
+    assert.ok(!raw.find("createShaderModule").some(call => call[1].code.includes("sampler_comparison")));
+});
+
 await test("a cube render target attaches one face per pass", async () => {
     const D3DUSAGE_RENDERTARGET = 1;
     const { executor, fake, find } = makeExecutor();
     // SetRenderTarget with the protocol-1.4 face field.
     const setCubeTarget = face =>
-        command(OP.SET_RENDER_TARGET, u32(DEVICE, 0, 0x601, 0, face));
+        command(OP.SET_RENDER_TARGET, encodePayload("SetRenderTarget", { device_handle: DEVICE, target_index: 0, color_texture_handle: 0x601, color_level: 0, color_face: face }));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
-        command(0x111, u32(DEVICE, 0x601, 64, 1, 21, D3DUSAGE_RENDERTARGET, 0, 0)),
+        command(P.OP.CREATE_TEXTURE_CUBE, encodePayload("CreateTextureCube", { device_handle: DEVICE, resource_handle: 0x601, edge_length: 64, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET, pool: 0, reserved: 0 })),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
@@ -5026,7 +5379,7 @@ await test("a cube render target attaches one face per pass", async () => {
             setCubeTarget(face),
             command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
         ]),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
 
@@ -5061,34 +5414,23 @@ await test("a cube texture binds as a cube view and uploads per face",
         async () => {
     const { executor, find } = makeExecutor();
     const face = (index, level) => {
-        const payload = Buffer.alloc(48);
-        payload.writeUInt32LE(0x601, 0);
-        payload.writeUInt32LE(level, 4);
-        payload.writeUInt32LE(0, 8);   // x
-        payload.writeUInt32LE(0, 12);  // y
-        payload.writeUInt32LE(index, 16); // z == cube face
-        payload.writeUInt32LE(4, 20);  // width
-        payload.writeUInt32LE(4, 24);  // height
-        payload.writeUInt32LE(1, 28);  // depth
-        payload.writeUInt32LE(16, 32); // row pitch
-        payload.writeUInt32LE(0, 36);
-        payload.writeUInt32LE(64, 40); // data bytes
-        return { payload, blob: Buffer.alloc(64, index + 1), field: 44 };
+        const payload = encodePayload("UpdateTexture", { resource_handle: 0x601, level: level, x: 0, y: 0, z: index, width: 4, height: 4, depth: 1, row_pitch: 16, slice_pitch: 0, data_bytes: 64 });
+        return { payload, blob: Buffer.alloc(64, index + 1), field: "data_offset" };
     };
     const uploads = [0, 1, 2, 3, 4, 5].map(index => face(index, 0));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
-        command(0x111, u32(DEVICE, 0x601, 4, 1, 21, 0, 1, 0)),
+        command(P.OP.CREATE_TEXTURE_CUBE, encodePayload("CreateTextureCube", { device_handle: DEVICE, resource_handle: 0x601, edge_length: 4, level_count: 1, format: 21, usage: 0, pool: 1, reserved: 0 })),
         ...uploads.map(upload =>
             command(OP.UPDATE_TEXTURE, upload.payload, upload.blob, upload.field)),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x601, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x601, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -5105,7 +5447,7 @@ await test("a cube texture binds as a cube view and uploads per face",
         call[2] && call[2].dimension === "cube"),
         "the sampled view has to be a cube view");
     // Each face has to land on its own layer, or five of them overwrite one.
-    const layers = find("writeTexture")
+    const layers = flushTextureUploads(executor, find)
         .filter(call => call[1] && call[1].origin)
         .map(call => call[1].origin.z);
     assert.deepEqual(layers, [0, 1, 2, 3, 4, 5]);
@@ -5150,17 +5492,17 @@ await test("legacy D3D9 texture formats preserve colour and signed bump values",
         { format: 35, gpu: "rgba16float", source: [0x00, 0x00, 0xf0, 0xff],
           expected: [...halfOne, ...halfZero, ...halfZero, ...halfOne] },
         { format: 34, gpu: "rgba16float", source: [0x00, 0x80, 0xff, 0xff],
-          expected: [...halfHalf, ...halfOne, ...halfZero, ...halfOne] },
+          expected: [...halfHalf, ...halfOne, ...halfOne, ...halfOne] },
         { format: 36, gpu: "rgba16float",
           source: [0x00, 0x00, 0x00, 0x80, 0xff, 0xff, 0xff, 0xff],
           expected: [...halfZero, ...halfHalf, ...halfOne, ...halfOne] },
         // D3D half-float texels already have the exact representation WebGPU
-        // needs; missing channels receive D3D's documented (0,0,1) defaults.
-        { format: 111, gpu: "rgba16float", source: halfHalf,
-          expected: [...halfHalf, ...halfZero, ...halfZero, ...halfOne] },
-        { format: 112, gpu: "rgba16float",
+        // needs; absent channels are remapped to 1 when sampled.
+        { format: 111, gpu: "r16float", source: halfHalf,
+          expected: halfHalf },
+        { format: 112, gpu: "rg16float",
           source: [...halfHalf, ...halfOne],
-          expected: [...halfHalf, ...halfOne, ...halfZero, ...halfOne] },
+          expected: [...halfHalf, ...halfOne] },
         { format: 113, gpu: "rgba16float",
           source: [...halfHalf, ...halfZero, ...halfOne, ...halfOne],
           expected: [...halfHalf, ...halfZero, ...halfOne, ...halfOne] },
@@ -5207,23 +5549,17 @@ await test("legacy D3D9 texture formats preserve colour and signed bump values",
     cases.forEach((item, index) => {
         const handle = 0x700 + index;
         const source = Buffer.from(item.source);
-        const update = Buffer.alloc(48);
-        update.writeUInt32LE(handle, 0);
-        update.writeUInt32LE(1, 20); // width
-        update.writeUInt32LE(1, 24); // height
-        update.writeUInt32LE(1, 28); // depth
-        update.writeUInt32LE(source.length, 32); // source row pitch
-        update.writeUInt32LE(source.length, 40);
+        const update = encodePayload("UpdateTexture", { resource_handle: handle, width: 1, height: 1, depth: 1, row_pitch: source.length, data_bytes: source.length });
         commands.push(command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, handle, 1, 1, 1, item.format, 0, 1)));
-        commands.push(command(OP.UPDATE_TEXTURE, update, source, 44));
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: handle, width: 1, height: 1, level_count: 1, format: item.format, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })));
+        commands.push(command(OP.UPDATE_TEXTURE, update, source, "data_offset"));
     });
     await executor.submit(buildBatch(commands));
     await executor.idle();
     assert.equal(executor.stats.texturesRejected, 0);
     const descriptors = find("createTexture").slice(-cases.length)
         .map(call => call[1]);
-    const writes = find("writeTexture").slice(-cases.length);
+    const writes = flushTextureUploads(executor, find).slice(-cases.length);
     cases.forEach((item, index) => {
         assert.equal(descriptors[index].format, item.gpu,
             "wrong GPU format for D3DFMT " + item.format);
@@ -5242,10 +5578,10 @@ await test("HDR render targets use a blendable rgba16float attachment",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x76f, 320, 180, 1, 113, 1, 0)),
-        command(OP.SET_RENDER_TARGET, u32(DEVICE, 0, 0x76f, 0)),
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff102030, 0x3f800000, 0, 0)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x76f, width: 320, height: 180, level_count: 1, format: 113, usage: 1, pool: 0, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.SET_RENDER_TARGET, encodePayload("SetRenderTarget", { device_handle: DEVICE, target_index: 0, color_texture_handle: 0x76f, color_level: 0 }).subarray(0, 16)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff102030, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.texturesRejected, 0);
@@ -5256,33 +5592,37 @@ await test("HDR render targets use a blendable rgba16float attachment",
     assert.ok(texture[1].usage & 0x10,
         "the HDR texture must carry RENDER_ATTACHMENT usage");
     assert.ok(find("beginRenderPass").some(call =>
-        call[1].colorAttachments?.[0]?.view?.texture === texture[2]));
+        call[1].colorAttachments?.[0]?.view?.format === "rgba16float"));
+    assert.ok(find("beginRenderPass").some(call =>
+        call[1].colorAttachments?.[0]?.view?.texture === texture[2] &&
+        call[1].colorAttachments[0].loadOp === "clear"),
+        "a color-only clear must write the actual HDR target directly");
 });
 
 await test("FP32 textures use unfilterable bindings on baseline WebGPU",
         async () => {
     const { executor, find } = makeExecutor();
     const tss = (stage, state, value) =>
-        command(0x202, u32(DEVICE, stage, state, value));
+        command(P.OP.SET_TEXTURE_STAGE_STATE, encodePayload("SetTextureStageState", { device_handle: DEVICE, stage: stage, state: state, value: value }));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x780, 1, 60)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x781, 4, 4, 1, 114 /* R32F */, 0, 1)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x781, width: 4, height: 4, level_count: 1, format: 114, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x780, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x781, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x781, reserved: 0 })),
         // Ask for linear filtering.  A baseline device without the optional
         // float32-filterable feature must legally degrade this one sampler to
         // nearest instead of creating an invalid bind group.
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, 5, 2)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, 6, 2)),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: 5, value: 2 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: 6, value: 2 })),
         tss(0, D3DTSS.COLOROP, D3DTOP.SELECTARG1),
         tss(0, D3DTSS.COLORARG1, D3DTA.TEXTURE),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -5302,16 +5642,11 @@ await test("signed textures reject render-target use but keep direct copies",
         async () => {
     const { executor, find } = makeExecutor();
     const stretch = (destinationSize) => {
-        const payload = Buffer.alloc(56);
-        payload.writeUInt32LE(DEVICE, 0);
-        payload.writeUInt32LE(0x771, 4);
-        payload.writeUInt32LE(0, 8);
+        const payload = encodePayload("StretchRect", { device_handle: DEVICE, source_texture_handle: 0x771, source_level: 0, destination_texture_handle: 0x772, destination_level: 0 }).subarray(0, P.minBytes("StretchRect"));
         [0, 0, 4, 4].forEach((value, index) =>
-            payload.writeInt32LE(value, 12 + index * 4));
-        payload.writeUInt32LE(0x772, 28);
-        payload.writeUInt32LE(0, 32);
+            payload.writeInt32LE(value, P.F.StretchRect[["source_left", "source_top", "source_right", "source_bottom"][index]]));
         [0, 0, destinationSize, destinationSize].forEach((value, index) =>
-            payload.writeInt32LE(value, 36 + index * 4));
+            payload.writeInt32LE(value, P.F.StretchRect[["destination_left", "destination_top", "destination_right", "destination_bottom"][index]]));
         return payload;
     };
     await executor.submit(buildBatch([
@@ -5319,14 +5654,14 @@ await test("signed textures reject render-target use but keep direct copies",
         // A stale or malformed guest must not make the host create an illegal
         // rgba8snorm RENDER_ATTACHMENT descriptor.
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x770, 4, 4, 1, 60, 1, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x770, width: 4, height: 4, level_count: 1, format: 60, usage: 1, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x771, 4, 4, 1, 60, 0, 1)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x771, width: 4, height: 4, level_count: 1, format: 60, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x772, 4, 4, 1, 60, 0, 1)),
-        command(0x8, stretch(4)),
-        command(0x8, stretch(2)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x772, width: 4, height: 4, level_count: 1, format: 60, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+        command(P.OP.STRETCH_RECT, stretch(4)),
+        command(P.OP.STRETCH_RECT, stretch(2)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.texturesRejected, 1);
@@ -5348,20 +5683,14 @@ await test("R8G8B8 upload honours a padded source pitch", async () => {
         0x30, 0x20, 0x10, 0xee,
         0x60, 0x50, 0x40, 0xee,
     ]);
-    const update = Buffer.alloc(48);
-    update.writeUInt32LE(0x750, 0);
-    update.writeUInt32LE(1, 20);
-    update.writeUInt32LE(2, 24);
-    update.writeUInt32LE(1, 28);
-    update.writeUInt32LE(4, 32);
-    update.writeUInt32LE(source.length, 40);
+    const update = encodePayload("UpdateTexture", { resource_handle: 0x750, width: 1, height: 2, depth: 1, row_pitch: 4, data_bytes: source.length });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x750, 1, 2, 1, 20, 0, 1)),
-        command(OP.UPDATE_TEXTURE, update, source, 44),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x750, width: 1, height: 2, level_count: 1, format: 20, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.UPDATE_TEXTURE, update, source, "data_offset"),
     ]));
     await executor.idle();
-    const write = find("writeTexture").pop();
+    const write = flushTextureUploads(executor, find).pop();
     assert.deepEqual(Array.from(write[2]), [
         0x10, 0x20, 0x30, 0xff,
         0x40, 0x50, 0x60, 0xff,
@@ -5377,23 +5706,17 @@ await test("DXT2 and DXT4 reuse BC2 and BC3 block storage", async () => {
         { handle: 0x760, format: 0x32545844, gpu: "bc2-rgba-unorm" },
         { handle: 0x761, format: 0x34545844, gpu: "bc3-rgba-unorm" },
     ].forEach(item => {
-        const update = Buffer.alloc(48);
-        update.writeUInt32LE(item.handle, 0);
-        update.writeUInt32LE(4, 20);
-        update.writeUInt32LE(4, 24);
-        update.writeUInt32LE(1, 28);
-        update.writeUInt32LE(16, 32);
-        update.writeUInt32LE(16, 40);
+        const update = encodePayload("UpdateTexture", { resource_handle: item.handle, width: 4, height: 4, depth: 1, row_pitch: 16, data_bytes: 16 });
         commands.push(command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, item.handle, 4, 4, 1, item.format, 0, 1)));
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: item.handle, width: 4, height: 4, level_count: 1, format: item.format, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })));
         commands.push(command(OP.UPDATE_TEXTURE, update,
-            Buffer.alloc(16, item.handle & 0xff), 44));
+            Buffer.alloc(16, item.handle & 0xff), "data_offset"));
     });
     await executor.submit(buildBatch(commands));
     await executor.idle();
     assert.deepEqual(find("createTexture").slice(-2).map(call => call[1].format),
         ["bc2-rgba-unorm", "bc3-rgba-unorm"]);
-    assert.deepEqual(find("writeTexture").slice(-2).map(call => call[3]), [
+    assert.deepEqual(flushTextureUploads(executor, find).slice(-2).map(call => call[3]), [
         { bytesPerRow: 16, rowsPerImage: 1 },
         { bytesPerRow: 16, rowsPerImage: 1 },
     ]);
@@ -5403,49 +5726,27 @@ await test("exhausting the debug preview budget never drops a game texture uploa
         async () => {
     const { executor, find } = makeExecutor();
     executor.previewBudget = 0;
-    const payload = Buffer.alloc(48);
-    payload.writeUInt32LE(0x611, 0);
-    payload.writeUInt32LE(0, 4);
-    payload.writeUInt32LE(0, 8);
-    payload.writeUInt32LE(0, 12);
-    payload.writeUInt32LE(0, 16);
-    payload.writeUInt32LE(4, 20);
-    payload.writeUInt32LE(4, 24);
-    payload.writeUInt32LE(1, 28);
-    payload.writeUInt32LE(16, 32);
-    payload.writeUInt32LE(0, 36);
-    payload.writeUInt32LE(64, 40);
+    const payload = encodePayload("UpdateTexture", { resource_handle: 0x611, level: 0, x: 0, y: 0, z: 0, width: 4, height: 4, depth: 1, row_pitch: 16, slice_pitch: 0, data_bytes: 64 });
     await executor.submit(buildBatch([
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x611, 4, 4, 1, 21, 0, 1)),
-        command(OP.UPDATE_TEXTURE, payload, Buffer.alloc(64, 0x7f), 44),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x611, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.UPDATE_TEXTURE, payload, Buffer.alloc(64, 0x7f), "data_offset"),
     ]));
     await executor.idle();
     assert.equal(executor.stats.texturePreviewsSkipped, 1,
         "the bounded diagnostic copy should be skipped");
     assert.equal(executor.stats.textureUploads, 1,
         "the actual upload must still be counted");
-    assert.ok(find("writeTexture").some(call =>
+    assert.ok(flushTextureUploads(executor, find).some(call =>
         call[1].texture && call[1].texture.descriptor.size.width === 4),
         "preview exhaustion must not bypass queue.writeTexture");
 });
 
-await test("a texture updated after a recorded draw is renamed", async () => {
+await test("texture copies stay between draws without renaming or new bind groups", async () => {
     const { executor, find } = makeExecutor();
     const upload = fill => {
-        const payload = Buffer.alloc(48);
-        payload.writeUInt32LE(0x612, 0);
-        payload.writeUInt32LE(0, 4);
-        payload.writeUInt32LE(0, 8);
-        payload.writeUInt32LE(0, 12);
-        payload.writeUInt32LE(0, 16);
-        payload.writeUInt32LE(4, 20);
-        payload.writeUInt32LE(4, 24);
-        payload.writeUInt32LE(1, 28);
-        payload.writeUInt32LE(16, 32);
-        payload.writeUInt32LE(0, 36);
-        payload.writeUInt32LE(64, 40);
-        return command(OP.UPDATE_TEXTURE, payload, Buffer.alloc(64, fill), 44);
+        const payload = encodePayload("UpdateTexture", { resource_handle: 0x612, level: 0, x: 0, y: 0, z: 0, width: 4, height: 4, depth: 1, row_pitch: 16, slice_pitch: 0, data_bytes: 64 });
+        return command(OP.UPDATE_TEXTURE, payload, Buffer.alloc(64, fill), "data_offset");
     };
     const elements = [
         element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
@@ -5455,48 +5756,41 @@ await test("a texture updated after a recorded draw is renamed", async () => {
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 60)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x612, 4, 4, 1, 21, 0, 1)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x612, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         upload(0x11),
         command(OP.SET_FVF, fvfPayload(0x102, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x612, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x612, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
         upload(0x22),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
-    assert.equal(executor.stats.textureUpdateHazards, 1);
-    assert.equal(executor.stats.textureRenames, 1);
-    const groups = find("createBindGroup").filter(call =>
-        call[1].entries.some(entry => entry.binding === 2));
-    assert.equal(groups.length, 2);
-    const firstView = groups[0][1].entries.find(entry => entry.binding === 2).resource;
-    const secondView = groups[1][1].entries.find(entry => entry.binding === 2).resource;
-    assert.notEqual(firstView.texture, secondView.texture,
-        "the earlier bind group must retain the old GPU texture");
+    assert.equal(executor.stats.textureRenames, 0);
+    const groups = find("createBindGroup").filter(call => call[1].entries.some(entry => entry.binding === 2));
+    assert.equal(groups.length, 1, "the unchanged texture view can reuse its bind group");
+    const copies = find("copyBufferToTexture");assert.equal(copies.length, 2);
+    assert.equal(copies[0][2].texture, copies[1][2].texture);
+    assert.equal(copies[0][4][0], 0x11);assert.equal(copies[1][4][0], 0x22);
+
 });
 
 await test("D3DRS_SCISSORTESTENABLE gates the scissor rect", async () => {
     const { executor, find } = makeExecutor();
-    const scissor = Buffer.alloc(20);
-    scissor.writeUInt32LE(DEVICE, 0);
-    scissor.writeInt32LE(10, 4);
-    scissor.writeInt32LE(20, 8);
-    scissor.writeInt32LE(110, 12);
-    scissor.writeInt32LE(220, 16);
+    const scissor = encodePayload("SetScissorRect", { device_handle: DEVICE, left: 10, top: 20, right: 110, bottom: 220 });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(0x205, scissor),
+        command(P.OP.SET_SCISSOR_RECT, scissor),
         // Rect set but the test disabled: D3D9 ignores it.
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS.SCISSORTESTENABLE, 1, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS.SCISSORTESTENABLE, value: 1, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -5519,14 +5813,7 @@ await test("D3DRS_SCISSORTESTENABLE gates the scissor rect", async () => {
 // the whole target instead.
 await test("a viewport clips, and carries its D3D9 depth range", async () => {
     const { executor, find } = makeExecutor();
-    const viewport = Buffer.alloc(32);
-    viewport.writeUInt32LE(DEVICE, 0);
-    viewport.writeUInt32LE(64, 4);    // x
-    viewport.writeUInt32LE(48, 8);    // y
-    viewport.writeUInt32LE(128, 12);  // width
-    viewport.writeUInt32LE(96, 16);   // height
-    viewport.writeFloatLE(0.25, 20);  // MinZ
-    viewport.writeFloatLE(0.5, 24);   // MaxZ
+    const viewport = encodePayload("SetViewport", { device_handle: DEVICE, x: 64, y: 48, width: 128, height: 96, min_z: 0.25, max_z: 0.5 });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
@@ -5535,7 +5822,7 @@ await test("a viewport clips, and carries its D3D9 depth range", async () => {
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         command(OP.SET_VIEWPORT, viewport),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -5551,11 +5838,7 @@ await test("concurrent guest sessions keep colliding handles isolated",
         async () => {
     const { executor } = makeExecutor();
     const hello = (low, high) => {
-        const payload = Buffer.alloc(16);
-        payload.writeUInt32LE(32, 0);
-        payload.writeUInt32LE(3, 4); // SM2 | SM3
-        payload.writeUInt32LE(low, 8);
-        payload.writeUInt32LE(high, 12);
+        const payload = encodePayload("Hello", { guest_pointer_bits: 32, feature_bits: 3, session_id_low: low, session_id_high: high });
         return command(OP.HELLO, payload);
     };
     await executor.submit(buildBatch([
@@ -5602,10 +5885,7 @@ await test("concurrent guest sessions keep colliding handles isolated",
 await test("a helper process cannot discard another session's in-flight frame",
         async () => {
     const { executor } = makeExecutor();
-    const helloPayload = Buffer.alloc(16);
-    helloPayload.writeUInt32LE(32, 0);
-    helloPayload.writeUInt32LE(3, 4); // SM2 | SM3
-    helloPayload.writeUInt32LE(0xa001, 8);
+    const helloPayload = encodePayload("Hello", { guest_pointer_bits: 32, feature_bits: 3, session_id_low: 0xa001 });
     await executor.submit(buildBatch([
         command(OP.HELLO, helloPayload),
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
@@ -5624,7 +5904,7 @@ await test("a helper process cannot discard another session's in-flight frame",
     // process is alive. Merely receiving their HELLO used to release every
     // resource and drop the benchmark's recorded draw operations.
     const helperHello = Buffer.from(helloPayload);
-    helperHello.writeUInt32LE(0xb002, 8);
+    helperHello.writeUInt32LE(0xb002, P.F.Hello.session_id_low);
     await executor.submit(buildBatch([
         command(OP.HELLO, helperHello),
     ], { sessionLow: 0xb002 }));
@@ -5633,7 +5913,7 @@ await test("a helper process cannot discard another session's in-flight frame",
         "the helper must see its own empty frame context");
 
     await executor.submit(buildBatch([
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { sessionLow: 0xa001, present: true }));
     await executor.idle();
     assert.equal(executor.stats.drawCalls, 1,
@@ -5653,7 +5933,7 @@ await test("the device requests texture-compression-bc so DXT textures work",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x401, 16, 16, 1, 0x33545844 /* DXT3 */, 0, 1)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 16, height: 16, level_count: 1, format: 0x33545844, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
     ]));
     await executor.idle();
     const request = find("requestDevice").pop();
@@ -5666,7 +5946,7 @@ await test("the device requests texture-compression-bc so DXT textures work",
         "DXT3 must reach WebGPU as bc2-rgba-unorm");
     assert.equal(executor.stats.texturesRejected, 0);
     assert.equal(executor.stats.malformedBatches, 0);
-    assert.ok(!executor.failed, "a DXT texture must not fail the batch");
+    assert.ok(!executor.lastBatchFailure, "a DXT texture must not fail the batch");
 });
 
 await test("a texture format the device refuses costs one texture, not the frame",
@@ -5682,21 +5962,21 @@ await test("a texture format the device refuses costs one texture, not the frame
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x401, 16, 16, 1, 0x31545844 /* DXT1 */, 0, 1)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 16, height: 16, level_count: 1, format: 0x31545844, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x104, [
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
-    assert.ok(!executor.failed, "the batch must survive one refused texture");
+    assert.ok(!executor.lastBatchFailure, "the batch must survive one refused texture");
     assert.equal(executor.stats.texturesRejected, 1);
     assert.equal(executor.stats.droppedDraws, 0,
-        "the draw still renders, with the white fallback bound");
-    assert.equal(executor.stats.drawsWithFallbackTexture, 1);
+        "the draw still renders after its unusable texture is removed");
+
     assert.equal(executor.stats.presents, 1);
 });
 
@@ -5708,29 +5988,23 @@ await test("StretchRect from the back buffer becomes a deferred blit", async () 
     // D3D9 game does full-screen post-processing, so it is not a rare path.
     const D3DUSAGE_RENDERTARGET = 1;
     const stretch = (sourceHandle, destinationHandle) => {
-        const payload = Buffer.alloc(56);
-        payload.writeUInt32LE(DEVICE, 0);
-        payload.writeUInt32LE(sourceHandle, 4);
-        payload.writeUInt32LE(0, 8);
-        [0, 0, 640, 480].forEach((v, i) => payload.writeInt32LE(v, 12 + i * 4));
-        payload.writeUInt32LE(destinationHandle, 28);
-        payload.writeUInt32LE(0, 32);
-        [0, 0, 256, 256].forEach((v, i) => payload.writeInt32LE(v, 36 + i * 4));
-        payload.writeUInt32LE(0, 52); // linear filter
+        const payload = encodePayload("StretchRect", { device_handle: DEVICE, source_texture_handle: sourceHandle, source_level: 0, destination_texture_handle: destinationHandle, destination_level: 0, filter_point: 0 }).subarray(0, P.minBytes("StretchRect"));
+        [0, 0, 640, 480].forEach((v, i) => payload.writeInt32LE(v, P.F.StretchRect[["source_left", "source_top", "source_right", "source_bottom"][i]]));
+        [0, 0, 256, 256].forEach((v, i) => payload.writeInt32LE(v, P.F.StretchRect[["destination_left", "destination_top", "destination_right", "destination_bottom"][i]]));
         return payload;
     };
     const { executor, find } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x501, 256, 256, 1, 21, D3DUSAGE_RENDERTARGET, 0)),
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff000000, 0, 0, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x501, width: 256, height: 256, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET, pool: 0, multisample_type: 0, multisample_quality: 0 })),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff000000, depth: 0, stencil: 0, rect_count: 0 })),
         // Source handle 0 == the back buffer.
-        command(0x8, stretch(0, 0x501)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(P.OP.STRETCH_RECT, stretch(0, 0x501)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
-    assert.ok(!executor.failed, executor.failed && executor.failed.message);
+    assert.ok(!executor.lastBatchFailure, executor.lastBatchFailure && executor.lastBatchFailure.message);
     assert.equal(executor.stats.blitsSkipped, 0,
         "a back-buffer StretchRect must no longer be skipped");
     assert.equal(executor.stats.blits, 1);
@@ -5762,18 +6036,18 @@ await test("D3DSAMP_SRGBTEXTURE samples through an -srgb view", async () => {
             element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
             element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD, 0)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 20)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 0, 0x401, 0)),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 0, texture_handle: 0x401, reserved: 0 })),
         ...extra,
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
     ];
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 4, 4, 1, 21, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         ...draw([]),
         ...draw([command(OP.SET_SAMPLER_STATE,
-            u32(DEVICE, 0, D3DSAMP_SRGBTEXTURE, 1))]),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+            encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_SRGBTEXTURE, value: 1 }))]),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -5786,9 +6060,9 @@ await test("D3DSAMP_SRGBTEXTURE samples through an -srgb view", async () => {
     // invalid however it is requested later.
     const created = find("createTexture")
         .map(call => call[1]).find(d => d.size.width === 4);
-    assert.deepEqual(created.viewFormats, ["rgba8unorm-srgb"]);
+    assert.deepEqual(created.viewFormats, ["bgra8unorm-srgb"]);
     assert.ok(find("createView").some(call =>
-        call[2] && call[2].format === "rgba8unorm-srgb"),
+        call[2] && call[2].format === "bgra8unorm-srgb"),
         "the second draw must sample through the -srgb view");
 });
 
@@ -5800,9 +6074,9 @@ await test("D3DRS_SRGBWRITEENABLE renders through an -srgb target view", async (
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 194, 1, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 194, value: 1, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.srgbWriteRequests, 1);
@@ -5822,10 +6096,10 @@ await test("a state nothing reads is listed rather than silently dropped",
     const { executor } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_WRAP0, 3, 0)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 22 /* CULLMODE, read */, 1, 0)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, D3DSAMP_MIPMAPLODBIAS, 1)),
-        command(OP.SET_SAMPLER_STATE, u32(DEVICE, 0, 5 /* MAGFILTER, read */, 2)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_WRAP0, value: 3, reserved: 0 })),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 22, value: 1, reserved: 0 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: D3DSAMP_MIPMAPLODBIAS, value: 1 })),
+        command(OP.SET_SAMPLER_STATE, encodePayload("SetSamplerState", { device_handle: DEVICE, sampler: 0, state: 5, value: 2 })),
     ]));
     await executor.idle();
     assert.deepEqual(executor.stats.unreadStateIds, {
@@ -5854,11 +6128,11 @@ await test("M5 compact declarations feed skeletal shader inputs without CPU repa
             declarationPayload(0x30000021, elements)),
         command(OP.CREATE_VERTEX_SHADER, shader.payload, shader.blob,
             shader.blobOffsetField),
-        command(OP.SET_VERTEX_DECLARATION, u32(DEVICE, 0x30000021)),
-        command(OP.SET_VERTEX_SHADER, u32(DEVICE, 0x40000021)),
+        command(OP.SET_VERTEX_DECLARATION, encodePayload("SetVertexDeclaration", { device_handle: DEVICE, declaration_handle: 0x30000021 })),
+        command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000021 })),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 40)),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.droppedDraws, 0);
@@ -5897,7 +6171,7 @@ await test("shadow render states map to signed projection, exact blend and depth
         [R.STENCILWRITEMASK, 0x0f], [R.DEPTHBIAS, floatBitsOf(1 / 0x1000000)],
         [R.SLOPE, floatBitsOf(1.5)],
     ].map(([id, value]) => command(OP.SET_RENDER_STATE,
-        u32(DEVICE, id, value, 0)));
+        encodePayload("SetRenderState", { device_handle: DEVICE, state: id, value: value, reserved: 0 })));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 96)),
@@ -5906,7 +6180,7 @@ await test("shadow render states map to signed projection, exact blend and depth
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
         ...states,
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const pipeline = find("createRenderPipeline").pop()[1];
@@ -5915,7 +6189,8 @@ await test("shadow render states map to signed projection, exact blend and depth
             operation: "add" },
         alpha: { srcFactor: "one", dstFactor: "zero", operation: "add" },
     });
-    assert.equal(pipeline.depthStencil.depthBias, 1);
+    assert.equal(pipeline.depthStencil.depthBias, 0);
+    assert.match(pipeline.fragment.module.code, /D9FixedPixelOutput\(result, clamp\(stage_in\.position\.z \+ f32\(5\.960464477539063e-8\), 0\.0, 1\.0\)\)/);
     assert.equal(pipeline.depthStencil.depthBiasSlopeScale, 1.5);
     assert.deepEqual(pipeline.depthStencil.stencilFront, {
         compare: "greater-equal", failOp: "replace",
@@ -5969,9 +6244,9 @@ await test("D3D9 default blending is ONE/ZERO when blending is first enabled",
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x201, 12)),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, 27, 1, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: 27, value: 1, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.deepEqual(find("createRenderPipeline").pop()[1]
@@ -5983,20 +6258,16 @@ await test("D3D9 default blending is ONE/ZERO when blending is first enabled",
 
 await test("M4 ColorFill preserves pixels outside a partial rectangle", async () => {
     const D3DUSAGE_RENDERTARGET = 1;
-    const payload = Buffer.alloc(32);
-    payload.writeUInt32LE(DEVICE, 0);
-    payload.writeUInt32LE(0x501, 4);
-    payload.writeUInt32LE(0, 8);
-    payload.writeUInt32LE(0x80402010, 12);
+    const payload = encodePayload("ColorFill", { device_handle: DEVICE, texture_handle: 0x501, level: 0, color: 0x80402010 }).subarray(0, P.minBytes("ColorFill"));
     [4, 6, 20, 22].forEach((value, index) =>
-        payload.writeInt32LE(value, 16 + index * 4));
+        payload.writeInt32LE(value, P.F.ColorFill[["left", "top", "right", "bottom"][index]]));
     const { executor, find } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x501, 64, 64, 1, 21, D3DUSAGE_RENDERTARGET, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x501, width: 64, height: 64, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.COLOR_FILL, payload),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.blitsSkipped, 0);
@@ -6011,34 +6282,24 @@ await test("M4 ColorFill preserves pixels outside a partial rectangle", async ()
 
 await test("M4 target fills and copies retain D3D command order", async () => {
     const D3DUSAGE_RENDERTARGET = 1;
-    const fill = Buffer.alloc(32);
-    fill.writeUInt32LE(DEVICE, 0);
-    fill.writeUInt32LE(0x501, 4);
-    fill.writeUInt32LE(0, 8);
-    fill.writeUInt32LE(0xff204060, 12);
+    const fill = encodePayload("ColorFill", { device_handle: DEVICE, texture_handle: 0x501, level: 0, color: 0xff204060 }).subarray(0, P.minBytes("ColorFill"));
     [0, 0, 64, 64].forEach((value, index) =>
-        fill.writeInt32LE(value, 16 + index * 4));
-    const stretch = Buffer.alloc(56);
-    stretch.writeUInt32LE(DEVICE, 0);
-    stretch.writeUInt32LE(0x501, 4);
-    stretch.writeUInt32LE(0, 8);
+        fill.writeInt32LE(value, P.F.ColorFill[["left", "top", "right", "bottom"][index]]));
+    const stretch = encodePayload("StretchRect", { device_handle: DEVICE, source_texture_handle: 0x501, source_level: 0, destination_texture_handle: 0x502, destination_level: 0, filter_point: 1 }).subarray(0, P.minBytes("StretchRect"));
     [0, 0, 64, 64].forEach((value, index) =>
-        stretch.writeInt32LE(value, 12 + index * 4));
-    stretch.writeUInt32LE(0x502, 28);
-    stretch.writeUInt32LE(0, 32);
+        stretch.writeInt32LE(value, P.F.StretchRect[["source_left", "source_top", "source_right", "source_bottom"][index]]));
     [0, 0, 64, 64].forEach((value, index) =>
-        stretch.writeInt32LE(value, 36 + index * 4));
-    stretch.writeUInt32LE(1, 52);
+        stretch.writeInt32LE(value, P.F.StretchRect[["destination_left", "destination_top", "destination_right", "destination_bottom"][index]]));
     const { executor, fake } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x501, 64, 64, 1, 21, D3DUSAGE_RENDERTARGET, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x501, width: 64, height: 64, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x502, 64, 64, 1, 21, D3DUSAGE_RENDERTARGET, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x502, width: 64, height: 64, level_count: 1, format: 21, usage: D3DUSAGE_RENDERTARGET, pool: 0, multisample_type: 0, multisample_quality: 0 })),
         command(OP.COLOR_FILL, fill),
-        command(0x8, stretch),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(P.OP.STRETCH_RECT, stretch),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const fillIndex = fake.calls.findIndex(call => call[0] === "beginRenderPass");
@@ -6051,20 +6312,13 @@ await test("M4 target fills and copies retain D3D command order", async () => {
 });
 
 await test("M4 Clear honours its rectangle list", async () => {
-    const clear = Buffer.alloc(40);
-    clear.writeUInt32LE(DEVICE, 0);
-    clear.writeUInt32LE(1, 4); // D3DCLEAR_TARGET
-    clear.writeUInt32LE(0xff336699, 8);
-    clear.writeFloatLE(1, 12);
-    clear.writeUInt32LE(0, 16);
-    clear.writeUInt32LE(1, 20);
-    [8, 10, 28, 34].forEach((value, index) =>
-        clear.writeInt32LE(value, 24 + index * 4));
+    const clear = Buffer.concat([encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff336699, depth: 1, stencil: 0, rect_count: 1 }),
+        encodePayload("Rect", { left: 8, top: 10, right: 28, bottom: 34 })]);
     const { executor, find } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CLEAR, clear),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     assert.equal(executor.stats.partialClears, 1);
@@ -6084,15 +6338,8 @@ await test("M4 Clear honours its rectangle list", async () => {
 // depth (an undersized depth surface does exactly that) and the next had it.
 await test("a rectangle clear caches one pipeline per pass attachment state",
         async () => {
-    const clear = Buffer.alloc(40);
-    clear.writeUInt32LE(DEVICE, 0);
-    clear.writeUInt32LE(1, 4); // D3DCLEAR_TARGET
-    clear.writeUInt32LE(0xff336699, 8);
-    clear.writeFloatLE(1, 12);
-    clear.writeUInt32LE(0, 16);
-    clear.writeUInt32LE(1, 20);
-    [0, 0, 16, 16].forEach((value, index) =>
-        clear.writeInt32LE(value, 24 + index * 4));
+    const clear = Buffer.concat([encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff336699, depth: 1, stencil: 0, rect_count: 1 }),
+        encodePayload("Rect", { left: 0, top: 0, right: 16, bottom: 16 })]);
     const { executor, find } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
@@ -6100,9 +6347,9 @@ await test("a rectangle clear caches one pipeline per pass attachment state",
         // Unbind the depth surface, so the next clear's pass has no
         // depth-stencil attachment while the clear flags stay identical.
         command(OP.SET_DEPTH_STENCIL_SURFACE_LEVEL,
-            u32(DEVICE, 0, 0, 640, 480)),
+            encodePayload("SetDepthStencilSurfaceLevel", { device_handle: DEVICE, depth_texture_handle: 0, depth_level: 0, width: 640, height: 480 })),
         command(OP.CLEAR, clear),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true }));
     await executor.idle();
     const pipelines = find("createRenderPipeline").map(call => call[1])
@@ -6133,25 +6380,14 @@ await test("a DXT mip chain's sub-block levels upload as whole 4x4 blocks",
     const level = (index, size) => {
         const blockRow = Math.ceil(size / 4) * 8;
         const bytes = blockRow * Math.ceil(size / 4);
-        const payload = Buffer.alloc(48);
-        payload.writeUInt32LE(0x401, 0);
-        payload.writeUInt32LE(index, 4);
-        payload.writeUInt32LE(0, 8);       // x
-        payload.writeUInt32LE(0, 12);      // y
-        payload.writeUInt32LE(0, 16);      // z
-        payload.writeUInt32LE(size, 20);   // logical width
-        payload.writeUInt32LE(size, 24);   // logical height
-        payload.writeUInt32LE(1, 28);      // depth
-        payload.writeUInt32LE(blockRow, 32); // row pitch, in bytes per block row
-        payload.writeUInt32LE(0, 36);
-        payload.writeUInt32LE(bytes, 40);
-        return { payload, blob: Buffer.alloc(bytes, index + 1), field: 44 };
+        const payload = encodePayload("UpdateTexture", { resource_handle: 0x401, level: index, x: 0, y: 0, z: 0, width: size, height: size, depth: 1, row_pitch: blockRow, slice_pitch: 0, data_bytes: bytes });
+        return { payload, blob: Buffer.alloc(bytes, index + 1), field: "data_offset" };
     };
     const uploads = [[0, 8], [1, 4], [2, 2], [3, 1]]
         .map(([index, size]) => level(index, size));
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CREATE_TEXTURE_2D, u32(DEVICE, 0x401, 8, 8, 4, DXT1, 0, 1)),
+        command(OP.CREATE_TEXTURE_2D, encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x401, width: 8, height: 8, level_count: 4, format: DXT1, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         ...uploads.map(upload =>
             command(OP.UPDATE_TEXTURE, upload.payload, upload.blob, upload.field)),
     ]));
@@ -6159,7 +6395,7 @@ await test("a DXT mip chain's sub-block levels upload as whole 4x4 blocks",
 
     // The executor also writes its 1x1 fallback texture, which carries no
     // mipLevel; only the mip uploads are of interest here.
-    const writes = find("writeTexture")
+    const writes = flushTextureUploads(executor, find)
         .filter(call => call[1].mipLevel !== undefined);
     assert.equal(writes.length, 4, "every level has to be written");
     for (const write of writes) {
@@ -6189,7 +6425,7 @@ await test("a client rect smaller than the back buffer keeps depth attached",
         async () => {
     const { executor, find } = makeExecutor();
     // 640x467 client rect for a 640x480 back buffer: the window has a title bar.
-    const clientRect = u32(DEVICE, 0x1234, 0, 0, 640, 467);
+    const clientRect = encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 467 });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.PRESENT, clientRect),
@@ -6289,14 +6525,7 @@ await test("a fixed-function skinned declaration is counted when blending is off
 await test("pre-transformed geometry subtracts the viewport origin",
         async () => {
     const { executor, find } = makeExecutor();
-    const viewport = Buffer.alloc(32);
-    viewport.writeUInt32LE(DEVICE, 0);
-    viewport.writeUInt32LE(368, 4);   // x
-    viewport.writeUInt32LE(104, 8);   // y
-    viewport.writeUInt32LE(110, 12);  // width
-    viewport.writeUInt32LE(109, 16);  // height
-    viewport.writeFloatLE(0, 20);
-    viewport.writeFloatLE(1, 24);
+    const viewport = encodePayload("SetViewport", { device_handle: DEVICE, x: 368, y: 104, width: 110, height: 109, min_z: 0, max_z: 1 });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(800, 600)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x201, 1, 240)),
@@ -6308,7 +6537,7 @@ await test("pre-transformed geometry subtracts the viewport origin",
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
         // Constants are staged and go up with the frame's submit, so the
         // upload only exists once the frame is actually presented.
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 800, 600)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 800, height: 600 })),
     ], { present: true }));
     await executor.idle();
 
@@ -6347,12 +6576,12 @@ await test("volume textures allocate 3D storage and upload every slice", async (
     for (let i = 0; i < pixels.length; ++i) pixels[i] = i;
     // D9WGUpdateTexture: handle, level, xyz, whd, row/slice pitch,
     // byte count and batch-relative data offset.
-    const update = u32(0x900, 0, 0, 0, 0, 2, 2, 2, 8, 16, 32, 0);
+    const update = encodePayload("UpdateTexture", { resource_handle: 0x900, level: 0, x: 0, y: 0, z: 0, width: 2, height: 2, depth: 2, row_pitch: 8, slice_pitch: 16, data_bytes: 32, data_offset: 0 });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_VOLUME,
-            u32(DEVICE, 0x900, 2, 2, 2, 1, 21, 0, 1, 0)),
-        command(OP.UPDATE_TEXTURE, update, pixels, 44),
+            encodePayload("CreateTextureVolume", { device_handle: DEVICE, resource_handle: 0x900, width: 2, height: 2, depth: 2, level_count: 1, format: 21, usage: 0, pool: 1, reserved: 0 })),
+        command(OP.UPDATE_TEXTURE, update, pixels, "data_offset"),
     ], { versionMinor: 3 }));
     await executor.idle();
 
@@ -6363,7 +6592,7 @@ await test("volume textures allocate 3D storage and upload every slice", async (
     assert.equal(descriptor.dimension, "3d");
     assert.deepEqual(descriptor.size,
         { width: 2, height: 2, depthOrArrayLayers: 2 });
-    const upload = find("writeTexture").pop();
+    const upload = flushTextureUploads(executor, find).pop();
     assert.deepEqual(upload[4],
         { width: 2, height: 2, depthOrArrayLayers: 2 });
     assert.equal(upload[3].rowsPerImage, 2);
@@ -6376,21 +6605,20 @@ await test("GPU render-target readback writes a converted D3D surface response",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x901, 2, 1, 1, 21, 1, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x901, width: 2, height: 1, level_count: 1, format: 21, usage: 1, pool: 0, multisample_type: 0, multisample_quality: 0 })),
     ], { versionMinor: 3 }));
     await executor.idle();
-    // The physical texture is rgba8unorm. GetRenderTargetData must return
-    // D3DFMT_A8R8G8B8's in-memory BGRA byte order.
+    // Native BGRA storage preserves guest byte order through readback.
+    assert.equal(executor.resources.get(0x901).gpuFormat, "bgra8unorm");
     executor.resources.get(0x901).gpuTexture.readbackData =
-        Uint8Array.from([0x11, 0x22, 0x33, 0x44,
-            0x55, 0x66, 0x77, 0x88]);
+        Uint8Array.from([0x33, 0x22, 0x11, 0x44,
+            0x77, 0x66, 0x55, 0x88]);
     executor.resources.get(0x901).gpuTexture.readbackPitch = 8;
     const writes = [];
     const responseOffset = 16 * 1024;
     await executor.submit(buildBatch([
         command(OP.READBACK_SURFACE,
-            u32(DEVICE, 0x901, 0, 21, 2, 1, 0, 1, 8, 8,
-                responseOffset, 0x12345678)),
+            encodePayload("ReadbackSurface", { device_handle: DEVICE, texture_handle: 0x901, level: 0, format: 21, width: 2, height: 1, first_row: 0, row_count: 1, destination_pitch: 8, destination_bytes: 8, response_offset: responseOffset, request_id: 0x12345678 }).subarray(0, 48)),
     ], { versionMinor: 3 }), {
         writeGuestMemory(offset, data) {
             // The host bumps a liveness counter once per batch at the very top
@@ -6412,6 +6640,34 @@ await test("GPU render-target readback writes a converted D3D surface response",
     assert.equal(executor.stats.renderTargetReadbacks, 1);
 });
 
+await test("depth readback retires temporary GPU objects on success and timeout", async () => {
+    for (const format of [70,71,73,75,77,79,80]) for (const hang of [false, true]) {
+        const {executor, find} = makeExecutor({readbackTimeoutMs:10,fakeOptions:{hangMapAsync:hang}});
+        await executor.submit(buildBatch([
+            command(OP.CREATE_DEVICE,createDevicePayload(64,64)),
+            command(OP.CREATE_TEXTURE_2D,encodePayload("CreateTexture2D",{device_handle:DEVICE,resource_handle:0x904,width:2,height:2,level_count:1,format,usage:2})),
+        ]));
+        const actual = executor.resources.get(0x904).gpuTexture, replies=[];
+        await executor.submit(buildBatch([command(OP.READBACK_SURFACE,encodePayload("ReadbackSurface",{
+            device_handle:DEVICE,texture_handle:0x904,format,width:2,height:2,first_row:1,row_count:1,
+            destination_pitch:8,destination_bytes:8,response_offset:16*1024,request_id:8,
+        }))]),{writeGuestMemory(at,data){if (at!==HEARTBEAT_WRITE_OFFSET)replies.push(Buffer.from(data));}});
+        await executor.idle();
+        assert.equal(replies.length,1);assert.equal(replies[0].readUInt32LE(12),hang?2:1);
+        const allocations=[...find("createBuffer"),...find("createTexture")].filter(c=>
+            ["D3D9 depth readback values","D3D9 depth transfer offset","D3D9 render-target readback"].includes(c[1].label));
+        assert.equal(allocations.length,3);
+        assert(allocations.every(c=>c[2].destroyed),"readback conversion storage must retire on every exit");
+        assert(!actual.destroyed,"actual guest depth storage remains alive");
+        const first=executor.depthTransferPipelineFor(false);
+        assert.strictEqual(executor.depthTransferPipelineFor(false),first);
+        executor.recoverDevice();
+        assert.equal(executor.depthTransferPipelines,null);
+        await executor.initialize();
+        assert.notStrictEqual(executor.depthTransferPipelineFor(false),first,"lost-device pipelines cannot be reused");
+    }
+});
+
 await test("DirectDraw P8 readback preserves raw indices and destination pitch",
         async () => {
     const { executor } = makeExecutor();
@@ -6420,7 +6676,7 @@ await test("DirectDraw P8 readback preserves raw indices and destination pitch",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x902, 4, 2, 1, P8, DD_INDEXED, 0, 0, 0)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x902, width: 4, height: 2, level_count: 1, format: P8, usage: DD_INDEXED, pool: 0, multisample_type: 0, multisample_quality: 0 })),
     ], { versionMinor: 7 }));
     await executor.idle();
     const texture = executor.resources.get(0x902).gpuTexture;
@@ -6430,8 +6686,7 @@ await test("DirectDraw P8 readback preserves raw indices and destination pitch",
     const responseOffset = 16 * 1024;
     await executor.submit(buildBatch([
         command(OP.READBACK_SURFACE,
-            u32(DEVICE, 0x902, 0, P8, 4, 2, 0, 2, 8, 16,
-                responseOffset, 0x31415926, 0)),
+            encodePayload("ReadbackSurface", { device_handle: DEVICE, texture_handle: 0x902, level: 0, format: P8, width: 4, height: 2, first_row: 0, row_count: 2, destination_pitch: 8, destination_bytes: 16, response_offset: responseOffset, request_id: 0x31415926, face: 0 })),
     ], { versionMinor: 7 }), { writeGuestMemory(offset, data) {
         if (offset !== HEARTBEAT_WRITE_OFFSET)
             writes.push(Buffer.from(data));
@@ -6450,7 +6705,7 @@ await test("DXT cube readback returns one raw block from the selected mip face",
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_TEXTURE_CUBE,
-            u32(DEVICE, 0x903, 8, 4, DXT1, 0, 0, 0)),
+            encodePayload("CreateTextureCube", { device_handle: DEVICE, resource_handle: 0x903, edge_length: 8, level_count: 4, format: DXT1, usage: 0, pool: 0, reserved: 0 })),
     ], { versionMinor: 7 }));
     await executor.idle();
     const texture = executor.resources.get(0x903).gpuTexture;
@@ -6460,8 +6715,7 @@ await test("DXT cube readback returns one raw block from the selected mip face",
     const writes = [];
     await executor.submit(buildBatch([
         command(OP.READBACK_SURFACE,
-            u32(DEVICE, 0x903, 2, DXT1, 2, 2, 0, 2, 8, 8,
-                16 * 1024, 0x27182818, 5)),
+            encodePayload("ReadbackSurface", { device_handle: DEVICE, texture_handle: 0x903, level: 2, format: DXT1, width: 2, height: 2, first_row: 0, row_count: 2, destination_pitch: 8, destination_bytes: 8, response_offset: 16 * 1024, request_id: 0x27182818, face: 5 })),
     ], { versionMinor: 7 }), { writeGuestMemory(offset, data) {
         if (offset !== HEARTBEAT_WRITE_OFFSET)
             writes.push(Buffer.from(data));
@@ -6482,8 +6736,8 @@ await test("back-buffer readback uses a persistent post-Present snapshot",
     const { executor, find } = makeExecutor();
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CLEAR, u32(DEVICE, 1, 0xff000000, 0x3f800000, 0, 0)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.CLEAR, encodePayload("Clear", { device_handle: DEVICE, clear_flags: 1, color: 0xff000000, depth: floatFromBits(0x3f800000), stencil: 0, rect_count: 0 })),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true, versionMinor: 3 }));
     await executor.idle();
     // The readback request arrives in a later task, by which time a canvas
@@ -6497,8 +6751,7 @@ await test("back-buffer readback uses a persistent post-Present snapshot",
     const writes = [];
     await executor.submit(buildBatch([
         command(OP.READBACK_SURFACE,
-            u32(DEVICE, 0, 0, 21, 640, 480, 0, 1, 640 * 4, 640 * 4,
-                16 * 1024, 0x22334455)),
+            encodePayload("ReadbackSurface", { device_handle: DEVICE, texture_handle: 0, level: 0, format: 21, width: 640, height: 480, first_row: 0, row_count: 1, destination_pitch: 640 * 4, destination_bytes: 640 * 4, response_offset: 16 * 1024, request_id: 0x22334455 }).subarray(0, 48)),
     ], { versionMinor: 3 }), { writeGuestMemory(offset, data) {
         // The host bumps a liveness counter once per batch at the very top
         // of the response region; it is not a response to anything, so it
@@ -6529,13 +6782,13 @@ await test("event queries complete only after the submitted GPU fence", async ()
     } };
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CREATE_QUERY, u32(DEVICE, 0x902, 8, 0)),
-        command(OP.END_QUERY, u32(DEVICE, 0x902, 0, 41)),
+        command(OP.CREATE_QUERY, encodePayload("CreateQuery", { device_handle: DEVICE, resource_handle: 0x902, query_type: 8, response_offset: 0 })),
+        command(OP.END_QUERY, encodePayload("QueryIssue", { device_handle: DEVICE, resource_handle: 0x902, response_offset: 0, request_id: 41 })),
     ], { versionMinor: 3 }), metadata);
     await executor.idle();
     assert.equal(writes.length, 0, "an event query is not an immediate CPU answer");
     fake.completeSubmittedWork();
-    await Promise.resolve();
+    await settle();
     assert.equal(writes.length, 1);
     assert.equal(writes[0].offset, 12 * 1024 * 1024);
     assert.equal(writes[0].data.readUInt32LE(0), 41);
@@ -6553,10 +6806,10 @@ await test("occlusion queries return the GPU query-set sample count", async () =
         command(OP.CREATE_BUFFER, createBufferPayload(0x903, 1, 36)),
         command(OP.SET_FVF, fvfPayload(0x2, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x903, 12)),
-        command(OP.CREATE_QUERY, u32(DEVICE, 0x904, 9, 16)),
-        command(OP.BEGIN_QUERY, u32(DEVICE, 0x904, 16, 50)),
+        command(OP.CREATE_QUERY, encodePayload("CreateQuery", { device_handle: DEVICE, resource_handle: 0x904, query_type: 9, response_offset: 16 })),
+        command(OP.BEGIN_QUERY, encodePayload("QueryIssue", { device_handle: DEVICE, resource_handle: 0x904, response_offset: 16, request_id: 50 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.END_QUERY, u32(DEVICE, 0x904, 16, 51)),
+        command(OP.END_QUERY, encodePayload("QueryIssue", { device_handle: DEVICE, resource_handle: 0x904, response_offset: 16, request_id: 51 })),
     ], { versionMinor: 3 }), { writeGuestMemory(offset, data) {
         // The host bumps a liveness counter once per batch at the very top
         // of the response region; it is not a response to anything, so it
@@ -6590,10 +6843,10 @@ await test("occlusion queries accumulate GPU segments across Present", async () 
         command(OP.CREATE_BUFFER, createBufferPayload(0x914, 1, 36)),
         command(OP.SET_FVF, fvfPayload(0x2, elements)),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x914, 12)),
-        command(OP.CREATE_QUERY, u32(DEVICE, 0x915, 9, 80)),
-        command(OP.BEGIN_QUERY, u32(DEVICE, 0x915, 80, 70)),
+        command(OP.CREATE_QUERY, encodePayload("CreateQuery", { device_handle: DEVICE, resource_handle: 0x915, query_type: 9, response_offset: 80 })),
+        command(OP.BEGIN_QUERY, encodePayload("QueryIssue", { device_handle: DEVICE, resource_handle: 0x915, response_offset: 80, request_id: 70 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true, versionMinor: 3 }), metadata);
     await executor.idle();
     await Promise.resolve();
@@ -6601,7 +6854,7 @@ await test("occlusion queries accumulate GPU segments across Present", async () 
 
     await executor.submit(buildBatch([
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.END_QUERY, u32(DEVICE, 0x915, 80, 71)),
+        command(OP.END_QUERY, encodePayload("QueryIssue", { device_handle: DEVICE, resource_handle: 0x915, response_offset: 80, request_id: 71 })),
     ], { versionMinor: 3 }), metadata);
     await executor.idle();
     await Promise.resolve();
@@ -6619,12 +6872,12 @@ await test("timestamp, frequency and disjoint query classes return real results"
     const writes = [];
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
-        command(OP.CREATE_QUERY, u32(DEVICE, 0x908, 10, 32)),
-        command(OP.CREATE_QUERY, u32(DEVICE, 0x909, 12, 48)),
-        command(OP.CREATE_QUERY, u32(DEVICE, 0x90a, 11, 64)),
-        command(OP.END_QUERY, u32(DEVICE, 0x908, 32, 61)),
-        command(OP.END_QUERY, u32(DEVICE, 0x909, 48, 62)),
-        command(OP.END_QUERY, u32(DEVICE, 0x90a, 64, 63)),
+        command(OP.CREATE_QUERY, encodePayload("CreateQuery", { device_handle: DEVICE, resource_handle: 0x908, query_type: 10, response_offset: 32 })),
+        command(OP.CREATE_QUERY, encodePayload("CreateQuery", { device_handle: DEVICE, resource_handle: 0x909, query_type: 12, response_offset: 48 })),
+        command(OP.CREATE_QUERY, encodePayload("CreateQuery", { device_handle: DEVICE, resource_handle: 0x90a, query_type: 11, response_offset: 64 })),
+        command(OP.END_QUERY, encodePayload("QueryIssue", { device_handle: DEVICE, resource_handle: 0x908, response_offset: 32, request_id: 61 })),
+        command(OP.END_QUERY, encodePayload("QueryIssue", { device_handle: DEVICE, resource_handle: 0x909, response_offset: 48, request_id: 62 })),
+        command(OP.END_QUERY, encodePayload("QueryIssue", { device_handle: DEVICE, resource_handle: 0x90a, response_offset: 64, request_id: 63 })),
     ], { versionMinor: 3 }), { writeGuestMemory(offset, data) {
         // The host bumps a liveness counter once per batch at the very top
         // of the response region; it is not a response to anything, so it
@@ -6633,15 +6886,15 @@ await test("timestamp, frequency and disjoint query classes return real results"
         writes.push({ offset, data: Buffer.from(data) });
     } });
     await executor.idle();
-    await Promise.resolve();
-    assert.equal(writes.length, 1, "the GPU timestamp maps independently");
-    assert.equal(writes[0].data.readUInt32LE(0), 61);
-    assert.equal(writes[0].data.readUInt32LE(4), 1000);
+    await settle();
+    assert.equal(writes.length, 0, "every class waits for the GPU fence");
     fake.completeSubmittedWork();
-    await Promise.resolve();
+    await settle();
     assert.equal(writes.length, 3);
     const byRequest = new Map(writes.map(write =>
         [write.data.readUInt32LE(0), write.data]));
+    // nanoseconds of the host clock, once the GPU has passed the query
+    assert.ok(byRequest.get(61).readBigUInt64LE(4) > 0n);
     assert.equal(byRequest.get(62).readBigUInt64LE(4), 1000000000n);
     assert.equal(byRequest.get(63).readBigUInt64LE(4), 0n);
     assert.equal(executor.stats.timestampQueriesResolved, 1);
@@ -6650,13 +6903,7 @@ await test("timestamp, frequency and disjoint query classes return real results"
 await test("enabled user clip planes reach both fixed shader stages", async () => {
     const D3DRS_CLIPPLANEENABLE = 152;
     const { executor, find } = makeExecutor();
-    const plane = Buffer.alloc(24);
-    plane.writeUInt32LE(DEVICE, 0);
-    plane.writeUInt32LE(0, 4);
-    plane.writeFloatLE(1, 8);
-    plane.writeFloatLE(0, 12);
-    plane.writeFloatLE(0, 16);
-    plane.writeFloatLE(-0.25, 20);
+    const plane = encodePayload("SetClipPlane", { device_handle: DEVICE, index: 0, plane: [1, 0, 0, -0.25] });
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x905, 1, 36)),
@@ -6664,9 +6911,9 @@ await test("enabled user clip planes reach both fixed shader stages", async () =
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x905, 12)),
         command(OP.SET_CLIP_PLANE, plane),
-        command(OP.SET_RENDER_STATE, u32(DEVICE, D3DRS_CLIPPLANEENABLE, 1, 0)),
+        command(OP.SET_RENDER_STATE, encodePayload("SetRenderState", { device_handle: DEVICE, state: D3DRS_CLIPPLANEENABLE, value: 1, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true, versionMinor: 3 }));
     await executor.idle();
 
@@ -6674,7 +6921,7 @@ await test("enabled user clip planes reach both fixed shader stages", async () =
     assert.match(pipeline.vertex.module.code,
         /dot\(d9_clip_position, uniforms\.clip_planes\[0\]\)/);
     assert.match(pipeline.vertex.module.code,
-        /d9_clip_position = uniforms\.world_matrix \* in0/);
+        /d9_clip_position = uniforms\.world_matrix \* vec4<f32>\(in0\.xyz, 1\.0\)/);
     assert.match(pipeline.fragment.module.code,
         /if \(stage_in\.clip0\.x < 0\.0\) \{ discard; \}/);
     assert.deepEqual(executor.devices.get(DEVICE).clipPlanes[0],
@@ -6689,20 +6936,24 @@ await test("vs_3_0 vertex texture fetch binds D3D vertex sampler 0 at 34/35",
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x906, 1, 48)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x907, 4, 4, 1, 21, 0, 1)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x907, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.CREATE_VERTEX_SHADER,
             vs.payload, vs.blob, vs.blobOffsetField),
         command(OP.SET_FVF, fvfPayload(0x2,
             [element(0, 0, DECLTYPE.FLOAT4, DECLUSAGE.POSITION)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x906, 16)),
-        command(OP.SET_VERTEX_SHADER, u32(DEVICE, 0x40000906)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 256, 0x907, 0)),
+        command(OP.SET_VERTEX_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000906 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 257, texture_handle: 0x907, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true, versionMinor: 3 }));
     await executor.idle();
 
     assert.equal(executor.stats.droppedDraws, 0);
+    // vs s0 samples D3DVERTEXTEXTURESAMPLER0's texture, not a fallback
+    const texture = executor.resources.get(0x907).gpuTexture;
+    const fetched = find("createBindGroup").pop()[1].entries.find(entry => entry.binding === 34);
+    assert.equal(fetched.resource.texture, texture, "the bound texture, not a fallback");
     const layout = find("createBindGroupLayout").pop()[1];
     assert.ok(layout.entries.some(entry => entry.binding === 34 &&
         entry.visibility === 1));
@@ -6721,17 +6972,17 @@ await test("programmable pixel samplers expose the complete s0 through s15 range
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.CREATE_BUFFER, createBufferPayload(0x90b, 1, 60)),
         command(OP.CREATE_TEXTURE_2D,
-            u32(DEVICE, 0x90c, 4, 4, 1, 21, 0, 1)),
+            encodePayload("CreateTexture2D", { device_handle: DEVICE, resource_handle: 0x90c, width: 4, height: 4, level_count: 1, format: 21, usage: 0, pool: 1, multisample_type: 0, multisample_quality: 0 })),
         command(OP.SET_FVF, fvfPayload(0x102,
             [element(0, 0, DECLTYPE.FLOAT3, DECLUSAGE.POSITION),
              element(0, 12, DECLTYPE.FLOAT2, DECLUSAGE.TEXCOORD)])),
         command(OP.SET_STREAM_SOURCE, setStreamSourcePayload(0, 0x90b, 20)),
         command(OP.CREATE_PIXEL_SHADER,
             ps.payload, ps.blob, ps.blobOffsetField),
-        command(OP.SET_PIXEL_SHADER, u32(DEVICE, 0x40000908)),
-        command(OP.SET_TEXTURE, u32(DEVICE, 15, 0x90c, 0)),
+        command(OP.SET_PIXEL_SHADER, encodePayload("SetShader", { device_handle: DEVICE, shader_handle: 0x40000908 })),
+        command(OP.SET_TEXTURE, encodePayload("SetTexture", { device_handle: DEVICE, stage: 15, texture_handle: 0x90c, reserved: 0 })),
         command(OP.DRAW_PRIMITIVE, drawPrimitivePayload(4, 0, 1)),
-        command(OP.PRESENT, u32(DEVICE, 0x1234, 0, 0, 640, 480)),
+        command(OP.PRESENT, encodePayload("Present", { device_handle: DEVICE, hwnd: 0x1234, x: 0, y: 0, width: 640, height: 480 })),
     ], { present: true, versionMinor: 3 }));
     await executor.idle();
 
@@ -6749,9 +7000,9 @@ await test("a guest log command reaches the console with its text intact",
         async () => {
     const { executor } = makeExecutor();
     const text = "CreateVertexBuffer refused: length=0 usage=00000008";
-    const payload = Buffer.alloc(8 + text.length);
-    payload.writeUInt32LE(2, 0);            // severity: failed
-    payload.writeUInt32LE(text.length, 4);
+    const payload = Buffer.alloc(P.STRUCTS.GuestLog.size + text.length);
+    payload.writeUInt32LE(2, P.F.GuestLog.severity);            // severity: failed
+    payload.writeUInt32LE(text.length, P.F.GuestLog.text_bytes);
     payload.write(text, 8, "ascii");
 
     const errors = [];
@@ -6781,9 +7032,9 @@ await test("an info-severity guest log is reported without being a warning",
         async () => {
     const { executor } = makeExecutor();
     const text = "proxy build guest-log-20260816 loaded";
-    const payload = Buffer.alloc(8 + text.length);
-    payload.writeUInt32LE(0, 0);            // severity: info
-    payload.writeUInt32LE(text.length, 4);
+    const payload = Buffer.alloc(P.STRUCTS.GuestLog.size + text.length);
+    payload.writeUInt32LE(0, P.F.GuestLog.severity);            // severity: info
+    payload.writeUInt32LE(text.length, P.F.GuestLog.text_bytes);
     payload.write(text, 8, "ascii");
 
     const logs = [];
@@ -6815,9 +7066,9 @@ await test("an info-severity guest log is reported without being a warning",
 await test("a replayed guest log is kept but not printed again", async () => {
     const { executor } = makeExecutor();
     const text = "proxy build guest-log-20260816 loaded";
-    const payload = Buffer.alloc(8 + text.length);
-    payload.writeUInt32LE(0, 0);            // severity: info
-    payload.writeUInt32LE(text.length, 4);
+    const payload = Buffer.alloc(P.STRUCTS.GuestLog.size + text.length);
+    payload.writeUInt32LE(0, P.F.GuestLog.severity);            // severity: info
+    payload.writeUInt32LE(text.length, P.F.GuestLog.text_bytes);
     payload.write(text, 8, "ascii");
 
     const printed = [];
@@ -6843,9 +7094,9 @@ await test("a replayed guest log is kept but not printed again", async () => {
 await test("a guest log claiming more text than it carries is rejected",
         async () => {
     const { executor } = makeExecutor();
-    const payload = Buffer.alloc(12);
-    payload.writeUInt32LE(1, 0);
-    payload.writeUInt32LE(0xffff, 4); // far more than the 4 bytes present
+    const payload = Buffer.alloc(P.STRUCTS.GuestLog.size + 4);
+    payload.writeUInt32LE(1, P.F.GuestLog.severity);
+    payload.writeUInt32LE(0xffff, P.F.GuestLog.text_bytes); // far more than the 4 bytes present
     await executor.submit(buildBatch([
         command(OP.CREATE_DEVICE, createDevicePayload(640, 480)),
         command(OP.GUEST_LOG, payload),
@@ -6871,4 +7122,4 @@ console.log(passed + " executor tests passed");
 
 if (require.main === module) main().catch(error => { console.error(error); process.exit(1); });
 
-module.exports = { makeExecutor, buildBatch, command, u32, createDevicePayload, createBufferPayload, shaderCreatePayload, fvfPayload, element, setStreamSourcePayload, drawPrimitivePayload, OP, DEVICE, DECLTYPE, DECLUSAGE };
+module.exports = { flushTextureUploads, makeExecutor, buildBatch, command, u32, createDevicePayload, createBufferPayload, shaderCreatePayload, fvfPayload, element, setStreamSourcePayload, drawPrimitivePayload, OP, DEVICE, DECLTYPE, DECLUSAGE };

@@ -1,0 +1,217 @@
+<!doctype html><meta charset="utf-8"><title>iPhone true cold boot timing</title>
+<style>#screen{width:640px;height:960px}#screen canvas{width:640px;height:960px}#log{max-height:140px;overflow:auto}</style>
+<pre id="result">Running…</pre><pre id="log"></pre>
+<button id="home">Home</button><button id="unlock">Slide to unlock</button>
+<div id="screen"><div></div><canvas></canvas></div>
+<script src="/build/glbridge/libv86-webgpu.js"></script>
+<script type="module">
+import { V86 } from "/build/libv86.mjs";
+import { reserve_disk, finish_disk } from "../../src/app/browser_disks.js";
+import { new_ios_config, config_to_options } from "../../src/app/vm_config.js";
+import { NAND_BYTES } from "../../src/apple/nand_geometry.js";
+import { VMStore } from "../../src/app/vm_store.js";
+const query = new URLSearchParams(location.search), probe = query.get("probe");
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const log = s => document.getElementById("log").textContent += s + "\n";
+const artifact = async (name, body) => {
+    const response = await fetch("/__artifact?name=" + name, { method: "POST", body });
+    if(!response.ok) throw Error("Cannot save " + name);
+};
+let emulator, serial = "", line = "", power_on, samples = [], milestones = [];
+let options, config, frame, cycle = 0, first_frame = false, desktop = null, matched = 0, reference;
+let last_unlock = -10000, last_wake = -20000;
+let screen_asleep = false;
+const cycles = [];
+const interval = Math.max(1000, Number(query.get("sample_ms") || 10000));
+window.boot_test = { get emulator() { return emulator; }, samples, milestones };
+const elapsed = () => performance.now() - power_on;
+const console_closed = () => !!frame?.contentDocument.body.textContent.includes("Powered off.");
+async function capture(name)
+{
+    const image = emulator.screen_make_screenshot();
+    if(image?.src) await artifact(name + ".png", await (await fetch(image.src)).blob());
+}
+async function sample()
+{
+    const diagnostics = await emulator.get_diagnostics(query.has("deep"));
+    const value = { cycle, ms: elapsed(), ...diagnostics };
+    samples.push(value);
+    await artifact("profile.json", JSON.stringify({ cycles, milestones, samples }, null, 2));
+    await artifact("serial.txt", serial);
+    await capture("current");
+    const canvas = emulator.screen_adapter.get_graphics_canvas();
+    const context = canvas.getContext("2d");
+    if(context && canvas.width === 640 && canvas.height === 960)
+    {
+        const pixels = context.getImageData(0,0,640,960).data;
+        let lit = 0, total = 0;
+        for(let p=0;p<pixels.length;p+=64) { total++; if(pixels[p]+pixels[p+1]+pixels[p+2]>90) lit++; }
+        if(!first_frame && lit > total * 0.6)
+        {
+            first_frame = true;
+            milestones.push({ cycle, ms: elapsed(), event: "first-visible-frame" });
+            await capture("first-visible-"+cycle);
+        }
+        if(reference && !desktop)
+        {
+            // Compare only four native app icons, excluding the changing
+            // clock/calendar. A lock screen or boot console cannot match.
+            let error = 0, count = 0;
+            for(const [x,y] of [[33,67],[492,595],[33,803],[492,803]])
+                for(let row=y;row<y+112;row+=4) for(let col=x;col<x+112;col+=4)
+                    for(let c=0;c<3;c++) { const p=(row*640+col)*4+c; error+=Math.abs(pixels[p]-reference[p]);count++; }
+            const score = error/count;
+            matched = score < 12 ? matched+1 : 0;
+            if(matched >= 2)
+            {
+                desktop = { cycle, ms: elapsed(), icon_mean_error: score, reference: query.get("reference") };
+                cycles[cycle].desktop_ms = desktop.ms;
+                milestones.push({ ...desktop, event: "native-desktop-matches-reference" });
+                await capture("desktop-"+cycle);
+                await artifact("desktop.json",JSON.stringify(desktop,null,2));
+                log("DESKTOP "+Math.round(desktop.ms)+"ms");
+            }
+        }
+    }
+    log(Math.round(elapsed() / 1000) + "s retired=" + diagnostics.retired + " NAND=" + diagnostics.nand?.bytes_read);
+}
+async function start()
+{
+    power_on = performance.now();
+    first_frame = false; desktop = null; matched = 0; screen_asleep = false; last_unlock = -10000; last_wake = -20000;
+    cycles.push({ cycle, power_on: new Date(performance.timeOrigin + power_on).toISOString() });
+    if(query.has("console"))
+    {
+        if(query.has("profile")) throw Error("Console acceptance uses the production CPU Worker");
+        frame=document.createElement("iframe");frame.width="1400";frame.height="1100";
+        frame.src="/index.html?vm="+config.id;document.getElementById("screen").replaceWith(frame);
+        await new Promise(resolve=>frame.onload=resolve);
+        const deadline=performance.now()+60000;
+        while(!frame.contentWindow.v86_console?.emulator)
+        { if(performance.now()>deadline)throw Error("Console did not create the phone");await sleep(10); }
+        emulator=frame.contentWindow.v86_console.emulator;
+    }
+    else emulator = new V86(options);
+    emulator.add_listener("serial0-output-byte", byte => {
+        const ch = String.fromCharCode(byte); serial += ch;
+        if(ch !== "\n") { line += ch; return; }
+        if(/Darwin Kernel|BSD root:|mounted|QUICKCHECK|FIPS USER|install helper started|AppleMultitouch.*downloaded|syncdefaultsd|SpringBoard|DataMigrator/.test(line))
+        { const m = { cycle, ms: elapsed(), event: line.trim() }; milestones.push(m); log(Math.round(m.ms / 1000) + "s " + m.event); }
+        line = "";
+    });
+    emulator.add_listener("ios-screen-state", state => {
+        const asleep=!state["awake"];
+        if(asleep!==screen_asleep) milestones.push({cycle,ms:elapsed(),event:asleep ? "screen-asleep" : "screen-awake"});
+        screen_asleep=asleep;
+    });
+    if(!emulator.worker_controller?.ready) await new Promise((resolve, reject) => {
+        emulator.add_listener("emulator-loaded", resolve);
+        emulator.add_listener("emulator-error", reject);
+    });
+    milestones.push({ cycle, ms: elapsed(), event: "emulator-loaded (no snapshot)" });
+    if(!query.has("console")) emulator.run();
+}
+const touch = points => emulator.bus.send("touch", { width: 640, height: 960, touches: points });
+document.getElementById("home").onclick = async () => {
+    emulator.ios_send_button("home", true); await sleep(100); emulator.ios_send_button("home", false);
+};
+document.getElementById("unlock").onclick = async () => {
+    for(let i=0;i<=20;i++) { touch([[1,100+450*i/20,860]]); await sleep(40); } touch([]);
+    milestones.push({ cycle, ms: elapsed(), event: "user-unlock" });
+};
+try
+{
+    if(!probe || !/^build\/ios\/[a-zA-Z0-9_-]+$/.test(probe)) throw Error("Use a disposable local NAND probe");
+    if(query.has("reference"))
+    {
+        const name = query.get("reference");
+        if(!/^build\/ios\/[a-zA-Z0-9_/-]+\.png$/.test(name) || name.includes("..")) throw Error("Use an observed local native desktop reference");
+        const image = await createImageBitmap(await(await fetch("/"+name)).blob());
+        if(image.width!==640 || image.height!==960) throw Error("Wrong native desktop reference geometry");
+        const canvas = new OffscreenCanvas(640,960), context = canvas.getContext("2d");
+        context.drawImage(image,0,0); reference = context.getImageData(0,0,640,960).data; image.close();
+    }
+    const imported = performance.now(), disk = await reserve_disk(4 * 1024 ** 3);
+    let dir = await navigator.storage.getDirectory();
+    for(const name of ["v86", "disks"]) dir = await dir.getDirectoryHandle(name, { create: true });
+    const file = await dir.getFileHandle(disk.id + ".img", { create: true });
+    const response = await fetch("/" + probe + "/flash.packed");
+    if(!response.ok) throw Error("Missing disposable NAND");
+    await response.body.pipeTo(await file.createWritable());
+    await finish_disk(disk.id, "Cold boot timing", { size: NAND_BYTES, ios: { model: "iPhone3,1", build: "10B329" } });
+    log("NAND copy (excluded from power-on): " + Math.round(performance.now() - imported) + "ms");
+    config = new_ios_config("Cold boot timing", { kind: "browser", id: disk.id, path: disk.path, size: NAND_BYTES, disk_option: "read_write" }, true);
+    if(query.has("console")) { const store=await VMStore.open();config=await store.put(config);store.close(); }
+    options = config_to_options(config, { debug: false, query_append: "", screen_container: document.getElementById("screen") });
+    options.wasm_path = "/build/v86-arm64.wasm";
+    options.cpu_worker_url = query.has("profile") ? "/build/ios-boot-profile-worker.js" : "/build/cpu-worker.js";
+    options.autostart = false;
+    await start();
+    for(let n=0;n<Number(query.get("seconds") || 1200)*1000/interval;n++)
+    {
+        await sleep(interval);
+        const closed=console_closed();
+        if(!closed) await sample();
+        if(!closed && query.has("keepawake") && !first_frame && elapsed()-last_wake>20000)
+        { document.getElementById("home").click(); last_wake=elapsed(); }
+        if(!closed && query.has("auto_wake") && first_frame && !desktop && screen_asleep && elapsed()-last_wake>5000)
+        {
+            if(frame)
+            {
+                if(!frame.contentDocument.body.textContent.includes("Screen asleep")) throw Error("Console did not explain the sleeping screen");
+                frame.contentDocument.getElementById("iphone_power").click();
+            }
+            else { emulator.ios_send_button("power",true);await sleep(100);emulator.ios_send_button("power",false); }
+            last_wake=elapsed();milestones.push({cycle,ms:elapsed(),event:"user-Lock-wakes-sleeping-screen"});
+        }
+        if(!closed && query.has("auto_unlock") && first_frame && !desktop && elapsed()-last_unlock>5000)
+        { await document.getElementById("unlock").onclick(); last_unlock=elapsed(); }
+        const commands = await fetch("/" + probe + "/boot-command.json", { cache: "no-store" });
+        if(commands.ok)
+        {
+            const command = await commands.json();
+            if(command.id !== window.boot_test.last_command)
+            {
+                window.boot_test.last_command = command.id;
+                if(command.op === "home" || command.op === "unlock") document.getElementById(command.op).click();
+                else if(command.op === "tap") { touch([[1,command.x,command.y]]); await sleep(100); touch([]); }
+                else if(command.op === "shutdown")
+                {
+                    if(!frame)throw Error("Shutdown acceptance uses the actual console");
+                    const doc=frame.contentDocument;doc.getElementById("menu_power").click();
+                    doc.getElementById("menu_iphone_shutdown").click();
+                    await sleep(4600);await capture("native-shutdown-slider");
+                    for(let i=0;i<=24;i++){touch([[1,100+490*i/24,140]]);await sleep(40);}touch([]);
+                    const deadline=performance.now()+120000;
+                    while(!doc.body.textContent.includes("Powered off."))
+                    {if(performance.now()>deadline)throw Error("Native shutdown did not remove power");await sleep(250);}
+                    await artifact("native-shutdown.txt",serial);
+                    if(serial.includes("panic(cpu"))throw Error("Native shutdown panicked");
+                    log("Native PMU removed power; console flushed and closed NAND");
+                }
+                else if(command.op === "cold")
+                {
+                    if(!closed) { await capture("before-cold"); await emulator.stop(); await emulator.destroy(); }
+                    cycle++; serial += "\n--- POWER OFF; NEW MACHINE, SAME NAND; NO SNAPSHOT ---\n";
+                    if(frame) { const container=document.createElement("div");container.id="screen";frame.replaceWith(container);frame=null; }
+                    else options.screen.container.innerHTML = "<div></div><canvas></canvas>";
+                    await start();
+                }
+                else if(command.op === "capture") await capture(command.name);
+                else if(command.op === "finish") break;
+            }
+        }
+    }
+    if(!console_closed()) { await sample(); await emulator.stop(); }
+    const limit=Number(query.get("max_desktop_ms") || 0);
+    if(limit && cycles.some(c => c.desktop_ms === undefined || c.desktop_ms > limit))
+        throw Error("Native desktop missed "+limit+"ms: "+cycles.map(c=>c.desktop_ms ?? "not observed").join(", "));
+    document.getElementById("result").textContent = limit ? "PASS: native cold desktops in "+cycles.map(c=>Math.round(c.desktop_ms)).join(", ")+"ms" :
+        "PASS: measured cold boot; inspect screenshots to establish desktop readiness";
+}
+catch(error)
+{
+    log(error.stack); await artifact("serial.txt", serial).catch(()=>{});
+    document.getElementById("result").textContent = "FAIL: " + error.stack;
+}
+</script>

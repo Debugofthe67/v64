@@ -78,11 +78,35 @@ ci-tests: rust-test test-glbridge app-check platform-contract-tests ios-tests gl
 	./tests/persistence/disk_service_sync.mjs
 
 .PHONY: glbridge test-glbridge
-glbridge:
+glbridge: node_modules/.bin/esbuild
 	node tools/build_glbridge.mjs
 
-test-glbridge:
+test-glbridge: glbridge
 	node tests/glbridge/run.cjs
+
+# The graphics proxies on the real GPU (headless Chrome with WebGPU): the D3D9
+# and GL pixel conformance suites, Chrome's compiler on the D3D9 translator's
+# control flow, and the older browser pages
+GLBRIDGE_GPU_PAGES = gl_presented_frame_browser_test.html gl_wgl_swap_browser_test.html gl_thread_contexts_browser_test.html gl_array_lock_browser_test.html gl_immediate_blocks_browser_test.html gl_upload_chunks_browser_test.html gl_array_normalization_browser_test.html gl_program_link_browser_test.html gl_rectangle_browser_test.html gl_arb_corpus_browser_test.html gl_arb_pipeline_browser_test.html gl_glsl120_codegen_browser_test.html d3d9_conformance_browser_test.html gl_conformance_browser_test.html gl_conformance_browser_test.html?oracle=mesa gl_validation_browser_test.html \
+	d3d9_shader_tint_browser_test.html d3d9_webgpu_browser_test.html gl_webgpu_browser_test.html \
+	gl_multipass_browser_test.html d3d9_legacy_format_browser_test.html gl_vertex_capture_browser_test.html gl_raster_program_browser_test.html gl_evaluator_browser_test.html \
+	gl_gpu_snapshot_browser_test.html gl_renderer_snapshot_browser_test.html gl_program_interface_browser_test.html gl_stencil_ext_browser_test.html gl_program_matrix_browser_test.html gl_pipeline_keys_browser_test.html gl_resource_lifetime_browser_test.html gl_stencil_faces_browser_test.html gl_blit_aspects_browser_test.html gl_volume_browser_test.html gl_polygon_order_browser_test.html gl_sampling_levels_browser_test.html gl_mipmap_ranges_browser_test.html gl_texture_upload_order_browser_test.html gl_texture_images_browser_test.html gl_sampler_state_browser_test.html gl_program_polygon_browser_test.html gl_point_raster_browser_test.html gl_program_line_browser_test.html gl_clip_planes_browser_test.html gl_polygon_clip_browser_test.html gl_single_sample_browser_test.html gl_format_complete_browser_test.html gl_s3_render_browser_test.html gl_bind_layout_browser_test.html gl_clear_pass_browser_test.html gl_bitmap_atlas_browser_test.html gl_partial_update_browser_test.html gl_cache_bounds_browser_test.html gl_game_trace_fixture_browser_test.html gl_game_trace_replay_browser_test.html?prefix=trace-fixture
+.PHONY: glbridge-gpu-tests glbridge-mutations
+D3D_REVIEW_GPU_PAGES = d3d_independent_chains_replay_browser_test.html d3d_window_state_replay_browser_test.html 'd3d_window_state_replay_browser_test.html?capture=probe' 'd3d_window_state_replay_browser_test.html?capture=events' d3d_buffer_lock_replay_browser_test.html d3d_draw_hints_replay_browser_test.html d3d_mapped_draw_replay_browser_test.html d3d_texture_copy_replay_browser_test.html d3d_surface_readback_replay_browser_test.html d3d8_surface_copy_replay_browser_test.html d3d8_render_target_replay_browser_test.html d3d8_multisample_replay_browser_test.html d3d_texture_lod_replay_browser_test.html d3d_gamma_replay_browser_test.html d3d_cursor_replay_browser_test.html d9wg_host_caps_browser_test.html 'd9wg_host_caps_browser_test.html?omit_float32=1' 'd9wg_host_caps_browser_test.html?omit_bc=1' 'd3d9_conformance_browser_test.html?group=format-filter-capabilities&omit_float32_filter=1' 'd3d9_conformance_browser_test.html?group=autogen&omit_float32_filter=1' 'd3d9_conformance_browser_test.html?group=format-blend-capabilities&omit_float32=1' d3d8_tween_replay_browser_test.html d3d9_tween_browser_test.html d3d_palette_replay_browser_test.html d3d_typed_clip_replay_browser_test.html d3d_stream_clip_replay_browser_test.html d3d_constant_streams_browser_test.html d3d_software_vertex_colors_browser_test.html d3d_fixed_vertex_formats_browser_test.html d3d_vertex_formats_browser_test.html 'd3d7_clip_draw_replay_browser_test.html?planes=1&api=7' 'd3d7_clip_draw_replay_browser_test.html?planes=1&api=8' 'd3d7_clip_draw_replay_browser_test.html?planes=1&api=9' d3d7_clip_draw_replay_browser_test.html d3d7_clip_draw_replay_browser_test.html?api=8 d3d7_clip_draw_replay_browser_test.html?api=9 d3d9_software_blend_browser_test.html d3d9_software_texcoord_browser_test.html d3d9_software_lighting_browser_test.html d3d9_software_lighting_browser_test.html?pipeline=1 d3d9_conformance_browser_test.html d3d9_conformance_browser_test.html?uniform_overflow=1 d3d9_conformance_browser_test.html?upload_budget=small d3d9_indexed_overlay_browser_test.html d3d9_swapchain_lifetime_browser_test.html d3d9_diagnostics_browser_test.html d3d9_session_isolation_browser_test.html d3d9_session_isolation_browser_test.html?mode=device d3d9_session_isolation_browser_test.html?mode=owner 'd3d9_session_isolation_browser_test.html?mode=owner&upload=1' d3d9_session_isolation_browser_test.html?upload=1 'd3d9_session_isolation_browser_test.html?mode=device&upload=1' d3d9_shader_tint_browser_test.html d3d9_webgpu_browser_test.html d3d_game_trace_replay_browser_test.html?prefix=d9wg-fixture 'd3d_game_trace_replay_browser_test.html?prefix=d9wg-journal-fixture&journal=1'
+.PHONY: d3d-review-gpu-tests
+d3d-review-gpu-tests: glbridge
+	node tools/d3d_game_trace_fixture.mjs
+	node tests/glbridge/gl_multipass_browser_runner.js 'webgpu_adapter_browser_test.html?required=$(if $(filter 1,$(GL_SWIFTSHADER)),swiftshader,any)'
+	set -e; for page in $(D3D_REVIEW_GPU_PAGES); do GL_TIMEOUT_MS=300000 node tests/glbridge/gl_multipass_browser_runner.js "$$page"; done
+
+glbridge-gpu-tests:
+	set -e; for page in $(GLBRIDGE_GPU_PAGES); do \
+		echo "$$page"; GL_TIMEOUT_MS=300000 node tests/glbridge/gl_multipass_browser_runner.js $$page > /dev/null; done
+
+# One-line semantic bugs the tests have to catch (slow: every mutation runs
+# the Node suites and the GPU pages)
+glbridge-mutations: glbridge
+	node tests/glbridge/mutations.mjs
 
 # Used for nodejs builds and in order to profile code.
 # `debug` gives identifiers a readable name, make sure it doesn't have any side effects.
@@ -157,6 +181,7 @@ CORE_FILES=cjs.js const.js io.js machine_clock.js machine_options.js main.js lib
 	   bus.js log.js cpu.js \
 	   elf.js kernel.js extended_memory.js \
 	   parallel/relocate.js parallel/control.js parallel/machine.js \
+	   ios/crypto.js ios/lzss.js ios/nand_boot.js ios/sparse_nand.js ios/guest_load.js ios/install_trust.js ios/install_protocol.js ios/install_service.js ios/runtime_trust.js ios/install_api.js apple/amc.js apple/amc_codec.js apple/audio_decode.js apple/audio.js apple/boot.js apple/n90_compat.js apple/bootlogo.js apple/cdma.js apple/uid.js apple/clcd.js apple/dart.js apple/devicetree.js apple/h2fmi.js apple/i2c.js apple/iop.js apple/macho.js apple/multitouch.js apple/nand.js apple/nand_geometry.js apple/s5l8930.js apple/sensors.js apple/spi.js apple/timer.js apple/uart.js apple/vic.js \
 	   arm/state_layout.js arm/cpu.js arm/backdoor_a32.js virt/platform.js virt/io.js virt/pl011.js virt/pl031.js virt/inflate.js virt/dtb.js virt/ranchu.js virt/goldfish.js virt/loader.js \
 	   android/bytes.js android/gpt.js android/avb.js android/bootimg.js android/bootconfig.js android/devices.js android/boot.js android/bootloader.js android/partition_buffer.js android/cpio.js android/ramdisk_overlay.js \
 	   image/sha256.js image/source.js image/overlay.js image/disk_image.js image/qcow2.js image/vhd.js image/vdi.js image/vmdk.js image/vhdx.js image/ova.js image/factory.js image/export.js image/qcow2_export.js
@@ -170,7 +195,7 @@ BROWSER_FILES=screen.js keyboard.js mouse.js speaker.js serial.js \
 # when graphics_adapter names it. Built with every bundle, which looks for
 # them beside itself. The boundary to v86 uses quoted names only, so a plugin
 # works with any bundle, also one compiled in Closure's ADVANCED mode.
-GRAPHICS_ADAPTER_PLUGINS=build/v86-bochs-vga.js build/v86-vmware-svga.js build/v86-virtio-gpu.js
+GRAPHICS_ADAPTER_PLUGINS=build/v86-bochs-vga.js build/v86-vmware-svga.js build/v86-virtio-gpu.js build/v86-geforce-6800.js
 GRAPHICS_ADAPTER_COMMON=src/cjs.js src/const.js src/lib.js src/log.js src/bus.js src/display.js \
 	src/device_machine.js src/graphics_adapters/machine.js src/graphics_adapters/vga_core.js src/graphics_adapters/renderer_protocol.js
 
@@ -227,7 +252,7 @@ build/v86-vmware-svga.js: $(CLOSURE) src/*.js src/graphics_adapters/*.js src/gra
 		--js src/graphics_adapters/vmware_svga/svga_gmr.js --js src/graphics_adapters/vmware_svga/svga_screens.js \
 		--js src/graphics_adapters/vmware_svga/svga_cursor.js --js src/graphics_adapters/vmware_svga/svga_video.js --js src/graphics_adapters/vmware_svga/svga_gb.js \
 		--js src/graphics_adapters/vmware_svga/svga_formats.js --js src/graphics_adapters/vmware_svga/svga_dx_formats.js \
-		--js src/graphics_adapters/vmware_svga/svga3d_d9wg.js --js src/graphics_adapters/vmware_svga/svga3d_tables.js \
+		--js src/graphics_adapters/vmware_svga/d9wg_constants.js --js src/graphics_adapters/vmware_svga/svga3d_d9wg.js --js src/graphics_adapters/vmware_svga/svga3d_tables.js \
 		--js src/graphics_adapters/vmware_svga/svga3d_dx.js \
 		--js src/graphics_adapters/vmware_svga/svga3d.js \
 		--js src/graphics_adapters/vmware_svga/svga_device.js --js src/graphics_adapters/vmware_svga/plugin.js
@@ -250,6 +275,27 @@ build/v86-virtio-gpu.js: $(CLOSURE) src/*.js src/graphics_adapters/*.js src/grap
 		--js src/graphics_adapters/virtio_gpu/gfxstream.js \
 		--js src/graphics_adapters/virtio_gpu/virtio_gpu_device.js \
 		--js src/graphics_adapters/virtio_gpu/plugin.js
+
+build/v86-geforce-6800.js: $(CLOSURE) src/*.js src/graphics_adapters/*.js src/graphics_adapters/geforce_6800/*.js
+	mkdir -p build
+	java -jar $(CLOSURE) --js_output_file $@ --define=DEBUG=false $(CLOSURE_FLAGS) \
+		--compilation_level SIMPLE --jscomp_off=missingProperties \
+		--output_wrapper ';(function(){%output%}).call(this);' \
+		--js $(GRAPHICS_ADAPTER_COMMON) --js src/graphics_adapters/virtio_gpu/edid.js \
+		--js src/graphics_adapters/vmware_svga/d9wg_constants.js --js src/graphics_adapters/vmware_svga/svga3d_d9wg.js \
+		--js src/graphics_adapters/geforce_6800/nv_trace.js --js src/graphics_adapters/geforce_6800/nv_ddc.js \
+		--js src/graphics_adapters/geforce_6800/nv_display.js \
+		--js src/graphics_adapters/geforce_6800/nv_dma.js \
+		--js src/graphics_adapters/geforce_6800/nv_fifo.js \
+		--js src/graphics_adapters/geforce_6800/nv40_program.js \
+		--js src/graphics_adapters/geforce_6800/nv40_shader.js \
+		--js src/graphics_adapters/geforce_6800/nv40_state.js \
+		--js src/graphics_adapters/geforce_6800/nv40_texture.js --js src/graphics_adapters/geforce_6800/nv40_render.js \
+		--js src/graphics_adapters/geforce_6800/nv40_3d.js \
+		--js src/graphics_adapters/geforce_6800/nv_graph.js \
+		--js src/graphics_adapters/geforce_6800/nv_2d.js \
+		--js src/graphics_adapters/geforce_6800/nv_rma.js \
+		--js src/graphics_adapters/geforce_6800/nv_device.js --js src/graphics_adapters/geforce_6800/plugin.js
 
 .PHONY: graphics-adapters device-plugins
 graphics-adapters: $(GRAPHICS_ADAPTER_PLUGINS)
@@ -315,7 +361,7 @@ build/v86-gles.js: src/gles/*.js src/graphics_adapters/renderer_protocol.js src/
 
 device-plugins: $(DEVICE_PLUGINS)
 
-build/libv86.js: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/virt/*.js src/image/*.js lib/*.js src/browser/*.js
+build/libv86.js: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/apple/*.js src/virt/*.js src/image/*.js lib/*.js src/browser/*.js
 	mkdir -p build
 	-ls -lh build/libv86.js
 	java -jar $(CLOSURE) \
@@ -330,7 +376,7 @@ build/libv86.js: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm
 		--js $(LIB_FILES)
 	ls -lh build/libv86.js
 
-build/libv86.mjs: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/virt/*.js src/image/*.js src/android/*.js lib/*.js src/browser/*.js
+build/libv86.mjs: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/apple/*.js src/virt/*.js src/image/*.js src/android/*.js lib/*.js src/browser/*.js
 	mkdir -p build
 	-ls -lh build/libv86.js
 	java -jar $(CLOSURE) \
@@ -347,7 +393,7 @@ build/libv86.mjs: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/ar
 		--emit_use_strict=false
 	ls -lh build/libv86.mjs
 
-build/libv86-debug.js: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/virt/*.js src/image/*.js lib/*.js src/browser/*.js
+build/libv86-debug.js: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/apple/*.js src/virt/*.js src/image/*.js lib/*.js src/browser/*.js
 	mkdir -p build
 	java -jar $(CLOSURE) \
 		--js_output_file build/libv86-debug.js\
@@ -362,7 +408,7 @@ build/libv86-debug.js: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js s
 		--js $(LIB_FILES)
 	ls -lh build/libv86-debug.js
 
-build/libv86-debug.mjs: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/virt/*.js src/image/*.js src/android/*.js lib/*.js src/browser/*.js
+build/libv86-debug.mjs: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/apple/*.js src/virt/*.js src/image/*.js src/android/*.js lib/*.js src/browser/*.js
 	mkdir -p build
 	java -jar $(CLOSURE) \
 		--js_output_file build/libv86-debug.mjs\
@@ -533,11 +579,11 @@ run: browser glbridge build/v86.wasm
 
 # The VM manager as a static site in build/pages (tools/pages_dist.mjs, for
 # Cloudflare Pages: .github/workflows/pages.yml, docs/vm-manager.md)
-PAGES_BUILD=build/v86_app.js build/android-import-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js build/xterm.js \
+PAGES_BUILD=build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js build/xterm.js \
 	build/v86.wasm build/v86-fallback.wasm build/v86-parallel.wasm \
 	build/v86-arm64.wasm build/v86-arm64-fallback.wasm build/v86-arm64-parallel.wasm $(DEVICE_PLUGINS)
 .PHONY: pages
-pages: $(PAGES_BUILD) glbridge
+pages: $(PAGES_BUILD) glbridge ios-install-assets
 	node tools/pages_dist.mjs
 
 update_version:
@@ -757,8 +803,27 @@ acpi-table-tests:
 acpi-tests: acpi-table-tests acpi-device-tests acpi-guest-tests
 
 devices-test: build/v86-debug.wasm
+	node tests/devices/pic_spurious.js
 	./tests/devices/display.js
 	./tests/devices/graphics_adapter.js
+	./tests/devices/geforce_6800.js
+	./tests/devices/geforce_6800_bios.js
+	node tests/devices/geforce_6800_vbe.js
+	./tests/devices/geforce_6800_dma.js
+	node tests/devices/geforce_checkpoint.mjs
+	node tests/devices/geforce_present_capture.mjs
+	node tests/devices/geforce_ide_watch.mjs
+	node tests/devices/geforce_6800_fifo.js
+	node tests/devices/geforce_6800_graph.js
+	node tests/devices/geforce_6800_state.js
+	node tests/devices/geforce_6800_vertex_span.mjs
+	node tests/devices/geforce_6800_texture.js
+	node tests/devices/geforce_6800_bc_upload.mjs
+	node tests/devices/geforce_6800_byte_diff.mjs
+	node tests/x64/gpu_remote_frame_reader_test.mjs
+	node tests/devices/geforce_6800_render.mjs
+	node tests/devices/pam_shadow.js
+	node tests/devices/geforce_6800_2d.js
 	./tests/devices/vmware_svga.js
 	./tests/devices/vmware_svga_3d.js
 	./tests/devices/vmware_svga_gb.js
@@ -784,6 +849,8 @@ devices-test: build/v86-debug.wasm
 	./tests/devices/virtio_devices.js
 	./tests/devices/virtio_rng.js
 	./tests/devices/ide_large_disk.js
+	./tests/devices/ide_transfer_progress.js
+	node tests/devices/ide_command_irq.js
 	./tests/devices/ide_disk_image.js
 	./tests/devices/disk_error.mjs
 	./tests/devices/disk_writeback.mjs
@@ -902,14 +969,14 @@ disk-image-browser-tests: build/libv86.mjs build/cpu-worker.js build/v86.wasm $(
 # outside Closure, bundled by esbuild into build/v86_app.js (build/libv86.mjs
 # stays its own file: index.html's import map names it "v86"), checked by tsc
 # against v86.d.ts. The tools are package.json's devDependencies (npm ci).
-APP_FILES=$(shell find src/app -name '*.js') $(wildcard src/android/*.js) src/browser/vm_options.js src/browser/query_compat.js \
+APP_FILES=$(shell find src/app -name '*.js') $(wildcard src/android/*.js src/ios/*.js) src/browser/vm_options.js src/browser/query_compat.js \
 	src/machine_options.js src/disk_options.js
 node_modules/.bin/esbuild node_modules/.bin/tsc: package.json package-lock.json
 	npm ci
 	touch node_modules/.bin/esbuild node_modules/.bin/tsc
 
 .PHONY: app app-check
-app: build/v86_app.js build/android-import-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js
+app: build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js ios-install-assets
 
 build/v86_app.js: $(APP_FILES) node_modules/.bin/esbuild
 	mkdir -p build
@@ -922,6 +989,33 @@ build/android-import-worker.js: src/app/android_import_worker.js $(wildcard src/
 	mkdir -p build
 	node_modules/.bin/esbuild src/app/android_import_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
 		--outfile=build/android-import-worker.js --log-level=warning
+
+build/ios-import-worker.js: src/app/ios_import_worker.js $(wildcard src/ios/*.js src/apple/*.js src/android/*.js) src/image/sha256.js node_modules/.bin/esbuild
+	mkdir -p build
+	node_modules/.bin/esbuild src/app/ios_import_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
+		--outfile=build/ios-import-worker.js --log-level=warning
+
+build/ios-install-worker.js: src/app/ios_install_worker.js $(wildcard src/ios/*.js src/apple/*.js src/android/*.js) src/image/sha256.js node_modules/.bin/esbuild
+	mkdir -p build
+	node_modules/.bin/esbuild src/app/ios_install_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
+		--outfile=build/ios-install-worker.js --log-level=warning
+
+# Locally built v86 graphics adapter, using exports from the owner's 10B329 cache.
+.PHONY: ios-guest
+ios-guest:
+	test -n "$(IPHONE4_DYLD_CACHE)"
+	sh tools/ios/guest/build-gles.sh build/ios-guest --host-contexts "$(IPHONE4_DYLD_CACHE)"
+
+.PHONY: ios-install-fixtures
+ios-install-fixtures:
+	sh tools/ios/guest/build-apps.sh build/ios-install-fixtures
+
+.PHONY: ios-install-assets ios-install-assets-refresh
+ios-install-assets:
+	node tools/ios/install-assets.mjs
+
+ios-install-assets-refresh: ios-install-fixtures
+	node tools/ios/install-assets.mjs --refresh
 
 app-check: node_modules/.bin/tsc
 	node_modules/.bin/tsc -p tsconfig.json
@@ -951,7 +1045,10 @@ app-tests: app-shared-tests app-check app build/v86.wasm build/v86-debug.wasm bu
 	node tests/app/browser_runner.mjs tests/app/app_test.html page=app_debug.html
 	node tests/app/browser_runner.mjs tests/app/app_test.html page=index.html worker=0
 	node tests/android/make_package.mjs
-	for part in freedos linux arm64 dialog uefi secure_boot android android_gsi android_emulator; do node tests/app/browser_runner.mjs tests/app/wizard_test.html part=$$part || exit 1; done
+	for part in freedos linux arm64 dialog uefi secure_boot android android_gsi android_emulator ios_dialog; do node tests/app/browser_runner.mjs tests/app/wizard_test.html part=$$part || exit 1; done
+	node tests/app/browser_runner.mjs tests/ios/worker_panel_test.html
+	node tests/ios/make-install-fixture.mjs
+	node tests/app/browser_runner.mjs tests/app/ios_install_test.html
 	node tests/app/browser_runner.mjs tests/app/wizard_test.html part=service service=1
 	node tests/app/browser_runner.mjs tests/app/wizard_test.html part=android_service service=1
 	node tests/app/browser_runner.mjs tests/app/console_test.html part=main
@@ -1001,7 +1098,7 @@ build/capstone-x86.min.js:
 	mkdir -p build
 	wget -nv -P build https://github.com/AlexAltea/capstone.js/releases/download/v3.0.5-rc1/capstone-x86.min.js
 
-# The page always loads the serial terminal; its CSS is included in v86.css.
+# The page loads the serial terminal with the shared src/app/xterm.css styles.
 # Never leave an empty/partial target behind when a download fails.
 build/xterm.js:
 	mkdir -p build
@@ -1039,7 +1136,7 @@ sse3-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-fal
 	node tests/rust/sse3.mjs build/v86-debug.wasm
 
 # Keep the worker's public option/event wire names stable across bundles.
-build/cpu-worker.js: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/virt/*.js src/image/*.js src/android/*.js src/browser/*.js lib/*.js
+build/cpu-worker.js: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/apple/*.js src/virt/*.js src/image/*.js src/android/*.js src/browser/*.js lib/*.js
 	mkdir -p build
 	java -jar $(CLOSURE) --js_output_file $@ --define=DEBUG=false $(CLOSURE_FLAGS) \
 		--compilation_level SIMPLE --jscomp_off=missingProperties \
@@ -1048,7 +1145,7 @@ build/cpu-worker.js: $(DEVICE_PLUGINS) $(CLOSURE) src/*.js src/parallel/*.js src
 
 # The vCPU workers of the host-parallel build (src/parallel/vcpu.js), paired
 # with v86-parallel.wasm: `parallel: true` loads both next to the bundles
-build/vcpu-worker.js: $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/virt/*.js src/image/*.js src/android/*.js src/browser/*.js lib/*.js
+build/vcpu-worker.js: $(CLOSURE) src/*.js src/parallel/*.js src/arm/*.js src/apple/*.js src/virt/*.js src/image/*.js src/android/*.js src/browser/*.js lib/*.js
 	mkdir -p build
 	java -jar $(CLOSURE) --js_output_file $@ --define=DEBUG=false $(CLOSURE_FLAGS) \
 		--compilation_level SIMPLE --jscomp_off=missingProperties \
@@ -1474,6 +1571,10 @@ a32-tests: a32-system-tests build/v86-arm64.wasm
 # reference) and its lifecycle, kvm-unit-tests arm
 a32-system-tests: build/v86-arm64.wasm
 	node tests/a32/baremetal.mjs
+	node tests/a32/thread_id.mjs
+	node tests/a32/cps_mask.mjs
+	node tests/a32/cps_enable.mjs
+	node tests/a32/status_mask.mjs
 	node tests/a32/ranchu_devices.mjs
 	for cores in 1 2 4; do A32_JIT=1 A32_CORES=$$cores node tests/a32/linux_boot.mjs || exit 1; done
 	A32_STAGE=lifecycle A32_JIT=1 A32_CORES=2 node tests/a32/linux_boot.mjs
@@ -1711,6 +1812,7 @@ x64-page-tier-tests: build/v86-debug.wasm
 	X64_JIT=1 node tests/x64/system_oracle.mjs
 	X64_JIT=1 X64_IR_TIER0=0 node tests/x64/system_oracle.mjs
 	node tests/x64/page_system.mjs
+	node tests/x64/legacy_wp_privilege.mjs
 	node tests/x64/frame_buffer.mjs
 	node tests/x64/compat_jit.mjs
 	node tests/x64/initial_ram.mjs
@@ -2029,9 +2131,39 @@ sse-fault-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v8
 
 # docs/iphone4-plan.md "测试": the iOS firmware tools on samples the tests
 # make themselves (made-up keys, no Apple files)
-.PHONY: ios-tests
+.PHONY: ios-tests ios-pvrtc-tests ios-amc-tests
 ios-tests:
+	node --test tests/ios/ipa.mjs
+	node --test tests/ios/ipa-prepare.mjs
+	node --test tests/ios/code-hash.mjs
+	node --test tests/ios/install-components.mjs
+	node --test tests/ios/install-trust.mjs tests/ios/runtime-trust.mjs tests/ios/install-service.mjs tests/ios/install-api.mjs
+	node tests/ios/boot-tree.mjs
+	node tests/ios/spi-dma.mjs
+	node tests/ios/multitouch-device.mjs
+	node tests/ios/sensors.mjs
+	node tests/ios/dart.mjs
+	node tests/ios/nand-volumes.mjs
+	node tests/ios/nand-boot.mjs
+	node tests/ios/sparse-nand.mjs
+	node tests/ios/nand.mjs
 	node tests/ios/tools.mjs
+	node tests/ios/devices.mjs
+	node tests/ios/amc.mjs
+
+# AMC startup must unblock an actual ARM guest; WebCodecs must deliver
+# real PCM and preserve the stream across snapshots (requires Chrome).
+ios-amc-tests: build/v86-arm64.wasm
+	node tests/ios/amc.mjs
+	node tests/ios/amc-guest.mjs
+	node tests/app/browser_runner.mjs tests/ios/amc-codec.html
+
+ios-pvrtc-tests: build/ios-pvrtc-test
+	./build/ios-pvrtc-test
+
+build/ios-pvrtc-test: tests/ios/pvrtc.c tools/ios/guest/pvrtc.h
+	mkdir -p build
+	$(CC) -std=c99 -O2 -Wall -Wextra -o $@ $<
 
 # docs/gles-proxy-plan.md "测试": the GLES host's protocol tables against the
 # pinned specs' shapes, the connection stream, renderControl, the shadow

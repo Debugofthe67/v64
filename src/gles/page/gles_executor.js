@@ -1,3 +1,4 @@
+import { decode_pvrtc } from "../pvrtc.js";
 // The GLES executor (docs/gles-proxy-plan.md "执行器", E3): GLES batches
 // (src/gles/gles_batch.js) on WebGPU, on the page. It runs the same state
 // machine as the CPU side (src/gles/gles_shadow.js) over the commands it
@@ -267,7 +268,10 @@ GLESExecutor.prototype.run = function(record)
         case "COLOR_BUFFER_DESTROY":
         {
             const cb = this.rc.color_buffers.get(record.color_buffer);
-            if(cb) this.staging.push(cb.texture);
+            if(cb) {
+                this.staging.push(cb.texture);
+                if(cb.native_texture) this.staging.push(cb.native_texture);
+            }
             this.rc.color_buffers.delete(record.color_buffer);
             return undefined;
         }
@@ -275,6 +279,14 @@ GLESExecutor.prototype.run = function(record)
         {
             const cb = this.rc.color_buffers.get(record.color_buffer);
             if(!cb || !record.width || !record.height) return undefined;
+            // CPU writes use native memory rows. Normalize an old window's
+            // GPU rows first so even a partial update preserves untouched bytes.
+            if(cb.native_flip) {
+                const memory = this.color_buffer_texture(record.color_buffer, true);
+                this.end_pass();
+                this.encoder.copyTextureToTexture({ texture: memory.texture }, { texture: cb.texture }, [cb.width, cb.height, 1]);
+                cb.native_flip = false;
+            }
             const rgba = to_rgba8(record.format, record.type, record.width, record.height, 1, record.bytes);
             this.upload(cb.texture, 0, 0, record.x, record.y, record.width, record.height, rgba);
             return undefined;
@@ -282,14 +294,52 @@ GLESExecutor.prototype.run = function(record)
         case "COLOR_BUFFER_READ":
         {
             const cb = this.rc.color_buffers.get(record.color_buffer);
-            if(!cb) return this.answer_failed(record.request);
-            return this.read_texture(cb.texture, record.x, record.y, record.width, record.height, false,
-                (rgba, sink) => this.answer(sink, record.request, rgba));
+            if(!cb || record.type !== GL.UNSIGNED_BYTE ||
+                record.format !== GL.RGBA && record.format !== GL.BGRA_EXT)
+                return this.answer_failed(record.request);
+            const memory = this.color_buffer_texture(record.color_buffer, true);
+            return this.read_texture(memory.texture, record.x, record.y, record.width, record.height, false,
+                (rgba, sink) =>
+                {
+                    // Native IOSurfaces store BGRA. Pack on the host instead of
+                    // executing a channel-swap loop on the emulated ARM CPU.
+                    if(record.format === GL.BGRA_EXT)
+                        for(let i = 0; i < rgba.length; i += 4)
+                        {
+                            const r = rgba[i]; rgba[i] = rgba[i + 2]; rgba[i + 2] = r;
+                        }
+                    this.answer(sink, record.request, rgba);
+                });
+        }
+        case "IOSURFACE_READ":
+        {
+            const cb = this.rc.color_buffers.get(record.color_buffer);
+            if(!cb || record.flip > 1 || !record.height || record.y > cb.height || record.height > cb.height - record.y)
+                return this.answer_failed(record.request);
+            // The native publication's last strip establishes its memory
+            // row order. A window renderbuffer retains GL rows; a compositor
+            // sampling this IOSurface must see the same rows as its CPU bytes.
+            if(record.y + record.height === cb.height) cb.native_flip = !!record.flip;
+            return this.read_texture(cb.texture, 0, record.y, cb.width, record.height, !!record.flip,
+                (rgba, sink) =>
+                {
+                    for(let i = 0; i < rgba.length; i += 4)
+                    {
+                        const r = rgba[i]; rgba[i] = rgba[i + 2]; rgba[i + 2] = r;
+                    }
+                    this.answer(sink, record.request, rgba);
+                });
         }
         case "COLOR_BUFFER_BIND":
         {
             const conn = this.conns.get(record.conn);
-            if(conn) this.shadow.bind_color_buffer(conn.context, record.color_buffer, !!record.texture);
+            this.end_pass();
+            if(conn && this.shadow.bind_color_buffer(conn.context, record.color_buffer, !!record.texture) && !record.texture)
+            {
+                const c = this.shadow.contexts.get(conn.context), rb = c.group.renderbuffers.get(c.renderbuffer);
+                if(rb.gpu) this.staging.push(rb.gpu);
+                rb.gpu = null;
+            }
             return undefined;
         }
         case "IMAGE_CREATE":
@@ -342,6 +392,7 @@ GLESExecutor.prototype.command = function(record)
         case "glTexImage2D": return this.tex_image(c, args, false);
         case "glTexSubImage2D": return this.tex_image(c, args, true);
         case "glCompressedTexImage2D": return this.compressed_tex_image(c, args);
+        case "glCompressedTexSubImage2D": return this.compressed_tex_image(c, args, true);
         case "glCopyTexImage2D": return this.copy_tex_image(c, args, false);
         case "glCopyTexSubImage2D": return this.copy_tex_image(c, args, true);
         case "glGenerateMipmap": return this.generate_mipmap(c, args[0]);
@@ -448,13 +499,18 @@ GLESExecutor.prototype.tex_image = function(c, args, sub)
     this.upload(target_texture.texture, level, face, x, y, width, height, rgba);
 };
 
-GLESExecutor.prototype.compressed_tex_image = function(c, args)
+GLESExecutor.prototype.compressed_tex_image = function(c, args, sub = false)
 {
-    const [target, level, , width, height, , , data] = args;
+    const [target, level] = args;
+    let format, width, height, data;
+    if(sub) [, , , , width, height, format, , data] = args;
+    else [, , format, width, height, , , data] = args;
     const { texture, face } = bound(c, target);
     const t = texture && this.write_target(texture, level);
     if(!t || level >= t.levels) return;
-    this.upload(t.texture, level, face, 0, 0, width, height, decode_etc1(width, height, data));
+    const rgba = format === GL.ETC1_RGB8_OES ? decode_etc1(width, height, data) :
+        decode_pvrtc(width, height, data, !!(format & 1), !!(format & 2));
+    this.upload(t.texture, level, face, 0, 0, width, height, rgba);
 };
 
 /** glCopyTex(Sub)Image2D: from what is read (the read framebuffer's color) into a level */
@@ -570,6 +626,7 @@ GLESExecutor.prototype.target_of = function(c)
         {
             const rb = c.group.renderbuffers.get(a.name);
             if(rb && rb.image) return this.image_texture(rb.image);
+            if(rb && rb.color_buffer) return this.color_buffer_texture(rb.color_buffer);
             return rb && rb.gpu ? { texture: rb.gpu.texture, format: rb.gpu.format, layer: 0, level: 0 } : null;
         }
         const texture = c.group.textures.get(a.name);
@@ -641,16 +698,28 @@ GLESExecutor.prototype.surface_textures = function(s)
 };
 
 /** An EGL image's texture: its color buffer's */
-GLESExecutor.prototype.image_texture = function(image)
+GLESExecutor.prototype.image_texture = function(image, sample = false)
 {
     const object = this.rc.images.get(image);
-    return object ? this.color_buffer_texture(object.buffer) : null;
+    return object ? this.color_buffer_texture(object.buffer, sample) : null;
 };
 
-GLESExecutor.prototype.color_buffer_texture = function(handle)
+GLESExecutor.prototype.color_buffer_texture = function(handle, sample = false)
 {
     const cb = this.rc.color_buffers.get(handle);
-    return cb ? { texture: cb.texture, format: COLOR_FORMAT, layer: 0, level: 0 } : null;
+    if(!cb) return null;
+    let texture = cb.texture;
+    if(sample && cb.native_flip)
+    {
+        // Keep the producer's GL renderbuffer intact (including retained
+        // backing). Native consumers sample the IOSurface's published memory
+        // order, using a separate GPU image rather than uploading CPU pixels.
+        cb.native_texture ||= this.device.createTexture({ label: "native IOSurface memory rows",
+            size: [cb.width, cb.height], format: COLOR_FORMAT, usage: TEXTURE_USAGE });
+        this.blit_into(cb.texture.createView(), cb.native_texture.createView(), true, false);
+        texture = cb.native_texture;
+    }
+    return { texture, source: cb.texture, format: COLOR_FORMAT, layer: 0, level: 0 };
 };
 
 /** The render pass on the context's target (the one open, if it is the same) */
@@ -840,9 +909,11 @@ GLESExecutor.prototype.draw = function(c, mode, first, count, elements)
     {
         const pipeline = this.pipeline(c, program, shaders, layout, topology, target, !!list, face);
         if(!pipeline) return;
+        // Native IOSurface sampling may prepare a GPU copy and end a pass.
+        // Resolve resources before acquiring the pass used by this draw.
+        const groups = ff ? this.ff_bind_groups(c, ff, pipeline, target, c.viewport) : this.bind_groups(c, program, shaders, pipeline, target);
         const pass = this.begin_pass(target, null);
         pass.setPipeline(pipeline);
-        const groups = ff ? this.ff_bind_groups(c, ff, pipeline, target, c.viewport) : this.bind_groups(c, program, shaders, pipeline, target);
         for(const [index, group] of groups) pass.setBindGroup(index, group);
         layout.buffers.forEach((buffer, slot) => pass.setVertexBuffer(slot, buffer));
         pass.setViewport(vx, vy, vw, vh, Math.min(c.depth_range[0], c.depth_range[1]), Math.max(c.depth_range[0], c.depth_range[1]));
@@ -1010,13 +1081,14 @@ GLESExecutor.prototype.draw_tex = function(c, [x, y, z, w, h])
     const layout = { buffers, formats, key: "tex:" + formats.map(f => f.location + ":" + f.components).join(",") };
     const pipeline = this.pipeline(c, null, ff.shaders, layout, "triangle-list", target, false);
     if(!pipeline) return;
-    const pass = this.begin_pass(target, null);
-    pass.setPipeline(pipeline);
     const snapshot = ff_snapshot(c, [0, 0, W, H]);
     const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
     Object.assign(snapshot.matrices, { modelview: identity, projection: identity, mvp: identity });
     snapshot.depthRange = { near: 0, far: 1 };
-    for(const [index, group] of this.ff_bind_groups(c, ff, pipeline, target, [0, 0, W, H], snapshot)) pass.setBindGroup(index, group);
+    const groups = this.ff_bind_groups(c, ff, pipeline, target, [0, 0, W, H], snapshot);
+    const pass = this.begin_pass(target, null);
+    pass.setPipeline(pipeline);
+    for(const [index, group] of groups) pass.setBindGroup(index, group);
     buffers.forEach((buffer, slot) => pass.setVertexBuffer(slot, buffer));
     pass.setViewport(0, 0, W, H, 0, 1);
     if(!this.apply_scissor(pass, c, target)) return;
@@ -1291,8 +1363,8 @@ GLESExecutor.prototype.texture_view = function(texture, cube, drawn_to)
     // (an EGL image's or a bound color buffer's: that color buffer's texture)
     if(base && (base.image || base.color_buffer))
     {
-        const t = base.image ? this.image_texture(base.image) : this.color_buffer_texture(base.color_buffer);
-        return t && t.texture !== drawn_to ? t.texture.createView() : fallback();
+        const t = base.image ? this.image_texture(base.image, true) : this.color_buffer_texture(base.color_buffer, true);
+        return t && t.texture !== drawn_to && t.source !== drawn_to ? t.texture.createView() : fallback();
     }
     const gpu = this.gpu_texture(texture);
     if(!gpu || gpu.texture === drawn_to) return fallback();
@@ -1332,7 +1404,8 @@ GLESExecutor.prototype.texture_view = function(texture, cube, drawn_to)
 GLESExecutor.prototype.sampler = function(texture)
 {
     const t = texture || { min_filter: GL.NEAREST, mag_filter: GL.NEAREST, wrap_s: GL.CLAMP_TO_EDGE, wrap_t: GL.CLAMP_TO_EDGE };
-    const key = [t.min_filter, t.mag_filter, t.wrap_s, t.wrap_t].join("|");
+    const anisotropy = Math.min(16, Math.max(1, Math.ceil(t.anisotropy || 1)));
+    const key = [t.min_filter, t.mag_filter, t.wrap_s, t.wrap_t, anisotropy].join("|");
     let sampler = this.samplers.get(key);
     if(!sampler)
     {
@@ -1341,8 +1414,9 @@ GLESExecutor.prototype.sampler = function(texture)
         const mipmapped = t.min_filter !== GL.NEAREST && t.min_filter !== GL.LINEAR;
         sampler = this.device.createSampler({
             addressModeU: WRAPS[t.wrap_s] || "repeat", addressModeV: WRAPS[t.wrap_t] || "repeat",
-            magFilter: t.mag_filter === GL.LINEAR ? "linear" : "nearest", minFilter: min_linear ? "linear" : "nearest",
-            mipmapFilter: mip_linear ? "linear" : "nearest", lodMaxClamp: mipmapped ? 32 : 0,
+            magFilter: anisotropy > 1 || t.mag_filter === GL.LINEAR ? "linear" : "nearest", minFilter: anisotropy > 1 || min_linear ? "linear" : "nearest",
+            mipmapFilter: anisotropy > 1 || mip_linear ? "linear" : "nearest", lodMaxClamp: mipmapped ? 32 : 0,
+            maxAnisotropy: anisotropy,
         });
         this.samplers.set(key, sampler);
     }
@@ -1642,7 +1716,7 @@ GLESExecutor.prototype.restore = function(packed)
         for(const rb of group.renderbuffers.values())
         {
             rb.gpu = null;
-            if(!rb.width || !rb.height || rb.image) continue;
+            if(!rb.width || !rb.height || rb.image || rb.color_buffer) continue;
             if(rb.saved3)
             {
                 this.restore_renderbuffer3(rb);

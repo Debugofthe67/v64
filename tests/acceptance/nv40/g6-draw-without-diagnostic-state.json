@@ -1,0 +1,51 @@
+{
+  "date": "2026-11-15",
+  "status": "Draw path skips the unused native method snapshot; public program diagnostics retain it.",
+  "evidence": {
+    "nativeBatch8Profile": "build/nv40-xp-mark06-batch8-wide-batches/batch8-wide-diagnostic.cpuprofile",
+    "windowSeconds": 40.073967,
+    "programSelfSeconds": 4.768,
+    "shadersSelfSeconds": 3.17,
+    "vertexConstantsSelfSeconds": 3.11
+  },
+  "change": "program(o,false) in shaders() skips Array.from/filter of the full method Map. Default program(o) and captured diagnostics still include state. Fresh VP/FP decoding, DMA checks and inline constants are unchanged.",
+  "validation": {
+    "red": "A draw-path Map iterator trap reproduces the unwanted diagnostic enumeration.",
+    "green": "The same shaders compile with iteration disabled; diagnostics, instruction mutations, current inline constants and bounded translation LRU pass.",
+    "realGpu": "Complete NV40 pixel, query, alias and snapshot regressions passed.",
+    "closure": "0 errors/0 warnings"
+  },
+  "cpuMicrobenchmark": {
+    "iterations": 3000,
+    "rounds": 7,
+    "unit": "Node CPU milliseconds",
+    "samples": {
+      "diagnostic": [
+        494.248,
+        473.786,
+        439.558,
+        361.402,
+        372.656,
+        354.685,
+        349.77
+      ],
+      "draw": [
+        136.548,
+        123.075,
+        136.608,
+        144.729,
+        118.328,
+        116.812,
+        115.773
+      ]
+    },
+    "medians": {
+      "diagnostic": 372.656,
+      "draw": 123.075
+    }
+  },
+  "limits": [
+    "Microbenchmark uses the real checked shader path and4352 additional method entries, explicit GC before3000 calls, seven alternating rounds.",
+    "No original FPS or native watchdog fix is inferred."
+  ]
+}

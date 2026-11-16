@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-15",
+  "scope": "G6 measured IFC notifier-context binding barrier; native06 full acceptance and a post-change native timing comparison remain open.",
+  "nativeTrigger": {
+    "directory": "build/nv40-xp-mark06-post-scalar-profile",
+    "class": "0x65",
+    "method": "0x180 DMA_NOTIFY context binding",
+    "barriers": 184,
+    "allRecordedBarriers": 295
+  },
+  "change": "IFC-class DMA_NOTIFY rebinding can retain queued draws when its real four-byte GROBJ RAMIN writeback is disjoint from every pending output and read-only attachment guard. It still reads/validates the original binding handle, updates notify_context, writes GROBJ word1 and updates hardware mirrors. Actual notifications and RAMIN aliases retain barriers.",
+  "validation": [
+    "RED: observed disjoint binding incorrectly returns barrier=true before change",
+    "Complete real WebGPU regression: real binding, GROBJ/mirror values and two successive draws preserve blend history with one batch/readback",
+    "Both output and read-only guard aliases at the four-byte RAMIN writeback retain barriers",
+    "Invalid instance and invalid notification handle retain conservative ordering before a PGRAPH fault",
+    "Existing FIFO/device graph notifier regressions pass",
+    "Closure plugin build0 errors/0 warnings"
+  ],
+  "limits": [
+    "No notification, fence or query is synthesized, skipped or completed early.",
+    "This preserves ordering for the binding writeback; other IFC operations retain their existing checked footprints.",
+    "Native performance improvement and resolution of06 timeout are not inferred from the profile or unit tests."
+  ],
+  "performanceGate": false,
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark06-post-scalar-profile/batch-barriers.json",
+      "bytes": 497,
+      "sha256": "bc5dc8488312687e95eb35e0f3d6ee1079b56c8c63e10539219ef2c841506868"
+    },
+    {
+      "file": "build/nv40-ifc-notify-binding-red.log",
+      "bytes": 5640,
+      "sha256": "9f1be002bb14c337e070dbc439f4b102e0dbcf22d330b92079f61b9945db3732"
+    },
+    {
+      "file": "build/nv40-ifc-notify-binding-gpu.log",
+      "bytes": 5756,
+      "sha256": "0b30f5d23139bcedd7fdbc388b42c869ff15af231cbce165a44c17cdd718e17c"
+    },
+    {
+      "file": "build/nv40-ifc-notify-binding-unit.log",
+      "bytes": 95,
+      "sha256": "22897543f5914fffc623ba01f5b67f6b1e7fa050e7b8d13b7346ade243901c63"
+    },
+    {
+      "file": "build/nv40-ifc-notify-binding-graph.log",
+      "bytes": 1104,
+      "sha256": "c6aec485b53c53ece999006a90a06b1b0039996116d15108aad4a54bd205edcd"
+    },
+    {
+      "file": "build/nv40-ifc-notify-binding-fifo.log",
+      "bytes": 98,
+      "sha256": "ee3a945b6ec642f0da4dfccee5632271a713cb0d686f45f258374e066423b8f3"
+    },
+    {
+      "file": "build/nv40-ifc-notify-binding-closure.log",
+      "bytes": 3020,
+      "sha256": "928cdedd9ef614b44a371f6342106afd0f2aa0671fe80e28dd774fb3f4091174"
+    }
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "date": "2026-11-14",
+  "scope": "G6 checked system-memory PFIFO scalar read optimization; full native06 and isolated guest performance remain open.",
+  "change": "Single-page system-memory DWORD reads use the existing checked machine.read32_physical API after unchanged DMA range/PTE/access/bus-master checks. VRAM, compatibility machines without that API, cross-page and endian behavior retain existing paths.",
+  "profileBasis": "Prior native CPU profiles in g6-checked-dma-word-fetch.json identify NVDMA.read and FIFO processing as measurable hotspots; this removes the remaining four-byte system-RAM copy.",
+  "microbenchmark": {
+    "scope": "Checked NVDMA system-RAM DWORD microbenchmark, native command-header values in test memory; not native guest performance.",
+    "words": 64,
+    "readsPerTrial": 500000,
+    "before": [
+      {
+        "ms": 30.632458000000042,
+        "checksum": 508638668,
+        "blobReads": 500000,
+        "scalarReads": 0
+      },
+      {
+        "ms": 42.227125,
+        "checksum": 508638668,
+        "blobReads": 500000,
+        "scalarReads": 0
+      },
+      {
+        "ms": 104.20316700000001,
+        "checksum": 508638668,
+        "blobReads": 500000,
+        "scalarReads": 0
+      },
+      {
+        "ms": 36.887500000000045,
+        "checksum": 508638668,
+        "blobReads": 500000,
+        "scalarReads": 0
+      },
+      {
+        "ms": 42.950624999999945,
+        "checksum": 508638668,
+        "blobReads": 500000,
+        "scalarReads": 0
+      },
+      {
+        "ms": 32.108833000000004,
+        "checksum": 508638668,
+        "blobReads": 500000,
+        "scalarReads": 0
+      },
+      {
+        "ms": 30.270708000000013,
+        "checksum": 508638668,
+        "blobReads": 500000,
+        "scalarReads": 0
+      }
+    ],
+    "after": [
+      {
+        "ms": 12.630957999999964,
+        "checksum": 508638668,
+        "blobReads": 0,
+        "scalarReads": 500000
+      },
+      {
+        "ms": 12.629125000000045,
+        "checksum": 508638668,
+        "blobReads": 0,
+        "scalarReads": 500000
+      },
+      {
+        "ms": 35.71154199999995,
+        "checksum": 508638668,
+        "blobReads": 0,
+        "scalarReads": 500000
+      },
+      {
+        "ms": 18.563125000000014,
+        "checksum": 508638668,
+        "blobReads": 0,
+        "scalarReads": 500000
+      },
+      {
+        "ms": 13.588666999999987,
+        "checksum": 508638668,
+        "blobReads": 0,
+        "scalarReads": 500000
+      },
+      {
+        "ms": 23.532375000000002,
+        "checksum": 508638668,
+        "blobReads": 0,
+        "scalarReads": 500000
+      },
+      {
+        "ms": 33.39629100000002,
+        "checksum": 508638668,
+        "blobReads": 0,
+        "scalarReads": 500000
+      }
+    ],
+    "beforeMedianMs": 36.887500000000045,
+    "afterMedianMs": 18.563125000000014
+  },
+  "validation": [
+    "RED: scalar API call count 0 instead of2 on old implementation",
+    "DMA: unaligned/both endian, cross-page, inclusive limit, changed PTE, read permission, out-of-RAM and bus-master checks before physical access",
+    "FIFO/device/PGRAPH regressions pass",
+    "Complete Chrome WebGPU regression passes",
+    "Closure plugin build:0 errors/0 warnings"
+  ],
+  "limits": [
+    "Synthetic checked-word timings are not native FPS and do not establish resolution of native06 timeout.",
+    "No guest timer, PTE, fence, notification or watchdog bypass.",
+    "Existing running guests retain their loaded implementation."
+  ],
+  "performanceGate": false,
+  "evidence": [
+    {
+      "file": "build/nv40-system-dma-scalar-benchmark.json",
+      "bytes": 2020,
+      "sha256": "0aed3c2a54b1d33786f636b91b2adc146b081615f834618b8d093947a2770bea"
+    },
+    {
+      "file": "build/nv40-system-dma-scalar-red.log",
+      "bytes": 651,
+      "sha256": "6249e22bb2b01e12f4c38ca5b1f454a16cf9ea1e2776fbe9d7ddea54dada3fa3"
+    },
+    {
+      "file": "build/nv40-system-dma-scalar-gpu.log",
+      "bytes": 5756,
+      "sha256": "0b30f5d23139bcedd7fdbc388b42c869ff15af231cbce165a44c17cdd718e17c"
+    },
+    {
+      "file": "build/nv40-system-dma-scalar-closure.log",
+      "bytes": 3020,
+      "sha256": "442a9d1685b87b1c8ee7d514a4fc672240bf47cb95f21c15d9028c102f373962"
+    }
+  ]
+}

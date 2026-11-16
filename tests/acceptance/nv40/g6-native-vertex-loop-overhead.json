@@ -1,0 +1,119 @@
+{
+  "stage": "G6 native vertex/index expansion hotspot",
+  "scope": "Concurrent native 06 diagnostic and CPU microbenchmark; not isolated G6 timing or native FPS. Active native benchmarks were already loaded before this change.",
+  "nativeObservation": {
+    "scene": "Original XP 93.71 3DMark06 vertex feature test",
+    "sampledMs": 40796.077,
+    "hotspots": [
+      {
+        "function": "array_vertices",
+        "url": "file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js",
+        "line": 178,
+        "selfPercent": 18.46134617306463
+      },
+      {
+        "function": "vertex_value",
+        "url": "file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js",
+        "line": 175,
+        "selfPercent": 8.286826206353126
+      },
+      {
+        "function": "(garbage collector)",
+        "url": "",
+        "line": 0,
+        "selfPercent": 6.601605345533591
+      },
+      {
+        "function": "",
+        "url": "file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js",
+        "line": 215,
+        "selfPercent": 6.552610438498781
+      },
+      {
+        "function": "indices",
+        "url": "file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js",
+        "line": 177,
+        "selfPercent": 6.263428221296867
+      },
+      {
+        "function": "",
+        "url": "file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js",
+        "line": 180,
+        "selfPercent": 6.1874969007436675
+      },
+      {
+        "function": "read",
+        "url": "file:///Users/renruisi/Desktop/Code/v86/build/v86-geforce-6800.js",
+        "line": 78,
+        "selfPercent": 5.473653753521448
+      }
+    ]
+  },
+  "change": [
+    "Replace Array.from per-index callbacks with bounded 16/32-bit DataView loops.",
+    "Write the four canonical vertex DWORDs directly instead of creating a per-vertex forEach callback; keep every DMA fetch, format conversion, default component and byte order unchanged."
+  ],
+  "microbenchmark": {
+    "rounds": 7,
+    "iterationsPerRound": 8,
+    "cases": [
+      {
+        "name": "indices16",
+        "resultSHA256": "294b965d73a383973166585b5e64f2aa380761377e2f4fce8f0e3dda300e1604",
+        "resultBytes": 524288,
+        "baselineNodeCpuMs": 36.861,
+        "currentNodeCpuMs": 3.729
+      },
+      {
+        "name": "indices32",
+        "resultSHA256": "04f710e0c093318709a3684290c6cd1a9ca75c256934b630c6c3297bc80847bd",
+        "resultBytes": 524288,
+        "baselineNodeCpuMs": 37.79,
+        "currentNodeCpuMs": 3.281
+      },
+      {
+        "name": "indexed-float-color-current",
+        "resultSHA256": "5007245196c0ad2d84a6abb864dc5e3fb452864dc6648b60f67c568d9e56b4a2",
+        "resultBytes": 1572864,
+        "baselineNodeCpuMs": 115.437,
+        "currentNodeCpuMs": 63.843
+      },
+      {
+        "name": "inline-float-current",
+        "resultSHA256": "48ac10226aac2e3f28ce69e8ed9f1541fefc14775bdece8dd953e67737cb0e7b",
+        "resultBytes": 262144,
+        "baselineNodeCpuMs": 51.792,
+        "currentNodeCpuMs": 25.421
+      }
+    ]
+  },
+  "validation": [
+    "Checked state/inline/indexed vertex regression",
+    "Graph, texture and DMA suites",
+    "Entire real WebGPU NV40 render suite, including exact pixels, bit-level formats, DMA faults, aliases and snapshot quiescence",
+    "Closure plugin build: 0 errors/0 warnings",
+    "Every benchmark output deeply equals the pre-change module output"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-vertex-loop-comparison.json",
+      "bytes": 13270,
+      "sha256": "d177fbd81d6a6e3cae5e2cdd0ff28a5c91d6ad06ead46cce6a949a66cc8ad239"
+    },
+    {
+      "file": "build/nv40-06-native-vs-feature-latest.cpuprofile",
+      "bytes": 364261,
+      "sha256": "0a1c67aa9034f0d8d655e077b41d4acfa67734b00b8053bcbc866fb656009538"
+    },
+    {
+      "file": "build/nv40-vertex-loop-gpu.log",
+      "bytes": 5972,
+      "sha256": "c8c9277b797fef6d4beb136f0ec5a0b3ffc9ce35f35860775ef5764fb4361f94"
+    },
+    {
+      "file": "build/nv40-vertex-loop-closure.log",
+      "bytes": 3020,
+      "sha256": "928cdedd9ef614b44a371f6342106afd0f2aa0671fe80e28dd774fb3f4091174"
+    }
+  ]
+}

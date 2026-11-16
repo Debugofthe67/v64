@@ -135,12 +135,13 @@ pub fn a32_trace_dump(why: &str) {
                     pagegen::CompileEnv {
                         el1: false,
                         sp_checked: false,
+                        aligned_data: mode & MODE_IOP != 0,
                         chaining: true,
                         neon: unsafe { super::NEON },
                         helpers: unsafe { super::HELPERS },
                         system: unsafe { super::SYSTEM },
                         relaxed_fma: unsafe { super::RELAXED_FMA },
-                        isa: if mode & !1 == MODE_T32 {
+                        isa: if mode & !(1 | MODE_IOP) == MODE_T32 {
                             pagegen::Isa::T32
                         }
                         else {
@@ -179,20 +180,26 @@ const MAX_BUDGET: u32 = 1 << 14;
 const MODE_SHIFT: u32 = 28;
 /// Modes: bit 0 EL1, bit 1 SP alignment checked; AArch32, A32 and T32 at
 /// EL0 (Q6), or PL1 with bit 0 (cpu_type arm32, R5.3)
-pub const MODES: usize = 8;
+pub const MODES: usize = 16;
 pub const MODE_A32: u32 = 4;
 pub const MODE_T32: u32 = 6;
+/// Separate compiled templates: MMU-less IOP accesses require alignment
+/// even after an aligned access filled the same data cache entry.
+const MODE_IOP: u32 = 8;
 
 /// Whether a mode is AArch32's (A32 or T32, either privilege)
 #[inline(always)]
-fn aarch32_mode(mode: u32) -> bool { mode & !1 == MODE_A32 || mode & !1 == MODE_T32 }
+fn aarch32_mode(mode: u32) -> bool {
+    mode & !(1 | MODE_IOP) == MODE_A32 || mode & !(1 | MODE_IOP) == MODE_T32
+}
 
 /// The mode the running core's code would be compiled for
 #[inline(always)]
 fn mode() -> u32 {
     if cpu::aarch32() {
         let isa = if cpu::get_pstate() & cpu::PSTATE_T != 0 { MODE_T32 } else { MODE_A32 };
-        return isa | (cpu::el() != 0) as u32;
+        let iop = bus::iop_active();
+        return isa | (cpu::el() != 0) as u32 | if iop { MODE_IOP } else { 0 };
     }
     let el1 = cpu::el() != 0;
     let sctlr = cpu::sctlr();
@@ -556,6 +563,7 @@ const TEMPLATED: usize = 12;
 static mut WRITES: u64 = 0;
 static mut RESETS: u64 = 0;
 static mut HELPERS: u64 = 0;
+static mut UNCACHED_ACCESSES: u64 = 0;
 /// functions retired to make room (P6.6b), and the time spent compiling (ms)
 static mut EVICTIONS: u64 = 0;
 static mut COMPILE_MS: f64 = 0.0;
@@ -717,7 +725,7 @@ fn allowed() -> bool {
     let sctlr = cpu::sctlr();
     unsafe {
         ENABLED
-            && sctlr & cpu::SCTLR_M != 0
+            && (sctlr & cpu::SCTLR_M != 0 || bus::iop_active())
             && sctlr & cpu::SCTLR_A == 0
             && !crate::aarch64::debug::ANY_BREAKPOINT
             && !crate::aarch64::debug::ANY_WATCHPOINT
@@ -735,14 +743,14 @@ fn code_page(pc: u64, mode: u32) -> Option<u32> {
     if cached_tag == tag && page == pc >> 12 {
         return Some(key);
     }
-    let pa = crate::aarch64::mmu::translate(
-        pc,
-        crate::aarch64::memory::Access::Fetch,
-        cpu::el() == 0,
-        4,
-    )
-    .ok()?
-    .pa;
+    let pa = if cpu::sctlr() & cpu::SCTLR_M == 0 {
+        crate::aarch64::mmu::mmu_off(pc)?
+    }
+    else {
+        crate::aarch64::mmu::translate(pc, crate::aarch64::memory::Access::Fetch, cpu::el() == 0, 4)
+            .ok()?
+            .pa
+    };
     let code_key = bus::bus().code_key(pa)?;
     // (code in extended RAM: compiled with the cores in one instance; in
     // workers it is interpreted, P8.5)
@@ -850,6 +858,16 @@ static mut STEP_FLOW: Option<Flow> = None;
 /// executing the instruction again
 static mut HELPER_DONE: Option<(u64, Flow)> = None;
 
+/// A native BX/BLX changed only the instruction set. Select that mode's
+/// chaining table before leaving the source function. Privilege and the
+/// data-access epoch/table are unchanged; code entries remain guarded by
+/// the same translation epoch and are invalidated in every mode as usual.
+#[no_mangle]
+pub fn a32_page_interwork(target_t: u32) {
+    cpu::set_pstate(cpu::get_pstate() & !cpu::PSTATE_T | target_t & cpu::PSTATE_T);
+    unsafe { *a64_code_base = chain(current_core()).0[mode() as usize].base() };
+}
+
 fn execute(slot: u32, budget: u32, pc: u64) -> Ran {
     let core = current_core();
     let mode = mode();
@@ -942,7 +960,7 @@ fn compile(key: u32, pc: u64) {
             "a32 page {:x} key {:x} {}",
             pc & !0xFFF,
             code_key,
-            if mode & !1 == MODE_T32 { "T32" } else { "A32" }
+            if mode & !(1 | MODE_IOP) == MODE_T32 { "T32" } else { "A32" }
         );
     }
     let bytes = if code_key >= bus::EXTENDED_CODE_KEY {
@@ -971,13 +989,14 @@ fn compile(key: u32, pc: u64) {
         pagegen::CompileEnv {
             el1: mode & 1 != 0,
             sp_checked: mode & 2 != 0,
+            aligned_data: mode & MODE_IOP != 0,
             // (a64_page_aarch32_filter's bit 15: AArch32's functions do not chain)
             chaining: unsafe { CHAINING } && !(aarch32_mode(mode) && filter & 0x8000 != 0),
             neon: unsafe { super::NEON },
             helpers: unsafe { super::HELPERS },
             system: unsafe { super::SYSTEM },
             relaxed_fma: unsafe { super::RELAXED_FMA },
-            isa: match mode & !1 {
+            isa: match mode & !(1 | MODE_IOP) {
                 MODE_A32 => pagegen::Isa::A32,
                 MODE_T32 => pagegen::Isa::T32,
                 _ => pagegen::Isa::A64,
@@ -1138,14 +1157,25 @@ pub fn register() {
 
 /// The access cache's miss (pagegen::frame::AccessAbi::slow): the host
 /// address of a `kind & 255`-byte access (bit 8: write) at virtual address
-/// `address` by the running core at its EL, filling the cache; 0 when
+/// `address` by the running core at its EL, caching Normal memory only; 0 when
 /// refused (a fault, a device, a page with code for a write, a page
 /// crossing): the function leaves for the interpreter to do it
+#[no_mangle]
+pub fn a64_page_access_scalar(address: u64, kind: u32) -> u32 {
+    a64_page_access(address, kind | 0x1000)
+}
+
 #[no_mangle]
 pub fn a64_page_access(address: u64, kind: u32) -> u32 {
     let size = kind & 255;
     let write = kind & 0x100 != 0;
     let r = rt();
+    let mmu_off = cpu::sctlr() & cpu::SCTLR_M == 0;
+    if mmu_off && (!bus::iop_active() || address & (size as u64 - 1) != 0) {
+        r.stats[ACCESS_REFUSED] += 1;
+        refused(REFUSED_TRANSLATION);
+        return 0;
+    }
     // (an access across pages, and with SCTLR_EL1.A every access: the
     // interpreter, which splits it or raises the alignment fault)
     if (address & 0xFFF) + size as u64 > 0x1000 || cpu::sctlr() & cpu::SCTLR_A != 0 {
@@ -1164,17 +1194,59 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
         && kind & 0x200 == 0;
     // (kind bit 11: an unprivileged access at EL1, LDTR/STTR: EL0's permissions and table)
     let el0 = cpu::el() == 0 || kind & 0x800 != 0;
-    let Some((pa, _large, global)) = crate::aarch64::mmu::translate_for_cache(address, write, el0)
+    // The IOP has a physical RAM window, not active translation tables.
+    // RAM below is cached; MMIO, watched code and reservations still refuse.
+    let translated = if mmu_off {
+        crate::aarch64::mmu::mmu_off(address).map(|pa| (pa, false, true, false))
+    }
+    else {
+        crate::aarch64::mmu::translate_for_page_access(address, write, el0)
+    };
+    let Some((pa, _large, global, device)) = translated
     else {
         r.stats[ACCESS_REFUSED] += 1;
         refused(REFUSED_TRANSLATION);
         return 0;
     };
+    // Device DRAM gets only an aligned, one-shot pointer. MMIO and holes
+    // outside the DRAM aperture cannot use it; reject without a bus search.
+    let cacheable = !device;
+    if device
+        && (!size.is_power_of_two()
+            || address & (size as u64 - 1) != 0
+            || pa.wrapping_sub(bus::RAM_BASE) >= bus::bus().ram_size())
+    {
+        r.stats[ACCESS_REFUSED] += 1;
+        refused(REFUSED_TRANSLATION);
+        return 0;
+    }
     let host = match bus::bus().lookup(pa) {
+        // The ARM7 scheduler reads the PMGR clock extremely often. Supply
+        // one scalar read from the same machine clock without leaving the
+        // compiled function. Never cache a changing device register, and
+        // never use this for LDM/LDRD whose host pointer spans more words.
+        Lookup::Mmio { .. }
+            if bus::iop_active()
+                && !write
+                && size == 4
+                && kind & 0x1000 != 0
+                && matches!(pa, 0xBF10_2000 | 0xBF10_2004) =>
+        {
+            let ticks = (unsafe { crate::isa::microtick() } * 24_000.0) as u64;
+            let value = if pa & 4 == 0 { ticks as u32 } else { (ticks >> 32) as u32 };
+            let target = bounce_address() + (kind >> 10 & 1) * 32;
+            unsafe { core::ptr::write_unaligned(target as *mut u32, value) };
+            return target;
+        },
         Lookup::Ram {
             backing, writable, ..
         } => {
             let page = backing & !0xFFF;
+            if !cacheable && page >= unsafe { bus::DEVICE_START } {
+                r.stats[ACCESS_REFUSED] += 1;
+                refused(REFUSED_NOT_RAM);
+                return 0;
+            }
             // (device memory: its writes go the interpreter's way, which marks them)
             if write
                 && (!writable
@@ -1199,7 +1271,7 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
         },
         // (extended RAM: its frame, held until the run loop's next safe
         // point; no write entry while a core holds a reservation in the page)
-        Lookup::Extended { .. } => {
+        Lookup::Extended { .. } if cacheable => {
             let frame = if write
                 && crate::aarch64::smp::reserved_page(crate::aarch64::extended::monitor_key(
                     pa & !0xFFF,
@@ -1224,6 +1296,10 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
             return 0;
         },
     };
+    if !cacheable {
+        unsafe { UNCACHED_ACCESSES += 1 };
+        return host + (address & 0xFFF) as u32;
+    }
     // (a tagged pointer, TBI, gets an entry too: forget_tagged)
     let core = current_core();
     access(core).fill(LAYOUT, ENTRIES, el0, write, address, host, false, global);
@@ -1535,14 +1611,16 @@ pub fn a32_helper_word(i: u32, count: bool) -> f64 {
 #[no_mangle]
 pub fn a32_page_helper(word: u32, pc: u64, length: u32) -> u32 {
     unsafe { HELPERS += 1 };
-    note_helper_word(word);
     a32_trace(2, pc as u32, word);
     let thumb = cpu::get_pstate() & cpu::PSTATE_T != 0;
-    note_step(
-        HELPED,
-        crate::aarch64::a32::step_key(word, length, thumb),
-        word,
-    );
+    if unsafe { STEP_STATS } {
+        note_helper_word(word);
+        note_step(
+            HELPED,
+            crate::aarch64::a32::step_key(word, length, thumb),
+            word,
+        );
+    }
     match crate::aarch64::a32::execute_fetched(word, length, pc as u32, thumb) {
         Ok(flow @ (Flow::Next | Flow::Yield | Flow::Wait(_) | Flow::Off)) => {
             crate::core_stats::add_pending(1, 0);
@@ -1590,6 +1668,7 @@ pub fn a64_page_stat(n: u32) -> f64 {
         109 => (unsafe { AUTO_SWITCHES }) as f64,
         110 => (unsafe { super::ASID_TAG }) as u32 as f64,
         111 => (unsafe { LIVE_BYTES }) as f64,
+        112 => (unsafe { UNCACHED_ACCESSES }) as f64,
         120..=127 => (unsafe { REFUSED[n as usize - 120] }) as f64,
         _ => r.stats.get(n as usize).copied().unwrap_or(0) as f64,
     }

@@ -1,0 +1,14 @@
+{
+  "date": "2026-11-15",
+  "status": "Bounded pixel-history diagnostics only rewrite their JSON file when a new event is appended.",
+  "evidence": {
+    "file": "build/nv40-xp-mark05-gt3-pixel-history/draw-pixel-history.json",
+    "bytes": 72666439,
+    "events": 256
+  },
+  "change": "Remember event count before examining a completed GPU batch; preserve the exact output array and write only on an actual append. This avoids reserializing/writing a large unchanged diagnostic file on every later batch, including after the record limit.",
+  "validation": "Node syntax check passed; event production, GPU completion and original drawing calls are unchanged. The live investigation switched to a bounded append-only host observer to release old diagnostic wrappers.",
+  "limits": [
+    "Diagnostic-only storage/CPU change; no rendering semantics or original result claim."
+  ]
+}

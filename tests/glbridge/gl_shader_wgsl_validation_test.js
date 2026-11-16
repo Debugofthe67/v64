@@ -20,6 +20,7 @@
 
 "use strict";
 
+const { requireNaga } = require("./naga.js");
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
@@ -27,20 +28,9 @@ const path = require("path");
 const { spawnSync, execFileSync } = require("child_process");
 const t = require("../../src/browser/glbridge/gl-webgpu/gl_shader_translator.js");
 
-function findNaga() {
-    if (process.env.GL_NAGA) return process.env.GL_NAGA;
-    if (spawnSync("naga", ["--version"], { encoding: "utf8" }).status === 0)
-        return "naga";
-    const cargo = path.join(os.homedir(), ".cargo", "bin", "naga");
-    return fs.existsSync(cargo) ? cargo : null;
-}
 
-const naga = findNaga();
-if (!naga) {
-    console.log("SKIP: no `naga` binary (install with `cargo install naga-cli` " +
-        "or set GL_NAGA) -- WGSL validation not run");
-    process.exit(0);
-}
+const naga = requireNaga("gl_shader_wgsl_validation_test");
+if (!naga) process.exit(0);
 
 const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "glwg-wgsl-"));
 let passed = 0;
@@ -295,14 +285,15 @@ checkProgramES("es_struct_with_struct_array",
 // These shaders bypass the GLSL translator, so exercise them directly too.
 // A syntax error here otherwise appears only when CopyTexImage, mipmap, or a
 // scaling framebuffer blit first runs on a real adapter.
-const executorSource = fs.readFileSync(path.join(__dirname, "../../src/browser/glbridge/gl-webgpu",
-    "gl_executor.js"), "utf8");
-for (const name of ["COLOR_COPY_WGSL", "MIPMAP_WGSL", "COLOR_BLIT_WGSL"]) {
-    const match = new RegExp("const\\s+" + name + "\\s*=\\s*`([\\s\\S]*?)`;" )
-        .exec(executorSource);
-    if (!match) failures.push([name, "shader constant is missing"]);
+const executorModule = require("../../src/browser/glbridge/gl-webgpu/gl_executor.js");
+const executorShaders = [["MIPMAP_WGSL", executorModule.MIPMAP_WGSL],
+    ["COLOR_BLIT_WGSL", executorModule.COLOR_BLIT_WGSL],
+    ...["RGBA", "RGB", "LUMINANCE", "LUMINANCE_ALPHA", "INTENSITY", "ALPHA"].map(base =>
+        ["colorCopyWGSL(" + base + ")", executorModule.colorCopyWGSL(base)])];
+for (const [name, code] of executorShaders) {
+    if (!code) failures.push([name, "shader is missing"]);
     else {
-        const error = validate(name, match[1]);
+        const error = validate(name, code);
         if (error) failures.push([name, error]);
         else ++passed;
     }

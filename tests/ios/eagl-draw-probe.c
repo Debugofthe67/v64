@@ -1,0 +1,180 @@
+// The caller supplies a complete 64x48 IOSurface framebuffer. Draw an
+// oversized triangle whose vertices arrive through an actual guest VBO.
+extern unsigned glCreateShader(unsigned), glCreateProgram(void), glGetError(void);
+extern void glShaderSource(unsigned, int, const char *const *, const int *);
+extern void glCompileShader(unsigned), glAttachShader(unsigned, unsigned), glLinkProgram(unsigned);
+extern void glUseProgram(unsigned), glDeleteProgram(unsigned), glDeleteShader(unsigned);
+extern int glGetAttribLocation(unsigned, const char *);
+extern int glGetUniformLocation(unsigned, const char *);
+extern void glBindAttribLocation(unsigned, unsigned, const char *);
+extern void glUniform4fv(int, int, const float *), glUniform4iv(int, int, const int *);
+extern void glUniformMatrix2fv(int, int, unsigned char, const float *);
+extern void glUniformMatrix3fv(int, int, unsigned char, const float *);
+extern void glUniformMatrix4fv(int, int, unsigned char, const float *);
+extern void glGenBuffers(int, unsigned *), glBindBuffer(unsigned, unsigned), glDeleteBuffers(int, const unsigned *);
+extern void glBufferData(unsigned, int, const void *, unsigned), glBufferSubData(unsigned, int, int, const void *);
+extern void glEnableVertexAttribArray(unsigned), glDisableVertexAttribArray(unsigned);
+extern void glVertexAttribPointer(unsigned, int, unsigned, unsigned char, int, const void *);
+extern void glDrawArrays(unsigned, int, int), glViewport(int, int, int, int), glDisable(unsigned);
+extern void glDrawElements(unsigned, int, unsigned, const void *);
+extern void glGenFramebuffers(int, unsigned *), glGenTextures(int, unsigned *);
+extern void glDeleteFramebuffers(int, const unsigned *), glDeleteTextures(int, const unsigned *);
+extern void glBindFramebuffer(unsigned, unsigned), glBindTexture(unsigned, unsigned);
+extern void glFramebufferTexture2D(unsigned, unsigned, unsigned, unsigned, int), glPixelStorei(unsigned, int);
+extern void glTexImage2D(unsigned, int, int, int, int, int, unsigned, unsigned, const void *);
+extern void glCompressedTexImage2D(unsigned, int, unsigned, int, int, int, int, const void *);
+extern void glCompressedTexSubImage2D(unsigned, int, int, int, int, int, unsigned, int, const void *);
+extern void glReadPixels(int, int, int, int, unsigned, unsigned, void *);
+extern void glGetIntegerv(unsigned, int *), glGetFloatv(unsigned, float *), glGetBooleanv(unsigned, unsigned char *);
+extern void glGetShaderiv(unsigned, unsigned, int *), glGetProgramiv(unsigned, unsigned, int *);
+extern void glGetShaderInfoLog(unsigned, int, int *, char *), glGetProgramInfoLog(unsigned, int, int *, char *);
+extern void glColorMask(unsigned char, unsigned char, unsigned char, unsigned char), glClearColor(float, float, float, float);
+
+int n90_triangle_pixels(void)
+{
+    unsigned vs = glCreateShader(0x8b31), fs = glCreateShader(0x8b30), program = glCreateProgram(), vbo = 0;
+    int step = 1, location = -1;
+    if(!vs || !fs || !program) goto done;
+    const char *vertex[] = { "attribute vec2 pos;IGNORE", "uniform mat2 basis;uniform mat3 affine;uniform mat4 transform;void main(){vec3 p=affine*vec3(basis*pos,1.);gl_Position=transform*vec4(p.xy,0.,p.z);}" };
+    const int lengths[] = { 19, -1 };
+    const char *fragment = "precision mediump float;uniform vec4 tint;uniform ivec4 enabled;void main(){gl_FragColor=tint*vec4(enabled);}";
+    glShaderSource(vs, 2, vertex, lengths);
+    glShaderSource(fs, 1, &fragment, 0);
+    glCompileShader(vs); glCompileShader(fs);
+    int status = 0;
+    glGetShaderiv(vs, 0x8b81, &status);
+    if(status != 1) goto done;
+    status = 0;
+    glGetShaderiv(fs, 0x8b81, &status);
+    if(status != 1) goto done;
+    glAttachShader(program, vs); glAttachShader(program, fs);
+    glBindAttribLocation(program, 3, "pos");
+    glLinkProgram(program);
+    status = 0;
+    glGetProgramiv(program, 0x8b82, &status);
+    if(status != 1) goto done;
+    char log[8] = { 91,91,91,91,91,91,91,92 };
+    int length = -1;
+    glGetProgramInfoLog(program, 1, &length, log + 1);
+    if(length || log[0] != 91 || log[1] || log[2] != 91) goto done;
+    glGetShaderInfoLog(vs, 1, 0, log + 1);
+    if(log[1]) goto done;
+    location = glGetAttribLocation(program, "pos");
+    step = 2;
+    if(location != 3 || glGetError()) goto done;
+    glUseProgram(program);
+    const char *names[] = { "basis", "affine", "transform", "tint", "enabled" };
+    int uniforms[5];
+    for(unsigned i = 0; i < 5; i++)
+    {
+        uniforms[i] = glGetUniformLocation(program, names[i]);
+        if(uniforms[i] < 0) goto done;
+    }
+    const float m2[] = { 1,0,0,1 }, m3[] = { 1,0,0,0,1,0,0,0,1 };
+    const float m4[] = { 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1 }, tint[] = { 1,0,1,1 };
+    const int enabled[] = { 1,1,1,1 };
+    glUniformMatrix2fv(uniforms[0], 1, 0, m2);
+    glUniformMatrix3fv(uniforms[1], 1, 0, m3);
+    glUniformMatrix4fv(uniforms[2], 1, 0, m4);
+    glUniform4fv(uniforms[3], 1, tint);
+    glUniform4iv(uniforms[4], 1, enabled);
+    status = 0;
+    glGetIntegerv(0x8b8d, &status);
+    if((unsigned)status != program) goto done;
+    glClearColor(0.25f, 0.5f, 0.75f, 1);
+    float color[6] = { 91,0,0,0,0,92 };
+    glGetFloatv(0xc22, color + 1);
+    if(color[0] != 91 || color[1] != 0.25f || color[2] != 0.5f || color[3] != 0.75f || color[4] != 1 || color[5] != 92) goto done;
+    glColorMask(1, 0, 1, 0);
+    unsigned char mask[6] = { 91,9,9,9,9,92 };
+    glGetBooleanv(0xc23, mask + 1);
+    glColorMask(1, 1, 1, 1);
+    if(mask[0] != 91 || mask[1] != 1 || mask[2] || mask[3] != 1 || mask[4] || mask[5] != 92) goto done;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(0x8892, vbo);
+    // Reserve room for a leading float to exercise a nonzero VBO offset.
+    const float data[] = { -1,-1, 3,-1, -1,3 };
+    glBufferData(0x8892, 4 + sizeof(data), 0, 0x88e4);
+    glBufferSubData(0x8892, 4, sizeof(data), data);
+    glVertexAttribPointer(location, 2, 0x1406, 0, 8, (void *)4);
+    glEnableVertexAttribArray(location);
+    glViewport(0, 0, 64, 48); glDisable(0xc11);
+    int viewport[6] = { 91,-1,-1,-1,-1,92 };
+    glGetIntegerv(0xba2, viewport + 1);
+    if(viewport[0] != 91 || viewport[1] || viewport[2] || viewport[3] != 64 || viewport[4] != 48 || viewport[5] != 92) goto done;
+    glDrawArrays(4, 0, 3);
+    step = 3;
+    if(glGetError()) goto done;
+    unsigned char pixels[64 * 48 * 4];
+    glReadPixels(0, 0, 64, 48, 0x1908, 0x1401, pixels);
+    step = 4;
+    if(glGetError()) goto done;
+    for(unsigned i = 0; i < sizeof(pixels); i += 4)
+        if(pixels[i] != 255 || pixels[i+1] || pixels[i+2] != 255 || pixels[i+3] != 255) goto done;
+    // Core Animation draws with client arrays as well as GPU buffers.
+    // A second draw changes the visible color, using sparse client indices
+    // and a vertex stride with padding between elements.
+    const float client[] = { -1,-1,17, 0,0,17, 3,-1,17, 0,0,17, -1,3,17 };
+    const unsigned short indices[] = { 4,0,2 };
+    const float cyan[] = { 0,1,1,1 };
+    glUniform4fv(uniforms[3], 1, cyan);
+    glBindBuffer(0x8892, 0);
+    glVertexAttribPointer(location, 2, 0x1406, 0, 12, client);
+    glDrawElements(4, 3, 0x1403, indices);
+    step = 5;
+    if(glGetError()) goto done;
+    glReadPixels(0, 0, 64, 48, 0x1908, 0x1401, pixels);
+    if(glGetError()) goto done;
+    for(unsigned i = 0; i < sizeof(pixels); i += 4)
+        if(pixels[i] || pixels[i+1] != 255 || pixels[i+2] != 255 || pixels[i+3] != 255) goto done;
+    step = 0;
+done:
+    if(location >= 0) glDisableVertexAttribArray(location);
+    glUseProgram(0);
+    if(vbo) glDeleteBuffers(1, &vbo);
+    if(program) glDeleteProgram(program);
+    if(vs) glDeleteShader(vs);
+    if(fs) glDeleteShader(fs);
+    return step;
+}
+
+int n90_texture_pixels(void)
+{
+    unsigned tex = 0, fbo = 0;
+    int step = 1, alignment = 4;
+    glGetIntegerv(0x0cf5, &alignment);
+    glGenTextures(1, &tex); glGenFramebuffers(1, &fbo);
+    if(!tex || !fbo) goto done;
+    glBindTexture(0x0de1, tex);
+    glBindFramebuffer(0x8d40, fbo);
+    glPixelStorei(0x0cf5, 8);
+    const unsigned char rgba[] = { 255,0,0,255, 11,11,11,11, 0,255,0,255 };
+    glTexImage2D(0x0de1, 0, 0x1908, 1, 2, 0, 0x1908, 0x1401, rgba);
+    glFramebufferTexture2D(0x8d40, 0x8ce0, 0x0de1, tex, 0);
+    unsigned char pixels[64];
+    glReadPixels(0, 0, 1, 2, 0x1908, 0x1401, pixels);
+    step = 2;
+    if(glGetError() || pixels[0] != 255 || pixels[1] || pixels[2] || pixels[3] != 255 ||
+        pixels[4] || pixels[5] != 255 || pixels[6] || pixels[7] != 255) goto done;
+    unsigned pvrtc[] = { 0,0xfc00fc00, 0,0xfc00fc00, 0,0xfc00fc00, 0,0xfc00fc00 };
+    glCompressedTexImage2D(0x0de1, 0, 0x8c02, 4, 4, 0, sizeof(pvrtc), pvrtc);
+    glReadPixels(0, 0, 4, 4, 0x1908, 0x1401, pixels);
+    step = 3;
+    if(glGetError()) goto done;
+    for(unsigned i = 0; i < sizeof(pixels); i += 4)
+        if(pixels[i] != 255 || pixels[i+1] || pixels[i+2] || pixels[i+3] != 255) goto done;
+    for(unsigned i = 1; i < 8; i += 2) pvrtc[i] = 0x83e083e0;
+    glCompressedTexSubImage2D(0x0de1, 0, 0, 0, 4, 4, 0x8c02, sizeof(pvrtc), pvrtc);
+    glReadPixels(0, 0, 4, 4, 0x1908, 0x1401, pixels);
+    step = 4;
+    if(glGetError()) goto done;
+    for(unsigned i = 0; i < sizeof(pixels); i += 4)
+        if(pixels[i] || pixels[i+1] != 255 || pixels[i+2] || pixels[i+3] != 255) goto done;
+    step = 0;
+done:
+    glPixelStorei(0x0cf5, alignment);
+    glBindFramebuffer(0x8d40, 0);
+    if(fbo) glDeleteFramebuffers(1, &fbo);
+    if(tex) glDeleteTextures(1, &tex);
+    return step;
+}

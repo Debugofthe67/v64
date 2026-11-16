@@ -1,0 +1,190 @@
+{
+  "date": "2026-11-14",
+  "scope": "Original XP93.71 05 cold-run three GT plus CPU1; full default five and CPU score gates remain open because CPU2 was not run. IQ/features/batch/performance gates remain open.",
+  "nativeCommand": "D:/NVLAUNCH.EXE C:/NV05RUN/3DMark05.exe -nosysteminfo -nosplash -gtall -cpuall -verbose NV05F.3DR",
+  "source": "build/nv40-xp-mark05-clip-cold-full/checkpoint-native-gt-transition.state with matching state.hda-overlay.bin and state.game-overlay.bin",
+  "coherence": "Cold-start native run continues from its healthy pre-B60 checkpoint. Later rejected attempts and replayed work are not added to accepted draw counts.",
+  "nativeResult": {
+    "file": "build/nv40-xp-mark05-clip-cold-continue2-artifacts/NV05F.3DR",
+    "version": "1.3.0",
+    "results": [
+      {
+        "name": "3DMark Score",
+        "value": "79.000000000",
+        "status": "0",
+        "statusText": "",
+        "category": "Game Tests"
+      },
+      {
+        "name": "GT1 - Return To Proxycon",
+        "value": "0.277767807",
+        "status": "0",
+        "statusText": "",
+        "category": "Game Tests"
+      },
+      {
+        "name": "GT2 - Firefly Forest",
+        "value": "0.301903576",
+        "status": "0",
+        "statusText": "",
+        "category": "Game Tests"
+      },
+      {
+        "name": "GT3 - Canyon Flight",
+        "value": "0.378706574",
+        "status": "0",
+        "statusText": "",
+        "category": "Game Tests"
+      },
+      {
+        "name": "CPU Score",
+        "value": "-1.000000000",
+        "status": "4",
+        "statusText": "Not enough CPU tests run",
+        "category": "CPU Tests"
+      },
+      {
+        "name": "CPU Test 1",
+        "value": "0.101446167",
+        "status": "0",
+        "statusText": "",
+        "category": "CPU Tests"
+      },
+      {
+        "name": "CPU Test 2",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "CPU Tests"
+      },
+      {
+        "name": "Fill Rate - Single-Texturing",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Fill Rate - Multi-Texturing",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Pixel Shader",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Vertex Shader - Simple",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "Vertex Shader - Complex",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Feature Tests"
+      },
+      {
+        "name": "8 Triangles",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "32 Triangles",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "128 Triangles",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "512 Triangles",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "2048 Triangles",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      },
+      {
+        "name": "32768 Triangles",
+        "value": "-1.000000000",
+        "status": "1",
+        "statusText": "N/A",
+        "category": "Batch Size Tests"
+      }
+    ],
+    "checksumsValid": "No",
+    "invalidScore": "No",
+    "launcherExitCode": 0,
+    "zipCRC": "passed",
+    "acceptance": "All three GT and CPU1 report native status0. CPU2 reports N/A and aggregate CPU score says Not enough CPU tests run. The whole default five are not accepted.",
+    "performance": "Native79 is retained as original output only; checkpoints and concurrent workloads exclude a performance measurement."
+  },
+  "continuation": {
+    "draws": 145790,
+    "gpuFailures": 0,
+    "nonSoftwarePgraphFaults": 0,
+    "expectedSoftwareMethods": [
+      "17D0",
+      "17D4"
+    ]
+  },
+  "shutdown": {
+    "nativeCommand": "cmd /c shutdown -s -t 0",
+    "eip": "806F3048",
+    "halted": 1,
+    "mode": null,
+    "observed": "It is now safe to turn off your computer.",
+    "bundle": "build/nv40-xp-mark05-clip-cold-continue2.state.bundle.json"
+  },
+  "validation": [
+    "Original resultZIPCRC verification",
+    "NativeXML status checks without modifying result or score",
+    "Original verbose log ends testCPU1 and original program exits0",
+    "OriginalXPnormal shutdown and read-only host-image size/mtime checks"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark05-clip-cold-continue2-artifacts/NV05F.3DR",
+      "bytes": 3407,
+      "sha256": "e14d45aaf10c29cd31838c6454cfc397aa899a5096ee6d958a0af4871c8fa64f"
+    },
+    {
+      "file": "build/nv40-xp-mark05-clip-cold-continue2/trace.json",
+      "bytes": 5474872,
+      "sha256": "dcfc835decc731086fdebc315c35603d7bbe9ac2b788ac70c952ac8785f6db6f"
+    },
+    {
+      "file": "build/nv40-xp-mark05-clip-cold-continue2/NVLAUNCH.TXT",
+      "bytes": 187,
+      "sha256": "2b17b657f650d17aa1ce426ffc0c1102edc3428c6260320ed32df522c45efd50"
+    },
+    {
+      "file": "build/nv40-xp-mark05-clip-cold-continue2-artifacts/verbose_TEST-981CC8A356.txt",
+      "bytes": 413767,
+      "sha256": "ab431476c4e70a62dd6b0ac41744f5dfee51205a5640c26c6a4e1f9411b395da"
+    }
+  ]
+}

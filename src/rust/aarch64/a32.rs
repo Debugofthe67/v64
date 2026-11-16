@@ -1394,7 +1394,12 @@ pub fn interpret_one(address: u64) -> Flow {
             if thumb {
                 crate::aarch64::t32::it_advance();
             }
-            Flow::Next
+            if crate::aarch64::backdoor::host_yield_requested() {
+                Flow::Yield
+            }
+            else {
+                Flow::Next
+            }
         },
         Err(exception) => {
             take_sync(exception);

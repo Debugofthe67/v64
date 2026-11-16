@@ -1,0 +1,347 @@
+{
+  "date": "2026-11-15",
+  "scope": "Original XP05/06 interrupted result exports; neither is full-suite acceptance.",
+  "observation": [
+    "OriginalXP05 displayed IDirect3DDevice9::Present failed:Device lost(D3DERR_DEVICELOST) over the active WindowsXP screen saver. Its result contains11of16 completed functional tests:3GT,2CPU,5features,8-triangle batch.",
+    "OriginalXP06 result contains bothSM2 and bothCPU results; HDR/SM3 aggregate says Not enough tests run, and bothHDR results areN/A. The native screen saver was active when inspected. No native06device-lost dialog was captured, so that alone does not prove its first interruption cause."
+  ],
+  "runs": [
+    {
+      "directory": "build/nv40-xp-mark05-ui-all16-resume-ifc",
+      "selection": "3 graphics,2CPU,5features,6batch",
+      "expectedFunctionalTests": 16,
+      "gpu": {
+        "batches": 35703,
+        "draws": 1141223,
+        "bytes": 13859652408,
+        "readbacks": 35703,
+        "failures": 0,
+        "uploads": 17,
+        "uploadBytes": 9561488,
+        "resourceHits": 2282440,
+        "resourceMisses": 5,
+        "resourceEvictions": 0,
+        "coldUploadBytes": 6657424,
+        "resourceBytes": 6657424,
+        "peakResourceBytes": 6657424
+      },
+      "nativeResults": [
+        {
+          "name": "0   3DMark Score",
+          "value": "129.000000000",
+          "unit": "3DMarks",
+          "status": "0"
+        },
+        {
+          "name": "1   GT1 - Return To Proxycon",
+          "value": "0.505064130",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "2   GT2 - Firefly Forest",
+          "value": "0.405770957",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "3   GT3 - Canyon Flight",
+          "value": "0.667390764",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "0   CPU Score",
+          "value": "222.000000000",
+          "unit": "CPUMarks",
+          "status": "0"
+        },
+        {
+          "name": "1   CPU Test 1",
+          "value": "0.114657372",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "2   CPU Test 2",
+          "value": "0.190495178",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "1   Fill Rate - Single-Texturing",
+          "value": "1439.904174805",
+          "unit": "texels/s",
+          "status": "0"
+        },
+        {
+          "name": "2   Fill Rate - Multi-Texturing",
+          "value": "2817.368896484",
+          "unit": "texels/s",
+          "status": "0"
+        },
+        {
+          "name": "3   Pixel Shader",
+          "value": "17.023393631",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "4   Vertex Shader - Simple",
+          "value": "7.498528957",
+          "unit": "vertices/s",
+          "status": "0"
+        },
+        {
+          "name": "5   Vertex Shader - Complex",
+          "value": "3.078168154",
+          "unit": "vertices/s",
+          "status": "0"
+        },
+        {
+          "name": "1   8 Triangles",
+          "value": "0.013453608",
+          "unit": "triangles/s",
+          "status": "0"
+        },
+        {
+          "name": "2   32 Triangles",
+          "value": "-1.000000000",
+          "unit": "FPS",
+          "status": "1   N/A"
+        },
+        {
+          "name": "3   128 Triangles",
+          "value": "-1.000000000",
+          "unit": "FPS",
+          "status": "1   N/A"
+        },
+        {
+          "name": "4   512 Triangles",
+          "value": "-1.000000000",
+          "unit": "FPS",
+          "status": "1   N/A"
+        },
+        {
+          "name": "5   2048 Triangles",
+          "value": "-1.000000000",
+          "unit": "FPS",
+          "status": "1   N/A"
+        },
+        {
+          "name": "6   32768 Triangles",
+          "value": "-1.000000000",
+          "unit": "FPS",
+          "status": "1   N/A"
+        }
+      ],
+      "originalFile": {
+        "name": "NV05A.3DR",
+        "bytes": 3601,
+        "sha256": "e07ad9548093b9483a85ed344a58a281e7de6d87350dfac4aed016a1e3b3902f",
+        "ZIP_CRC_valid": true
+      },
+      "failureCheckpoint": {
+        "original": "build/nv40-xp-mark05-ui-all16-resume-ifc/checkpoint-native-screensaver-device-lost.state",
+        "archive": "build/nv40-xp-mark05-ui-all16-resume-ifc/checkpoint-native-screensaver-device-lost.state.zst",
+        "originalBytes": 1138304724,
+        "archiveBytes": 413553207,
+        "sha256": "c62ceae99bd16623ec77d89b5bb6e3f996f5d9d96321c55f82d54e51ff480dfc",
+        "restore": "zstd -d build/nv40-xp-mark05-ui-all16-resume-ifc/checkpoint-native-screensaver-device-lost.state.zst -o build/nv40-xp-mark05-ui-all16-resume-ifc/checkpoint-native-screensaver-device-lost.state"
+      }
+    },
+    {
+      "directory": "build/nv40-xp-mark06-ifc-decoded512-cold-full",
+      "selection": "2SM2,2CPU,2HDR/SM3",
+      "expectedFunctionalTests": 6,
+      "gpu": {
+        "batches": 21453,
+        "draws": 161876,
+        "bytes": 59982905064,
+        "readbacks": 53849,
+        "failures": 0,
+        "uploads": 8270,
+        "uploadBytes": 27357408044,
+        "resourceHits": 601145,
+        "resourceMisses": 669,
+        "resourceEvictions": 536,
+        "coldUploadBytes": 2634298056,
+        "resourceBytes": 512273740,
+        "peakResourceBytes": 536870884
+      },
+      "nativeResults": [
+        {
+          "name": "0   3DMark Score",
+          "value": "44.000000000",
+          "unit": "3DMarks",
+          "status": "0"
+        },
+        {
+          "name": "1   SM2.0 Score",
+          "value": "30.000000000",
+          "unit": "",
+          "status": "0"
+        },
+        {
+          "name": "2   HDR/SM3.0 Score",
+          "value": "-1.000000000",
+          "unit": "",
+          "status": "3   Not enough tests run"
+        },
+        {
+          "name": "3   CPU Score",
+          "value": "219.000000000",
+          "unit": "",
+          "status": "0"
+        },
+        {
+          "name": "4   Game Score",
+          "value": "0.000000000",
+          "unit": "points",
+          "status": "1   N/A"
+        },
+        {
+          "name": "1   GT1 - Return To Proxycon",
+          "value": "0.179825470",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "2   GT2 - Firefly Forest",
+          "value": "0.327551782",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "1   CPU1 - Red Valley",
+          "value": "0.075532265",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "2   CPU2 - Red Valley",
+          "value": "0.101617575",
+          "unit": "FPS",
+          "status": "0"
+        },
+        {
+          "name": "1   HDR1 - Canyon Flight",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "2   HDR2 - Deep Freeze",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "1   Fill Rate - Single-Texturing",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "2   Fill Rate - Multi-Texturing",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "3   Pixel Shader",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "4   Vertex Shader - Simple",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "5   Vertex Shader - Complex",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "6   Shader Particles (SM3.0)",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "7   Perlin Noise (SM3.0)",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "1   8 Triangles",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "2   32 Triangles",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "3   128 Triangles",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "4   512 Triangles",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "5   2048 Triangles",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        },
+        {
+          "name": "6   32768 Triangles",
+          "value": "-1.000000000",
+          "unit": "operations/s",
+          "status": "1   N/A"
+        }
+      ],
+      "originalFile": {
+        "name": "NV06F.3DR",
+        "bytes": 4362,
+        "sha256": "5928a0169d99e1c890d1f498c0249370ebde96403c50f34dcfc848cb12fae303",
+        "ZIP_CRC_valid": true
+      },
+      "failureCheckpoint": {
+        "original": "build/nv40-xp-mark06-ifc-decoded512-cold-full/checkpoint-native-screensaver-active.state",
+        "archive": "build/nv40-xp-mark06-ifc-decoded512-cold-full/checkpoint-native-screensaver-active.state.zst",
+        "originalBytes": 1316934340,
+        "archiveBytes": 467033740,
+        "sha256": "b0e4112b0e984909e3cc017dde26296e26deedff43e255fb7d03b748d6b34a99",
+        "restore": "zstd -d build/nv40-xp-mark06-ifc-decoded512-cold-full/checkpoint-native-screensaver-active.state.zst -o build/nv40-xp-mark06-ifc-decoded512-cold-full/checkpoint-native-screensaver-active.state"
+      }
+    }
+  ],
+  "setupCorrection": [
+    "Use original Display Properties/Screen Saver tab to select(None), then apply.",
+    "Use original Power Options to set Turn off monitor:Never; disks alreadyNever.",
+    "Save matching RAM/OS/game checkpoint after applying settings, export original results and restart full original selected suites. No watchdog, clock or originalbenchmarkdata modifications."
+  ],
+  "limits": [
+    "Native displayed scores are preserved diagnostic outputs, not performance acceptance.",
+    "A successful rerun must establish full selected tests; no omitted tests counted as supported/finished."
+  ],
+  "restartDirectories": [
+    "build/nv40-xp-mark05-all16-no-saver",
+    "build/nv40-xp-mark06-default6-no-saver"
+  ]
+}

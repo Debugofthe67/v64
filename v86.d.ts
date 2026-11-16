@@ -562,8 +562,12 @@ export interface V86Options {
      * II) and "virtio_gpu" (virtio-gpu as virtio-vga) offer 3D when the page
      * has loaded build/glbridge/libv86-webgpu.js and WebGPU has an adapter,
      * and 2D only otherwise (docs/gpu-devices.md).
+     * "geforce_6800" is an experimental NV40 device tested with native NVIDIA
+     * XP 93.71 and Win98 81.98 drivers. CPU 2D is available without WebGPU;
+     * native 3D uses the shared WebGPU executor. Validated scope and limits
+     * are recorded in docs/gpu-devices.md and docs/gpu-deviations.md.
      */
-    graphics_adapter: "bochs_vga" | "vmware_svga" | "virtio_gpu" | "none";
+    graphics_adapter: "bochs_vga" | "vmware_svga" | "virtio_gpu" | "geforce_6800" | "none";
     /**
      * Path or URL of the graphics_adapter's plugin file. By default
      * v86-<name>.js beside the libv86 bundle when the bundle knows its own
@@ -976,7 +980,9 @@ export interface V86Options {
      * "none"), a GICv2 with "arm32"; no PCIe.
      * @default "i440fx" ("virt" with cpu_type "arm64" or "arm32")
      */
-    machine_type?: "i440fx" | "q35" | "virt" | "ranchu";
+    machine_type?: "i440fx" | "q35" | "virt" | "ranchu" | "s5l8930";
+    apple_model?: "iPhone3,1";
+    ios?: { kernelcache?: V86Image; devicetree?: V86Image; ramdisk?: V86Image; nand?: V86HardDiskImage; bootlogo?: V86Image; boot_args?: string; nand_boot?: boolean };
 
     /**
      * machine_type "ranchu" only: the display (the framebuffer's size in
@@ -1116,7 +1122,7 @@ export interface V86Options {
      * @default the cpu_type's generic model ("cortex-a15" for "arm32")
      */
     cpu_profile?: "generic-x86" | "generic-x86-64" | "generic-arm64" | "generic-arm64-compat32" | "generic-arm64-v1" | "generic-arm64-v1.1" |
-        "cortex-a15";
+        "cortex-a8" | "cortex-a15";
 
     /**
      * CPU features beyond the base profile, reported by CPUID: SSSE3, SSE4.1
@@ -1734,6 +1740,22 @@ export class V86 {
      */
     keyboard_send_text(string: string): void;
 
+    /** Press or release one of the simulated iPhone's physical buttons. */
+    ios_send_button(button: "home" | "power" | "volume-up" | "volume-down" | "mute", pressed: boolean): void;
+
+    /** Install an unencrypted ARMv7 IPA using the native iOS 6 helper. */
+    ios_install_status(): Promise<IOSInstallStatus>;
+    ios_install_begin(manifest: Record<string, unknown>): Promise<IOSInstallStatus>;
+    ios_install_write(install_id: string, offset: number, data: Uint8Array): Promise<IOSInstallStatus>;
+    ios_install_stage(install_id: string): Promise<IOSInstallStatus>;
+    ios_install_commit(install_id: string): Promise<IOSInstallStatus>;
+    ios_install_cancel(install_id: string): Promise<IOSInstallStatus>;
+    ios_install_lookup(bundle_id: string): Promise<IOSInstallStatus>;
+    ios_open_application(bundle_id: string): Promise<IOSInstallStatus>;
+
+    /** Rotate the simulated iPhone's gravity vector clockwise from portrait. */
+    ios_set_orientation(angle: 0 | 90 | 180 | 270): void;
+
     /**
      * Download a screenshot (returns an <img> element, only works in browsers)
      */
@@ -1942,4 +1964,23 @@ export interface V86JitInfo {
         /** The x64 page tier's 32-bit and 16-bit modes; counters wrap at 2^32. */
         page_tier: { legacy32: boolean; compat32: boolean; prot16: boolean; v86: boolean; functions: number; native_instructions: number; activations: number } | null;
     };
+}
+
+export interface IOSInstallStatus {
+    supported?: boolean;
+    available?: boolean;
+    running?: boolean;
+    phase?: string;
+    install_id?: string;
+    bundle_id?: string;
+    job_generation?: number;
+    generation?: number;
+    offset?: number;
+    total?: number;
+    native_percent?: number;
+    can_launch?: boolean;
+    installed?: boolean;
+    version?: string;
+    error?: string;
+    status?: string;
 }

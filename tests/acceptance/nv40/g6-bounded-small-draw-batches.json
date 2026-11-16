@@ -1,0 +1,51 @@
+{
+  "date": "2026-11-15",
+  "status": "Bounded small-draw batching regression passed; native06 supplemental thirteen tests remain incomplete after another original watchdog failure.",
+  "change": {
+    "maxDraws": {
+      "before": 32,
+      "after": 256
+    },
+    "maxCommandBytes": 8388608,
+    "earlyFlushesRetained": [
+      "query",
+      "resource/VRAM alias and CPU visibility barriers",
+      "FIFO yield/end",
+      "snapshot quiescence"
+    ]
+  },
+  "validation": {
+    "red": "New actual-FIFO regression stops at 32 instead of expected256 with prior code.",
+    "green": "257 actual FIFO draws use two submissions/two color downloads; all blends reach [255,255,255,255] and REF waits for both.",
+    "fullGpu": "All native rendering, query, alias, DMA guards and snapshot regressions passed on real WebGPU.",
+    "unit": [
+      "FIFO",
+      "render"
+    ],
+    "closure": "0 errors/0 warnings"
+  },
+  "limits": [
+    "A bounded batching and transfer-count improvement; no native FPS or watchdog fix is claimed.",
+    "The existing 8MiB command bound can yield before256 draws."
+  ],
+  "latestNativeFailure": {
+    "newDraws": 250410,
+    "gpuFailures": 0,
+    "graphFaults": [],
+    "terminalHeader": {
+      "magic": "PAGEDUMP",
+      "bugcheck": "0x100000ea",
+      "parameters": [
+        "0x863d3368",
+        "0x864ccd10",
+        "0xf7c60cb4",
+        "0x1"
+      ]
+    },
+    "pairedCheckpoint": "build/nv40-xp-mark06-batch8-fifo-scope/checkpoint-native-feature13-batch8-terminal-scope.state.bundle.json",
+    "archiveBytes": 749670143,
+    "originalDefaultResultRetained": true,
+    "supplementalResultSaved": false,
+    "temporaryInvestigationImageRemoved": true
+  }
+}

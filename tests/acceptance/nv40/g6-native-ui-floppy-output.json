@@ -1,0 +1,46 @@
+{
+  "stage": "G6 native UI output on a small writable tools floppy",
+  "change": "NV_UI_OUTPUT is a compile-time override; D:\\NVUI.TXT stays the default. A:/NVUI.TXT works with the unchanged original Win32 CreateFile output path.",
+  "nativeValidation": [
+    "Compiled with strict C warnings.",
+    "Public vm.set_fda buffer mounts a RAM-backed 1.44 MiB FAT12 tools floppy in an idle original XP/3DMark05 session.",
+    "Unchanged original A:\\NVUI.EXE /list writes a fresh REQUEST_TICK and original benchmark windows to A:/NVUI.TXT.",
+    "Public vm.get_disk_fda returns 1474560 bytes; FAT12 extraction finds the native success prompt and actual enabled controls.",
+    "Temporary raw export removed after extraction; source game/OS images remain read-only."
+  ],
+  "purpose": "Bounded UI observation without exporting a full game IMG for every native control action.",
+  "evidence": [
+    {
+      "file": "tests/devices/geforce_ui.c",
+      "bytes": 13588,
+      "sha256": "0042425f8eb1176f2c1b6de8622a6e103319e028fcac4537a2d87fce8dc40c85"
+    },
+    {
+      "file": "build/nv40-ui-proxy-floppy.exe",
+      "bytes": 19403,
+      "sha256": "3f4b0f4793c7428800c1094cc03978a7f443bd0157ebcb5c9aea1d3dbdb1d550"
+    },
+    {
+      "file": "build/nv40-ui-proxy-floppy.img",
+      "bytes": 1474560,
+      "sha256": "d7214092f06d23e8388ae9c77c7999c52fe1c405dac5c029d9c97e8b6e60b777"
+    },
+    {
+      "file": "build/nv40-xp-mark05-bc-current-cpu/floppy-ui-native-list.txt",
+      "bytes": 12918,
+      "sha256": "6502f4c8097e79cf66d19a882fe146abc07a859d2a6d3801aa7a51c05eacf58f"
+    },
+    {
+      "file": "build/nv40-xp-mark05-bc-current-cpu/host-ui-floppy-export.json",
+      "bytes": 134,
+      "sha256": "ca71472e5f41a7c00a6f2c047e7a311a17675d6ba911d2d6d905a2afb0a8cbbe"
+    }
+  ],
+  "historicalSourceQualification": {
+    "file": "tests/devices/geforce_ui.c",
+    "commit": "0cc90695a7a1f457556fc6594cd3df914325cbd7",
+    "sha256": "0042425f8eb1176f2c1b6de8622a6e103319e028fcac4537a2d87fce8dc40c85",
+    "gitBlob": "eefbcf10d83d94110b5464ead760e380732662e1",
+    "meaning": "Source SHA records the executed historical source at this Git revision. Later authorized source edits do not mutate the retained run artifacts."
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "date": "2026-11-15",
+  "scope": "G6 bounded decoded texture residency; original06 still times out and full acceptance remains open.",
+  "policy": "Decoded texture/source cache remains twice guest VRAM with minimum64MiB and cap512MiB; 128MiB card stays256MiB,256MiB card grows256->512MiB. Demand-driven allocations,1024 entries, exact source/PTE validation and LRU eviction unchanged.",
+  "profileBasis": {
+    "finding": "Prior native06 profile records2776 decode misses,2248 evictions and9.72s BC blocks self samples at256MiB decoded budget. Native GPU resource working set already exceeds384MiB.",
+    "barriers": "No nonzero Curie NOP barrier appears in the bounded native window; no speculative NOP bypass added."
+  },
+  "nativeComparison": [
+    {
+      "directory": "build/nv40-xp-mark06-post-scalar-profile",
+      "wallMs": 146882.117791,
+      "gpu": {
+        "batches": 330,
+        "draws": 1265,
+        "bytes": 884962928,
+        "readbacks": 975,
+        "failures": 0,
+        "uploads": 887,
+        "uploadBytes": 623748836,
+        "resourceHits": 4410,
+        "resourceMisses": 101,
+        "resourceEvictions": 0,
+        "coldUploadBytes": 361999076,
+        "resourceBytes": 384019172,
+        "peakResourceBytes": 384019172
+      },
+      "texture": {
+        "hits": 15124,
+        "misses": 2776,
+        "evictions": 2248,
+        "bytes": 265902142
+      },
+      "blocksSelfMs": 9720.618,
+      "graphFaults": [],
+      "nativeTimeoutDialog": true,
+      "imageUnchanged": true
+    },
+    {
+      "directory": "build/nv40-xp-mark06-decoded512-profile",
+      "wallMs": 146338.30899999998,
+      "gpu": {
+        "batches": 403,
+        "draws": 1422,
+        "bytes": 963812352,
+        "readbacks": 1153,
+        "failures": 0,
+        "uploads": 935,
+        "uploadBytes": 647992712,
+        "resourceHits": 5204,
+        "resourceMisses": 106,
+        "resourceEvictions": 0,
+        "coldUploadBytes": 366368136,
+        "resourceBytes": 388388232,
+        "peakResourceBytes": 388388232
+      },
+      "texture": {
+        "hits": 20366,
+        "misses": 913,
+        "evictions": 0,
+        "bytes": 409475778
+      },
+      "blocksSelfMs": 3009.122,
+      "graphFaults": [],
+      "nativeTimeoutDialog": true,
+      "imageUnchanged": true
+    }
+  ],
+  "comparisonLimits": [
+    "Same original checked RAM/overlay bundle, same150-second harness limit and release modules. Other native guests run concurrently, so draw counts and timing are not isolated performance results.",
+    "Both windows end at the original display-driver stopped-responding dialog. Larger cache reduces redundant decodes but does not fix that timeout."
+  ],
+  "syntheticWorkingSet": {
+    "scope": "Synthetic70 BC1 texture working set (315MiB encoded+decoded), real checked VRAM reads and decoder; not a native06 replay or FPS.",
+    "textures": 70,
+    "results": [
+      {
+        "mib": 256,
+        "rounds": [
+          {
+            "ms": 4999.671958,
+            "sha256": "37f382011db3284c7fd4768c3e5548230a08b772a7327611efb94420a07ed821",
+            "delta": {
+              "hits": 0,
+              "misses": 70,
+              "evictions": 14,
+              "bytes": 264241152
+            }
+          },
+          {
+            "ms": 4671.990541,
+            "sha256": "37f382011db3284c7fd4768c3e5548230a08b772a7327611efb94420a07ed821",
+            "delta": {
+              "hits": 0,
+              "misses": 70,
+              "evictions": 70,
+              "bytes": 0
+            }
+          }
+        ],
+        "residentBytes": 264241152
+      },
+      {
+        "mib": 512,
+        "rounds": [
+          {
+            "ms": 6311.547875,
+            "sha256": "37f382011db3284c7fd4768c3e5548230a08b772a7327611efb94420a07ed821",
+            "delta": {
+              "hits": 0,
+              "misses": 70,
+              "evictions": 0,
+              "bytes": 330301440
+            }
+          },
+          {
+            "ms": 261.94837499999994,
+            "sha256": "37f382011db3284c7fd4768c3e5548230a08b772a7327611efb94420a07ed821",
+            "delta": {
+              "hits": 70,
+              "misses": 0,
+              "evictions": 0,
+              "bytes": 0
+            }
+          }
+        ],
+        "residentBytes": 330301440
+      }
+    ]
+  },
+  "validation": [
+    "Existing texture suite: exact source invalidation, PTE/access refusal, LRU budgets and format conversions pass",
+    "Native512MiB run has zero GPU and PGRAPH failures",
+    "Closure plugin build0 errors/0 warnings"
+  ],
+  "performanceGate": false,
+  "evidence": [
+    {
+      "file": "build/nv40-decoded-cache-budget-benchmark.json",
+      "bytes": 1472,
+      "sha256": "7f027a3024c3a8246d227891e98da550842c3810651c93ad4da9e8d1085aa994"
+    },
+    {
+      "file": "build/nv40-decoded-512-texture.log",
+      "bytes": 641,
+      "sha256": "69859b2609c5d67080c9fca6c3bf1ebcc52e73ff79125d12b1a751c67102e446"
+    },
+    {
+      "file": "build/nv40-decoded-512-closure.log",
+      "bytes": 3020,
+      "sha256": "442a9d1685b87b1c8ee7d514a4fc672240bf47cb95f21c15d9028c102f373962"
+    },
+    {
+      "file": "build/nv40-xp-mark06-post-scalar-profile/profile-window.json",
+      "bytes": 1804,
+      "sha256": "4bf1537bcd03bd98ee7da3554c686a277fced298847f1e0ffb76f025f3df0a83"
+    },
+    {
+      "file": "build/nv40-xp-mark06-post-scalar-profile/batch-barriers.json",
+      "bytes": 497,
+      "sha256": "bc5dc8488312687e95eb35e0f3d6ee1079b56c8c63e10539219ef2c841506868"
+    },
+    {
+      "file": "build/nv40-xp-mark06-post-scalar-profile/cpu-profile.cpuprofile",
+      "bytes": 2216355,
+      "sha256": "c8ed929fec872b650e22f303fe02d22ee26a1f8e0f46c2535cd152761b4982e9"
+    },
+    {
+      "file": "build/nv40-xp-mark06-post-scalar-profile/trace.json",
+      "bytes": 5327560,
+      "sha256": "609f1c138bdbb548f95d5da71929b9eb96fc90fb931ef6abc7838401f20d5d12"
+    },
+    {
+      "file": "build/nv40-xp-mark06-post-scalar-profile/final.png",
+      "bytes": 1139374,
+      "sha256": "ae56a6e2479e862861ee532a5bfe567ab879a7ab5ee4a0437e84bdcb8be4e7f8"
+    },
+    {
+      "file": "build/nv40-xp-mark06-decoded512-profile/profile-window.json",
+      "bytes": 1809,
+      "sha256": "49135491ab7816b1ff3f3b96d6d5d8d1cd94437db729bcdae1257b62c79fc418"
+    },
+    {
+      "file": "build/nv40-xp-mark06-decoded512-profile/batch-barriers.json",
+      "bytes": 498,
+      "sha256": "9c161c4f7c20733980b8acfde4a1888b211070c5a2ebe23f3ce0c9b5b0a3e5e7"
+    },
+    {
+      "file": "build/nv40-xp-mark06-decoded512-profile/cpu-profile.cpuprofile",
+      "bytes": 2191900,
+      "sha256": "71f9bcc04831bd92204293fd78bcddeb7306e12aef77d1b0e1a85784ea4d0c33"
+    },
+    {
+      "file": "build/nv40-xp-mark06-decoded512-profile/trace.json",
+      "bytes": 5348419,
+      "sha256": "cccb515d22bdd50efa7b360cce5401092b2527e4745963ed4f31e203ec66975d"
+    },
+    {
+      "file": "build/nv40-xp-mark06-decoded512-profile/final.png",
+      "bytes": 1139374,
+      "sha256": "ae56a6e2479e862861ee532a5bfe567ab879a7ab5ee4a0437e84bdcb8be4e7f8"
+    }
+  ]
+}

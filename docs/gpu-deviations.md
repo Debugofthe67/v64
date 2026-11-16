@@ -1,6 +1,6 @@
 # GPU devices: deviations from real hardware
 
-Where the emulated VMware SVGA II and virtio-gpu ([gpu-devices.md](gpu-devices.md))
+Where the emulated graphics adapters ([gpu-devices.md](gpu-devices.md))
 do not behave like the hardware they model, because WebGPU lacks something or
 because something is not done yet. The rule is the one the D3D8/D3D9 proxies
 follow: a capability is declared only when code backs it; what WebGPU cannot
@@ -20,6 +20,33 @@ virgl), Venus and gfxstream. gfxstream's Vulkan runs on Venus's Vulkan model
 and VX ([gfxstream](gpu-devices.md#gfxstream)), so the Venus entries hold for
 it too, but for G-38 and G-43, which are about Mesa's venus driver; G-59 to
 G-63 are gfxstream's own.
+
+## GeForce 6800 GT
+
+The experimental `geforce_6800` device runs the unmodified NVIDIA drivers.
+Their advertised SM3.0 capabilities describe NV40 hardware and are broader
+than the currently validated emulator subset. This differs from the
+capability filtering of the shared proxy/executor paths. Known unsupported
+draw states and instructions fault explicitly; some other register paths
+still store values while implementation continues.
+
+| Area | Current implementation or limit |
+| --- | --- |
+| Bus and firmware | NV40 is exposed on PCI with a repository-built SeaVGABIOS/NV ROM. XP 93.71 and Win98 81.98 initialize in PCI mode; AGP/GART, a second CRT and vendor option-ROM behavior are not validated. |
+| Host execution and snapshots | CPU GDI and checked DMA operate on guest VRAM. 3D is translated to D9WG/WebGPU, with GPU results read back before the guest resumes dependent FIFO work or saves a snapshot. This is more expensive than hardware scanout and does not model NV40 pipeline timing. |
+| Texture states | Depth comparison is single-level. FP32 textures support nearest sampling. Trilinear filterable 1D/2D/cube textures support host anisotropy from 2x to 16x; other anisotropic filter combinations, depth/volume anisotropy, FP32 linear filtering, signed formats other than L8/RGBA8/A8L8 bytes, signed/gamma combinations, partial-channel gamma masks and compressed volume textures remain unconnected. Host BC compression is used only when enabled on the acquired device and for linear identity-crossbar BC1/2/3; gamma and other remaps keep CPU conversion because host BC sRGB interpolation differs from that control. All sixteen Curie filter-optimization words are checked and retained. Native format15 mode3 selects four-component UNORM16 with an independent channel order; format1f mode3 selects RGBA16F and format1c mode4 selects RGBA32F storage; other physical sampling optimizations are not reproduced. |
+| Point sprites | Observed Direct3D point-list `0x1001`, constant/vertex PSIZE and `POINT_SPRITE=0x101` (TEX0, R=0) are connected with a 1–64 pixel range. Other coordinate-replacement/R-mode combinations, or additional sampled units during TEX0-only replacement, are rejected. |
+| Render state | Two-sided stencil currently requires equal reference/read/write masks. Mixed RGB constant-color and constant-alpha factors need equal constant components. Each MRT has an independent blend-enable bit with shared factors/equations. Colorless depth/stencil/query draws use a host scratch color attachment with all color writes disabled; it never accesses guest color DMA or enters VRAM readbacks. Depth bounds, polygon line/point mode and the other explicitly rejected raster states remain unconnected. |
+| Formats and outputs | FP16 attachments and FP32 fragment exports are tested. Native A16 textures retain all UNORM16 bits through crossbar expansion/upload; the shared executor stores these uploads as RGBA16F, so sampled precision can differ. Unblended draws/readback support two RGBA32F or four R32F attachments within a 32-byte host attachment budget; FP32 blending and floating-point clears remain unconnected. TEX8/TEX9 routing uses the shared executor's twelve-output budget. |
+| Particle simulation | Original06 Shader Particles renders the corresponding radial cloud, center, spread and aggregate brightness, but individual positions differ substantially from the API reference (scene MAD38.584879, maximum255 at original Frame91/Time0:09.19). All six scene regions match across three native runs. The difference is stable; a changing random seed or unique arithmetic cause is not established. [Full pixel and spatial measurements](../tests/acceptance/nv40/g4-06-seven-feature-reference-review.json) are retained; per-particle trajectory equivalence is not claimed. |
+| AA GDI fonts | Packed I4/I8 uploads span rows correctly. The tested software DIB and NVIDIA INDEX path have different AA tone curves; non-AA RGB and AA coverage-rank comparisons pass. Exact AA RGB differences remain recorded in the [font fixture](../tests/acceptance/nv40/g2-xp-9371-aa-packed-index.json). |
+| PTIMER | Fixed 66.67 MHz HCLK is the emulated board clock. The native 3125/6667 ratio yields nanosecond timestamps; no physical board's clock tree or drift is reproduced. |
+| Acceptance | DxDiag 7/8/9 passes in XP and Win98. A corrected XP 3DMark99 run completed all 26 tests without GPU/PGRAPH faults and exported its project and eighteen original IQ BMPs; comparison residuals remain recorded in the [full-run fixture](../tests/acceptance/nv40/g3-xp-9371-99-full-corrected.json). Win98's earlier checkpointed full run had a substantial IQ06 upload error; [the corrected native IQ rerun](../tests/acceptance/nv40/g3-win98-8198-99-iq-corner-fixed.json) removed it. Eight of nine corrected IQ images match XP exactly outside the metadata band; the remaining image differs at one pixel. Both guests retain the same small game-frame residuals against the proxy reference. A [cold XP 2000 run](../tests/acceptance/nv40/g3-xp-9371-2000-full-clean.json) completed all 22 tests without GPU/PGRAPH faults and exported its project and eighteen IQ BMPs after normal shutdown; its game-frame differences are retained in the later qualified content review. A [cold Win98 2000 run](../tests/acceptance/nv40/g3-win98-8198-2000-full-clean.json) also completed all 22 tests and exported its native project and eighteen IQ BMPs. Subsequent [vertex dual-destination fixes](../tests/acceptance/nv40/g3-native-vertex-dual-destination.json) removed the large 2000 lighting defects; [post-fix Win98 IQ](../tests/acceptance/nv40/g3-win98-8198-2000-vertex-dual-iq.json) matches XP in sixteen of eighteen I/T comparison regions. Small precision/coverage residuals remain recorded. A [fresh cold Win98 99 run](../tests/acceptance/nv40/g3-win98-8198-99-cold-full.json) completed all 26 tests. Original XP suites through06, including seven feature and six batch tests, and Win98 suites through03 have successful native projects; see the [benchmark scope](gpu-devices.md#geforce-6800-gt). The [latest cold06 four-frame review](../tests/acceptance/nv40/g4-06-current-cold-four-fixed-frames.json) removes the HDR1 green tint and records remaining water/reflection/highlight/detail residuals. The [legacy reference content review](../tests/acceptance/nv40/g5-legacy-original-fixed-frame-review.json) accepts scene correspondence with retained pixel residuals. The [seven06 feature review](../tests/acceptance/nv40/g4-06-seven-feature-reference-review.json) records matching fill-rate phases and original PS/VS/Perlin content, with an explicit particle-position deviation. The [final repeated release windows](../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json) report GT1 rendering-work distribution, not completed-frame FPS or whole-suite elapsed time. The primary-head display semaphore is connected. |
+
+The [implementation plan](geforce-6800-plan.md) summarizes the current acceptance;
+the [implementation history](geforce-6800-implementation-history.md) preserves
+individual changes and native investigations. These limits do not establish
+full NV40 compatibility.
 
 ## Emulated
 
@@ -147,3 +174,7 @@ At level `dx11-full`, 31 of the 34 cases match llvmpipe (at `dx11`, 30: see
 
 The last two are in what Mesa sends, not in how GX runs it. On virtio-gpu
 (virgl) all 34 cases match.
+
+## Desktop OpenGL bridge
+
+The desktop GL executor has its own [retained rendering differences](../src/browser/glbridge/gl-webgpu/README.md#retained-rendering-differences), with D-prefixed identifiers. These are separate from the G-prefixed virtual GPU/GLES entries above. The D4 exit audit keeps native Apple/Mesa results and explicitly checks image borders, widened attachment precision, ordinary smooth points, singular fog, BC mip generation and sRGB attachment encoding as differences, rather than counting them as native-conformance passes. Exact occlusion counts, color-index rendering, fill-plane discard and the single-polygon temporary-storage limit remain listed there as well.

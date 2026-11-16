@@ -26,12 +26,17 @@
 #include <cstring>
 #include <functional>
 #include <memory>
+#include <map>
+#include <cmath>
+#include <sstream>
+#include <iomanip>
 #include <string>
 #include <vector>
 
 #include "glslang/Include/Types.h"
 #include "glslang/Public/ResourceLimits.h"
 #include "glslang/Public/ShaderLang.h"
+#include "glslang/MachineIndependent/localintermediate.h"
 #include "SPIRV/GlslangToSpv.h"
 
 namespace {
@@ -224,10 +229,28 @@ std::unique_ptr<glslang::TShader> code_shader(const Source& source, bool& ok)
     return shader;
 }
 
+// Desktop GLSL for the OpenGL 2.1 proxy (docs/opengl-webgpu-plan.md C4):
+// 1.10 and 1.20 with the compatibility profile's built-ins, 110 when a
+// shader says no #version, and desktop GL's rules for linking: a stage may be
+// several shaders, any number of stages may be missing. Its own limits.
+TBuiltInResource desktop_resources;
+
+std::unique_ptr<glslang::TShader> desktop_shader(const Source& source, bool& ok)
+{
+    auto shader = std::make_unique<glslang::TShader>(source.stage);
+    const char* text = source.text.c_str();
+    int length = static_cast<int>(source.text.size());
+    shader->setStringsWithLengths(&text, &length, 1);
+    shader->setEnvInput(glslang::EShSourceGlsl, source.stage, glslang::EShClientNone, 0);
+    ok = shader->parse(&desktop_resources, 110, ENoProfile, false, false, EShMsgDefault);
+    return shader;
+}
+
 void init()
 {
     if(initialized) return;
     glslang::InitializeProcess();
+    desktop_resources = *GetDefaultResources();
     resources = *GetDefaultResources();
     // GLSL ES 1.00's appendix A: everything a desktop GPU does
     resources.limits.nonInductiveForLoops = true;
@@ -316,6 +339,152 @@ int v86_glslang_link(const uint8_t* packed, uint32_t length, uint32_t flags)
     output += ",\"log\":";
     json_string(output, log);
     if(ok && program.buildReflection(CHECK_REFLECTION)) json_reflection(output, program);
+    output += '}';
+    return ok ? 1 : 0;
+}
+
+// glslang keeps ordinary global initializers as assignments, whereas its
+// cross-unit initializer check reads the linker symbol's constant array.
+// Populate that metadata from the already folded AST, so desktop GLSL 1.20
+// section 4.2 checks values (including constructors), not source spelling.
+void desktop_global_initializers(glslang::TShader& shader)
+{
+    class Initializers : public glslang::TIntermTraverser {
+    public:
+        std::map<long long, glslang::TConstUnionArray> values;
+        bool visitAggregate(glslang::TVisit, glslang::TIntermAggregate* node) override
+        {
+            return node->getOp() != glslang::EOpFunction && node->getOp() != glslang::EOpLinkerObjects;
+        }
+        bool visitBinary(glslang::TVisit, glslang::TIntermBinary* node) override
+        {
+            if(node->getOp() == glslang::EOpAssign)
+            {
+                auto* symbol = node->getLeft()->getAsSymbolNode();
+                auto* value = node->getRight()->getAsConstantUnion();
+                if(symbol && value && symbol->getQualifier().storage == glslang::EvqGlobal)
+                    values.emplace(symbol->getId(), value->getConstArray());
+            }
+            return true;
+        }
+    } initializers;
+    auto* intermediate = shader.getIntermediate();
+    if(!intermediate || !intermediate->getTreeRoot()) return;
+    intermediate->getTreeRoot()->traverse(&initializers);
+    auto* objects = intermediate->findLinkerObjects();
+    if(!objects) return;
+    for(auto* node : objects->getSequence())
+    {
+        auto* symbol = node->getAsSymbolNode();
+        if(!symbol) continue;
+        auto value = initializers.values.find(symbol->getId());
+        if(value != initializers.values.end()) symbol->setConstArray(value->second);
+    }
+}
+
+// Preserve desktop uniform defaults as values, independently of code generation.
+void json_desktop_initializers(std::string& out, std::vector<std::unique_ptr<glslang::TShader>>& shaders)
+{
+    class Defaults : public glslang::TIntermTraverser {
+    public:
+        std::map<std::string, std::vector<double>> values;
+        void visitSymbol(glslang::TIntermSymbol* symbol) override {
+            if(symbol->getQualifier().storage != glslang::EvqUniform || !symbol->getConstArray().size()) return;
+            int at = 0;flatten(symbol->getName().c_str(), symbol->getType(), symbol->getConstArray(), at);
+        }
+        void flatten(const std::string& name, const glslang::TType& type, const glslang::TConstUnionArray& data, int& at) {
+            if(type.isArray()) {
+                glslang::TType element(type, 0);
+                if(element.isStruct()) {
+                    for(int i = 0; i < type.getOuterArraySize(); ++i) flatten(name + "[" + std::to_string(i) + "]", element, data, at);
+                    return;
+                }
+            } else if(type.isStruct()) {
+                for(const auto& member : *type.getStruct()) flatten(name + "." + member.type->getFieldName().c_str(), *member.type, data, at);
+                return;
+            }
+            std::vector<double> row;
+            for(int i = 0; i < type.computeNumComponents() && at < data.size(); ++i, ++at) {
+                const auto& value = data[at];double number = 0;
+                switch(value.getType()) {
+                case glslang::EbtBool: number = value.getBConst();break;
+                case glslang::EbtInt: number = value.getIConst();break;
+                case glslang::EbtUint: number = value.getUConst();break;
+                default: number = value.getDConst();break;
+                }
+                row.push_back(std::isfinite(number) ? number : 0);
+            }
+            values[name] = row;
+        }
+    } defaults;
+    for(auto& shader : shaders) shader->getIntermediate()->getTreeRoot()->traverse(&defaults);
+    out += ",\"initializers\":{";bool first = true;
+    for(const auto& entry : defaults.values) {
+        if(!first) out += ',';first = false;json_string(out, entry.first);out += ":[";
+        for(size_t i = 0; i < entry.second.size(); ++i) {
+            if(i) out += ',';std::ostringstream number;number << std::setprecision(17) << entry.second[i];out += number.str();
+        }
+        out += ']';
+    }
+    out += '}';
+}
+
+/** Desktop GLSL's limits, as v86_glslang_limits sets the ES ones */
+__attribute__((export_name("v86_glslang_desktop_limits")))
+void v86_glslang_desktop_limits(char* config)
+{
+    init();
+    DecodeResourceLimits(&desktop_resources, config);
+}
+
+/**
+ * A desktop shader: 1 if it compiles; the output is its info log. Desktop GL
+ * links a stage from any number of shaders, so a shader alone is only
+ * parsed (no main is fine; a missing function is the link's error).
+ */
+__attribute__((export_name("v86_glslang_desktop_compile")))
+int v86_glslang_desktop_compile(const uint8_t* packed, uint32_t length)
+{
+    init();
+    std::vector<Source> sources = unpack(packed, length);
+    output.clear();
+    if(sources.size() != 1) { output = "one shader expected"; return 0; }
+    bool ok;
+    auto shader = desktop_shader(sources[0], ok);
+    output = shader->getInfoLog();
+    return ok ? 1 : 0;
+}
+
+/**
+ * A desktop program: 1 if it links. The output is JSON as
+ * v86_glslang_link's: the log and, when it linked, the reflection.
+ */
+__attribute__((export_name("v86_glslang_desktop_link")))
+int v86_glslang_desktop_link(const uint8_t* packed, uint32_t length)
+{
+    init();
+    std::vector<Source> sources = unpack(packed, length);
+    output.clear();
+    std::vector<std::unique_ptr<glslang::TShader>> shaders;
+    glslang::TProgram program;
+    std::string log;
+    bool ok = !sources.empty();
+    for(const Source& source : sources)
+    {
+        bool compiled;
+        shaders.push_back(desktop_shader(source, compiled));
+        if(!compiled) { ok = false; log += shaders.back()->getInfoLog(); }
+        if(compiled) desktop_global_initializers(*shaders.back());
+        program.addShader(shaders.back().get());
+    }
+    if(ok && !program.link(EShMsgDefault)) ok = false;
+    log += program.getInfoLog();
+    output = "{\"ok\":";
+    output += ok ? "true" : "false";
+    output += ",\"log\":";
+    json_string(output, log);
+    if(ok && program.buildReflection(CHECK_REFLECTION)) json_reflection(output, program);
+    if(ok) json_desktop_initializers(output, shaders);
     output += '}';
     return ok ? 1 : 0;
 }

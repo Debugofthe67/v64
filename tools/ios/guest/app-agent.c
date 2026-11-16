@@ -1,0 +1,251 @@
+// The native iOS 6 installation entry point. The service loop is added
+// separately; this CLI also makes the real installation path reproducible.
+#include "app-native.h"
+#include "app-code-hash.h"
+typedef int (*install_fn)(CFStringRef, CFDictionaryRef, void (*)(CFDictionaryRef), CFStringRef);
+typedef CFDictionaryRef (*lookup_fn)(CFDictionaryRef);
+extern void *CFURLCreateWithFileSystemPath(CFAllocatorRef,CFStringRef,long,Boolean);
+extern void *CFBundleCreate(CFAllocatorRef,void *),*CFBundleCopyExecutableURL(void *);
+extern Boolean CFURLGetFileSystemRepresentation(void *,Boolean,unsigned char *,long);
+static install_fn native_install;
+static lookup_fn native_lookup;
+int app_native_load(void)
+{
+    void *mi=dlopen("/System/Library/PrivateFrameworks/MobileInstallation.framework/MobileInstallation",1);
+    native_install=mi?(install_fn)dlsym(mi,"MobileInstallationInstall"):0;
+    native_lookup=mi?(lookup_fn)dlsym(mi,"MobileInstallationLookup"):0;
+    return native_install && native_lookup;
+}
+static CFMutableDictionaryRef user_options(void)
+{
+    CFMutableDictionaryRef options=CFDictionaryCreateMutable(0,0,kCFTypeDictionaryKeyCallBacks,kCFTypeDictionaryValueCallBacks);
+    CFStringRef key=string("ApplicationType"),value=string("User");CFDictionarySetValue(options,key,value);CFRelease(key);CFRelease(value);return options;
+}
+int app_native_ready(void)
+{
+    void *pool=objc_autoreleasePoolPush();CFMutableDictionaryRef options=user_options();CFDictionaryRef apps=native_lookup(options);
+    int ready=apps!=0;if(apps)CFRelease(apps);CFRelease(options);objc_autoreleasePoolPop(pool);return ready;
+}
+int app_native_install(const char *filename,void (*callback)(CFDictionaryRef))
+{
+    void *pool=objc_autoreleasePoolPush();CFStringRef path=string(filename);CFMutableDictionaryRef options=user_options();
+    int result=native_install(path,options,callback,path);CFRelease(options);CFRelease(path);objc_autoreleasePoolPop(pool);return result;
+}
+static int property(CFDictionaryRef dict,const char *name,char *out,unsigned capacity)
+{
+    CFStringRef key=string(name);CFTypeRef value=CFDictionaryGetValue(dict,key);int ok=value&&CFStringGetCString(value,out,capacity,UTF8);CFRelease(key);return ok;
+}
+int app_native_lookup(const char *bundle,struct app_identity *identity)
+{
+    memset(identity,0,sizeof(*identity));
+    void *pool=objc_autoreleasePoolPush();CFMutableDictionaryRef options=user_options();CFDictionaryRef apps=native_lookup(options);
+    CFStringRef key=string(bundle);CFDictionaryRef app=apps?CFDictionaryGetValue(apps,key):0;int ok=0;
+    if(app)
+    {
+        char path[1024],executable[256];
+        if(!property(app,"CFBundleShortVersionString",identity->version,sizeof(identity->version)))property(app,"CFBundleVersion",identity->version,sizeof(identity->version));
+        if(property(app,"Path",path,sizeof(path)))
+        {
+            if(property(app,"CFBundleExecutable",executable,sizeof(executable)) &&
+                snprintf(identity->executable,sizeof(identity->executable),"%s/%s",path,executable)<(int)sizeof(identity->executable))
+                ok=app_code_hash(identity->executable,identity->cdhash);
+            if(!ok)
+            {
+                CFStringRef name=string(path);void *url=CFURLCreateWithFileSystemPath(0,name,0,1),*bundle=url?CFBundleCreate(0,url):0;
+                void *binary=bundle?CFBundleCopyExecutableURL(bundle):0;
+                if(binary && CFURLGetFileSystemRepresentation(binary,1,(unsigned char *)identity->executable,sizeof(identity->executable)))
+                    ok=app_code_hash(identity->executable,identity->cdhash);
+                if(binary)CFRelease(binary);if(bundle)CFRelease(bundle);if(url)CFRelease(url);CFRelease(name);
+            }
+        }
+    }
+    CFRelease(key);if(apps)CFRelease(apps);CFRelease(options);objc_autoreleasePoolPop(pool);return ok;
+}
+unsigned long long app_native_free(void)
+{
+    void *pool=objc_autoreleasePoolPush(),*manager=send0(objc_getClass("NSFileManager"),"defaultManager");
+    CFStringRef path=string("/private/var"),key=string("NSFileSystemFreeSize");
+    void *attrs=((void *(*)(void *,void *,void *,void *))objc_msgSend)(manager,sel_registerName("attributesOfFileSystemForPath:error:"),(void *)path,0);
+    void *number=send1(attrs,"objectForKey:",(void *)key);
+    unsigned long long available=number?((unsigned long long (*)(void *,void *))objc_msgSend)(number,sel_registerName("unsignedLongLongValue")):0;
+    CFRelease(path);CFRelease(key);objc_autoreleasePoolPop(pool);return available;
+}
+int app_native_launch(const char *bundle,char *error,unsigned capacity)
+{
+    void *pool=objc_autoreleasePoolPush();
+    void *sbs=dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices",1);
+    int (*launch)(CFStringRef,Boolean)=sbs?(int (*)(CFStringRef,Boolean))dlsym(sbs,"SBSLaunchApplicationWithIdentifier"):0;
+    int (*launch_options)(CFStringRef,CFDictionaryRef,Boolean)=sbs?(int (*)(CFStringRef,CFDictionaryRef,Boolean))dlsym(sbs,"SBSLaunchApplicationWithIdentifierAndLaunchOptions"):0;
+    CFStringRef *unlock_key=sbs?(CFStringRef *)dlsym(sbs,"SBSApplicationLaunchOptionUnlockDeviceKey"):0;
+    void (*undim)(void)=sbs?(void (*)(void))dlsym(sbs,"SBSUndimScreen"):0;
+    CFStringRef (*description)(int)=sbs?(CFStringRef (*)(int))dlsym(sbs,"SBSApplicationLaunchingErrorString"):0;
+    if(!launch){snprintf(error,capacity,"The native application launcher is unavailable");objc_autoreleasePoolPop(pool);return 0;}
+    CFStringRef identifier=string(bundle);int result;
+    if(undim)undim();
+    if(launch_options && unlock_key){extern const void *kCFBooleanTrue;
+        CFMutableDictionaryRef options=CFDictionaryCreateMutable(0,0,kCFTypeDictionaryKeyCallBacks,kCFTypeDictionaryValueCallBacks);
+        CFDictionarySetValue(options,*unlock_key,kCFBooleanTrue);result=launch_options(identifier,options,0);CFRelease(options);
+    }else result=launch(identifier,0);
+    CFRelease(identifier);
+    if(result){CFStringRef text=description?description(result):0;
+        if(!text || !CFStringGetCString(text,error,capacity,UTF8))snprintf(error,capacity,"The native application launch failed (%d)",result);}
+    objc_autoreleasePoolPop(pool);return result==0;
+}
+static int callback_failed;
+static void trace(const char *text) { write(1, text, strlen(text)); }
+static int signature_probe(const char *filename)
+{
+    typedef int (*validate_fn)(CFStringRef,CFDictionaryRef,CFDictionaryRef *);
+    void *mis=dlopen("/usr/lib/libmis.dylib",1);validate_fn validate=mis?(validate_fn)dlsym(mis,"MISValidateSignatureAndCopyInfo"):0;
+    CFStringRef *allow=mis?(CFStringRef *)dlsym(mis,"kMISValidationOptionAllowAdHocSigning"):0;
+    CFStringRef *only=mis?(CFStringRef *)dlsym(mis,"kMISValidationOptionValidateSignatureOnly"):0;
+    if(!validate || !allow || !only)return 3;extern const void *kCFBooleanTrue;
+    CFStringRef path=string(filename);
+    char parent[1024];snprintf(parent,sizeof(parent),"%s",filename);unsigned slash=strlen(parent);
+    while(slash && parent[slash-1]!='/')slash--;if(slash)parent[slash-1]=0;
+    CFStringRef bundle_path=string(parent);CFDictionaryRef bundle_info=0;
+    CFMutableDictionaryRef bundle_options=CFDictionaryCreateMutable(0,0,kCFTypeDictionaryKeyCallBacks,kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(bundle_options,*allow,kCFBooleanTrue);CFDictionarySetValue(bundle_options,*only,kCFBooleanTrue);
+    int bundle_result=validate(bundle_path,bundle_options,&bundle_info);
+    printf("V86 MIS bundle result=%d info=%p\n",bundle_result,bundle_info);
+    if(bundle_info){CFShow(bundle_info);CFRelease(bundle_info);}CFRelease(bundle_options);CFRelease(bundle_path);
+    // Local diagnostic for the exact 10B329 libmis image: separate static
+    // object creation from its later signature/profile checks.
+    typedef int (*create_fn)(void *,unsigned,void **);
+    create_fn create=(create_fn)(((usize)validate&~1u)+0x2e24+1);
+    void *url=CFURLCreateWithFileSystemPath(0,path,0,0),*code=0;
+    int created=create(url,0,&code);printf("V86 MIS static create result=%d code=%p\n",created,code);
+    if(!created && code)
+    {
+        typedef int (*check_fn)(void *,unsigned,void *,void **);
+        check_fn check=(check_fn)(((usize)validate&~1u)+0x3050+1);
+        void *error=0;int checked=check(code,14,0,&error);
+        printf("V86 MIS static validity result=%d error=%p\n",checked,error);
+        if(error)
+        {
+            CFShow(error);CFDictionaryRef (*details)(void *)=(CFDictionaryRef (*)(void *))dlsym((void *)-2,"CFErrorCopyUserInfo");
+            CFDictionaryRef values=details?details(error):0;if(values){CFShow(values);CFRelease(values);}CFRelease(error);
+        }
+    }
+    if(code)CFRelease(code);if(url)CFRelease(url);
+    for(unsigned mask=0;mask<4;mask++)
+    {
+        CFMutableDictionaryRef options=CFDictionaryCreateMutable(0,0,kCFTypeDictionaryKeyCallBacks,kCFTypeDictionaryValueCallBacks);
+        if(mask&1)CFDictionarySetValue(options,*allow,kCFBooleanTrue);
+        if(mask&2)CFDictionarySetValue(options,*only,kCFBooleanTrue);
+        CFDictionaryRef info=0;int result=validate(path,options,&info);
+        printf("V86 MIS diagnostic options=%u result=%d info=%p\n",mask,result,info);if(info){CFShow(info);CFRelease(info);}CFRelease(options);
+    }
+    const char *references[]={"/usr/lib/dyld","/usr/lib/v86-app-agent"};
+    for(unsigned i=0;i<2;i++)
+    {
+        CFStringRef reference=string(references[i]);CFDictionaryRef info=0;
+        int result=validate(reference,0,&info);
+        printf("V86 MIS reference path=%s result=%d info=%p\n",references[i],result,info);
+        if(info){CFShow(info);CFRelease(info);}CFRelease(reference);
+    }
+    const char *variants[]={"minimal","no-info","no-resources"};
+    for(unsigned i=0;i<3;i++)
+    {
+        char name[256];snprintf(name,sizeof(name),"/private/var/mobile/Media/v86-input/Probe-%s.app/V86Test",variants[i]);
+        CFStringRef variant=string(name);CFDictionaryRef info=0;
+        CFMutableDictionaryRef options=CFDictionaryCreateMutable(0,0,kCFTypeDictionaryKeyCallBacks,kCFTypeDictionaryValueCallBacks);
+        CFDictionarySetValue(options,*allow,kCFBooleanTrue);CFDictionarySetValue(options,*only,kCFBooleanTrue);
+        int result=validate(variant,options,&info);printf("V86 MIS variant=%s result=%d info=%p\n",variants[i],result,info);
+        if(info){CFShow(info);CFRelease(info);}CFRelease(options);CFRelease(variant);
+    }
+    CFRelease(path);trace("V86 MIS diagnostic complete\n");return 0;
+}
+static void dump_asl(const char *sender)
+{
+    void *(*new_query)(unsigned)=(void *(*)(unsigned))dlsym((void *)-2,"asl_new");
+    int (*set_query)(void *,const char *,const char *,unsigned)=(int (*)(void *,const char *,const char *,unsigned))dlsym((void *)-2,"asl_set_query");
+    void *(*search)(void *,void *)=(void *(*)(void *,void *))dlsym((void *)-2,"asl_search");
+    void *(*next)(void *)=(void *(*)(void *))dlsym((void *)-2,"aslresponse_next");
+    const char *(*get)(void *,const char *)=(const char *(*)(void *,const char *))dlsym((void *)-2,"asl_get");
+    void (*release_query)(void *)=(void (*)(void *))dlsym((void *)-2,"asl_free");
+    void (*release_result)(void *)=(void (*)(void *))dlsym((void *)-2,"aslresponse_free");
+    if(new_query && set_query && search && next && get && release_query && release_result)
+    {
+        printf("V86 ASL sender=%s begin\n",sender);void *q=new_query(1);set_query(q,"Sender",sender,1);void *r=search(0,q),*message;unsigned count=0;
+        if(r){while(count++<256 && (message=next(r))){const char *text=get(message,"Message");if(text){trace(text);trace("\n");}}release_result(r);}release_query(q);
+        printf("V86 ASL sender=%s end\n",sender);
+    }
+}
+static void dump_install_log(void)
+{
+    dump_asl("installd");
+    char data[4096];int fd=open("/var/mobile/Library/Logs/MobileInstallation/mobile_installation.log",0);
+    if(fd<0){trace("V86 native installation log is not present\n");return;}
+    long long end=lseek(fd,0,2);if(end>65536)lseek(fd,end-65536,0);else lseek(fd,0,0);
+    trace("V86 native installation log begins\n");int n;while((n=read(fd,data,sizeof(data)))>0)write(1,data,n);close(fd);trace("V86 native installation log ends\n");
+}
+void app_native_diagnostics(void)
+{
+    int fd=open("/private/var/v86/install-diagnostics",0);if(fd<0)return;close(fd);dump_install_log();
+}
+static void *display_diagnostics(void *unused)
+{
+    (void)unused;
+    for(unsigned round=0;round<12;round++){
+        for(unsigned second=0;second<60;second++)usleep(1000000);
+        printf("V86 display diagnostics round=%u\n",round);
+        dump_asl("backboardd");dump_asl("SpringBoard");dump_asl("sandboxd");dump_asl("V86Test");dump_asl("DataMigrator");dump_asl("mediaserverd");
+    }
+    return 0;
+}
+void app_native_start_diagnostics(void)
+{
+    int fd=open("/private/var/v86/install-diagnostics",0);if(fd<0)return;close(fd);
+    extern int pthread_create(void *,const void *,void *(*)(void *),void *),pthread_detach(unsigned);
+    unsigned thread;if(!pthread_create(&thread,0,display_diagnostics,0))pthread_detach(thread);
+}
+static void status(CFDictionaryRef info)
+{
+    CFShow(info);
+    CFStringRef key = string("Status"), error = string("Error");
+    char text[256] = "", detail[256] = "";
+    CFTypeRef value = CFDictionaryGetValue(info, key);
+    if(value) CFStringGetCString(value, text, sizeof(text), UTF8);
+    value = CFDictionaryGetValue(info, error);
+    if(value) { callback_failed = 1; CFStringGetCString(value, detail, sizeof(detail), UTF8); }
+    printf("V86 install status: %s %s\n", text, detail);
+    syslog(5, "V86 install status: %s %s", text, detail);
+    CFRelease(key); CFRelease(error);
+}
+int main(int argc, char **argv)
+{
+    int console = open("/dev/console", 2);
+    if(console >= 0) { dup2(console, 1); dup2(console, 2); trace("V86 install helper started\n"); }
+    if(argc == 2 && !strcmp(argv[1],"--serve"))return app_service();
+    if(argc == 3 && !strcmp(argv[1],"--mis-test"))return signature_probe(argv[2]);
+    if(argc != 3 || strcmp(argv[1], "--install-test")) {
+        printf("usage: v86-app-agent --install-test /absolute/path.ipa\n"); return 2;
+    }
+    trace("V86 install loading framework\n");
+    void *mi = dlopen("/System/Library/PrivateFrameworks/MobileInstallation.framework/MobileInstallation", 1);
+    trace("V86 install resolving API\n");
+    install_fn install = mi ? (install_fn)dlsym(mi, "MobileInstallationInstall") : 0;
+    lookup_fn lookup = mi ? (lookup_fn)dlsym(mi, "MobileInstallationLookup") : 0;
+    if(!install || !lookup) { printf("V86 install unavailable: %s\n", dlerror()); return 3; }
+    trace("V86 install preparing options\n");
+    CFMutableDictionaryRef options = CFDictionaryCreateMutable(0, 0, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks);
+    CFStringRef key = string("ApplicationType"), value = string("User"), path = string(argv[2]);
+    CFDictionarySetValue(options, key, value);
+    trace("V86 install querying applications before installation\n");
+    CFDictionaryRef before = lookup(options);
+    if(before) CFRelease(before);
+    trace("V86 install initial lookup answered\n");
+    trace("V86 install calling native installer\n");
+    int result = install(path, options, status, path);
+    dump_install_log();
+    trace("V86 install querying installed applications\n");
+    CFDictionaryRef apps = lookup(options);
+    long count = apps ? CFDictionaryGetCount(apps) : -1;
+    printf("V86 install result: %d callback_failed=%d user_apps=%ld\n", result, callback_failed, count);
+    syslog(5, "V86 install result: %d callback_failed=%d user_apps=%ld", result, callback_failed, count);
+    if(apps) CFRelease(apps);
+    CFRelease(path); CFRelease(value); CFRelease(key); CFRelease(options);
+    sync();
+    return result || callback_failed ? 1 : 0;
+}

@@ -20,7 +20,7 @@
 // exist, in which slots, packed how -- is only decidable once both stages are
 // known. That split matches GL's own semantics exactly.
 //
-// See docs/opengl-webgpu-implementation-plan.zh-CN.md chapter 8.
+// See docs/opengl-webgpu-plan.md E1/E3.
 
 (function(global) {
     "use strict";
@@ -28,7 +28,21 @@
     const stateLayout = (typeof require === "function" && typeof module !== "undefined") ?
         require("./gl_state_layout.js") : global.GLStateLayout;
 
-    const TRANSLATOR_REVISION = 2;
+    const TRANSLATOR_REVISION = 7;
+
+    // A capture invocation runs the actual vertex program, with the same
+    // uniforms and textures as a draw. Keep GL clip coordinates for the CPU
+    // selection/feedback clipper; viewport conversion belongs to that clipper.
+    const VERTEX_CAPTURE = Object.freeze({ attributes: 16, inputBytes: 256, outputBytes: 80, rasterOutputBytes: 224, workgroupSize: 64 });
+    function vertexCaptureBindings(raster = false) {
+        return [
+            "struct GLCaptureInput { attributes : array<vec4<f32>, 16>, }",
+            "struct GLCaptureOutput { clip : vec4<f32>, color : vec4<f32>, backColor : vec4<f32>, tex : vec4<f32>, eye : vec4<f32>, " +
+                (raster ? "secondary : vec4<f32>, fog : vec4<f32>, texExtra : array<vec4<f32>, 7>, " : "") + "}",
+            "@group(3) @binding(0) var<storage, read> glCaptureInput : array<GLCaptureInput>;",
+            "@group(3) @binding(1) var<storage, read_write> glCaptureOutput : array<GLCaptureOutput>;",
+        ].join("\n");
+    }
 
     /* ================================================================== */
     /* Types                                                              */
@@ -163,7 +177,7 @@
         case "array":
             return "array<" + typeToWGSL(t.elem) + ", " + t.size + ">";
         case "struct":
-            return t.name;
+            return safeName(t.name);
         default:
             throw new Error("no WGSL type for " + t.kind);
         }
@@ -896,6 +910,7 @@
             this.structs = new Map();   // name -> type, so the statement parser
                                         // can tell a declaration from an
                                         // expression that starts with an ident
+            this.constants = Object.create(null);
         }
 
         peek(offset) { return this.tokens[this.pos + (offset || 0)]; }
@@ -952,6 +967,12 @@
 
             const line = this.line;
             const qualifiers = this.parseQualifiers();
+            if (qualifiers.invariant && !qualifiers.storage && this.peek().type === "ident") {
+                const names = [this.expectIdent()];
+                while (this.accept(",")) names.push(this.expectIdent());
+                this.expect(";");
+                return { kind: "InvariantDecl", names, line };
+            }
 
             // struct S { ... } [name];
             if (this.at("struct")) {
@@ -980,6 +1001,10 @@
 
             if (this.at(";")) { this.next(); return null; }  // bare type spec
             const declarators = this.parseDeclaratorList(type);
+            if (qualifiers.storage === "const") for (const d of declarators) if (d.init) {
+                const value = foldConstantInt(d.init, this.constants);
+                if (value !== null) this.constants[d.name] = value;
+            }
             this.expect(";");
             return { kind: "VarDecl", qualifiers, type, declarators, line };
         }
@@ -1083,7 +1108,7 @@
          * here and defers anything else. */
         parseConstantIndex() {
             const expr = this.parseAssignment();
-            const value = foldConstantInt(expr);
+            const value = foldConstantInt(expr, this.constants);
             if (value === null)
                 fail(this.line, "array size must be an integral constant expression");
             if (value <= 0) fail(this.line, "array size must be positive");
@@ -1124,6 +1149,7 @@
         parseBlock() {
             const line = this.line;
             this.expect("{");
+            const previous = this.constants;this.constants = Object.create(previous);
             const stmts = [];
             while (!this.at("}")) {
                 if (this.peek().type === "eof") fail(line, "unterminated block");
@@ -1131,6 +1157,7 @@
                 if (s) stmts.push(s);
             }
             this.expect("}");
+            this.constants = previous;
             return { kind: "Block", stmts, line };
         }
 
@@ -1216,6 +1243,10 @@
             }
             const type = this.parseTypeSpecifier();
             const declarators = this.parseDeclaratorList(type);
+            if (qualifiers.storage === "const") for (const d of declarators) if (d.init) {
+                const value = foldConstantInt(d.init, this.constants);
+                if (value !== null) this.constants[d.name] = value;
+            }
             this.expect(";");
             return { kind: "VarDecl", qualifiers, type, declarators, line };
         }
@@ -1360,6 +1391,9 @@
                     const line = t.line;
                     this.next();
                     const name = this.expectIdent();
+                    if (name === "length" && this.accept("(")) {
+                        this.expect(")");expr = { kind: "ArrayLength", object: expr, line };continue;
+                    }
                     expr = { kind: "Field", object: expr, name, line };
                     continue;
                 }
@@ -1392,9 +1426,15 @@
             // Constructors read as calls whose callee names a type.
             if (t.type === "keyword" && BASIC_TYPES[t.value]) {
                 this.next();
+                let constructType = BASIC_TYPES[t.value];
+                if (this.accept("[")) {
+                    const size = this.at("]") ? -1 : this.parseConstantIndex();
+                    this.expect("]");constructType = arrayOf(constructType, size);
+                }
                 const args = this.parseArguments();
+                if (constructType.kind === "array" && constructType.size < 0) constructType = arrayOf(constructType.elem, args.length);
                 return { kind: "Call", callee: t.value, args,
-                         constructType: BASIC_TYPES[t.value], line: t.line };
+                         constructType, line: t.line };
             }
             if (t.type === "ident") {
                 this.next();
@@ -1433,7 +1473,7 @@
         switch (expr.kind) {
         case "IntLit": return expr.value;
         case "Ident": {
-            if (env && Object.prototype.hasOwnProperty.call(env, expr.name)) {
+            if (env && expr.name in env) {
                 const v = env[expr.name];
                 return typeof v === "number" ? (v | 0) : null;
             }
@@ -1692,12 +1732,14 @@
                 const refExpr = proj ?
                     "(" + args[1] + ".z / " + args[1] + "." + wComponent + ")" :
                     args[1] + ".z";
+                if (ctx.desktopSample) return "vec4<f32>(" + ctx.desktopSample(pair, coord, lod ? args[2] : "0.0", bias ? args[2] : "0.0", refExpr, !!lod) + ")";
                 const call = lod ?
                     "textureSampleCompareLevel(" + pair.texture + ", " +
                         pair.sampler + ", " + coord + ", " + refExpr + ")" :
                     ctx.compareSample(pair, coord, refExpr);
                 return "vec4<f32>(" + call + ")";
             }
+            if (lod && ctx.desktopSample) return ctx.desktopSample(pair, coord, args[2], "0.0", null, true);
             if (lod)
                 return "textureSampleLevel(" + pair.texture + ", " +
                     pair.sampler + ", " + coord + ", " + args[2] + ")";
@@ -1727,10 +1769,12 @@
         textureLookup({ name: "shadow1D", samplerType: F.sampler1DShadow, coordType: F.vec3, bias: true });
         textureLookup({ name: "shadow1DLod", samplerType: F.sampler1DShadow, coordType: F.vec3, lod: true });
         textureLookup({ name: "shadow1DProj", samplerType: F.sampler1DShadow, coordType: F.vec4, proj: true });
+        textureLookup({ name: "shadow1DProj", samplerType: F.sampler1DShadow, coordType: F.vec4, proj: true, bias: true });
         textureLookup({ name: "shadow2D", samplerType: F.sampler2DShadow, coordType: F.vec3 });
         textureLookup({ name: "shadow2D", samplerType: F.sampler2DShadow, coordType: F.vec3, bias: true });
         textureLookup({ name: "shadow2DLod", samplerType: F.sampler2DShadow, coordType: F.vec3, lod: true });
         textureLookup({ name: "shadow2DProj", samplerType: F.sampler2DShadow, coordType: F.vec4, proj: true });
+        textureLookup({ name: "shadow2DProj", samplerType: F.sampler2DShadow, coordType: F.vec4, proj: true, bias: true });
         textureLookup({ name: "shadow2DProjLod", samplerType: F.sampler2DShadow, coordType: F.vec4, proj: true, lod: true });
         textureLookup({ name: "shadow2DRect", samplerType: F.sampler2DRectShadow, coordType: F.vec3 });
         textureLookup({ name: "shadow2DRectProj", samplerType: F.sampler2DRectShadow, coordType: F.vec4, proj: true });
@@ -1821,6 +1865,9 @@
      * gl_MultiTexCoord0 is 8), and so does every tool that ever debugged them.
      * Generic attributes are assigned around it; see assignAttributeLocations.
      */
+    // the vertex stage's colour outputs, which GL clamps
+    const COLOR_OUTPUTS = new Set(["gl_FrontColor", "gl_BackColor", "gl_FrontSecondaryColor", "gl_BackSecondaryColor"]);
+
     const COMPAT_ATTRIBUTE_LOCATIONS = {
         gl_Vertex: 0,
         gl_Normal: 2,
@@ -2114,13 +2161,20 @@
             for (const decl of this.ast.decls) {
                 switch (decl.kind) {
                 case "StructDecl": break;      // the parser already interned it
+                case "InvariantDecl":
+                    for (const name of decl.names) {
+                        const symbol = this.globalScope.lookup(name);
+                        if (!symbol) fail(decl.line, "unknown invariant '" + name + "'");
+                        symbol.invariant = true;
+                    }
+                    break;
                 case "VarDecl": this.globalVarDecl(decl); break;
                 case "FunctionProto": break;
                 case "FunctionDef": this.functionBody(decl); break;
                 }
             }
             const main = this.functions.get("main");
-            if (!main || !main.some(o => o.def && !o.params.length))
+            if ((!main || !main.some(o => o.def && !o.params.length)) && !this.options.library)
                 fail(0, "no main() function");
             return this.usage;
         }
@@ -2225,6 +2279,11 @@
                         "' is not supported; give it an explicit size");
                 }
                 const existing = this.globalScope.names.get(d.name);
+                if (existing && ["compatVaryingIn", "compatVaryingOut"].includes(existing.kind) && storage === "varying") {
+                    if (type.kind !== "array" || existing.type.kind !== "array" || !sameType(type.elem, existing.type.elem) || type.size > existing.type.size)
+                        fail(d.line, "incompatible built-in varying redeclaration");
+                    existing.type = type;d.symbol = existing;continue;
+                }
                 if (existing && existing.kind !== "builtinConst")
                     fail(d.line, "'" + d.name + "' is already declared");
 
@@ -2273,9 +2332,6 @@
             if (leafSamplers.length) {
                 // (an array of samplers is one leaf of arraySize elements)
                 const elements = leafSamplers.reduce((n, leaf) => n + Math.max(1, leaf.arraySize), 0);
-                if (elements !== countLeaves(type))
-                    fail(line, "a struct mixing samplers with other members is " +
-                        "not supported: " + name);
                 for (const leaf of leafSamplers) {
                     this.usage.samplers.push({
                         name: leaf.path, type: leaf.type,
@@ -2284,7 +2340,7 @@
                     });
                 }
                 this.usage.uniformByName.set(name, { name, type, sampler: true });
-                return;
+                if (elements === countLeaves(type)) return;
             }
             const entry = { name, type };
             this.usage.uniforms.push(entry);
@@ -2464,6 +2520,10 @@
             case "Index": return this.index(node);
             case "Field": return this.field(node);
             case "Call": return this.call(node);
+            case "ArrayLength":
+                this.expr(node.object);
+                if (node.object.type.kind !== "array") fail(node.line, ".length() requires an array");
+                node.value = node.object.type.size;node.nonUniform = false;return T.int;
             default:
                 fail(node.line, "unsupported expression " + node.kind);
             }
@@ -2996,6 +3056,11 @@
                 target.fields.forEach((f, i) => this.coerce(args[i], f.type, node.line));
                 return target;
             }
+            if (target.kind === "array") {
+                if (args.length !== target.size) fail(node.line, "array constructor size mismatch");
+                for (const arg of args) this.coerce(arg, target.elem, node.line);
+                return target;
+            }
             if (target.kind === "scalar") {
                 if (args.length !== 1)
                     fail(node.line, target.name + "() takes one argument");
@@ -3189,7 +3254,7 @@
          * to read it: `read` for a plain value, `readIndexed` for an array. */
         add(name, type) {
             const offset = roundUp(this.cursor, 16);
-            const wgslName = "u_" + name;
+            const wgslName = "u_" + safeName(name);
             const descriptor = this.place(name, wgslName, type, offset);
             this.cursor = offset + descriptor.sizeBytes;
             this.members.push({
@@ -3271,9 +3336,10 @@
         placeStructLeaves(glslPath, wgslExpr, type, offset) {
             let cursor = offset;
             for (const field of type.fields) {
+                if (field.type.kind === "sampler" || field.type.kind === "array" && field.type.elem.kind === "sampler") continue;
                 const fieldOffset = roundUp(cursor, 16);
                 const path = glslPath + "." + field.name;
-                const expr = wgslExpr + "." + field.name;
+                const expr = wgslExpr + "." + safeName(field.name);
                 if (field.type.kind === "struct") {
                     this.placeStructLeaves(path, expr, field.type, fieldOffset);
                     cursor = fieldOffset + this.structSizeBytes(field.type);
@@ -3321,6 +3387,7 @@
         structSizeBytes(type) {
             let cursor = 0;
             for (const field of type.fields) {
+                if (field.type.kind === "sampler" || field.type.kind === "array" && field.type.elem.kind === "sampler") continue;
                 cursor = roundUp(cursor, 16);
                 if (field.type.kind === "struct")
                     cursor += this.structSizeBytes(field.type);
@@ -3336,22 +3403,15 @@
             return roundUp(cursor, 16);
         }
 
-        /*
-         * A uniform struct keeps the user's own type name.
-         *
-         * Declaring a separate padded twin was the obvious design and the wrong
-         * one: WGSL types are nominal, so `f(lights[0])` then fails to match a
-         * parameter declared with the GLSL struct. Emitting one type -- the
-         * user's, with @align/@size on its members -- means a uniform struct and
-         * a local of the same GLSL type really are the same WGSL type. The
-         * padding costs a few bytes on locals and nothing else.
-         */
+        // Uniform storage has padding, widened arrays and integer booleans.
+        // Explicit value conversion preserves ordinary GLSL struct/array types.
         declareStruct(type) {
             if (this.structNames.has(type.name)) return this.structNames.get(type.name);
-            const wgslName = safeName(type.name);
+            const wgslName = "vgl_storage_" + safeName(type.name);
             this.structNames.set(type.name, wgslName);
             const lines = ["struct " + wgslName + " {"];
             for (const field of type.fields) {
+                if (field.type.kind === "sampler" || field.type.kind === "array" && field.type.elem.kind === "sampler") continue;
                 let wgslType;
                 let size;
                 if (field.type.kind === "struct") {
@@ -3370,7 +3430,7 @@
                     size = roundUp(naturalSizeBytes(field.type), 16);
                 }
                 lines.push("    @align(16) @size(" + size + ") " +
-                    field.name + " : " + wgslType + ",");
+                    safeName(field.name) + " : " + wgslType + ",");
             }
             lines.push("}");
             this.structs.push(lines.join("\n"));
@@ -3510,7 +3570,7 @@
             const type = FRAGMENT_VARYING_INPUTS[fsName];
             const frontWritten = vsUsage.varyings.has(link.front);
             const backWritten = link.back && vsUsage.varyings.has(link.back);
-            if (!frontWritten && !backWritten) continue;
+            if (!frontWritten && !backWritten && !options?.keepCompatInputs) continue;
             entries.push({
                 name: fsName, type, compat: true, components: componentCount(type),
                 vsFront: frontWritten ? link.front : null,
@@ -3619,25 +3679,71 @@
     /* Code generation                                                    */
     /* ================================================================== */
 
+    // WGSL keyword/builtin namespace (Naga 30; W3C WGSL keyword summary).
+    // Escape the escape prefix too: two different GLSL names never collapse.
     const WGSL_RESERVED = new Set([
-        "alias", "break", "case", "const", "const_assert", "continue",
-        "continuing", "default", "diagnostic", "discard", "else", "enable",
-        "false", "fn", "for", "if", "let", "loop", "override", "requires",
-        "return", "struct", "switch", "true", "var", "while",
-        "array", "atomic", "bool", "f16", "f32", "i32", "mat2x2", "mat2x3",
-        "mat2x4", "mat3x2", "mat3x3", "mat3x4", "mat4x2", "mat4x3", "mat4x4",
-        "ptr", "sampler", "sampler_comparison", "texture_1d", "texture_2d",
-        "texture_2d_array", "texture_3d", "texture_cube", "texture_cube_array",
-        "texture_depth_2d", "u32", "vec2", "vec3", "vec4",
-        "glState", "glUniforms",
+        "alias", "break", "case", "const", "const_assert", "continue", "continuing", "default",
+        "diagnostic", "discard", "else", "enable", "false", "fn", "for", "if",
+        "let", "loop", "override", "requires", "return", "struct", "switch", "true",
+        "var", "while", "NULL", "Self", "abstract", "active", "alignas", "alignof",
+        "as", "asm", "asm_fragment", "async", "attribute", "auto", "await", "become",
+        "cast", "catch", "class", "co_await", "co_return", "co_yield", "coherent", "column_major",
+        "common", "compile", "compile_fragment", "concept", "const_cast", "consteval", "constexpr", "constinit",
+        "crate", "debugger", "decltype", "delete", "demote", "demote_to_helper", "do", "dynamic_cast",
+        "enum", "explicit", "export", "extends", "extern", "external", "fallthrough", "filter",
+        "final", "finally", "friend", "from", "fxgroup", "get", "goto", "groupshared",
+        "highp", "impl", "implements", "import", "inline", "instanceof", "interface", "layout",
+        "lowp", "macro", "macro_rules", "match", "mediump", "meta", "mod", "module",
+        "move", "mut", "mutable", "namespace", "new", "nil", "noexcept", "noinline",
+        "nointerpolation", "non_coherent", "noncoherent", "noperspective", "null", "nullptr", "of", "operator",
+        "package", "packoffset", "partition", "pass", "patch", "pixelfragment", "precise", "precision",
+        "premerge", "priv", "protected", "pub", "public", "readonly", "ref", "regardless",
+        "register", "reinterpret_cast", "require", "resource", "restrict", "self", "set", "shared",
+        "sizeof", "smooth", "snorm", "static", "static_assert", "static_cast", "std", "subroutine",
+        "super", "target", "template", "this", "thread_local", "throw", "trait", "try",
+        "type", "typedef", "typeid", "typename", "typeof", "union", "unless", "unorm",
+        "unsafe", "unsized", "use", "using", "varying", "virtual", "volatile", "wgsl",
+        "where", "with", "writeonly", "yield", "bool", "i32", "u32", "f32",
+        "f16", "array", "atomic", "vec2", "vec3", "vec4", "mat2x2", "mat2x3",
+        "mat2x4", "mat3x2", "mat3x3", "mat3x4", "mat4x2", "mat4x3", "mat4x4", "ptr",
+        "sampler", "sampler_comparison", "texture_1d", "texture_2d", "texture_2d_array", "texture_3d", "texture_cube", "texture_cube_array",
+        "texture_multisampled_2d", "texture_depth_multisampled_2d", "texture_external", "texture_storage_1d", "texture_storage_2d", "texture_storage_2d_array", "texture_storage_3d", "texture_depth_2d",
+        "texture_depth_2d_array", "texture_depth_cube", "texture_depth_cube_array", "read", "write", "read_write", "function", "private",
+        "workgroup", "uniform", "storage", "rgba8unorm", "rgba8snorm", "rgba8uint", "rgba8sint", "rgba16unorm",
+        "rgba16snorm", "rgba16uint", "rgba16sint", "rgba16float", "rg8unorm", "rg8snorm", "rg8uint", "rg8sint",
+        "rg16unorm", "rg16snorm", "rg16uint", "rg16sint", "rg16float", "r32uint", "r32sint", "r32float",
+        "rg32uint", "rg32sint", "rg32float", "rgba32uint", "rgba32sint", "rgba32float", "bgra8unorm", "r8unorm",
+        "r8snorm", "r8uint", "r8sint", "r16unorm", "r16snorm", "r16uint", "r16sint", "r16float",
+        "rgb10a2unorm", "rgb10a2uint", "rg11b10ufloat", "bitcast", "all", "any", "select", "arrayLength",
+        "abs", "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2",
+        "ceil", "clamp", "cos", "cosh", "countLeadingZeros", "countOneBits", "countTrailingZeros", "cross",
+        "degrees", "determinant", "distance", "dot", "dot4U8Packed", "dot4I8Packed", "exp", "exp2",
+        "extractBits", "faceForward", "firstLeadingBit", "firstTrailingBit", "floor", "fma", "fract", "frexp",
+        "insertBits", "inverseSqrt", "ldexp", "length", "log", "log2", "max", "min",
+        "mix", "modf", "normalize", "pow", "quantizeToF16", "radians", "reflect", "refract",
+        "reverseBits", "round", "saturate", "sign", "sin", "sinh", "smoothstep", "sqrt",
+        "step", "tan", "tanh", "transpose", "trunc", "dpdx", "dpdxCoarse", "dpdxFine",
+        "dpdy", "dpdyCoarse", "dpdyFine", "fwidth", "fwidthCoarse", "fwidthFine", "textureDimensions", "textureGather",
+        "textureGatherCompare", "textureLoad", "textureNumLayers", "textureNumLevels", "textureNumSamples", "textureSample", "textureSampleBias", "textureSampleCompare",
+        "textureSampleCompareLevel", "textureSampleGrad", "textureSampleLevel", "textureSampleBaseClampToEdge", "textureStore", "atomicLoad", "atomicStore", "atomicAdd",
+        "atomicSub", "atomicMax", "atomicMin", "atomicAnd", "atomicOr", "atomicXor", "atomicExchange", "atomicCompareExchangeWeak",
+        "pack4x8snorm", "pack4x8unorm", "pack4xI8", "pack4xU8", "pack4xI8Clamp", "pack4xU8Clamp", "pack2x16snorm", "pack2x16unorm",
+        "pack2x16float", "unpack4x8snorm", "unpack4x8unorm", "unpack4xI8", "unpack4xU8", "unpack2x16snorm", "unpack2x16unorm", "unpack2x16float",
+        "storageBarrier", "textureBarrier", "workgroupBarrier", "workgroupUniformLoad", "subgroupAdd", "subgroupExclusiveAdd", "subgroupInclusiveAdd", "subgroupAll",
+        "subgroupAnd", "subgroupAny", "subgroupBallot", "subgroupBroadcast", "subgroupBroadcastFirst", "subgroupElect", "subgroupMax", "subgroupMin",
+        "subgroupMul", "subgroupExclusiveMul", "subgroupInclusiveMul", "subgroupOr", "subgroupShuffle", "subgroupShuffleDown", "subgroupShuffleUp", "subgroupShuffleXor",
+        "subgroupXor", "quadBroadcast", "quadSwapDiagonal", "quadSwapX", "quadSwapY", "i64", "u64", "f64",
+        "push_constant", "r64uint", "glState", "glUniforms", "fsin", "vsin", "out",
     ]);
 
     function safeName(name) {
-        return WGSL_RESERVED.has(name) ? name + "_" : name;
+        if (!WGSL_RESERVED.has(name) && !["GLState", "GLUniforms", "VSIn", "VSOut", "FSIn", "FSOut"].includes(name) &&
+                !/^(?:__|vgl_|glsl_|_t[0-9]|[uts]_|u_at_|gl_sampler_index_)/.test(name) && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return name;
+        return "vgl_" + Array.from(name, c => c.charCodeAt(0).toString(16)).join("_");
     }
 
     function floatLiteral(value) {
-        if (!isFinite(value))
+        if (!isFinite(Math.fround(value)))
             return value > 0 ? "3.4028235e38" : (value < 0 ? "-3.4028235e38" : "0.0");
         if (Number.isInteger(value) && Math.abs(value) < 1e15)
             return value.toFixed(1);
@@ -3686,6 +3792,15 @@
             this.emit("diagnostic(off, derivative_uniformity);");
             this.emit("");
             this.emitBindings();
+            if (this.options.desktopTextureState) {
+                const types = new Map(), add = type => {
+                    const dim = type.dim === "Cube" ? "Cube" : type.dim === "3D" ? "3D" : "2D", name = "gl_sample_" + dim + (type.shadow ? "_shadow" : "");
+                    types.set(name, { dim, shadow: type.shadow });
+                };
+                for (const sampler of this.iface.samplers) add(sampler.type);
+                for (const decl of this.ast.decls) for (const param of decl.params || []) if (param.type.kind === "sampler") add(param.type);
+                for (const [name, type] of types) this.emit(stateLayout.textureSamplingWGSL(name, type.dim, type.shadow, this.stage));
+            }
             this.emitUserStructs();
             this.emitIOStructs();
             this.emitPrivates();
@@ -3743,11 +3858,7 @@
 
         emitUserStructs() {
             const seen = new Set();
-            // Anything the uniform block already declared is emitted there,
-            // with its alignment attributes; emitting it again would be a
-            // duplicate definition of the same name.
-            for (const name of this.iface.uniformLayout.structNames.keys())
-                seen.add(name);
+            // Value structs are distinct from the padded, integer-backed storage twins.
             const emitStruct = type => {
                 if (seen.has(type.name)) return;
                 seen.add(type.name);
@@ -3757,7 +3868,7 @@
                         emitStruct(f.type.elem);
                 this.emit("struct " + safeName(type.name) + " {");
                 ++this.indent;
-                for (const f of type.fields)
+                for (const f of type.fields) if (f.type.kind !== "sampler" && !(f.type.kind === "array" && f.type.elem.kind === "sampler"))
                     this.emit(safeName(f.name) + " : " + typeToWGSL(f.type) + ",");
                 --this.indent;
                 this.emit("}");
@@ -3783,6 +3894,10 @@
         }
 
         emitIOStructs() {
+            if (this.stage === "vertex" && this.options.vertexCapture) {
+                this.emitAll(vertexCaptureBindings(this.options.vertexCaptureRaster).split("\n"));
+                return;
+            }
             const varyings = this.iface.varyings;
             const slotDecls = [];
             const slotCount = new Map();
@@ -3812,10 +3927,7 @@
                             " : " + typeToWGSL(info.type) + ",");
                     }
                 }
-                if (this.options.pointSprite)
-                    this.emit("@location(" + this.options.pointCornerLocation +
-                        ") glCorner : vec2<f32>,");
-                if (!this.iface.attributes.size && !this.options.pointSprite)
+                if (this.options.pointSprite || !this.iface.attributes.size)
                     this.emit("@builtin(vertex_index) glVertexIndex : u32,");
                 --this.indent;
                 this.emit("}");
@@ -3832,6 +3944,7 @@
                 if (this.iface.clipPlaneCount)
                     this.emit("@location(" + this.iface.clipVaryingSlot +
                         ") glClipDist : vec4<f32>,");
+                if (this.iface.clipPlaneCount > 4) this.emit("@location(" + this.iface.clipExtraSlot + ") glClipExtra:vec2<f32>,");
                 if (this.options.pointSprite)
                     this.emit("@location(" + this.iface.pointCoordSlot +
                         ") glPointCoord : vec2<f32>,");
@@ -3851,6 +3964,7 @@
                 if (this.iface.clipPlaneCount)
                     this.emit("@location(" + this.iface.clipVaryingSlot +
                         ") glClipDist : vec4<f32>,");
+                if (this.iface.clipPlaneCount > 4) this.emit("@location(" + this.iface.clipExtraSlot + ") glClipExtra:vec2<f32>,");
                 if (this.usage.usesPointCoord)
                     this.emit("@location(" + this.iface.pointCoordSlot +
                         ") glPointCoord : vec2<f32>,");
@@ -3944,6 +4058,7 @@
                         wgslTextureType(p.type));
                     params.push("s_" + safeName(p.name) + " : " +
                         (p.type.shadow ? "sampler_comparison" : "sampler"));
+                    if (this.options.desktopTextureState) params.push("gl_sampler_index_" + safeName(p.name) + " : u32");
                     continue;
                 }
                 if (p.direction === "in") {
@@ -4157,12 +4272,31 @@
          * and swizzle assignment (WGSL allows `v.x = e` but not `v.xy = e`).
          */
         genExpr(node, pre, targetType, asStatement) {
-            let text = this.genExprInner(node, pre, asStatement);
+            let text = this.rootsAtUniform(node) && node.type.kind !== "sampler" ?
+                this.uniformRead(node, pre) : this.genExprInner(node, pre, asStatement);
             const conv = targetType && !sameType(node.type, targetType) ?
                 targetType : node.convertTo;
             if (conv && !sameType(node.type, conv))
                 text = typeToWGSL(conv) + "(" + text + ")";
             return text;
+        }
+
+        uniformRead(node, pre) {
+            const access = n => {
+                if (n.kind === "Ident") return "glUniforms.u_" + safeName(n.symbol.name);
+                if (n.kind === "Field") return access(n.object) + "." + safeName(n.name);
+                return access(n.object) + "[" + this.genExpr(n.index, pre) + "]";
+            };
+            const convert = (type, expr, element) => {
+                if (type.kind === "struct") return typeToWGSL(type) + "(" + type.fields.map(f =>
+                    convert(f.type, expr + "." + safeName(f.name), false)).join(", ") + ")";
+                if (type.kind === "array") return typeToWGSL(type) + "(" + Array.from({length: type.size}, (_, i) =>
+                    convert(type.elem, expr + "[" + i + "]", true)).join(", ") + ")";
+                return (element ? uniformArrayElementFor(type) : uniformStorageFor(type)).read(expr);
+            };
+            // A GLSL swizzle acts on the converted value, not widened storage.
+            if (node.kind === "Field" && node.swizzle !== undefined) return this.genField(node, pre);
+            return convert(node.type, access(node), node.kind === "Index" && node.object.type.kind === "array");
         }
 
         genExprInner(node, pre, asStatement) {
@@ -4178,6 +4312,7 @@
             case "Assign": return this.genAssign(node, pre, asStatement);
             case "Conditional": return this.genConditional(node, pre);
             case "Call": return this.genCall(node, pre);
+            case "ArrayLength": this.genExpr(node.object, pre);return String(node.value);
             case "Sequence": {
                 const text = this.genExpr(node.left, pre, null, true);
                 if (text) pre.push("    ".repeat(0) + text + ";");
@@ -4276,7 +4411,7 @@
             if (this.rootsAtUniform(node.object) &&
                     node.object.type.kind === "array" &&
                     (node.type.kind === "scalar" || node.type.kind === "vector"))
-                return uniformStorageFor(node.type).read(expr);
+                return uniformArrayElementFor(node.type).read(expr);
             return expr;
         }
 
@@ -4306,7 +4441,10 @@
                 return tmp;
             }
             const left = this.genExpr(node.left, pre, node.left.convertTo);
-            const right = this.genExpr(node.right, pre, node.right.convertTo);
+            let right = this.genExpr(node.right, pre, node.right.convertTo);
+            if ((node.op === "/" || node.op === "%") && isConstantFoldable(node.right)) {
+                const tmp = this.temp();pre.push("var " + tmp + " : " + typeToWGSL(node.right.convertTo || node.right.type) + " = " + right + ";");right = tmp;
+            }
             if (node.op === "^^")
                 return "((" + left + ") != (" + right + "))";
             return this.binaryText(node.op, left, node.left.convertTo || node.left.type,
@@ -4492,6 +4630,12 @@
                 const args = node.args.map((a, i) =>
                     a.type.kind === "sampler" ? "" :
                     this.genExpr(a, pre, a.convertTo));
+                // Defer arithmetic whose GL result may be undefined to runtime.
+                if (!node.resolved.texture) node.args.forEach((arg, i) => {
+                    if (isConstantFoldable(arg)) {
+                        const tmp = this.temp();pre.push("var " + tmp + " : " + typeToWGSL(arg.convertTo || arg.type) + " = " + args[i] + ";");args[i] = tmp;
+                    }
+                });
                 return node.resolved.emit(args, node, this.emitContext(node, pre));
             }
             const overload = node.resolved;
@@ -4502,6 +4646,7 @@
                 if (p.type.kind === "sampler") {
                     const pair = this.samplerPair(arg);
                     argTexts.push(pair.texture, pair.sampler);
+                    if (this.options.desktopTextureState) argTexts.push(pair.index);
                     return;
                 }
                 if (p.direction === "in") {
@@ -4555,6 +4700,8 @@
                 return safeName(target.name) + "(" +
                     node.args.map((a, i) =>
                         this.genExpr(a, pre, target.fields[i].type)).join(", ") + ")";
+
+            if (target.kind === "array") return typeToWGSL(target) + "(" + node.args.map(a => this.genExpr(a, pre, target.elem)).join(", ") + ")";
 
             if (target.kind === "scalar")
                 return typeToWGSL(target) + "(" + scalarize(args[0]) + ")";
@@ -4627,6 +4774,7 @@
             const self = this;
             return {
                 samplerPair: argNode => self.samplerPair(argNode),
+                desktopSample: self.options.desktopTextureState ? (pair, coord, level, bias, ref, explicit) => self.desktopSample(pair, coord, level, bias, ref, explicit) : null,
                 sample: (pair, coord, bias) => self.emitSample(pair, coord, bias, node),
                 compareSample: (pair, coord, ref) =>
                     self.emitCompareSample(pair, coord, ref, node),
@@ -4636,6 +4784,15 @@
         }
 
         samplerPair(argNode) {
+            const path = node => {
+                if (node.kind === "Ident" && node.symbol?.kind === "uniform") return node.symbol.name;
+                if (node.kind === "Field") {const parent = path(node.object);return parent && parent + "." + node.name;}
+                if (node.kind === "Index" && node.constIndex !== null && node.constIndex !== undefined) {const parent = path(node.object);return parent && parent + "[" + node.constIndex + "]";}
+                return null;
+            };
+            const uniformPath = path(argNode), resource = this.iface.samplers.find(s => s.name === uniformPath);
+            if (resource) return { texture: "t_" + resource.wgslName, sampler: "s_" + resource.wgslName,
+                index: resource.binding / 2 + "u", dim: argNode.type.dim, shadow: argNode.type.shadow };
             if (argNode.kind === "Index") {
                 const base = argNode.object;
                 if (base.kind !== "Ident")
@@ -4646,13 +4803,27 @@
                     throw new GLSLError("a sampler array needs a constant index",
                         argNode.line);
                 const name = safeName(base.symbol.name);
-                return { texture: "t_" + name + "_" + index,
-                         sampler: "s_" + name + "_" + index };
+                const binding = this.iface.samplers.find(s => s.name === base.symbol.name)?.binding || 0;
+                return { texture: "t_" + name + "_" + index, sampler: "s_" + name + "_" + index,
+                    index: (binding / 2 + index) + "u", dim: argNode.type.dim, shadow: argNode.type.shadow };
             }
             if (argNode.kind !== "Ident")
                 throw new GLSLError("unsupported sampler expression", argNode.line);
             const name = safeName(argNode.symbol.name);
-            return { texture: "t_" + name, sampler: "s_" + name };
+            const binding = this.iface.samplers.find(s => s.name === argNode.symbol.name)?.binding || 0;
+            return { texture: "t_" + name, sampler: "s_" + name,
+                index: argNode.symbol.kind === "param" ? "gl_sampler_index_" + name : binding / 2 + "u",
+                dim: argNode.type.dim, shadow: argNode.type.shadow };
+        }
+
+        desktopSample(pair, coord, level, bias, ref, explicit) {
+            if (this.stage === "vertex" || explicit) ++this.stats.levelSamples;
+            else if (this.inUniformControlFlow) ++this.stats.uniformSamples;
+            else ++this.stats.nonUniformSamples;
+            const dim = pair.dim === "Cube" ? "Cube" : pair.dim === "3D" ? "3D" : "2D",
+                name = "gl_sample_" + dim + (pair.shadow ? "_shadow" : "");
+            const sample = name + "(" + pair.texture + ", " + pair.sampler + ", " + coord + ", " + pair.index + ", " + level + ", " + bias + ", " + explicit + (ref ? ", " + ref : "") + ")";
+            return pair.shadow ? name + "_color(" + sample + ", " + pair.index + ")" : sample;
         }
 
         /*
@@ -4670,6 +4841,7 @@
          * an approximation nobody can trust.
          */
         emitSample(pair, coord, bias, node) {
+            if (this.options.desktopTextureState) return this.desktopSample(pair, coord, "0.0", bias || "0.0", null, false);
             if (this.stage === "vertex") {
                 ++this.stats.levelSamples;
                 return "textureSampleLevel(" + pair.texture + ", " + pair.sampler +
@@ -4715,8 +4887,39 @@
         /* ---- entry points ---- */
 
         emitEntryPoint() {
-            if (this.stage === "vertex") this.emitVertexEntry();
+            if (this.stage === "vertex" && this.options.vertexCapture) this.emitVertexCaptureEntry();
+            else if (this.stage === "vertex") this.emitVertexEntry();
             else this.emitFragmentEntry();
+        }
+
+        emitVertexCaptureEntry() {
+            this.emit("@compute @workgroup_size(" + VERTEX_CAPTURE.workgroupSize + ")");
+            this.emit("fn capture_main(@builtin(global_invocation_id) id : vec3<u32>) {");
+            ++this.indent;
+            this.emit("if (id.x >= arrayLength(&glCaptureOutput)) { return; }");
+            for (const [name, location] of this.iface.attributes) {
+                const type = this.usage.attributes.get(name).type;
+                const column = (slot, count) => "glCaptureInput[id.x].attributes[" + slot + "]." + SWIZZLE_CHARS.slice(0, count);
+                const expr = type.kind === "matrix" ? typeToWGSL(type) + "(" +
+                    Array.from({ length: type.cols }, (_, i) => column(location + i, type.rows)).join(", ") + ")" :
+                    column(location, componentCount(type));
+                this.emit(safeName(name) + " = " + (baseOf(type) === "float" ? expr : typeToWGSL(type) + "(" + expr + ")") + ";");
+            }
+            this.emitGlobalInits();
+            this.emit("glsl_main();");
+            const output = (field, expression) => this.emit("glCaptureOutput[id.x]." + field + " = " + expression + ";");
+            output("clip", "gl_Position");
+            for (const [field, name] of [["color", "gl_FrontColor"], ["backColor", "gl_BackColor"]])
+                output(field, this.usage.varyings.has(name) ? "saturate(" + name + ")" : "vec4<f32>(1.0)");
+            output("tex", this.usage.varyings.has("gl_TexCoord") ? "gl_TexCoord[0]" : "vec4<f32>(0.0)");
+            output("eye", this.usage.builtinOutputs.has("gl_ClipVertex") ? "gl_ClipVertex" : "vec4<f32>(0.0)");
+            if (this.options.vertexCaptureRaster) {
+                output("secondary", this.usage.varyings.has("gl_FrontSecondaryColor") ? "saturate(gl_FrontSecondaryColor)" : "vec4<f32>(0.0)");
+                output("fog", this.usage.varyings.has("gl_FogFragCoord") ? "vec4<f32>(gl_FogFragCoord, 0.0, 0.0, 0.0)" : "vec4<f32>(0.0)");
+                for (let i = 1; i < 8; ++i) output("texExtra[" + (i - 1) + "]", this.usage.varyings.has("gl_TexCoord") ? "gl_TexCoord[" + i + "]" : "vec4<f32>(0.0)");
+            }
+            --this.indent;
+            this.emit("}");
         }
 
         emitGlobalInits() {
@@ -4729,6 +4932,7 @@
         }
 
         emitVertexEntry() {
+            if (this.options.pointSprite) this.emit(stateLayout.pointRasterWGSL(this.options.desktopTextureState, this.options.depthClamp, this.options.pointRasterRounded));
             this.emit("@vertex");
             this.emit("fn vs_main(vsin : VSIn) -> VSOut {");
             ++this.indent;
@@ -4756,20 +4960,19 @@
                 // Points are drawn as two triangles (plan 10.3), so the corner
                 // offset is applied in clip space -- before the Y flip, so the
                 // sign convention is still GL's.
-                const size = this.usage.builtinOutputs.has("gl_PointSize") ?
+                const size = this.options.programPointSize &&
+                    this.usage.builtinOutputs.has("gl_PointSize") ?
                     "gl_PointSize" : "glState.pointParams.x";
                 this.emit("let glPtSize = clamp(" + size +
-                    ", glState.pointParams.y, glState.pointParams.z);");
-                this.emit("clip.x = clip.x + vsin.glCorner.x * glPtSize * " +
-                    "clip.w / glState.viewportParams.z;");
-                this.emit("clip.y = clip.y + vsin.glCorner.y * glPtSize * " +
-                    "clip.w / glState.viewportParams.w;");
+                    (this.options.desktopTextureState ? ", 1.0, 64.0);" : ", glState.pointParams.y, glState.pointParams.z);"));
+                this.emit("let glCorner=gl_point_corner(vsin.glVertexIndex);");
+                this.emit("clip=gl_point_position(clip,glPtSize,glCorner,glState.viewportParams);");
                 // GL_POINT_SPRITE_COORD_ORIGIN defaults to GL_UPPER_LEFT.
                 this.emit("out.glPointCoord = vec2<f32>(" +
-                    "vsin.glCorner.x * 0.5 + 0.5, " +
+                    "glCorner.x * 0.5 + 0.5, " +
                     (this.options.pointCoordLowerLeft ?
-                        "vsin.glCorner.y * 0.5 + 0.5);" :
-                        "0.5 - vsin.glCorner.y * 0.5);"));
+                        "glCorner.y * 0.5 + 0.5);" :
+                        "0.5 - glCorner.y * 0.5);"));
             }
 
             // GL clip space is z in [-w, w]; WebGPU wants [0, w]. The Y flip
@@ -4794,16 +4997,10 @@
             }
 
             if (this.iface.clipPlaneCount) {
-                const cv = this.usage.builtinOutputs.has("gl_ClipVertex") ?
-                    "gl_ClipVertex" : null;
-                const parts = [];
-                for (let i = 0; i < 4; ++i) {
-                    if (i < this.iface.clipPlaneCount && cv)
-                        parts.push("dot(" + cv + ", glState.clipPlanes[" + i + "])");
-                    else
-                        parts.push("1.0");
-                }
-                this.emit("out.glClipDist = vec4<f32>(" + parts.join(", ") + ");");
+                const cv = this.usage.builtinOutputs.has("gl_ClipVertex") ? "gl_ClipVertex" : null,
+                    mask = this.iface.clipPlaneMask, distance = i => cv && (mask & 1 << i) ? "dot(" + cv + ", glState.clipPlanes[" + i + "])" : "1.0";
+                this.emit("out.glClipDist = vec4<f32>(" + Array.from({ length: 4 }, (_, i) => distance(i)).join(", ") + ");");
+                if (this.iface.clipPlaneCount > 4) this.emit("out.glClipExtra=vec2<f32>(" + [4, 5].map(distance).join(",") + ");");
             }
 
             this.emit("return out;");
@@ -4819,7 +5016,10 @@
                 const source = entry.vsFront || entry.vsBack;
                 if (!source) return null;
                 if (!this.usage.varyings.has(source)) return null;
-                return { expr: safeName(source),
+                // the colours a vertex shader writes are clamped to [0, 1]
+                // before they are interpolated (GL 2.1 section 2.14.6; review
+                // S2-17)
+                return { expr: COLOR_OUTPUTS.has(source) ? "saturate(" + safeName(source) + ")" : safeName(source),
                          vector: componentCount(entry.type) > 1 };
             }
             if (!this.usage.varyings.has(entry.name)) return null;
@@ -4842,6 +5042,7 @@
                 // test covers however many planes are on. Deviation D-05: this
                 // discards fragments rather than clipping geometry.
                 this.emit("if (any(fsin.glClipDist < vec4<f32>(0.0))) { discard; }");
+                if (this.iface.clipPlaneCount > 4) this.emit("if(any(fsin.glClipExtra<vec2<f32>(0.0))){discard;}");
             }
             if (this.options.polygonStipple) {
                 this.emit("let stippleX = u32(floor(fsin.position.x)) & 31u;");
@@ -4860,7 +5061,7 @@
             if (this.usage.builtinInputs.has("gl_FragCoord"))
                 this.emit("gl_FragCoord = fsin.position;");
             if (this.usage.builtinInputs.has("gl_FrontFacing"))
-                this.emit("gl_FrontFacing = fsin.frontFacing;");
+                this.emit("gl_FrontFacing = " + (this.options.backFacing ? "false" : "fsin.frontFacing") + ";");
             if (this.usage.usesPointCoord)
                 this.emit("gl_PointCoord = " + (this.options.pointSprite ?
                     "fsin.glPointCoord" : "vec2<f32>(0.5, 0.5)") + ";");
@@ -4875,7 +5076,7 @@
                         e.isBackHalf && e.name === entry.name + "__back");
                     if (back) {
                         this.emit(target + " = select(" + this.slotRead(back) +
-                            ", " + read + ", fsin.frontFacing);");
+                            ", " + read + ", " + (this.options.backFacing ? "false" : "fsin.frontFacing") + ");");
                         continue;
                     }
                 }
@@ -5027,7 +5228,7 @@
         case "Unary": return expr.op !== "++" && expr.op !== "--" &&
             isConstantFoldable(expr.operand);
         case "Binary":
-            return isConstantFoldable(expr.left) && isConstantFoldable(expr.right);
+            return expr.op !== "/" && expr.op !== "%" && isConstantFoldable(expr.left) && isConstantFoldable(expr.right);
         case "Call":
             return !!expr.constructType && expr.args.every(isConstantFoldable);
         case "Ident":
@@ -5096,6 +5297,7 @@
         try {
             const pp = new Preprocessor(stage, opts);
             const pre = pp.run(source);
+            result.preprocessedSource = pre.text;
             result.version = pre.version;
             result.extensions = pre.extensions;
             result.warnings = pre.warnings.slice();
@@ -5108,6 +5310,83 @@
             result.functions = analyzer.functions;
             result.ok = true;
             result.log = result.warnings.map(w => "WARNING: " + w).join("\n");
+        } catch (error) {
+            if (!(error instanceof GLSLError)) throw error;
+            result.log = "ERROR: 0:" + (error.glslLine || 0) + ": " + error.message;
+        }
+        return result;
+    }
+
+    // Preprocess compilation units independently, then merge their shared
+    // globals (GLSL 1.20 section 4.2). The CPU's glslang link has checked
+    // matching initializer values; retain one declaration and initializer.
+    function linkShaderUnits(units, stage, options) {
+        const opts = options || {};
+        if (units.length === 1) return units[0];
+        const result = { ok: false, stage, log: "", warnings: units.flatMap(u => u.warnings || []),
+            version: Math.max(110, ...units.map(u => u.version || 110)),
+            unitSources: units.map(u => ({ stage, preprocessedSource: u.preprocessedSource, version: u.version, extensions: u.extensions,
+                sourceHash: u.sourceHash, warnings: u.warnings, log: u.log })),
+            sourceHash: hashString(stage + " " + JSON.stringify(units.map(u => u.preprocessedSource))) };
+        try {
+            if (!units.length) fail(0, "the " + stage + " stage has no shaders");
+            const parsed = units.map(unit => {
+                if (!unit.ok || unit.stage !== stage || typeof unit.preprocessedSource !== "string")
+                    fail(0, "the " + stage + " shader unit is not compiled");
+                const ast = new Parser(lex(unit.preprocessedSource), stage).parseProgram();
+                new Analyzer(stage, ast, { ...opts, library: true }).run();
+                return ast;
+            });
+            const walk = (root, visit) => {
+                const seen = new Set();
+                const next = node => {
+                    if (!node || typeof node !== "object" || seen.has(node)) return;
+                    seen.add(node); visit(node);
+                    for (const [key, value] of Object.entries(node)) if (key !== "symbol" && key !== "overload") next(value);
+                };
+                next(root);
+            };
+            const allNames = new Set(), typeNames = new Set();
+            for (const ast of parsed) walk(ast, node => {
+                if (node.kind === "VarDecl") for (const d of node.declarators) allNames.add(d.name);
+                if (node.kind === "struct") typeNames.add(node.name);
+            });
+            const usedNames = new Set([...allNames, ...typeNames]);
+            const unique = (name, used) => { while (used.has(name)) name += "_"; used.add(name); return name; };
+            const typeKey = type => type.kind === "struct" ? [type.name, type.fields.map(f => [f.name, typeKey(f.type)])] :
+                type.kind === "array" ? [type.kind, type.size, typeKey(type.elem)] : type.name;
+            const types = new Map(), layoutsByName = new Map();
+            parsed.forEach((ast, unit) => {
+                const localTypes = new Map();
+                walk(ast, type => { if (type.kind === "struct") localTypes.set(type, JSON.stringify(typeKey(type))); });
+                for (const [type, key] of localTypes) {
+                    let name = types.get(key);
+                    if (!name) {
+                        name = layoutsByName.has(type.name) ? unique(type.name + "__vgl_unit" + unit, usedNames) : type.name;
+                        layoutsByName.set(type.name, key); types.set(key, name);
+                    }
+                    type.name = name;
+                }
+            });
+            const globals = new Map(), decls = [];
+            for (const ast of parsed) for (const decl of ast.decls) {
+                if (decl.kind === "VarDecl") {
+                    decl.declarators = decl.declarators.filter(d => {
+                        const previous = globals.get(d.name);
+                        if (!previous) { globals.set(d.name, { d, decl }); return true; }
+                        if (previous.decl.qualifiers.storage !== decl.qualifiers.storage || !sameType(previous.d.type, d.type))
+                            fail(d.line, "global variable '" + d.name + "' has conflicting shader-unit declarations");
+                        if (!previous.d.init && d.init) previous.d.init = d.init;
+                        previous.decl.qualifiers.centroid ||= decl.qualifiers.centroid;
+                        previous.decl.qualifiers.invariant ||= decl.qualifiers.invariant;
+                        return false;
+                    });
+                    if (!decl.declarators.length) continue;
+                }
+                decls.push(decl);
+            }
+            const ast = { kind: "Program", decls }, analyzer = new Analyzer(stage, ast, { ...opts, library: false });
+            result.usage = analyzer.run(); result.ast = ast; result.functions = analyzer.functions; result.ok = true;
         } catch (error) {
             if (!(error instanceof GLSLError)) throw error;
             result.log = "ERROR: 0:" + (error.glslLine || 0) + ": " + error.message;
@@ -5135,6 +5414,8 @@
             if (!fs || !fs.ok) throw new GLSLError("the fragment shader is not compiled", 0);
             if (vs.stage !== "vertex" || fs.stage !== "fragment")
                 throw new GLSLError("a program needs one vertex and one fragment shader", 0);
+            for (const shader of [vs, fs]) if (!shader.functions?.get("main")?.some(f => f.def && !f.params.length))
+                throw new GLSLError("the " + shader.stage + " stage has no main() function", 0);
 
             /* ---- uniforms: one namespace across both stages ---- */
             const uniformLayout = new UniformBlockLayout();
@@ -5173,7 +5454,7 @@
                     }
                     const entry = {
                         name: s.name,
-                        wgslName: safeName(s.name.replace(/[.\[\]]/g, "_")),
+                        wgslName: safeName(s.name),
                         type: s.type, arraySize: s.arraySize,
                         binding: bindingCursor,
                     };
@@ -5185,7 +5466,9 @@
 
             /* ---- GL state fields: the union, plus what the variant needs ---- */
             const stateFields = new Set([...vs.usage.stateFields,
-                ...fs.usage.stateFields]);
+                ...fs.usage.stateFields, ...(opts.forceStateFields || [])]);
+            if (opts.desktopTextureState && (samplers.length || [vs, fs].some(stage => stage.ast.decls.some(decl =>
+                (decl.params || []).some(param => param.type.kind === "sampler"))))) stateFields.add("samplerState");
             if (variant.alphaTest && variant.alphaTest !== "always" &&
                     variant.alphaTest !== "never")
                 stateFields.add("alphaRef");
@@ -5200,26 +5483,16 @@
             /* ---- attributes ---- */
             const bindings = normalizeBindings(opts.bindAttribLocations);
             const attributes = assignAttributeLocations(vs.usage, bindings, !!opts.es);
-            if (variant.pointSprite) {
-                for (const [name, loc] of attributes) {
-                    const info = vs.usage.attributes.get(name);
-                    const slots = info ? attributeSlotCount(info.type) : 1;
-                    if (POINT_CORNER_LOCATION >= loc &&
-                            POINT_CORNER_LOCATION < loc + slots)
-                        throw new GLSLError("attribute '" + name +
-                            "' occupies location " + POINT_CORNER_LOCATION +
-                            ", which the point-sprite corner attribute needs", 0);
-                }
-            }
-
             /* ---- varyings ---- */
             const varyings = assignVaryings(vs.usage, fs.usage, {
                 twoSided: !!variant.twoSided,
                 flatShading: !!variant.flatShading,
+                keepCompatInputs: !!opts.keepCompatInputs,
             });
             let nextSlot = varyings.slotCount;
             const clipPlaneCount = variant.clipPlaneCount || 0;
-            const clipVaryingSlot = clipPlaneCount ? nextSlot++ : -1;
+            const clipVaryingSlot = clipPlaneCount ? nextSlot++ : -1, clipExtraSlot = clipPlaneCount > 4 ? nextSlot++ : -1,
+                clipPlaneMask = variant.clipPlaneMask === undefined ? (1 << clipPlaneCount) - 1 : variant.clipPlaneMask;
             const usesPointCoord = fs.usage.usesPointCoord || !!variant.pointSprite;
             const pointCoordSlot = usesPointCoord ? nextSlot++ : -1;
             if (nextSlot > MAX_INTER_STAGE_SLOTS)
@@ -5230,15 +5503,14 @@
             if (clipPlaneCount && !vs.usage.builtinOutputs.has("gl_ClipVertex"))
                 log.push("WARNING: user clip planes are enabled but the vertex " +
                     "shader does not write gl_ClipVertex; no clipping is applied");
-            if (clipPlaneCount > 4)
-                log.push("WARNING: only the first 4 user clip planes are applied " +
-                    "to a programmable pipeline");
+
 
             /* ---- colour targets ---- */
             if (fs.usage.usesFragColor && fs.usage.usesFragData)
                 throw new GLSLError("a fragment shader may write gl_FragColor " +
                     "or gl_FragData, not both", 0);
-            let colorTargets = 1;
+            // gl_FragColor goes to every draw buffer (GL 2.1 section 3.11.2)
+            let colorTargets = Math.max(1, variant.colorTargets || 1);
             if (fs.usage.usesFragData) {
                 colorTargets = fs.usage.fragDataDynamic ? MAX_DRAW_BUFFERS :
                     Math.max(1, fs.usage.fragDataMax + 1);
@@ -5249,15 +5521,21 @@
             const iface = {
                 attributes, varyings, uniformLayout,
                 stateLayout: stateLayoutInfo, samplers,
-                clipPlaneCount, clipVaryingSlot, pointCoordSlot,
+                clipPlaneCount, clipPlaneMask, clipVaryingSlot, clipExtraSlot, pointCoordSlot,
                 colorTargets, twoSided: !!variant.twoSided,
             };
             const genOptions = {
+                vertexCapture: !!opts.vertexCapture,
+                desktopTextureState: !!opts.desktopTextureState,
+                vertexCaptureRaster: !!opts.vertexCaptureRaster,
                 pointSprite: !!variant.pointSprite,
+                programPointSize: !!variant.programPointSize,
+                backFacing: !!variant.backFacing,
                 pointCoordLowerLeft: !!variant.pointCoordLowerLeft,
                 polygonStipple: !!variant.polygonStipple,
                 logicOp: variant.logicOp ? (variant.logicOp >>> 0) : 0,
-                pointCornerLocation: POINT_CORNER_LOCATION,
+                depthClamp: !!variant.depthClamp,
+                pointRasterRounded: variant.pointRasterRounded !== false,
                 alphaTest: variant.alphaTest || null,
                 nonUniformSampleStrategy: opts.nonUniformSampleStrategy || "implicit",
             };
@@ -5275,6 +5553,9 @@
                 ok: true,
                 log: log.join("\n"),
                 wgslVertex, wgslFragment, reflection,
+                varyingLayout: { entries: varyings.entries.map(({ name, index, components, slot, offset, flat }) =>
+                    ({ name, index, components, slot, offset, flat })),
+                clip: clipVaryingSlot, clipExtra: clipExtraSlot, pointCoord: pointCoordSlot },
                 stats: {
                     vertex: vsGen.stats, fragment: fsGen.stats,
                     nonUniformSamples: vsGen.stats.nonUniformSamples +
@@ -5306,14 +5587,23 @@
             "r" + TRANSLATOR_REVISION,
             vs.sourceHash.toString(16), fs.sourceHash.toString(16),
             bindingText,
+            "s" + (opts.forceStateFields || []).slice().sort().join(","),
+            opts.keepCompatInputs ? "compat-inputs" : "-",
+            opts.vertexCapture ? "capture" : "render",
+            opts.desktopTextureState ? "desktop-sampling" : "-",
+            opts.vertexCaptureRaster ? "raster" : "vertices",
             "a" + (variant.alphaTest || "-"),
-            "c" + (variant.clipPlaneCount || 0),
+            "c" + (variant.clipPlaneCount || 0), "cm" + (variant.clipPlaneMask ?? (1 << (variant.clipPlaneCount || 0)) - 1),
             variant.pointSprite ? "p" : "-",
+            variant.programPointSize ? "z" : "-",
             variant.pointCoordLowerLeft ? "l" : "u",
             variant.polygonStipple ? "s" : "-",
             "o" + (variant.logicOp || 0).toString(16),
             variant.twoSided ? "2" : "-",
             variant.flatShading ? "f" : "-",
+            variant.backFacing ? "back" : "-",
+            !!variant.depthClamp, variant.pointRasterRounded !== false,
+            "t" + (variant.colorTargets || 1),
             opts.nonUniformSampleStrategy || "implicit",
         ].join("|");
     }
@@ -5402,7 +5692,14 @@
 
     const api = {
         TRANSLATOR_REVISION,
-        compileShader, linkProgram,
+        VERTEX_CAPTURE, vertexCaptureBindings,
+        linkVertexCapture(vs, options) {
+            const fs = compileShader("void main() { gl_FragColor = vec4(1.0); }", "fragment");
+            const result = linkProgram(vs, fs, { ...options, variant: {}, vertexCapture: true });
+            if (result.ok) result.wgslCompute = result.wgslVertex;
+            return result;
+        },
+        compileShader, linkShaderUnits, linkProgram,
         // Exported for the test suite and for gl_fixed_function.js, which
         // shares the state block and the attribute slot table.
         Preprocessor, lex, Parser, Analyzer, Generator,
@@ -5411,7 +5708,7 @@
         COMPAT_ATTRIBUTE_LOCATIONS, COMPAT_ATTRIBUTE_TYPES,
         STATE_UNIFORMS, BUILTIN_CONSTANTS, ES_BUILTIN_CONSTANTS,
         MAX_INTER_STAGE_SLOTS, MAX_VERTEX_ATTRIBUTES, POINT_CORNER_LOCATION,
-        assignAttributeLocations, assignVaryings, hashString, safeName,
+        assignAttributeLocations, assignVaryings, hashString, safeName, logicOpExpression,
     };
     global.GLShaderTranslator = api;
     if (typeof module !== "undefined" && module.exports) module.exports = api;

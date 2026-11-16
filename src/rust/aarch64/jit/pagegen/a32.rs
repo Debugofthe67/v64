@@ -1,23 +1,22 @@
 //! AArch32's page functions (docs/aarch32-plan.md Q6): EL0's A32 and T32
-//! code in the A64 page tier's frame. R0-R14 (X0-X14's low halves) and NZCV
-//! stay in the state's memory, so a helper call, the interpreter's execute
-//! of the instruction (crate::aarch64::jit::pages::a32_page_helper), needs
-//! no copies; branches are native (B, BL, B<c>, CBZ, CBNZ, BX and BLX of a
-//! register to the same instruction set; another one retries in the
-//! interpreter). What writes the PC otherwise (loads of the PC, LDM and POP
-//! with it, data processing into it), changes the instruction set (BLX of
-//! an immediate), raises an exception (SVC, BKPT, UDF) or waits (WFE, WFI,
+//! code in the A64 page tier's frame. R0-R14 (X0-X14's low halves) use the
+//! state's memory or locals written back around helpers; NZCV stays in
+//! memory. Branches are native (B, BL, B<c>, CBZ, CBNZ, BX and BLX).
+//! An ISA switch selects the target mode's chaining table before leaving.
+//! Other writes of the PC (loads, LDM/POP and data processing) use native
+//! templates or a precise retry. What raises an exception (SVC, BKPT, UDF)
+//! or waits (WFE, WFI,
 //! YIELD), and the UNPREDICTABLE forms around the PC, are single steps.
-//! Inside an IT block every instruction is a helper call or a step (ITSTATE
-//! decides their conditions), but in IT blocks of native instructions only
-//! (their conditions compiled, ITSTATE left 0, no block starts inside);
+//! Interpreted IT blocks use helpers or steps (ITSTATE decides their
+//! conditions). Native IT blocks compile their conditions with ITSTATE 0
+//! and no internal block starts; scalar FP may still use its exact helper.
 //! compiled code is entered at ITSTATE 0 (pages::run), and a step that
 //! leaves ITSTATE set ends the activation.
 
 use super::{Block, CompileEnv, Emitter, End, Isa, A0, A1, A2, C0, C1, NZCV, PAGE};
 use crate::aarch64::state;
 use crate::pagegen::frame::PageEmitter;
-use crate::wasmgen::wasm_builder::{Signature, WasmType};
+use crate::wasmgen::wasm_builder::{Signature, WasmLocalV128, WasmType};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// An AArch32 instruction of a page function
@@ -27,22 +26,58 @@ pub struct Inst32 {
     pub word: u32,
     /// 4, or T32's 2
     pub length: u8,
+    /// Native IT memory operations materialize this before a possible fault.
+    pub itstate: u8,
     pub kind: Kind,
 }
 
 #[derive(Clone, Copy)]
 pub enum Kind {
+    Nop,
+    /// PL1 CPSID without a mode change: only sets A/I/F mask bits.
+    MaskInterrupts {
+        mask: u32,
+    },
     /// the interpreter's execute (pages::a32_page_helper)
     Helper,
+    /// A known synchronization helper's explicit GPR operands. It still
+    /// commits/reloads every live local around the original interpreter.
+    RegisterHelper {
+        mask: u16,
+    },
+    /// FP/SIMD data processing: no GPR reads/writes or PC/context changes. Errors
+    /// still retry through the usual interpreter with all GPRs committed.
+    FpHelper,
+    /// A validated scalar FP operation in a native IT block. Its exact
+    /// helper runs only when this condition passes; it cannot touch GPRs.
+    ItFpHelper {
+        cond: u8,
+    },
     /// B, BL, B<c>: to `target` (the page's offset, wrapping), when `cond`
     /// holds (14: always); BL's LR the next instruction's address (T32's
     /// with bit 0 set)
-    Branch { target: u64, cond: u8, link: bool },
+    Branch {
+        target: u64,
+        cond: u8,
+        link: bool,
+    },
+    /// BLX immediate: always links, then leaves this ISA's page function.
+    Interwork {
+        target: u64,
+        thumb: bool,
+    },
     /// CBZ, CBNZ (T32)
-    CompareBranch { rn: u8, nonzero: bool, target: u64 },
-    /// BX, BLX of a register: the same instruction set's target (else a
-    /// retry), when `cond` holds (A32's may have one)
-    Exchange { rm: u8, link: bool, cond: u8 },
+    CompareBranch {
+        rn: u8,
+        nonzero: bool,
+        target: u64,
+    },
+    /// BX, BLX of a register, when `cond` holds (A32's may have one).
+    Exchange {
+        rm: u8,
+        link: bool,
+        cond: u8,
+    },
     /// data processing (Q6.2): `op` A32's opcode (ORN 16), `rn` 16 for
     /// none (MOV, MVN), 15 the PC as the instruction set reads it (A32 +8,
     /// T32's Align(PC + 4, 4): ADR's); not into the PC
@@ -59,6 +94,21 @@ pub enum Kind {
         rd: u8,
         imm: u16,
         top: bool,
+        cond: u8,
+    },
+    /// MRS of CPSR/APSR, excluding the execution-state T/IT bits.
+    Status {
+        rd: u8,
+        cond: u8,
+    },
+    /// BFI/BFC and signed/unsigned bitfield extraction; rn NONE clears.
+    Bitfield {
+        rd: u8,
+        rn: u8,
+        lsb: u8,
+        width: u8,
+        insert: bool,
+        signed: bool,
         cond: u8,
     },
     /// LDR, STR and their byte, halfword and signed forms: a size of
@@ -96,9 +146,21 @@ pub enum Kind {
         sub: bool,
         cond: u8,
     },
-    /// SXTB, SXTH, UXTB, UXTH (Rm rotated right by `rotation`)
+    /// UMULL, UMLAL, SMULL, SMLAL and UMAAL. Read all operands before
+    /// either destination is written (sources may overlap destinations).
+    MultiplyLong {
+        op: u8,
+        s: bool,
+        lo: u8,
+        hi: u8,
+        rn: u8,
+        rm: u8,
+        cond: u8,
+    },
+    /// Byte/halfword extension, optionally added to Rn (NONE: no addend).
     Extend {
         rd: u8,
+        rn: u8,
         rm: u8,
         signed: bool,
         half: bool,
@@ -118,7 +180,12 @@ pub enum Kind {
         cond: u8,
     },
     /// CLZ (0), REV (1), REV16 (2), REVSH (3)
-    Bits { op: u8, rd: u8, rm: u8, cond: u8 },
+    Bits {
+        op: u8,
+        rd: u8,
+        rm: u8,
+        cond: u8,
+    },
     /// VLDR, VSTR (`single`: one register at Rn plus or minus `imm`; Rn 15
     /// a literal), VLDM, VSTM, VPUSH, VPOP: `count` S (or with `double` D)
     /// registers from `first`, word aligned and in one page (Q6.3)
@@ -143,6 +210,15 @@ pub enum Kind {
         d: u8,
         n: u8,
         m: u8,
+        cond: u8,
+    },
+    /// VCMP/VCMPE: write FPSCR.NZCV, preserving every cumulative flag.
+    /// Ordinary inputs only; denormals and NaNs use the exact helper.
+    FpCompare {
+        double: bool,
+        d: u8,
+        m: u8,
+        zero: bool,
         cond: u8,
     },
     /// VFP's moves (Q6.3): `kind` 0 VMOV (register), 1 VABS, 2 VNEG of S or
@@ -196,10 +272,88 @@ pub enum Kind {
     },
 }
 
+impl Kind {
+    /// A conservative union of every GPR the template may read or write.
+    /// Destinations are included even when conditional: their initial value
+    /// must survive a false condition and the page's eventual writeback.
+    pub(super) fn gpr_mask(self) -> u16 {
+        fn reg(n: u8) -> u16 {
+            if n < 15 {
+                1 << n
+            }
+            else {
+                0
+            }
+        }
+        fn operand(o: Operand) -> u16 {
+            match o {
+                Operand::Imm { .. } | Operand::ThumbPc => 0,
+                Operand::Reg { rm, .. } => reg(rm),
+                Operand::RegShift { rm, rs, .. } => reg(rm) | reg(rs),
+            }
+        }
+        match self {
+            Self::Helper => 0x7FFF,
+            Self::RegisterHelper { mask } => mask,
+            Self::FpHelper
+            | Self::ItFpHelper { .. }
+            | Self::Nop
+            | Self::MaskInterrupts { .. }
+            | Self::It
+            | Self::Neon { .. }
+            | Self::FpArith { .. }
+            | Self::FpCompare { .. } => 0,
+            Self::Branch { link, .. } => {
+                if link {
+                    reg(14)
+                }
+                else {
+                    0
+                }
+            },
+            Self::Interwork { .. } => reg(14),
+            Self::CompareBranch { rn, .. } => reg(rn),
+            Self::Exchange { rm, link, .. } => reg(rm) | if link { reg(14) } else { 0 },
+            Self::Data { rd, rn, op2, .. } => reg(rd) | reg(rn) | operand(op2),
+            Self::Wide { rd, .. } | Self::Status { rd, .. } => reg(rd),
+            Self::Bitfield { rd, rn, .. } => reg(rd) | reg(rn),
+            Self::Mem { rt, rn, offset, .. } => {
+                reg(rt)
+                    | reg(rn)
+                    | match offset {
+                        Offset::Imm(_) => 0,
+                        Offset::Reg { rm, .. } => reg(rm),
+                    }
+            },
+            Self::Multiple { rn, list, .. } => reg(rn) | list & 0x7FFF,
+            Self::Multiply { rd, rn, rm, ra, .. } => reg(rd) | reg(rn) | reg(rm) | reg(ra),
+            Self::MultiplyLong { lo, hi, rn, rm, .. } => reg(lo) | reg(hi) | reg(rn) | reg(rm),
+            Self::Extend { rd, rn, rm, .. } => reg(rd) | reg(rn) | reg(rm),
+            Self::Dual { rt, rt2, rn, .. } => reg(rt) | reg(rt2) | reg(rn),
+            Self::Bits { rd, rm, .. } => reg(rd) | reg(rm),
+            Self::FpMemory { rn, .. } => reg(rn),
+            Self::FpMove { kind, d, n, m, .. } => match kind {
+                0..=2 => 0,
+                3 => reg(n),
+                4 => reg(d),
+                _ => reg(n) | reg(m),
+            },
+            // Rm=13 means the transfer size, so including SP here is
+            // conservative. Rm=15 (no writeback) is excluded by reg().
+            Self::Vld1 { rn, rm, .. } => reg(rn) | reg(rm),
+            Self::Transfer { rt, .. } => reg(rt),
+        }
+    }
+}
+
 /// The template of an Advanced SIMD data processing instruction (Wasm SIMD,
 /// neon.rs's lane operations)
 #[derive(Clone, Copy)]
 pub enum NeonForm {
+    /// VADD, VSUB, VMUL, VMLA, VMLS (0-4), standard RN/FZ/DN arithmetic;
+    /// ordinary lanes with sticky IXC or a proven exact result; otherwise
+    /// the exact helper preserves cumulative flags and exceptional values.
+    Fp { op: u8, scalar: Option<u8> },
     /// d = op(n, m), the lanes' operation `op`; `invert_m`: VORN's m
     /// inverted first; `test`: VTST, (n & m) != 0 with `op` the lanes' ne
     Binary { op: u32, invert_m: bool, test: bool },
@@ -221,20 +375,30 @@ pub enum NeonForm {
 /// (debugging) the kind's name, and a condition's
 pub fn kind_name(kind: &Kind) -> String {
     match kind {
+        Kind::Nop => "nop".into(),
+        Kind::MaskInterrupts { .. } => "cpsid".into(),
         Kind::Helper => "helper".into(),
+        Kind::RegisterHelper { .. } => "register-helper".into(),
+        Kind::FpHelper => "fphelper".into(),
+        Kind::ItFpHelper { cond } => format!("it-fphelper/{}", cond),
         Kind::Branch { cond, .. } => format!("branch/{}", cond),
+        Kind::Interwork { .. } => "blx".into(),
         Kind::CompareBranch { .. } => "cbz".into(),
         Kind::Exchange { cond, .. } => format!("bx/{}", cond),
         Kind::Data { cond, s, .. } => format!("data{}/{}", if *s { "s" } else { "" }, cond),
         Kind::Wide { cond, .. } => format!("wide/{}", cond),
+        Kind::Status { cond, .. } => format!("status/{}", cond),
+        Kind::Bitfield { cond, .. } => format!("bitfield/{}", cond),
         Kind::Mem { cond, .. } => format!("mem/{}", cond),
         Kind::Multiple { .. } => "multiple".into(),
         Kind::Multiply { cond, .. } => format!("mul/{}", cond),
+        Kind::MultiplyLong { cond, .. } => format!("mull/{}", cond),
         Kind::Extend { cond, .. } => format!("extend/{}", cond),
         Kind::Dual { .. } => "dual".into(),
         Kind::Bits { cond, .. } => format!("bits/{}", cond),
         Kind::FpMemory { .. } => "fpmem".into(),
         Kind::FpArith { .. } => "fparith".into(),
+        Kind::FpCompare { .. } => "fpcmp".into(),
         Kind::FpMove { .. } => "fpmove".into(),
         Kind::Vld1 { .. } => "vld1".into(),
         Kind::It => "it".into(),
@@ -246,6 +410,8 @@ pub fn kind_name(kind: &Kind) -> String {
 /// Data processing's second operand
 #[derive(Clone, Copy)]
 pub enum Operand {
+    /// T16 high-register ADD/CMP/MOV reads PC + 4 without ADR's alignment.
+    ThumbPc,
     /// a constant, and its shifter carry (None: C as it was)
     Imm { value: u32, carry: Option<bool> },
     /// a register shifted by a constant: `kind` 0 LSL, 1 LSR, 2 ASR, 3 ROR,
@@ -537,6 +703,29 @@ fn neon_data(word: u32, thumb: bool) -> Option<Kind> {
             m: m as u8,
         })
     };
+    // Two registers and a scalar: U selects Q rather than signedness,
+    // M selects the 32-bit lane of Dm. Only Dd/Dn require even Q indices.
+    if word & (1 << 23 | 1 << 6 | 1 << 4) == (1 << 23 | 1 << 6) && word >> 20 & 3 == 2 {
+        let op = match word >> 8 & 15 {
+            1 => Some(3), // VMLA
+            5 => Some(4), // VMLS
+            9 => Some(2), // VMUL
+            _ => None,
+        };
+        if let Some(op) = op {
+            let q = u != 0;
+            return (!q || (d | n) & 1 == 0).then_some(Kind::Neon {
+                form: NeonForm::Fp {
+                    op,
+                    scalar: Some((m >> 4) as u8),
+                },
+                q,
+                d: d as u8,
+                n: n as u8,
+                m: (m & 15) as u8,
+            });
+        }
+    }
     if word & 1 << 23 == 0 {
         // three registers of the same length
         let size = (word >> 20 & 3) as usize;
@@ -553,6 +742,19 @@ fn neon_data(word: u32, thumb: bool) -> Option<Kind> {
                 )
             })
         };
+        if word & (1 << 20) == 0 {
+            let op = match (word >> 8 & 15, word >> 4 & 1, u, word >> 21 & 1) {
+                (0b1101, 0, 0, 0) => Some(0),
+                (0b1101, 0, 0, 1) => Some(1),
+                (0b1101, 1, 1, 0) => Some(2),
+                (0b1101, 1, 0, 0) => Some(3),
+                (0b1101, 1, 0, 1) => Some(4),
+                _ => None,
+            };
+            if let Some(op) = op {
+                return neon(NeonForm::Fp { op, scalar: None }, &[d, n, m]);
+            }
+        }
         return match (word >> 8 & 15, word >> 4 & 1, u) {
             (0b0001, 1, 0) => neon(
                 NeonForm::Binary {
@@ -730,6 +932,19 @@ fn fp_data(word: u32, thumb: bool) -> Option<Kind> {
     let (bd, bn, bm) = (word >> 22 & 1, word >> 7 & 1, word >> 5 & 1);
     let reg = |v: u32, bit: u32| (if double { bit << 4 | v } else { v << 1 | bit }) as u8;
     let (d, n, m) = (reg(vd, bd), reg(vn, bn), reg(vm, bm));
+    if word & 0x0FBE_0E50 == 0x0EB4_0A40 {
+        let zero = word & 1 << 16 != 0;
+        if zero && m != 0 {
+            return None;
+        }
+        return Some(Kind::FpCompare {
+            double,
+            d,
+            m,
+            zero,
+            cond,
+        });
+    }
     let op = match word & 0x0FB0_0E50 {
         0x0E30_0A00 => Some(0),
         0x0E30_0A40 => Some(1),
@@ -844,6 +1059,8 @@ fn control(i: &Inst32, offset: u16) -> Option<(Vec<u64>, bool)> {
             if link { vec![target, offset as u64 + i.length as u64] } else { vec![target] },
             cond != 14,
         )),
+        // The target belongs to another ISA; discover only the return PC.
+        Kind::Interwork { .. } => Some((vec![offset as u64 + i.length as u64], false)),
         Kind::CompareBranch { target, .. } => Some((vec![target], true)),
         // (a return: LDM, POP, LDR of the PC)
         Kind::Multiple { list, cond, .. } if list & 0x8000 != 0 => Some((vec![], cond != 14)),
@@ -886,16 +1103,107 @@ fn sign_extend(value: u32, bits: u32) -> i64 {
     ((value << (32 - bits)) as i32 >> (32 - bits)) as i64
 }
 
+/// Only CPSID A/I/F, with no mode change. CPSIE must still leave the
+/// activation so a newly unmasked pending interrupt is checked immediately.
+fn interrupt_mask(word: u32, length: u8, thumb: bool) -> Option<Kind> {
+    let mask = if !thumb && word & 0xFFFF_FE3F == 0xF10C_0000 {
+        word & 0x1C0
+    }
+    else if thumb && length == 2 && word & 0xFFF8 == 0xB670 {
+        (word & 7) << 6
+    }
+    else {
+        return None;
+    };
+    (mask != 0).then_some(Kind::MaskInterrupts { mask })
+}
+
+/// Registers read or written by validated exclusive accesses and barriers.
+/// Memory, reservations, faults and spin yields remain the helper's work.
+fn synchronization_gprs(word: u32, thumb: bool) -> Option<u16> {
+    let reg = |r: u32| if r < 15 { 1u16 << r } else { 0 };
+    if !thumb {
+        if matches!(word & 0xFFFF_FFF0, 0xF57F_F040 | 0xF57F_F050 | 0xF57F_F060)
+            || word == 0xF57F_F01F
+        {
+            return Some(0);
+        }
+        if word >> 28 == 15 || word & 0x0F80_0FF0 != 0x0180_0F90 {
+            return None;
+        }
+        let load = word & (1 << 20) != 0;
+        let rn = word >> 16 & 15;
+        let status = word >> 12 & 15;
+        let rt = if load { status } else { word & 15 };
+        let pair = word >> 21 & 3 == 1;
+        if rn == 15
+            || rt == 15
+            || pair && (rt & 1 != 0 || rt >= 14)
+            || !load && (status == 15 || status == rn || status == rt || pair && status == rt + 1)
+        {
+            return None;
+        }
+        return Some(
+            reg(rn)
+                | reg(rt)
+                | if pair { reg(rt + 1) } else { 0 }
+                | if load { 0 } else { reg(status) },
+        );
+    }
+    if matches!(
+        word & 0xFFFF_FFF0,
+        0xF3BF_8F20 | 0xF3BF_8F40 | 0xF3BF_8F50 | 0xF3BF_8F60
+    ) {
+        return Some(0);
+    }
+    let hi = word >> 16;
+    let lo = word & 0xFFFF;
+    let rn = hi & 15;
+    let rt = lo >> 12 & 15;
+    let load = hi & 16 != 0;
+    let bad = |r: u32| r == 13 || r == 15;
+    if rn == 15 || bad(rt) {
+        return None;
+    }
+    if hi & 0xFFE0 == 0xE840 {
+        let status = lo >> 8 & 15;
+        if load && status != 15 || !load && (bad(status) || status == rn || status == rt) {
+            return None;
+        }
+        return Some(reg(rn) | reg(rt) | if load { 0 } else { reg(status) });
+    }
+    if hi & 0xFFE0 != 0xE8C0 || !matches!(lo >> 4 & 15, 4 | 5 | 7) {
+        return None;
+    }
+    let pair = lo >> 4 & 15 == 7;
+    let rt2 = lo >> 8 & 15;
+    let status = lo & 15;
+    if pair && (bad(rt2) || load && rt == rt2)
+        || !pair && rt2 != 15
+        || load && status != 15
+        || !load && (bad(status) || status == rn || status == rt || pair && status == rt2)
+    {
+        return None;
+    }
+    Some(reg(rn) | reg(rt) | if pair { reg(rt2) } else { 0 } | if load { 0 } else { reg(status) })
+}
+
 /// A32: the instruction's kind at `offset`; None: a single step
 fn a32(word: u32, offset: u16) -> Option<Kind> {
     let cond = (word >> 28) as u8;
     let rd = word >> 12 & 15;
     let rn = word >> 16 & 15;
     if cond == 0xF {
+        if word >> 25 & 7 == 0b101 {
+            let displacement = sign_extend(word & 0xFF_FFFF, 24) * 4 + (word >> 23 & 2) as i64;
+            return Some(Kind::Interwork {
+                target: (offset as i64 + 8 + displacement) as u64,
+                thumb: true,
+            });
+        }
         // the unconditional space: Advanced SIMD (data processing, element
         // and structure loads and stores), PLD and PLI, the barriers and
-        // CLREX, VFP's unconditional forms; BLX of an immediate changes the
-        // instruction set, CPS, SETEND, RFE and SRS are not EL0's
+        // CLREX, VFP's unconditional forms; CPS, SETEND, RFE and SRS are not EL0's
         let helper = word >> 25 & 7 == 0b001
             || word >> 24 & 15 == 0b0100 && word & 1 << 20 == 0
             || word >> 26 & 3 == 0b01 && word >> 20 & 3 == 0b01
@@ -1125,7 +1433,17 @@ fn t32(word: u32, length: u8, offset: u16) -> Option<Kind> {
                         link: hw2 & 0x4000 != 0,
                     })
                 },
-                // BLX of an immediate: A32's
+                // BLX immediate: aligned PC + S:I1:I2:imm10:imm10L:00.
+                _ if hw2 & 1 == 0 => {
+                    let i1 = 1 - (j1 ^ s);
+                    let i2 = 1 - (j2 ^ s);
+                    let imm = (hw1 & 0x3FF) as i64 * 2048 + (hw2 & 0x7FF) as i64;
+                    let signed = (i1 << 23 | i2 << 22) + imm * 2 - (s << 24);
+                    Some(Kind::Interwork {
+                        target: (((offset as i64 + 4) & !3) + signed) as u64,
+                        thumb: false,
+                    })
+                },
                 _ => None,
             }
         },
@@ -1171,7 +1489,9 @@ fn multiple(
     cond: u8,
 ) -> Option<Kind> {
     let based = list & 1 << rn != 0;
-    if load && based || !load && based && writeback || rn == 15 || list & 1 << 13 != 0 {
+    // A32 permits SP in the list. Apple's memcpy uses it as another
+    // payload register; T32's decoder rejects its restricted SP lists.
+    if load && based || !load && based && writeback || rn == 15 {
         return None;
     }
     Some(Kind::Multiple {
@@ -1191,7 +1511,13 @@ fn a32_native(word: u32) -> Option<Kind> {
     if cond == 15 {
         return None;
     }
+    if word & 0x0FFF_FFFF == 0x0320_F000 {
+        return Some(Kind::Nop);
+    }
     let rd = (word >> 12 & 15) as u8;
+    if word & 0x0FFF_0FFF == 0x010F_0000 && rd != 15 {
+        return Some(Kind::Status { rd, cond });
+    }
     let rn = (word >> 16 & 15) as u8;
     let rm = (word & 15) as u8;
     let p = word & 1 << 24 != 0;
@@ -1203,6 +1529,25 @@ fn a32_native(word: u32) -> Option<Kind> {
             let immediate = word & 1 << 25 != 0;
             if !immediate && word & 0x90 == 0x90 {
                 if word >> 4 & 15 == 9 && word >> 24 & 15 == 0 {
+                    let op = (word >> 21 & 7) as u8;
+                    let rs = (word >> 8 & 15) as u8;
+                    if (op >= 4 || op == 2 && !l)
+                        && rn != 15
+                        && rd != 15
+                        && rm != 15
+                        && rs != 15
+                        && rn != rd
+                    {
+                        return Some(Kind::MultiplyLong {
+                            op,
+                            s: l,
+                            lo: rd,
+                            hi: rn,
+                            rn: rm,
+                            rm: rs,
+                            cond,
+                        });
+                    }
                     // MUL, MLA, MLS (no S)
                     let op = word >> 21 & 7;
                     if word & 1 << 20 != 0 || !(op == 0 || op == 1 || op == 3) {
@@ -1336,6 +1681,28 @@ fn a32_native(word: u32) -> Option<Kind> {
         },
         0b010 | 0b011 => {
             if word & 1 << 25 != 0 && word & 1 << 4 != 0 {
+                let form = word & 0x0FE0_0070;
+                if matches!(form, 0x07A0_0050 | 0x07E0_0050 | 0x07C0_0010) {
+                    let lsb = (word >> 7 & 31) as u8;
+                    let limit = (word >> 16 & 31) as u8;
+                    let insert = form == 0x07C0_0010;
+                    if rd == 15 || !insert && rm == 15 || insert && limit < lsb {
+                        return None;
+                    }
+                    let width = if insert { limit - lsb + 1 } else { limit + 1 };
+                    if lsb as u32 + width as u32 > 32 {
+                        return None;
+                    }
+                    return Some(Kind::Bitfield {
+                        rd,
+                        rn: if rm == 15 { NONE } else { rm },
+                        lsb,
+                        width,
+                        insert,
+                        signed: form == 0x07A0_0050,
+                        cond,
+                    });
+                }
                 // REV, REV16, REVSH
                 let bits = match word & 0x0FFF_0FF0 {
                     0x06BF_0F30 => Some(1),
@@ -1346,9 +1713,8 @@ fn a32_native(word: u32) -> Option<Kind> {
                 if let Some(op) = bits {
                     return (rd != 15 && rm != 15).then_some(Kind::Bits { op, rd, rm, cond });
                 }
-                // SXTB, SXTH, UXTB, UXTH (not their adding forms)
-                if word >> 23 & 3 == 0b01 && word >> 4 & 15 == 7 && rn == 15 && rd != 15 && rm != 15
-                {
+                // Byte/halfword extensions and their accumulating forms.
+                if word >> 23 & 3 == 0b01 && word >> 4 & 15 == 7 && rd != 15 && rm != 15 {
                     let op = word >> 20 & 7;
                     let (signed, half) = match op {
                         0b010 => (true, false),
@@ -1359,6 +1725,7 @@ fn a32_native(word: u32) -> Option<Kind> {
                     };
                     return Some(Kind::Extend {
                         rd,
+                        rn: if rn == 15 { NONE } else { rn },
                         rm,
                         signed,
                         half,
@@ -1472,6 +1839,9 @@ fn t32_data(op: u32, s: bool, rd: u8, rn: u8, op2: Operand) -> Option<Kind> {
 
 /// T32's native forms (outside IT blocks: the 16-bit forms set flags)
 fn t32_native(word: u32, length: u8) -> Option<Kind> {
+    if length == 2 && word == 0xBF00 || length == 4 && word == 0xF3AF_8000 {
+        return Some(Kind::Nop);
+    }
     if length == 2 {
         let hw = word;
         let r = |at: u32| (hw >> at & 7) as u8;
@@ -1568,28 +1938,31 @@ fn t32_native(word: u32, length: u8) -> Option<Kind> {
                         _ => None,
                     };
                 }
-                // ADD, CMP, MOV of the high registers (not of the PC)
+                // ADD/MOV: a source PC is the unaligned PC + 4.
+                // Destinations of PC retain the interpreter's branch path.
                 let rdn = (hw >> 4 & 8 | hw & 7) as u8;
                 let rm = (hw >> 3 & 15) as u8;
-                if rm == 15 || rdn == 15 {
+                let op = hw >> 8 & 3;
+                if rdn == 15 || op == 1 && (rm == 15 || rdn < 8 && rm < 8) {
                     return None;
                 }
-                match hw >> 8 & 3 {
+                let source = if rm == 15 { Operand::ThumbPc } else { reg(rm) };
+                match op {
                     0 => Some(Kind::Data {
                         op: ADD,
                         s: false,
                         rd: rdn,
                         rn: rdn,
-                        op2: reg(rm),
+                        op2: source,
                         cond: 14,
                     }),
-                    1 => data(CMP, 0, rdn, reg(rm)),
+                    1 => data(CMP, 0, rdn, source),
                     2 => Some(Kind::Data {
                         op: MOV,
                         s: false,
                         rd: rdn,
                         rn: NONE,
-                        op2: reg(rm),
+                        op2: source,
                         cond: 14,
                     }),
                     _ => None,
@@ -1676,6 +2049,7 @@ fn t32_native(word: u32, length: u8) -> Option<Kind> {
                 }),
                 0b0010 => Some(Kind::Extend {
                     rd: r(0),
+                    rn: NONE,
                     rm: r(3),
                     signed: hw & 0x80 == 0,
                     half: hw & 0x40 == 0,
@@ -1725,6 +2099,9 @@ fn t32_native(word: u32, length: u8) -> Option<Kind> {
 }
 
 fn t32_native32(hw1: u32, hw2: u32, rn: u8, rd: u8, rt: u8, rm: u8, s: bool) -> Option<Kind> {
+    if hw1 == 0xF3EF && hw2 & 0xF0FF == 0x8000 && rd != 13 && rd != 15 {
+        return Some(Kind::Status { rd, cond: 14 });
+    }
     if hw1 >> 11 == 0b11110 && hw2 & 0x8000 == 0 {
         if hw1 & 1 << 9 == 0 {
             let (value, carry) =
@@ -1733,6 +2110,28 @@ fn t32_native32(hw1: u32, hw2: u32, rn: u8, rd: u8, rt: u8, rm: u8, s: bool) -> 
         }
         // the plain binary immediates: ADDW, SUBW (ADR with the PC), MOVW, MOVT
         let imm12 = (hw1 >> 10 & 1) << 11 | (hw2 >> 12 & 7) << 8 | hw2 & 0xFF;
+        let op = hw1 >> 4 & 31;
+        if matches!(op, 0b10100 | 0b11100 | 0b10110) {
+            let insert = op == 0b10110;
+            let lsb = ((hw2 >> 10 & 0x1C) | (hw2 >> 6 & 3)) as u8;
+            let limit = (hw2 & 31) as u8;
+            if rd == 13 || rd == 15 || rn == 13 || !insert && rn == 15 || insert && limit < lsb {
+                return None;
+            }
+            let width = if insert { limit - lsb + 1 } else { limit + 1 };
+            if lsb as u32 + width as u32 > 32 {
+                return None;
+            }
+            return Some(Kind::Bitfield {
+                rd,
+                rn: if rn == 15 { NONE } else { rn },
+                lsb,
+                width,
+                insert,
+                signed: op == 0b10100,
+                cond: 14,
+            });
+        }
         if rd == 15 || rd == 13 && rn != 13 {
             return None;
         }
@@ -1882,6 +2281,29 @@ fn t32_native32(hw1: u32, hw2: u32, rn: u8, rd: u8, rt: u8, rm: u8, s: bool) -> 
             cond: 14,
         });
     }
+    if hw1 >> 7 == 0b111110111 {
+        let op = match (hw1 >> 4 & 7, hw2 >> 4 & 15) {
+            (0, 0) => 6,
+            (2, 0) => 4,
+            (4, 0) => 7,
+            (6, 0) => 5,
+            (6, 6) => 2,
+            _ => return None,
+        };
+        let lo = rt;
+        if [lo, rd, rn, rm].iter().any(|&r| r == 13 || r == 15) || lo == rd {
+            return None;
+        }
+        return Some(Kind::MultiplyLong {
+            op,
+            s: false,
+            lo,
+            hi: rd,
+            rn,
+            rm,
+            cond: 14,
+        });
+    }
     if hw1 >> 7 == 0b111110100 && hw2 >> 12 == 15 && hw2 & 0xF0 == 0 {
         // LSL, LSR, ASR, ROR of a register (Rm the amount)
         if rd >= 13 || rn >= 13 || rm >= 13 {
@@ -1947,7 +2369,7 @@ fn t32_native32(hw1: u32, hw2: u32, rn: u8, rd: u8, rt: u8, rm: u8, s: bool) -> 
             cond: 14,
         });
     }
-    if hw1 >> 7 == 0b111110100 && rn == 15 && hw2 >> 12 == 15 && hw2 & 0x80 != 0 && hw2 & 0x40 == 0
+    if hw1 >> 7 == 0b111110100 && rn != 13 && hw2 >> 12 == 15 && hw2 & 0x80 != 0 && hw2 & 0x40 == 0
     {
         // SXTH, UXTH, SXTB, UXTB
         let (signed, half) = match hw1 >> 4 & 7 {
@@ -1962,6 +2384,7 @@ fn t32_native32(hw1: u32, hw2: u32, rn: u8, rd: u8, rt: u8, rm: u8, s: bool) -> 
         }
         return Some(Kind::Extend {
             rd,
+            rn: if rn == 15 { NONE } else { rn },
             rm,
             signed,
             half,
@@ -2105,11 +2528,23 @@ fn t32_return(word: u32, length: u8) -> Option<Kind> {
 }
 
 /// An instruction of an IT block as a native form of condition `cond`: the
-/// 16-bit forms that set the flags outside one do not inside; None for
-/// what might leave (loads and stores, branches)
-fn t32_native_it(word: u32, length: u8, cond: u8) -> Option<Kind> {
-    let mut kind = t32_native(word, length)?;
+/// 16-bit forms that set flags outside one do not inside. Returns may only
+/// occupy the last slot; retry exits materialize that slot's precise mask.
+fn t32_native_it(word: u32, length: u8, itstate: u8) -> Option<Kind> {
+    let cond = itstate >> 4;
+    let last = itstate & 7 == 0;
+    if length == 4
+        && matches!(
+            fp_data(word, true),
+            Some(Kind::FpArith { .. } | Kind::FpCompare { .. } | Kind::FpMove { kind: 0..=2, .. })
+        )
+    {
+        return Some(Kind::ItFpHelper { cond });
+    }
+    let mut kind =
+        t32_native(word, length).or_else(|| last.then(|| t32_return(word, length)).flatten())?;
     match &mut kind {
+        Kind::Nop => {},
         Kind::Data { op, s, cond: c, .. } => {
             if length == 2 && !matches!(*op, CMP | CMN | TST) {
                 *s = false;
@@ -2117,9 +2552,14 @@ fn t32_native_it(word: u32, length: u8, cond: u8) -> Option<Kind> {
             *c = cond;
         },
         Kind::Wide { cond: c, .. }
+        | Kind::Status { cond: c, .. }
+        | Kind::Bitfield { cond: c, .. }
         | Kind::Multiply { cond: c, .. }
+        | Kind::MultiplyLong { cond: c, .. }
         | Kind::Extend { cond: c, .. }
         | Kind::Bits { cond: c, .. } => *c = cond,
+        Kind::Mem { rt, cond: c, .. } if *rt != 15 || last => *c = cond,
+        Kind::Multiple { list, cond: c, .. } if last && *list & 0x8000 != 0 => *c = cond,
         _ => return None,
     }
     Some(kind)
@@ -2169,10 +2609,20 @@ pub(super) fn discover(
         if env.el1 && pl1_steps(word, length, thumb) {
             kind = None;
         }
+        if env.el1 && crate::aarch64::cpu::a32_only() {
+            if let Some(mask) = interrupt_mask(word, length, thumb) {
+                kind = Some(mask);
+            }
+        }
         // (an instruction of an IT block whose instructions are all native)
-        if let Some(&cond) = native_it.borrow().get(&o) {
+        if let Some(&itstate) = native_it.borrow().get(&o) {
             return (
-                t32_native_it(word, length, cond).map(|kind| Inst32 { word, length, kind }),
+                t32_native_it(word, length, itstate).map(|kind| Inst32 {
+                    word,
+                    length,
+                    kind,
+                    itstate,
+                }),
                 length as u16,
             );
         }
@@ -2204,10 +2654,11 @@ pub(super) fn discover(
                     Kind::Wide { .. } => 64,
                     Kind::Mem { .. } => 128,
                     Kind::Multiple { .. } => 256,
-                    Kind::Multiply { .. } => 512,
+                    Kind::Multiply { .. } | Kind::MultiplyLong { .. } => 512,
                     Kind::FpMemory { .. }
                     | Kind::Vld1 { .. }
                     | Kind::FpArith { .. }
+                    | Kind::FpCompare { .. }
                     | Kind::FpMove { .. }
                     | Kind::Neon { .. }
                     | Kind::Transfer { .. } => 2048,
@@ -2218,10 +2669,33 @@ pub(super) fn discover(
                 }
             }
         }
+        if matches!(kind, Some(Kind::Helper)) && !covered.contains(&o) && length == 4 {
+            // Exclude every core-register transfer (bit 4), every memory
+            // form and every system coprocessor. The remaining data forms
+            // use only FP/vector state, including exact conversions and
+            // saturating integer SIMD that do not have native templates.
+            let vector = if thumb {
+                matches!(word >> 24, 0xEF | 0xFF)
+            }
+            else {
+                matches!(word >> 24, 0xF2 | 0xF3)
+            };
+            let vfp = word & 0x0F00_0010 == 0x0E00_0000 && matches!(word >> 8 & 15, 10 | 11);
+            if vector || vfp {
+                kind = Some(Kind::FpHelper);
+            }
+        }
+        if matches!(kind, Some(Kind::Helper)) && !covered.contains(&o) && length == 4 {
+            if let Some(mask) = synchronization_gprs(word, thumb) {
+                kind = Some(Kind::RegisterHelper { mask });
+            }
+        }
         let debug = unsafe { crate::aarch64::jit::pages::AARCH32_DEBUG };
-        if debug == 2 && !matches!(kind, Some(Kind::Helper))
-            || debug == 3 && matches!(kind, Some(Kind::Helper))
-        {
+        let helper = matches!(
+            kind,
+            Some(Kind::Helper | Kind::FpHelper | Kind::RegisterHelper { .. })
+        );
+        if debug == 2 && !helper || debug == 3 && helper {
             kind = None;
         }
         if covered.contains(&o) && !matches!(kind, Some(Kind::Helper) | None) {
@@ -2238,16 +2712,16 @@ pub(super) fn discover(
                 }
                 covered.insert(at);
                 let instruction = fetch(at);
-                block.push((at, instruction, (it >> 4) as u8));
+                block.push((at, instruction, it as u8));
                 it = if it & 7 == 0 { 0 } else { it & 0xE0 | it << 1 & 0x1F };
                 at += instruction.map_or(2, |(_, l)| l as u16);
             }
-            // (all native, none that may leave: the block runs with its
-            // conditions and no ITSTATE)
+            // Successful native instructions keep ITSTATE clear. A retry
+            // restores its precise mask before any architectural effect.
             let native = block.len() as u32 == it_count(word)
                 && unsafe { crate::aarch64::jit::pages::AARCH32_DEBUG } < 2
-                && block.iter().all(|&(_, instruction, cond)| {
-                    instruction.is_some_and(|(w, l)| t32_native_it(w, l, cond).is_some())
+                && block.iter().all(|&(_, instruction, it)| {
+                    instruction.is_some_and(|(w, l)| t32_native_it(w, l, it).is_some())
                 });
             if native && matches!(kind, Some(Kind::Helper)) {
                 for &(at, _, cond) in &block {
@@ -2257,7 +2731,12 @@ pub(super) fn discover(
             }
         }
         (
-            kind.map(|kind| Inst32 { word, length, kind }),
+            kind.map(|kind| Inst32 {
+                word,
+                length,
+                kind,
+                itstate: 0,
+            }),
             length as u16,
         )
     };
@@ -2342,17 +2821,41 @@ pub(super) fn discover(
 }
 
 impl Emitter<'_> {
+    pub(super) fn it_memory_state(&mut self, it: u8) {
+        self.c32(state::pstate as i32);
+        self.load32(state::pstate as u32);
+        self.c32(!crate::aarch64::cpu::PSTATE_IT as i32);
+        self.b.and_i32();
+        self.c32(((it as u32 & 3) << 25 | (it as u32 & 0xFC) << 8) as i32);
+        self.b.or_i32();
+        self.b.store_aligned_i32(0);
+    }
     /// Push X[n]'s low half, an i32 (R0-R14 in memory)
-    fn r32(&mut self, n: u8) { self.load32(super::x_address(n as usize)); }
+    fn r32(&mut self, n: u8) {
+        if self.a32_gpr_locals {
+            self.g(n as usize);
+            self.b.wrap_i64_to_i32();
+        }
+        else {
+            self.load32(super::x_address(n as usize));
+        }
+    }
     /// LR := the address after the instruction (T32's with bit 0 set)
     fn link(&mut self, offset: u16, length: u8) {
-        self.c32(super::x_address(14) as i32);
+        if !self.a32_gpr_locals {
+            self.c32(super::x_address(14) as i32);
+        }
         self.linear(offset as u64 + length as u64);
         self.c64(if self.env.isa == Isa::T32 { 1 } else { 0 });
         self.b.or_i64();
         self.c64(0xFFFF_FFFF);
         self.b.and_i64();
-        self.b.store_aligned_i64(0);
+        if self.a32_gpr_locals {
+            self.s(14);
+        }
+        else {
+            self.b.store_aligned_i64(0);
+        }
     }
 
     // ---- Q6.2's native forms: the registers and NZCV in memory
@@ -2374,10 +2877,17 @@ impl Emitter<'_> {
     }
     /// R[n] := the i32 in local `l`
     fn set_r32(&mut self, n: u8, l: usize) {
-        self.c32(super::x_address(n as usize) as i32);
+        if !self.a32_gpr_locals {
+            self.c32(super::x_address(n as usize) as i32);
+        }
         self.gi(l);
         self.b.extend_unsigned_i32_to_i64();
-        self.b.store_aligned_i64(0);
+        if self.a32_gpr_locals {
+            self.s(n as usize);
+        }
+        else {
+            self.b.store_aligned_i64(0);
+        }
     }
     /// Push NZCV (memory's)
     fn nzcv(&mut self) { self.load32(state::nzcv as u32); }
@@ -2412,6 +2922,12 @@ impl Emitter<'_> {
     /// `carry` and the operand has one (the answer)
     fn operand2(&mut self, op2: Operand, offset: u16, carry: bool) -> bool {
         match op2 {
+            Operand::ThumbPc => {
+                self.linear(offset as u64 + 4);
+                self.b.wrap_i64_to_i32();
+                self.si(A1);
+                false
+            },
             Operand::Imm { value, carry: c } => {
                 self.c32(value as i32);
                 self.si(A1);
@@ -2788,7 +3304,12 @@ impl Emitter<'_> {
         self.b.extend_unsigned_i32_to_i64();
         self.s(super::ADDR);
         // (a miss, a fault, an access across the page: the interpreter's)
-        self.host(1 << size, !load, offset);
+        if load && size == 2 {
+            self.host_read32(offset);
+        }
+        else {
+            self.host(1 << size, !load, offset);
+        }
         if load {
             self.load_value(size as u32, signed, true);
             self.s(super::T1);
@@ -2806,9 +3327,16 @@ impl Emitter<'_> {
             if writeback {
                 self.set_r32(rn, A2);
             }
-            self.c32(super::x_address(rt as usize) as i32);
+            if !self.a32_gpr_locals {
+                self.c32(super::x_address(rt as usize) as i32);
+            }
             self.g(super::T1);
-            self.b.store_aligned_i64(0);
+            if self.a32_gpr_locals {
+                self.s(rt as usize);
+            }
+            else {
+                self.b.store_aligned_i64(0);
+            }
         }
         else {
             self.operand(rt, offset);
@@ -2882,14 +3410,21 @@ impl Emitter<'_> {
         let mut at = 0;
         for r in (0..15u8).filter(|r| list & 1 << r != 0) {
             if load {
-                self.c32(super::x_address(r as usize) as i32);
+                if !self.a32_gpr_locals {
+                    self.c32(super::x_address(r as usize) as i32);
+                }
                 self.gi(super::HH);
                 if at != 0 {
                     self.c32(at);
                     self.b.add_i32();
                 }
                 self.load_value(2, false, true);
-                self.b.store_aligned_i64(0);
+                if self.a32_gpr_locals {
+                    self.s(r as usize);
+                }
+                else {
+                    self.b.store_aligned_i64(0);
+                }
             }
             else {
                 self.gi(super::HH);
@@ -3000,6 +3535,21 @@ impl Emitter<'_> {
     /// A helper call: the interpreter's execute of the instruction
     /// (pages::a32_page_helper), a refusal retried in the interpreter
     fn a32_helper(&mut self, word: u32, length: u8, offset: u16) {
+        self.a32_helper_sync(word, length, offset, true);
+    }
+
+    /// The decoded scalar/NEON arithmetic and comparisons use only FP
+    /// state. NZCV is already in memory on A32; the explicit PC argument
+    /// supplies the instruction address. On refusal, retry's normal
+    /// epilogue commits the live GPR locals before the interpreter runs.
+    fn a32_fp_helper(&mut self, word: u32, length: u8, offset: u16) {
+        self.a32_helper_sync(word, length, offset, false);
+    }
+
+    fn a32_helper_sync(&mut self, word: u32, length: u8, offset: u16, sync_gprs: bool) {
+        if self.a32_gpr_locals && sync_gprs {
+            self.writeback();
+        }
         self.c32(word as i32);
         self.linear(offset as u64);
         self.c32(length as i32);
@@ -3010,6 +3560,11 @@ impl Emitter<'_> {
                 &[WasmType::I32],
             ),
         );
+        if self.a32_gpr_locals && sync_gprs {
+            self.si(super::ST);
+            self.load_registers();
+            self.gi(super::ST);
+        }
         self.retry_if(offset);
     }
 
@@ -3045,6 +3600,62 @@ impl Emitter<'_> {
         }
     }
 
+    fn fp_compare(
+        &mut self,
+        double: bool,
+        d: u8,
+        m: u8,
+        zero: bool,
+        word: u32,
+        length: u8,
+        offset: u16,
+    ) {
+        use super::{T0, T1};
+        self.fp_access(offset);
+        let done = self.b.block_void();
+        self.a32_fp_load(d, double, T0);
+        if zero {
+            self.c64(0);
+            self.s(T1);
+        }
+        else {
+            self.a32_fp_load(m, double, T1);
+        }
+        self.fp_ordinary(T0, double, false);
+        self.fp_ordinary(T1, double, false);
+        self.b.and_i32();
+        self.b.if_void();
+        // RMode/FZ/DN cannot change normal/zero comparisons. Wasm does not
+        // raise ARM flags; exceptional inputs have not changed any state.
+        self.fp_value(T0, double);
+        self.fp_value(T1, double);
+        self.o(if double { 0x61 } else { 0x5B });
+        self.b.if_i32();
+        self.c32(0x6000_0000);
+        self.b.else_();
+        self.fp_value(T0, double);
+        self.fp_value(T1, double);
+        self.o(if double { 0x63 } else { 0x5D });
+        self.b.if_i32();
+        self.c32(0x8000_0000u32 as i32);
+        self.b.else_();
+        self.c32(0x2000_0000);
+        self.b.block_end();
+        self.b.block_end();
+        self.si(A2);
+        self.c32(state::fpsr as i32);
+        self.load32(state::fpsr as u32);
+        self.c32(0x0FFF_FFFF);
+        self.b.and_i32();
+        self.gi(A2);
+        self.b.or_i32();
+        self.b.store_aligned_i32(0);
+        self.b.br(done);
+        self.b.block_end();
+        self.a32_fp_helper(word, length, offset);
+        self.b.block_end();
+    }
+
     /// VADD, VSUB, VMUL, VNMUL, VDIV (FpArith): pagegen's scalar rules
     #[allow(clippy::too_many_arguments)]
     fn fp_arith(
@@ -3063,9 +3674,10 @@ impl Emitter<'_> {
         let done = self.b.block_void();
         self.a32_fp_load(n, double, T0);
         self.a32_fp_load(m, double, T1);
-        // RMode RN and FZ 0 (FPCR), IXC already set (FPSR), the operands zero or normal
+        // RN, IXC already set, and zero/normal inputs. FZ/DN cannot affect
+        // these inputs or a non-tiny normal/exact-zero result.
         self.load32(state::fpcr as u32);
-        self.c32(0x01C0_0000);
+        self.c32(0x00C0_0000);
         self.b.and_i32();
         self.b.eqz_i32();
         self.load32(state::fpsr as u32);
@@ -3108,13 +3720,33 @@ impl Emitter<'_> {
         }
         self.fp_bits(T3, double);
         self.fp_ordinary(T3, double, true);
+        if matches!(op, 2 | 3 | 4) {
+            // A zero product/quotient from two nonzero inputs may have
+            // underflowed, even if Wasm rounded it all the way to zero.
+            // Retry it exactly so UFC (and FZ's result) are preserved.
+            let zero = |e: &mut Self, l| {
+                e.g(l);
+                e.c64(if double { 0x7FFF_FFFF_FFFF_FFFF } else { 0x7FFF_FFFF });
+                e.b.and_i64();
+                e.o(crate::wasmgen::wasm_opcodes::OP_I64EQZ);
+            };
+            zero(self, T3);
+            self.b.eqz_i32();
+            zero(self, T0);
+            if op != 3 {
+                zero(self, T1);
+                self.b.or_i32();
+            }
+            self.b.or_i32();
+            self.b.and_i32();
+        }
         self.b.if_void();
         self.a32_fp_store(d, double, T3);
         self.b.br(done);
         self.b.block_end();
         self.b.block_end();
         // the exact path: the interpreter's
-        self.a32_helper(word, length, offset);
+        self.a32_fp_helper(word, length, offset);
         self.b.block_end();
     }
 
@@ -3223,13 +3855,180 @@ impl Emitter<'_> {
         }
     }
 
+    /// After ordinary-input/result checks, a sum with a zero operand or
+    /// zero result is exact. Two f32 operands cannot round a nonzero sum
+    /// below half a minimum subnormal: both are multiples of 2^-149.
+    fn neon_exact_sum(&mut self, a: &WasmLocalV128, b: &WasmLocalV128, result: &WasmLocalV128) {
+        for l in [a, b, result] {
+            self.b.get_local_v128(l);
+            self.b.simd_zero();
+            self.b.simd(0x41); // f32x4.eq (includes both signs of zero)
+        }
+        self.b.simd(0x50);
+        self.b.simd(0x50); // v128.or
+        self.b.simd(0xA3); // i32x4.all_true
+    }
+
+    /// Standard NEON single-precision arithmetic. Check every lane and
+    /// retain all results in locals before any architectural write, so a
+    /// fallback with overlapping operands observes the original registers.
+    #[allow(clippy::too_many_arguments)]
+    fn neon_fp(
+        &mut self,
+        op: u8,
+        scalar: Option<u8>,
+        q: bool,
+        d: u8,
+        n: u8,
+        m: u8,
+        word: u32,
+        length: u8,
+        offset: u16,
+    ) {
+        self.fp_access(offset);
+        let done = self.b.block_void();
+        let slow = self.b.block_void();
+        self.load32(state::fpsr as u32);
+        self.c32(16);
+        self.b.and_i32();
+        let sticky = self.b.set_new_local();
+        self.neon_load(n, q);
+        let a = self.b.set_new_local_v128();
+        self.neon_load(m, scalar.is_none() && q);
+        if let Some(lane) = scalar {
+            self.b.simd_lane(0x1B, lane); // i32x4.extract_lane
+            self.b.simd(0x11); // i32x4.splat
+        }
+        let b = self.b.set_new_local_v128();
+        for l in [&a, &b] {
+            self.v_ordinary(l, false, false);
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+        }
+        self.b.get_local_v128(&a);
+        self.b.get_local_v128(&b);
+        self.b.simd(0xE4 + if op >= 2 { 2 } else { op as u32 });
+        let product = self.b.set_new_local_v128();
+        self.v_ordinary(&product, false, true);
+        self.b.eqz_i32();
+        self.b.br_if(slow);
+        if op >= 2 {
+            // A zero product of nonzero normal factors can underflow. Check
+            // the same lane in all three masks, including signed zero.
+            for (l, equal) in [(&product, true), (&a, false), (&b, false)] {
+                self.b.get_local_v128(l);
+                self.b
+                    .const_v128(0x7FFF_FFFF_7FFF_FFFF_7FFF_FFFF_7FFF_FFFFu128.to_le_bytes());
+                self.b.simd(0x4E); // v128.and
+                self.b.simd_zero();
+                self.b.simd(if equal { 0x37 } else { 0x38 }); // i32x4.eq/ne
+            }
+            self.b.simd(0x4E);
+            self.b.simd(0x4E);
+            self.b.simd(0x53); // v128.any_true
+            self.b.br_if(slow);
+            self.b.get_local(&sticky);
+            self.b.eqz_i32();
+            self.b.if_void();
+            // A zero or power-of-two factor has no fractional significand
+            // bits. Its product is exact when the guarded result is normal
+            // or zero, so clear IXC can stay clear without a helper call.
+            for l in [&a, &b] {
+                self.b.get_local_v128(l);
+                self.b
+                    .const_v128(0x007F_FFFF_007F_FFFF_007F_FFFF_007F_FFFFu128.to_le_bytes());
+                self.b.simd(0x4E);
+                self.b.simd_zero();
+                self.b.simd(0x37);
+            }
+            self.b.simd(0x50);
+            self.b.simd(0xA3);
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+            self.b.block_end();
+        }
+        let accumulator = if op >= 3 {
+            self.neon_load(d, q);
+            let accumulator = self.b.set_new_local_v128();
+            self.v_ordinary(&accumulator, false, false);
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+            self.b.get_local_v128(&accumulator);
+            self.b.get_local_v128(&product);
+            // VMLA/VMLS are two rounded operations, never relaxed/fused.
+            self.b.simd(if op == 3 { 0xE4 } else { 0xE5 });
+            Some(accumulator)
+        }
+        else {
+            self.b.get_local_v128(&product);
+            None
+        };
+        let result = self.b.set_new_local_v128();
+        if op >= 3 {
+            self.v_ordinary(&result, false, true);
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+        }
+        if op != 2 {
+            self.b.get_local(&sticky);
+            self.b.eqz_i32();
+            self.b.if_void();
+            if let Some(ref acc) = accumulator {
+                self.neon_exact_sum(acc, &product, &result);
+            }
+            else {
+                self.neon_exact_sum(&a, &b, &result);
+            }
+            self.b.eqz_i32();
+            self.b.br_if(slow);
+            self.b.block_end();
+        }
+        // No architectural writes before every lane passes. D forms load
+        // duplicate halves and store only 64 bits, preserving the adjacent D.
+        self.c32(state::v as i32 + 8 * d as i32);
+        self.b.get_local_v128(&result);
+        if q {
+            self.b.simd_memory(0x0B, 4);
+        }
+        else {
+            self.b.simd_lane(0x1D, 0);
+            self.b.store_aligned_i64(0);
+        }
+        self.b.br(done);
+        self.b.block_end();
+        self.a32_fp_helper(word, length, offset);
+        self.b.block_end();
+        self.b.free_local(sticky);
+        for l in [Some(a), Some(b), Some(product), accumulator, Some(result)]
+            .into_iter()
+            .flatten()
+        {
+            self.b.free_local_v128(l);
+        }
+    }
+
     /// Advanced SIMD data processing (Neon): the result into D[d] (the
     /// v128's low half) or Q[d/2]
-    fn neon(&mut self, form: NeonForm, q: bool, d: u8, n: u8, m: u8, offset: u16) {
+    #[allow(clippy::too_many_arguments)]
+    fn neon(
+        &mut self,
+        form: NeonForm,
+        q: bool,
+        d: u8,
+        n: u8,
+        m: u8,
+        word: u32,
+        length: u8,
+        offset: u16,
+    ) {
+        if let NeonForm::Fp { op, scalar } = form {
+            return self.neon_fp(op, scalar, q, d, n, m, word, length, offset);
+        }
         self.fp_access(offset);
         self.c32(state::v as i32 + 8 * d as i32);
         let register = |x: u8| [d, n, m][x as usize];
         match form {
+            NeonForm::Fp { .. } => unreachable!(),
             NeonForm::Binary { op, invert_m, test } => {
                 self.neon_load(n, q);
                 self.neon_load(m, q);
@@ -3473,14 +4272,21 @@ impl Emitter<'_> {
         self.si(super::HH);
         for (k, r) in [rt, rt2].into_iter().enumerate() {
             if load {
-                self.c32(super::x_address(r as usize) as i32);
+                if !self.a32_gpr_locals {
+                    self.c32(super::x_address(r as usize) as i32);
+                }
                 self.gi(super::HH);
                 if k != 0 {
                     self.c32(4);
                     self.b.add_i32();
                 }
                 self.load_value(2, false, true);
-                self.b.store_aligned_i64(0);
+                if self.a32_gpr_locals {
+                    self.s(r as usize);
+                }
+                else {
+                    self.b.store_aligned_i64(0);
+                }
             }
             else {
                 self.gi(super::HH);
@@ -3579,7 +4385,68 @@ impl Emitter<'_> {
         self.set_r32(rd, A2);
     }
 
-    fn extend(&mut self, rd: u8, rm: u8, signed: bool, half: bool, rotation: u8) {
+    fn multiply_long(&mut self, op: u8, s: bool, lo: u8, hi: u8, rn: u8, rm: u8) {
+        for r in [rn, rm] {
+            self.r32(r);
+            if op >= 6 {
+                self.b.extend_signed_i32_to_i64();
+            }
+            else {
+                self.b.extend_unsigned_i32_to_i64();
+            }
+        }
+        self.b.mul_i64();
+        if op == 2 {
+            for r in [lo, hi] {
+                self.r32(r);
+                self.b.extend_unsigned_i32_to_i64();
+                self.b.add_i64();
+            }
+        }
+        else if op & 1 != 0 {
+            self.r32(hi);
+            self.b.extend_unsigned_i32_to_i64();
+            self.c64(32);
+            self.b.shl_i64();
+            self.r32(lo);
+            self.b.extend_unsigned_i32_to_i64();
+            self.b.or_i64();
+            self.b.add_i64();
+        }
+        self.s(super::T0);
+        if s {
+            self.g(super::T0);
+            self.c64(32);
+            self.b.shr_u_i64();
+            self.b.wrap_i64_to_i32();
+            self.c32(0x8000_0000u32 as i32);
+            self.b.and_i32();
+            self.g(super::T0);
+            self.c64(0);
+            self.b.eq_i64();
+            self.c32(30);
+            self.b.shl_i32();
+            self.b.or_i32();
+            self.nzcv();
+            self.c32(0x3000_0000);
+            self.b.and_i32();
+            self.b.or_i32();
+            self.si(NZCV);
+            self.store_nzcv();
+        }
+        self.g(super::T0);
+        self.b.wrap_i64_to_i32();
+        self.si(A2);
+        self.set_r32(lo, A2);
+        self.g(super::T0);
+        self.c64(32);
+        self.b.shr_u_i64();
+        self.b.wrap_i64_to_i32();
+        self.si(A2);
+        self.set_r32(hi, A2);
+    }
+
+    fn extend(&mut self, rd: u8, rn: u8, rm: u8, signed: bool, half: bool, rotation: u8) {
         self.r32(rm);
         if rotation != 0 {
             self.c32(rotation as i32);
@@ -3596,12 +4463,24 @@ impl Emitter<'_> {
             self.c32(if half { 0xFFFF } else { 0xFF });
             self.b.and_i32();
         }
+        if rn != NONE {
+            self.r32(rn);
+            self.b.add_i32();
+        }
         self.si(A2);
         self.set_r32(rd, A2);
     }
 
     pub(super) fn instruction32(&mut self, offset: u16, i: &Inst32, index: &BTreeMap<u16, usize>) {
+        self.a32_itstate = i.itstate;
         match i.kind {
+            Kind::MaskInterrupts { mask } => {
+                self.c32(state::pstate as i32);
+                self.load32(state::pstate as u32);
+                self.c32(mask as i32);
+                self.b.or_i32();
+                self.b.store_aligned_i32(0);
+            },
             Kind::Data {
                 op,
                 s,
@@ -3611,6 +4490,59 @@ impl Emitter<'_> {
                 cond,
             } => self.when(cond, |e| e.data(op, s, rd, rn, op2, offset)),
             Kind::Wide { rd, imm, top, cond } => self.when(cond, |e| e.wide(rd, imm, top)),
+            Kind::Status { rd, cond } => self.when(cond, |e| {
+                use crate::aarch64::cpu::{
+                    PSTATE_A, PSTATE_E, PSTATE_F, PSTATE_GE, PSTATE_I, PSTATE_Q,
+                };
+                e.load32(state::pstate as u32);
+                e.c32(
+                    (PSTATE_Q | PSTATE_GE | PSTATE_E | PSTATE_A | PSTATE_I | PSTATE_F | 0x1F)
+                        as i32,
+                );
+                e.b.and_i32();
+                e.nzcv();
+                e.b.or_i32();
+                e.si(A2);
+                e.set_r32(rd, A2);
+            }),
+            Kind::Bitfield {
+                rd,
+                rn,
+                lsb,
+                width,
+                insert,
+                signed,
+                cond,
+            } => self.when(cond, |e| {
+                if insert {
+                    let mask = if width == 32 { u32::MAX } else { ((1u32 << width) - 1) << lsb };
+                    e.r32(rd);
+                    e.c32(!mask as i32);
+                    e.b.and_i32();
+                    if rn != NONE {
+                        e.r32(rn);
+                        e.c32(lsb as i32);
+                        e.b.shl_i32();
+                        e.c32(mask as i32);
+                        e.b.and_i32();
+                        e.b.or_i32();
+                    }
+                }
+                else {
+                    e.r32(rn);
+                    e.c32((32 - lsb - width) as i32);
+                    e.b.shl_i32();
+                    e.c32((32 - width) as i32);
+                    if signed {
+                        e.b.shr_s_i32();
+                    }
+                    else {
+                        e.b.shr_u_i32();
+                    }
+                }
+                e.si(A2);
+                e.set_r32(rd, A2);
+            }),
             Kind::Mem {
                 load,
                 size,
@@ -3623,7 +4555,7 @@ impl Emitter<'_> {
                 writeback,
                 cond,
             } => self.when(cond, |e| {
-                e.memory(load, size, signed, rt, rn, o, add, ix, writeback, offset)
+                e.memory(load, size, signed, rt, rn, o, add, ix, writeback, offset);
             }),
             Kind::Multiple {
                 load,
@@ -3644,14 +4576,24 @@ impl Emitter<'_> {
                 sub,
                 cond,
             } => self.when(cond, |e| e.multiply(rd, rn, rm, ra, sub)),
+            Kind::MultiplyLong {
+                op,
+                s,
+                lo,
+                hi,
+                rn,
+                rm,
+                cond,
+            } => self.when(cond, |e| e.multiply_long(op, s, lo, hi, rn, rm)),
             Kind::Extend {
                 rd,
+                rn,
                 rm,
                 signed,
                 half,
                 rotation,
                 cond,
-            } => self.when(cond, |e| e.extend(rd, rm, signed, half, rotation)),
+            } => self.when(cond, |e| e.extend(rd, rn, rm, signed, half, rotation)),
             Kind::Dual {
                 load,
                 rt,
@@ -3700,6 +4642,15 @@ impl Emitter<'_> {
             } => self.when(cond, |e| {
                 e.fp_arith(op, double, d, n, m, i.word, i.length, offset)
             }),
+            Kind::FpCompare {
+                double,
+                d,
+                m,
+                zero,
+                cond,
+            } => self.when(cond, |e| {
+                e.fp_compare(double, d, m, zero, i.word, i.length, offset);
+            }),
             Kind::FpMove {
                 kind,
                 double,
@@ -3708,8 +4659,10 @@ impl Emitter<'_> {
                 m,
                 cond,
             } => self.when(cond, |e| e.fp_move(kind, double, d, n, m, offset)),
-            Kind::It => {},
-            Kind::Neon { form, q, d, n, m } => self.neon(form, q, d, n, m, offset),
+            Kind::It | Kind::Nop => {},
+            Kind::Neon { form, q, d, n, m } => {
+                self.neon(form, q, d, n, m, i.word, i.length, offset)
+            },
             Kind::Transfer {
                 op,
                 rt,
@@ -3721,7 +4674,11 @@ impl Emitter<'_> {
             } => self.when(cond, |e| {
                 e.transfer(op, rt, address, size, signed, q, offset)
             }),
-            Kind::Helper => self.a32_helper(i.word, i.length, offset),
+            Kind::Helper | Kind::RegisterHelper { .. } => self.a32_helper(i.word, i.length, offset),
+            Kind::FpHelper => self.a32_fp_helper(i.word, i.length, offset),
+            Kind::ItFpHelper { cond } => {
+                self.when(cond, |e| e.a32_fp_helper(i.word, i.length, offset))
+            },
             Kind::Branch { target, cond, link } => {
                 if cond != 14 {
                     self.load32(state::nzcv as u32);
@@ -3736,6 +4693,17 @@ impl Emitter<'_> {
                 if cond != 14 {
                     self.b.block_end();
                 }
+            },
+            Kind::Interwork { target, thumb } => {
+                self.link(offset, i.length);
+                self.linear(target);
+                self.c64(0xFFFF_FFFF);
+                self.b.and_i64();
+                self.s(super::PC);
+                self.c32(if thumb { crate::aarch64::cpu::PSTATE_T as i32 } else { 0 });
+                self.exchange_state();
+                // No dispatch through the source ISA's page function.
+                self.b.br(self.f().leave);
             },
             Kind::CompareBranch {
                 rn,
@@ -3754,14 +4722,44 @@ impl Emitter<'_> {
                 self.when(cond, |e| e.exchange(rm, link, offset, i.length))
             },
         }
+        self.a32_itstate = 0;
     }
 
-    /// BX, BLX of a register: the target's instruction set this one's (T32
-    /// bit 0 set, A32 bits 1:0 clear; else the interpreter switches)
+    /// Set the target T bit (an i32 on the stack) and its chaining table.
+    /// The helper preserves privilege, interrupt masks and the GPR banks.
+    fn exchange_state(&mut self) {
+        self.b
+            .call_signature("a32_page_interwork", Signature::new(&[WasmType::I32], &[]));
+    }
+
+    /// Same-ISA targets dispatch in the page. An ISA switch leaves through
+    /// the target mode's chaining table, falling back to the runtime on a miss.
     fn exchange(&mut self, rm: u8, link: bool, offset: u16, length: u8) {
         self.r32(rm);
         self.b.extend_unsigned_i32_to_i64();
         self.s(super::T0);
+        self.g(super::T0);
+        self.c64(1);
+        self.b.and_i64();
+        self.c64(if self.env.isa == Isa::T32 { 1 } else { 0 });
+        self.b.ne_i64();
+        self.b.if_void();
+        if link {
+            self.link(offset, length);
+        }
+        self.g(super::T0);
+        self.b.wrap_i64_to_i32();
+        self.c32(1);
+        self.b.and_i32();
+        self.c32(5);
+        self.b.shl_i32();
+        self.exchange_state();
+        self.g(super::T0);
+        self.c64(!1);
+        self.b.and_i64();
+        self.s(super::PC);
+        self.b.br(self.f().leave);
+        self.b.block_end();
         self.g(super::T0);
         self.c64(if self.env.isa == Isa::T32 { 1 } else { 3 });
         self.b.and_i64();

@@ -33,9 +33,24 @@ jobs:
     name: Build and test
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: v86
+    env:
+      HOST_CC: clang
+      CC_HOST: clang
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          path: v86
+
+      - name: Checkout guest graphics sources
+        uses: actions/checkout@v7
+        with:
+          repository: speedyHKjournalist/retro-gaming-site
+          ref: refactor
+          path: retro-gaming-site
 
       - name: Setup Node.js version
         uses: actions/setup-node@v6
@@ -48,11 +63,24 @@ jobs:
           rustup target add wasm32-unknown-unknown
           rustup component add rustfmt
 
+      # (naga: test-glbridge validates the WGSL the executors generate, and
+      # fails without it)
+      - name: Cache naga
+        id: naga
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/naga
+          key: naga-cli-30.0.0
+
+      - name: Install naga
+        if: steps.naga.outputs.cache-hit != 'true'
+        run: cargo install naga-cli --version 30.0.0 --locked
+
       # (nasm: the CPU tests' guest programs)
       - name: Install APT packages
         run: |
           sudo apt-get update -y
-          sudo apt-get install nasm -y
+          sudo apt-get install nasm clang gcc-mingw-w64-i686 -y
 
       - name: Cache crates
         uses: actions/cache@v5
@@ -65,8 +93,8 @@ jobs:
       - name: Cache Closure Compiler
         uses: actions/cache@v5
         with:
-          path: closure-compiler/
-          key: closure-compiler-v20210601
+          path: v86/closure-compiler/
+          key: closure-compiler-v20210601-v86-layout
 
       - name: rustfmt check
         run: make rustfmt
@@ -78,3 +106,77 @@ jobs:
 
       - name: Tests (no disk images)
         run: make ci-tests
+
+  graphics:
+    name: D3D browser pixels and guest ABI
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: v86
+      - uses: actions/checkout@v7
+        with:
+          repository: speedyHKjournalist/retro-gaming-site
+          ref: refactor
+          path: retro-gaming-site
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.17.0'
+      - name: Native guest-test toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang gcc-mingw-w64-i686 xvfb
+      - name: Cache naga
+        id: naga
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/naga
+          key: naga-cli-30.0.0
+      - name: Install naga
+        if: steps.naga.outputs.cache-hit != 'true'
+        run: cargo install naga-cli --version 30.0.0 --locked
+      - name: Graphics bundle toolchain
+        working-directory: v86
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add wasm32-unknown-unknown
+      - name: Browser WebGPU through SwiftShader
+        working-directory: v86
+        env:
+          GL_CHROME: /usr/bin/google-chrome
+          GL_SWIFTSHADER: '1'
+          GL_HEADFUL: '1'
+        run: |
+          set -o pipefail
+          mkdir -p build/browser-test-output
+          xvfb-run -a make d3d-review-gpu-tests | tee build/browser-test-output/d3d-review-ci.log
+      - name: Execute guest-side protocol and API fixtures
+        working-directory: retro-gaming-site
+        env:
+          V86_ROOT: ${{ github.workspace }}/v86
+          # Match the native Clang fixture builds used by the local ABI gate;
+          # D9WG_CC still selects MinGW for Windows SDK preprocessing.
+          HOST_CC: clang
+          CC_HOST: clang
+        run: |
+          set -o pipefail
+          mkdir -p "$V86_ROOT/build/guest-test-output"
+          printf '%s\0' glbridge/tests/*_test.js | xargs -0 -P 2 -n 1 bash -c '
+            test_file="$1"
+            log="$V86_ROOT/build/guest-test-output/${test_file##*/}.log"
+            if timeout 10m node "$test_file" >"$log" 2>&1; then
+              printf "PASS %s\n" "$test_file"
+            else
+              cat "$log"
+              printf "FAIL %s\n" "$test_file" >&2
+              exit 1
+            fi
+          ' _
+      - name: Retain browser evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: d3d-browser-results
+          path: |
+            v86/build/browser-test-output
+            v86/build/guest-test-output
+          if-no-files-found: error

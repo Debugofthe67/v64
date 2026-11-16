@@ -10,6 +10,7 @@
 
 "use strict";
 
+const { requireNaga } = require("./naga.js");
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
@@ -17,15 +18,8 @@ const path = require("path");
 const { spawnSync, execFileSync } = require("child_process");
 const ff = require("../../src/browser/glbridge/gl-webgpu/gl_fixed_function.js");
 
-function findNaga() {
-    if (process.env.GL_NAGA) return process.env.GL_NAGA;
-    if (spawnSync("naga", ["--version"], { encoding: "utf8" }).status === 0)
-        return "naga";
-    const cargo = path.join(os.homedir(), ".cargo", "bin", "naga");
-    return fs.existsSync(cargo) ? cargo : null;
-}
 
-const naga = findNaga();
+const naga = requireNaga("gl_fixed_function_wgsl_test");
 const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "glwg-ff-"));
 let passed = 0;
 const failures = [];
@@ -288,10 +282,11 @@ test("a point-sprite signature expands the point in clip space", () => {
         attributes: { position: { components: 3 }, color: true },
         pointSprite: true,
     });
-    assert.ok(result.wgslVertex.indexOf("vin.corner.x * ptSize") >= 0);
-    assert.ok(result.wgslVertex.indexOf("0.5 - vin.corner.y * 0.5") >= 0,
+    assert.ok(result.wgslVertex.includes("gl_point_position(clip,ptSize,corner,glState.viewportParams)"));
+    assert.ok(result.wgslVertex.indexOf("0.5 - corner.y * 0.5") >= 0,
         "GL_POINT_SPRITE_COORD_ORIGIN defaults to GL_UPPER_LEFT");
-    assert.ok(result.attributes.some(a => a.name === "corner" && a.location === 7));
+    assert.ok(result.wgslVertex.includes("@builtin(vertex_index) cornerIndex"));
+    assert.ok(!result.attributes.some(a => a.name === "corner"));
 });
 
 test("point sprites honour a lower-left coordinate origin", () => {
@@ -302,7 +297,7 @@ test("point sprites honour a lower-left coordinate origin", () => {
         pointCoordLowerLeft: true,
     });
     assert.ok(result.wgslVertex.indexOf(
-        "vin.corner.y * 0.5 + 0.5") >= 0);
+        "corner.y * 0.5 + 0.5") >= 0);
 });
 
 test("polygon stipple tests the 32 by 32 pattern in fragment coordinates", () => {
@@ -343,6 +338,46 @@ test("point-sprite coordinate replacement samples gl_PointCoord", () => {
     "GL_COORD_REPLACE uses the generated point coordinate");
 });
 
+test("a border axis blends GL's border colour by the footprint outside the texture", () => {
+    const linear = generate(Object.assign(textured({ mode: "REPLACE" }), { _name: "border_linear" }, {
+        texture: [{ enabled: true, target: "2D", format: "RGBA", env: { mode: "REPLACE" },
+            border: { s: "border", t: "clamp", linear: true } }] }));
+    assert.ok(linear.stateFields.includes("textureBorderColor"));
+    assert.match(linear.wgslFragment, /mix\(glState\.textureBorderColor\[0\], textureSample\(t0, s0/);
+    // CLAMP clamps the coordinate first; CLAMP_TO_BORDER does not
+    assert.match(linear.wgslFragment, /clamp\(\(.*\)\.y, 0\.0, 1\.0\) \* /);
+    assert.match(linear.wgslFragment, /clamp\(min\(\(.*\)\.x \* /);
+    const nearest = generate(Object.assign(textured({ mode: "REPLACE" }), { _name: "border_nearest" }, {
+        texture: [{ enabled: true, target: "2D", format: "RGBA", env: { mode: "REPLACE" },
+            border: { s: "border", linear: false } }] }));
+    assert.match(nearest.wgslFragment, /select\(0\.0, 1\.0, .* >= 0\.0 && .* < /);
+    const shadow = generate(Object.assign(textured({ mode: "REPLACE" }, "DEPTH"), { _name: "border_shadow" }, {
+        attributes: { position: { components: 3 }, color: true, texCoord: [{ components: 4 }] },
+        texture: [{ enabled: true, target: "2D", shadow: true, format: "DEPTH", env: { mode: "REPLACE" },
+            border: { s: "border", t: "border", linear: true, compare: "lequal" } }] }));
+    assert.match(shadow.wgslFragment, /select\(0\.0, 1\.0, .*\.z <= glState\.textureBorderColor\[0\]\.x\)/,
+        "a shadow lookup compares the border's depth");
+    const none = generate(textured({ mode: "REPLACE" }));
+    assert.ok(!none.stateFields.includes("textureBorderColor"));
+});
+
+test("a polygon's back-face lines and offset points are variants of their own", () => {
+    const lit = { attributes: { position: { components: 3 }, normal: true, color: true },
+        lighting: { enabled: true, twoSide: true, lights: [{ enabled: true }] } };
+    const back = generate(Object.assign({ _name: "back_facing", backFacing: true }, lit));
+    assert.ok(!/front_facing/.test(back.wgslFragment), "no builtin to ask");
+    assert.match(back.wgslFragment, /select\(.*, false\)/);
+    const offset = generate(Object.assign({ _name: "depth_offset", depthOffset: true }, POSITION_ONLY));
+    assert.match(offset.wgslVertex, /@location\(6\) depthOffset : f32/);
+    assert.match(offset.wgslVertex, /clip\.z = \(clip\.z \+ clip\.w\) \* 0\.5;\n {4}clip\.z = clip\.z \+ vin\.depthOffset \* clip\.w;/);
+    assert.ok(offset.attributes.some(a => a.location === ff.DEPTH_OFFSET_LOCATION));
+    const line = generate(Object.assign({ _name: "wide_stippled_line", wideLine: true, lineStipple: true },
+        POSITION_ONLY));
+    assert.match(line.wgslVertex, /@location\(1\) lineAttr : vec3<f32>/);
+    assert.match(line.wgslFragment, /@interpolate\(linear\) lineDistance : f32/);
+    assert.ok(line.stateFields.includes("rasterParams") && line.stateFields.includes("viewportParams"));
+});
+
 test("eight textured units still fit the varying budget", () => {
     const result = generate({
         _name: "eight_units",
@@ -369,6 +404,11 @@ test("every field that changes the code changes the key", () => {
         { attributes: base.attributes, polygonStipple: true },
         { attributes: base.attributes, flatShading: true },
         { attributes: base.attributes, colorTargets: 2 },
+        { attributes: base.attributes, backFacing: true },
+        { attributes: base.attributes, depthOffset: true },
+        { attributes: base.attributes, wideLine: true },
+        { attributes: base.attributes, lineStipple: true },
+
         { attributes: base.attributes, lighting: { enabled: true,
             lights: [{ enabled: true }] } },
         { attributes: base.attributes, texture: [{ enabled: true, target: "2D",
@@ -377,6 +417,10 @@ test("every field that changes the code changes the key", () => {
     for (const variation of variations)
         assert.notStrictEqual(ff.signatureKey(variation), key,
             "a state that changes the shader must change the signature");
+    const unit = { enabled: true, target: "2D", env: { mode: "MODULATE" } };
+    assert.notStrictEqual(ff.signatureKey({ attributes: base.attributes, texture: [unit] }),
+        ff.signatureKey({ attributes: base.attributes, texture: [{ ...unit, border: { s: "border" } }] }),
+        "the border axes are part of the signature");
 });
 
 test("the same signature produces the same key regardless of field order", () => {

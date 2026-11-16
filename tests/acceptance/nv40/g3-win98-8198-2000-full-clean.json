@@ -1,0 +1,376 @@
+{
+  "date": "2026-11-14",
+  "status": "Original Win98 81.98 cold full 22-test 2000 run completed with native score 84; project and all 18 IQ BMPs saved and exported after normal shutdown. Image/performance gates remain open.",
+  "driver": "NVIDIA 81.98",
+  "settings": {
+    "coldBoot": true,
+    "initialRAMRestored": false,
+    "selectedTests": 22,
+    "availableTests": 22,
+    "desktop": "1024x768x16 RGB565 pitch 2048",
+    "benchmark": "1024x768x16, 16-bit textures, Z16, triple buffering, hardware T&L"
+  },
+  "nativeResult": {
+    "overall3DMarks": 84,
+    "CPUScenes": [
+      "Helicopter",
+      "Adventure"
+    ],
+    "project": "NV982K.3dp",
+    "all22SummaryObserved": true,
+    "DDERR_UNSUPPORTEDObserved": false,
+    "warmSwitchStripesObserved": false
+  },
+  "runs": [
+    {
+      "directory": "build/nv40-win98-2000-cold22",
+      "seconds": 1102,
+      "gpu": {
+        "batches": 9616,
+        "draws": 72101,
+        "bytes": 4316249008,
+        "readbacks": 15637,
+        "failures": 0,
+        "uploads": 18290,
+        "uploadBytes": 1743937204
+      },
+      "graphFaults": [],
+      "nonSoftwareFifoFaults": [],
+      "imageUnchanged": true,
+      "game": {
+        "path": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+        "slot": "secondary-slave",
+        "imageUnchanged": true
+      }
+    },
+    {
+      "directory": "build/nv40-win98-2000-cold22-continue",
+      "seconds": 2237,
+      "gpu": {
+        "batches": 14618,
+        "draws": 95391,
+        "bytes": 11610262504,
+        "readbacks": 25235,
+        "failures": 0,
+        "uploads": 74136,
+        "uploadBytes": 5629355620
+      },
+      "graphFaults": [],
+      "nonSoftwareFifoFaults": [],
+      "imageUnchanged": true,
+      "game": {
+        "path": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+        "slot": "secondary-slave",
+        "imageUnchanged": true
+      }
+    },
+    {
+      "directory": "build/nv40-win98-2000-save-full",
+      "seconds": 431,
+      "gpu": {
+        "batches": 0,
+        "draws": 0,
+        "bytes": 0,
+        "readbacks": 0,
+        "failures": 0,
+        "uploads": 0,
+        "uploadBytes": 0
+      },
+      "graphFaults": [],
+      "nonSoftwareFifoFaults": [],
+      "imageUnchanged": true,
+      "game": {
+        "path": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+        "slot": "secondary-slave",
+        "imageUnchanged": true
+      }
+    }
+  ],
+  "totalDraws": 167492,
+  "continuation": "One coherent pause/restore during the cold full test for isolated profiling; a second restore only saved the completed native result. No clock, watchdog, result, driver or graphics API patches. Score is not a performance acceptance result.",
+  "shutdown": {
+    "normalDialogShutdownSelected": true,
+    "normalDialogConfirmed": true,
+    "finalEIP": 1042749,
+    "halted": 1,
+    "displayMode": null,
+    "observation": "After normal shutdown, black screen and CPU halted in BIOS; no safe-off text is claimed."
+  },
+  "artifacts": [
+    {
+      "file": "NV982K.3dp",
+      "name": "NV982K.3dp",
+      "bytes": 4886,
+      "sha256": "ee0d150d60ed57ea449760e898db1170a966275adeadceb7c3d1b64577ca55a2"
+    },
+    {
+      "file": "Quality/IQ01I_NV982K.bmp",
+      "name": "Quality_IQ01I_NV982K.bmp",
+      "bytes": 249856,
+      "sha256": "a307e8a1d21b21d6253217fc8a2084f2eadb0dc51687932dfdd27576c824cc74"
+    },
+    {
+      "file": "Quality/IQ01T_NV982K.bmp",
+      "name": "Quality_IQ01T_NV982K.bmp",
+      "bytes": 16384,
+      "sha256": "73f01bc478ad38f5072245abb106b84a8211bc024aaafed0121a53d9b14cf8e3"
+    },
+    {
+      "file": "Quality/IQ02I_NV982K.bmp",
+      "name": "Quality_IQ02I_NV982K.bmp",
+      "bytes": 249856,
+      "sha256": "9366a34e05da0f410099edf067259c51415be653b660e17045c88f690098e17f"
+    },
+    {
+      "file": "Quality/IQ02T_NV982K.bmp",
+      "name": "Quality_IQ02T_NV982K.bmp",
+      "bytes": 16384,
+      "sha256": "61b644dcb080a9fdaae1ba27248edab7b1a6752671989d8671a6d83397d6358a"
+    },
+    {
+      "file": "Quality/IQ03I_NV982K.bmp",
+      "name": "Quality_IQ03I_NV982K.bmp",
+      "bytes": 249856,
+      "sha256": "27f2a37011ddaa8333dc3f18ecbcaedf482eb220399bf3d3ebc2b57d4a0f161f"
+    },
+    {
+      "file": "Quality/IQ03T_NV982K.bmp",
+      "name": "Quality_IQ03T_NV982K.bmp",
+      "bytes": 16384,
+      "sha256": "5686a82c8f579dffd9c7d4191cd15bb7b4c4243c0bd7877c2a8a7cdf6952fe53"
+    },
+    {
+      "file": "Quality/IQ04I_NV982K.bmp",
+      "name": "Quality_IQ04I_NV982K.bmp",
+      "bytes": 249856,
+      "sha256": "5be9fad65e78df7672fccb11e436863b256f5723d575069b2d7ccb70c5fa5125"
+    },
+    {
+      "file": "Quality/IQ04T_NV982K.bmp",
+      "name": "Quality_IQ04T_NV982K.bmp",
+      "bytes": 16384,
+      "sha256": "6facf25a2be5c852e3bd864ff87a9461b7430333770e1386312ba92115a9d441"
+    },
+    {
+      "file": "Quality/IQ05I_NV982K.bmp",
+      "name": "Quality_IQ05I_NV982K.bmp",
+      "bytes": 249856,
+      "sha256": "90503f1c336847fee8d22e3da97e60ba7c519c1d564dad504873a5e7fb3187d9"
+    },
+    {
+      "file": "Quality/IQ05T_NV982K.bmp",
+      "name": "Quality_IQ05T_NV982K.bmp",
+      "bytes": 16384,
+      "sha256": "51a938f9ee46bab7f24c23d351ffcf2f1257a0ef257b08d4d184f7ff7af0dc2e"
+    },
+    {
+      "file": "Quality/IQ06I_NV982K.bmp",
+      "name": "Quality_IQ06I_NV982K.bmp",
+      "bytes": 249856,
+      "sha256": "41687da2439f59ffd4fd04787d00f046dd7b4dccb3a99ce1a16a530296c9cfc0"
+    },
+    {
+      "file": "Quality/IQ06T_NV982K.bmp",
+      "name": "Quality_IQ06T_NV982K.bmp",
+      "bytes": 16384,
+      "sha256": "62d1f757cabd1074d1d660db47544549c7379ce1bbe2eae86e8b1e05950b1645"
+    },
+    {
+      "file": "Quality/IQ07I_NV982K.bmp",
+      "name": "Quality_IQ07I_NV982K.bmp",
+      "bytes": 249856,
+      "sha256": "e67052bb695d9eaa9170f3ac1ba4ed08304a1267bf47cd09f662c543fb22eafe"
+    },
+    {
+      "file": "Quality/IQ07T_NV982K.bmp",
+      "name": "Quality_IQ07T_NV982K.bmp",
+      "bytes": 16384,
+      "sha256": "011d80de90bd626f027bc58d253efbc3b0fbe35fca0d336c3b0bee361997f634"
+    },
+    {
+      "file": "Quality/IQ08I_NV982K.bmp",
+      "name": "Quality_IQ08I_NV982K.bmp",
+      "bytes": 2560000,
+      "sha256": "27969ff09aeb2382c0d9178347fad73713936ed0e1c0eef8146872c79d678784"
+    },
+    {
+      "file": "Quality/IQ08T_NV982K.bmp",
+      "name": "Quality_IQ08T_NV982K.bmp",
+      "bytes": 18496,
+      "sha256": "18c5fae787a3e9773354d95ba70f96fb59fc0c64dfcfa42efad9c2108b232dbf"
+    },
+    {
+      "file": "Quality/IQ09I_NV982K.bmp",
+      "name": "Quality_IQ09I_NV982K.bmp",
+      "bytes": 2560000,
+      "sha256": "4613b0544c4bfd979528553b635877b314c1a48ab99a3a5ecfcec2218115884f"
+    },
+    {
+      "file": "Quality/IQ09T_NV982K.bmp",
+      "name": "Quality_IQ09T_NV982K.bmp",
+      "bytes": 18496,
+      "sha256": "5d0b163f4494015797ba72620aff7179d10e435381cd01881800335ad1ab9f50"
+    }
+  ],
+  "imageComparison": [
+    {
+      "case": 1,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0,
+      "exact_pixel_percent": 100.0,
+      "native_sha256": "a307e8a1d21b21d6253217fc8a2084f2eadb0dc51687932dfdd27576c824cc74",
+      "reference_sha256": "0da313c8b34fc7c4e08beb9cefa5a7c332d98086dc719abef4fe80f1a4c8d520"
+    },
+    {
+      "case": 2,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 0,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.0,
+      "max_channel_error": 0,
+      "exact_pixel_percent": 100.0,
+      "native_sha256": "9366a34e05da0f410099edf067259c51415be653b660e17045c88f690098e17f",
+      "reference_sha256": "c0f3de49a85e1e2b03e30140292cdc5a831cd5090d52da0ba186c017f3bd1bb9"
+    },
+    {
+      "case": 3,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 553,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.02008056640625,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.15618896484375,
+      "native_sha256": "27f2a37011ddaa8333dc3f18ecbcaedf482eb220399bf3d3ebc2b57d4a0f161f",
+      "reference_sha256": "2c6b591c0d5ea4d299b7c5a63348502a82306cbcf5fa8af4ed34e6ed956d6d7d"
+    },
+    {
+      "case": 4,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 540,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.019999186197916668,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.176025390625,
+      "native_sha256": "5be9fad65e78df7672fccb11e436863b256f5723d575069b2d7ccb70c5fa5125",
+      "reference_sha256": "a5951c3c965c18c8dec33342d5414ca65deea79fbe1aef8deaadfb02307c451c"
+    },
+    {
+      "case": 5,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 617,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.020772298177083332,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.05853271484375,
+      "native_sha256": "90503f1c336847fee8d22e3da97e60ba7c519c1d564dad504873a5e7fb3187d9",
+      "reference_sha256": "621317632376c082714ca4117bcd6181ca161f3a2a5c9f591e463b705a41dd83"
+    },
+    {
+      "case": 6,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 554,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.019999186197916668,
+      "max_channel_error": 8,
+      "exact_pixel_percent": 99.1546630859375,
+      "native_sha256": "41687da2439f59ffd4fd04787d00f046dd7b4dccb3a99ce1a16a530296c9cfc0",
+      "reference_sha256": "d324ed6b6e7281769a857904bb2457ed92cc5fc01338cde89a9f2e0d97df9e77"
+    },
+    {
+      "case": 7,
+      "width": 256,
+      "height": 320,
+      "roi_y": 64,
+      "different_pixels": 375,
+      "pixels": 65536,
+      "mean_absolute_rgb_error": 0.00762939453125,
+      "max_channel_error": 4,
+      "exact_pixel_percent": 99.42779541015625,
+      "native_sha256": "e67052bb695d9eaa9170f3ac1ba4ed08304a1267bf47cd09f662c543fb22eafe",
+      "reference_sha256": "77d76eb60967406651b15c61a2e459ded9f5ac0d0aa5f186c72c73b2577c0d6b"
+    },
+    {
+      "case": 8,
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "different_pixels": 320993,
+      "pixels": 786432,
+      "mean_absolute_rgb_error": 5.767790052625868,
+      "max_channel_error": 104,
+      "exact_pixel_percent": 59.18362935384114,
+      "native_sha256": "27969ff09aeb2382c0d9178347fad73713936ed0e1c0eef8146872c79d678784",
+      "reference_sha256": "fb969ac1941880a20d186f2ef8e392365f995460f2c2cccb943caf7014fa85af"
+    },
+    {
+      "case": 9,
+      "width": 1024,
+      "height": 832,
+      "roi_y": 64,
+      "different_pixels": 92886,
+      "pixels": 786432,
+      "mean_absolute_rgb_error": 4.003028021918403,
+      "max_channel_error": 248,
+      "exact_pixel_percent": 88.18893432617188,
+      "native_sha256": "4613b0544c4bfd979528553b635877b314c1a48ab99a3a5ecfcec2218115884f",
+      "reference_sha256": "16d5837ce7630b87f7bb9c9f9208bd7de01dc7886cf62c4287fb866710a56866"
+    }
+  ],
+  "imageScope": "Full run loaded before the vertex dual-destination fix. Images retain the same black-barrel lighting defect as the prior XP run; a fresh post-fix IQ run is still required. I comparisons exclude only top 64 metadata rows against the existing proxy reference.",
+  "screenshots": [
+    {
+      "file": "build/nv40-win98-2000-cold22-continue/capture-0421.png",
+      "bytes": 51828,
+      "sha256": "135d981b5674feb0655bb51f22ea7f961b3c9728dc906db187bd09cc6b5149dc"
+    },
+    {
+      "file": "build/nv40-win98-2000-save-full/capture-0108.png",
+      "bytes": 34144,
+      "sha256": "69b5e1145df730cb247d06051e3e48113e4f4407767c41603a7d77ad1b5b7d65"
+    },
+    {
+      "file": "build/nv40-win98-2000-save-full/capture-0122.png",
+      "bytes": 451,
+      "sha256": "11ca7b11d3121c193a263cfde6f5a112b1b8a6c606bda350cc94f163c6f5359b"
+    }
+  ],
+  "bundle": {
+    "status": "complete",
+    "guest": "win98",
+    "vramMiB": 128,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windows98/windows98hdd.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmarklegacy.img",
+    "state": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-2000-save-full.state",
+      "bytes": 619952696,
+      "sha256": "c6b1ab0e312b9697948255e090814a70e5d08196cf707cd8c82a69881833dce1"
+    },
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-2000-save-full-overlay.bin",
+      "bytes": 198798840,
+      "sha256": "05d402b0d3b261df17b86449467a78b36d5da168887b55e464c926a63fc679ff"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-win98-2000-save-full-game-overlay.bin",
+      "bytes": 5192,
+      "sha256": "e521945657c07dbbab3749420918ce16d341e4cf9e41cfe7c96e2c4e131a8b61"
+    }
+  },
+  "imageGate": false,
+  "performanceGate": false
+}

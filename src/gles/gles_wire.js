@@ -37,6 +37,23 @@ for(const [api, { base, commands }] of Object.entries(GLES_APIS))
     GLES_RANGES.push({ api, first: base, last: base + commands.length - 1 });
 }
 
+// Private v86 commands live outside the pinned emugl ranges. A native
+// IOSurface ID is a kernel name shared across processes, not a GL name.
+export const IOSURFACE_ACQUIRE = 0x76383600;
+export const IOSURFACE_COMMANDS = [
+    ["v86AcquireIOSurface", [["id", "u32"], ["width", "u32"], ["height", "u32"], ["fourcc", "u32"]]],
+    ["v86IOSurfaceIsCurrent", [["handle", "u32"], ["seed", "u32"]]],
+    ["v86UploadIOSurface", [["handle", "u32"], ["seed", "u32"], ["pixels", "ptr", "in"]]],
+    ["v86ReadIOSurface", [["handle", "u32"], ["y", "u32"], ["rows", "u32"], ["flip", "u32"], ["pixels", "ptr", "out"]]],
+];
+IOSURFACE_COMMANDS.forEach(([name, params], i) =>
+{
+    const command = { api: "rc", opcode: IOSURFACE_ACQUIRE + i, name, ret: "u32", params, flags: [] };
+    BY_OPCODE.set(command.opcode, command);
+    BY_NAME.set(name, command);
+});
+GLES_RANGES.push({ api: "v86", first: IOSURFACE_ACQUIRE, last: IOSURFACE_ACQUIRE + IOSURFACE_COMMANDS.length - 1 });
+
 /** @param {number} opcode @return {?GLESCommand} */
 export function command_of_opcode(opcode) { return BY_OPCODE.get(opcode) || null; }
 

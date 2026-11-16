@@ -1,0 +1,103 @@
+{
+  "date": "2026-11-14",
+  "scope": "G2 actual notifier DMA context and native interrupt visibility. Full 2001, FP input15 and benchmark/image/performance gates remain open.",
+  "before": {
+    "native93ISR": "At preferred VA188dd6..188df0 the original nv4_mini.sys reads 40014C, masks low24 and stores it at trap-record offset8. Prior native safe-dispatch captures returned zero.",
+    "emulator": "DMA_NOTIFY only updated the decoded methods map; RAMIN GROBJ word1 and CTX_SWITCH_B/CTX_CACHE_B stayed zero."
+  },
+  "implementation": [
+    "SET_OBJECT loads notifier context word1; retain it with loaded object state across RAMIN reuse and v5 graph snapshots.",
+    "DMA_NOTIFY resolves native null class30 to zero, replaces only low24, updates GROBJ word1, active CTX_SWITCH_B and the subchannel CTX_CACHE_B, and marks VRAM dirty.",
+    "Original notification writes and M2MF checked planning consume this same loaded notifier instance, including preloaded RAMIN state and CPU context writes.",
+    "Legacy v4 graphs derive the accepted notifier instance from method180 while preserving RAMIN upper flags; no NVIDIA executable, API, shader input or guest clock is patched."
+  ],
+  "nativeProof": {
+    "run": "build/nv40-xp-mark2001-notifier-context",
+    "source": "build/nv40-xp-mark2001-cold.state",
+    "driver": "Original XP93.71",
+    "observedReads": [
+      {
+        "elapsed": 358.46958429200004,
+        "offset": 4194636,
+        "size": 4,
+        "write": false,
+        "value": 59790,
+        "eip": 2152566956
+      },
+      {
+        "elapsed": 358.472906333,
+        "offset": 4194636,
+        "size": 4,
+        "write": false,
+        "value": 59790,
+        "eip": 2152566956
+      },
+      {
+        "elapsed": 358.475921667,
+        "offset": 4194636,
+        "size": 4,
+        "write": false,
+        "value": 59790,
+        "eip": 2152566956
+      },
+      {
+        "elapsed": 358.47798112500004,
+        "offset": 4194636,
+        "size": 4,
+        "write": false,
+        "value": 59790,
+        "eip": 2152566956
+      }
+    ],
+    "observation": "Original native interrupt-handler reads now return a real notifier instance (0xe98e), rather than zero. This is protocol evidence; it does not claim that unknown FP input15 is resolved."
+  },
+  "validation": [
+    "RED: new SET_OBJECT notifier-context assertion fails on the prior implementation",
+    "Graph: RAMIN writeback, preserved high flags, mirrors, null binding, RAMIN reuse, v5 restore, v4 migration, CPU writes and preloaded notifier",
+    "M2MF tests initialize/change DMA_NOTIFY through actual hardware methods; alias/permission checks share its context",
+    "2D, graph, FIFO, device and full real Chrome WebGPU suites pass",
+    "Closure release build: zero errors/warnings"
+  ],
+  "sources": [
+    "https://github.com/envytools/envytools/blob/master/nvhw/pgraph_grobj.c",
+    "https://github.com/envytools/envytools/blob/master/hwtest/pgraph_mthd_grobj.cc"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark2001-notifier-context/first-notifier-context-proof.json",
+      "sha256": "fa5f3e2463628100ca27e9e87f59d3c2092ed5c3f40131f88ebc4e183cb5e642"
+    },
+    {
+      "file": "build/nv40-native-isr-ctx-context.txt",
+      "sha256": "f45dfd2d94cdc4596955d77c912e1ccee9674cce0a3a2e76b10246ac10931043"
+    },
+    {
+      "file": "build/nv40-notify-context-red.log",
+      "sha256": "c3e16438d73719a65cd86e33e616765f5818540cb3dcde0e22189413754ff30c"
+    },
+    {
+      "file": "build/nv40-notify-context-unit.log",
+      "sha256": "c6aec485b53c53ece999006a90a06b1b0039996116d15108aad4a54bd205edcd"
+    },
+    {
+      "file": "build/nv40-notify-context-2d.log",
+      "sha256": "8b2e02a9384ebc736572a499539835c50bd18cb208f78d62104692438286f346"
+    },
+    {
+      "file": "build/nv40-notify-context-device.log",
+      "sha256": "f8464600525ea15b7d6c0e4236083325227082ca6a94121ab5cfd1a99f70b67e"
+    },
+    {
+      "file": "build/nv40-notify-context-fifo.log",
+      "sha256": "ee3a945b6ec642f0da4dfccee5632271a713cb0d686f45f258374e066423b8f3"
+    },
+    {
+      "file": "build/nv40-notify-context-gpu.log",
+      "sha256": "033717edce7c81e99268f8c114787bc6de302cf57a86e8a3e28a5b3281b1a93a"
+    },
+    {
+      "file": "build/nv40-notify-context-build.log",
+      "sha256": "cf692913bd8dc1d0ca87de3a1b587492d8cab6eefed7f07f093eb5416a116693"
+    }
+  ]
+}

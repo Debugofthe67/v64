@@ -32,7 +32,7 @@
 //                            readback, tagged with its request id
 //   done   { seq }           the batch has run and its writes were sent
 //   lost   { reason }        the renderer cannot go on
-//   caps   { present }       (to hello and reset) whether SURFACE_PRESENT shows pictures
+//   caps   { present, textureCompressionBC }  presentation and enabled device BC
 //   frame  { width, height, bytes }  (stream "gles", without a layer) a posted
 //                            color buffer, RGBA rows from the top
 //   gles_saved { id, state } gles_save's answer (null: no GLES executor yet)
@@ -114,7 +114,16 @@
                 { texture: layer.context.getCurrentTexture(), origin: [p.dx, p.dy, 0] }, [p.w, p.h, 1]);
             layer.place(0, 0, p.width, p.height, true);
         };
-        const caps = () => channel.post({ type: "caps", present: !!layer });
+        let lastCaps = null;
+        const caps = (force = true) => {
+            const features = executor.device && executor.device.features;
+            const bc = !!(!lost && features && typeof features.has === "function" && features.has("texture-compression-bc"));
+            const bits = +!!layer | +bc << 1;
+            if (force || bits !== lastCaps) {
+                lastCaps = bits;
+                channel.post({ type: "caps", present: !!layer, textureCompressionBC: bc });
+            }
+        };
 
         // VX (virtio-gpu's Venus contexts), on the same device
         let vx = null;
@@ -209,7 +218,12 @@
                                 submitCount: seq });
                             if (executor.failed && !executor.device) fail(executor.failed);
                         }
-                        if (forGeneration === generation) channel.post({ type: "done", seq });
+                        if (forGeneration === generation) {
+                            // A first batch may have acquired the device. Optional
+                            // compression is granted only after actual enablement.
+                            caps(false);
+                            channel.post({ type: "done", seq });
+                        }
                     });
                     break;
                 }

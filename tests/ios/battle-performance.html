@@ -1,0 +1,154 @@
+<!doctype html><meta charset="utf-8"><title>iPhone battle checkpoint benchmark</title>
+<style>iframe{width:1400px;height:1100px}#log{white-space:pre-wrap}</style>
+<pre id="log"></pre><pre id="result">Running…</pre>
+<script type="module">
+// A caller-owned browser profile contains BOTH the RAM checkpoint and its
+// matching OPFS NAND generation. Clone that closed profile before EACH run;
+// never restore RAM against a disk advanced by the preceding measurement.
+const query = new URLSearchParams(location.search), sleep = ms => new Promise(r => setTimeout(r, ms));
+const sample_ms = Number(query.get("sample") || 200);
+if(!Number.isInteger(sample_ms) || sample_ms < 10 || sample_ms > 1000) throw Error("sample must be 10..1000 ms");
+const log = text => document.getElementById("log").textContent += text + "\n";
+const disk_reserve = Number(query.get("disk_reserve_bytes") || 1024 ** 3);
+function check_disk(host) {
+    if(!Number.isSafeInteger(disk_reserve) || disk_reserve < 1)
+        throw Error("disk_reserve_bytes must be a positive safe integer");
+    if(!Number.isFinite(host.disk_available)) throw Error("Cannot verify available disk space for the checkpoint");
+    if(host.disk_available < disk_reserve)
+        throw Error("Insufficient disk space for battle test: " + host.disk_available + " bytes available; reserve " + disk_reserve);
+}
+const artifact = async (name, body) => {
+    const response = await fetch("/__artifact?name=" + name, { method: "POST", body });
+    if(!response.ok) throw Error("Could not save " + name);
+};
+async function until(fn, description, timeout = 120000) {
+    const end = performance.now() + timeout;
+    while(performance.now() < end) { const value = await fn();if(value) return value;await sleep(10); }
+    throw Error("Timed out: " + description);
+}
+async function screenshot(name, frame, emulator) {
+    // The CPU must already be stopped. Presentation can clear a canvas, so
+    // request a full repaint and require visible pixels before accepting it.
+    for(let attempt = 0; attempt < 10; attempt++) {
+        emulator.worker_controller.request_frame(true);
+        await until(() => !emulator.worker_controller.frame_pending, "panel repaint", 5000);
+        const image = await new Promise(resolve => frame.contentWindow.requestAnimationFrame(() => resolve(emulator.screen_make_screenshot())));
+        if(!image?.src) continue;
+        await image.decode();
+        const canvas = document.createElement("canvas");canvas.width = image.width;canvas.height = image.height;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });ctx.drawImage(image, 0, 0);
+        const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        if(rgba.some((value, i) => i % 4 !== 3 && value > 8)) {
+            await artifact(name, await (await fetch(image.src)).blob());return;
+        }
+    }
+    throw Error("No visible battle screenshot after full panel repaint");
+}
+let emulator, input, frame;
+try {
+    const vm = query.get("vm");if(!vm) throw Error("vm must identify the checkpoint's disposable VM");
+    // Check before creating the VM or restoring a gigabyte of RAM. Host
+    // swapping can exhaust the volume even when APFS clones share NAND.
+    check_disk(await (await fetch("/__host_metrics")).json());
+    frame = document.createElement("iframe");frame.src = "/index.html?vm=" + encodeURIComponent(vm);document.body.append(frame);
+    emulator = await until(() => frame.contentWindow.v86_console?.emulator, "console");
+    await emulator.stop();
+    const root = await navigator.storage.getDirectory(), directory = await root.getDirectoryHandle("v86-performance");
+    const file = await (await directory.getFileHandle(query.get("checkpoint") || "battle-state.v86")).getFile();
+    await emulator.restore_state_stream({ size: file.size, read: async (at, length) =>
+        new frame.contentWindow.Uint8Array(await file.slice(at, at + length).arrayBuffer()) });
+    log("Restored battle RAM and matching NAND; " + file.size + " snapshot bytes");
+    if(query.has("navigate")) {
+        window.battle_navigation = true;log("Navigation checkpoint ready; CPU stopped, no FPS measurement");
+        await new Promise(() => {});
+    }
+    const sample = () => emulator.get_diagnostics();
+    const normal_clock = d => {
+        if(d.clock?.mode !== "normal" || d.clock.rate !== 1 || d.clock.paused)
+            throw Error("FPS requires a running normal clock at rate 1: " + JSON.stringify(d.clock));
+    };
+    const frames = d => (d.graphics?.native?.drawables || []).filter(x => x.width === 960 && x.height === 640).reduce((n, x) => n + x.frames, 0);
+    const touch = points => emulator.bus.send("touch", { width: 640, height: 960, touches: points });
+    // Finish any finger stored in the checkpoint. An indefinitely held
+    // finger does not reset this iOS build's auto-lock timer.
+    let tick = 0;
+    const block = async () => {
+        if(tick % 8 === 0) { touch([]);await sleep(100); }
+        touch([[1, 45 + (tick++ % 2), 480]]);
+    };
+    const screen_states = [];
+    emulator.add_listener("ios-screen-state", state => screen_states.push(state));
+    const running_sample = async () => {
+        const d = await sample();normal_clock(d);
+        if(!d.graphics?.panel?.awake || screen_states.some(s => !s.awake))
+            throw Error("Panel slept during battle work; reject this measurement");
+        return d;
+    };
+    await emulator.run();
+    // Up and the next Down must have distinct running-machine timestamps.
+    const input_mode = query.get("input");
+    if(input_mode !== "checkpoint") {
+        touch([]);await sleep(2000);
+        await block();
+        if(input_mode !== "hold") input = setInterval(block, 2000);
+    }
+    const initial = await sample(), warmup = Number(query.get("warmup") || 12);
+    normal_clock(initial);
+    if(!initial.graphics?.native) throw Error("Build lacks native presentation counters");
+    await until(async () => { await sleep(sample_ms);return frames(await running_sample()) - frames(initial) >= warmup; }, "warmup game frames", 180000);
+    await emulator.stop();await screenshot("battle-start.png", frame, emulator);
+    const photographed = frames(await sample());await emulator.run();
+    await until(async () => { await sleep(sample_ms);return frames(await running_sample()) - photographed >= 2; }, "post-screenshot game frames", 120000);
+    const host_before = await (await fetch("/__host_metrics")).json();
+    check_disk(host_before);
+    const before = await sample();log("Warmup completed: " + (frames(before) - frames(initial)) + " frames");
+    normal_clock(before);
+    const duration = Number(query.get("duration") || 60000);
+    const frame_limit = Number(query.get("frames") || 0);
+    if(frame_limit > 0)
+        await until(async () => { await sleep(sample_ms);return frames(await running_sample()) - frames(before) >= frame_limit; }, "fixed-work battle frames", duration);
+    else await sleep(duration);
+    const after = await sample();
+    normal_clock(after);
+    await emulator.stop();clearInterval(input);touch([]);
+    const host_after = await (await fetch("/__host_metrics")).json();
+    check_disk(host_after);
+    const ms = after.host_time - before.host_time, count = frames(after) - frames(before);
+    const result = { label: query.get("label") || "unlabelled", checkpoint: { name: file.name, bytes: file.size, modified: file.lastModified },
+        input: input_mode === "checkpoint" ? "preserve checkpoint input; no host gesture during warmup or measurement" :
+            input_mode === "hold" ? "release checkpoint finger while running for 2000 ms; hold shield at (45,480) through warmup and measurement" :
+            "release checkpoint finger while running for 2000 ms; shield at (45/46,480), move every 2000 ms, release 100 ms every 16 s", warmup_frames: frames(before) - frames(initial),
+        warmup: { requested_frames: warmup, completed_frames: frames(before) - frames(initial),
+            elapsed_host_ms: before.host_time - initial.host_time,
+            elapsed_clock_ms: before.clock.now_ms - initial.clock.now_ms,
+            includes_start_screenshot: true, initial_page_tier: initial.page_tier },
+        frame_limit, sample_ms, measurement: frame_limit ? "fixed completed-frame workload" : "fixed duration",
+        screen_states,
+        duration_ms: ms, game_frames: count, game_fps: count * 1000 / ms,
+        panel_frames: after.graphics.panel.frames - before.graphics.panel.frames,
+        panel_fps: (after.graphics.panel.frames - before.graphics.panel.frames) * 1000 / ms,
+        host: { before: host_before, after: host_after }, before, after };
+    await artifact("battle-fps.json", JSON.stringify(result, null, 2));
+    if(!before.graphics.panel.awake || !after.graphics.panel.awake || screen_states.some(s => !s.awake))
+        throw Error("Panel slept during the battle benchmark; reject this FPS window");
+    await screenshot("battle.png", frame, emulator);
+    if(count < 1) throw Error("No complete game frame in measurement window");
+    log(JSON.stringify({ duration_ms: ms, game_frames: count, game_fps: result.game_fps, panel_fps: result.panel_fps }));
+    window.battle_complete = result;
+    if(!query.has("hold")) document.getElementById("result").textContent = "PASS: same-checkpoint measurement completed; 60 FPS acceptance requires inspecting battle-fps.json";
+} catch(error) {
+    clearInterval(input);await emulator?.stop().catch(() => {});log(error.stack);
+    // A timed-out or sleeping run is evidence to diagnose, never an FPS
+    // result. Preserve the final clock/panel/CPU state and a visible image
+    // when available before the runner closes the disposable browser.
+    if(emulator) {
+        try {
+            await artifact("battle-failure.json", JSON.stringify({ error: error.stack,
+                diagnostics: await emulator.get_diagnostics() }, null, 2));
+            await screenshot("battle-failure.png", frame, emulator);
+        } catch(evidence_error) { log("Failure evidence: " + evidence_error.message); }
+    }
+    window.battle_error = error.stack;
+    if(!query.has("hold")) document.getElementById("result").textContent = "FAIL: " + error.stack;
+}
+</script>

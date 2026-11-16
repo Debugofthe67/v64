@@ -35,7 +35,7 @@ function fixture({ webgpu = true } = {}) {
     const options = { screenCanvas: screen,
         screenBackend: { set: value => backend.push(["set", value]), fallback: () => backend.push(["fallback"]) },
         onError: error => errors.push(error),
-        isGraphical: () => graphical, glExecutor: executor(), d3d8Executor: executor(), d3d9Executor: executor() };
+        isGraphical: () => graphical, glExecutor: executor(), d3d9Executor: executor() };
     options.d3d9Executor.shaderWorker = { terminate() { terminated++; } };
     return { emulator, options, screen, hosts, resets, backend, errors,
         setGraphical(value) { graphical = value; }, terminated: () => terminated };
@@ -54,7 +54,7 @@ const placed = layer => [layer.x, layer.y, layer.width, layer.height, layer.visi
     await bridge.ready;
     assert.ok(compositor.attached);
     assert.deepEqual(f.backend, [["set", compositor]], "the screen draws through the compositor once WebGPU is up");
-    assert.deepEqual(compositor.layers.map(layer => layer.name), ["gl", "d3d8", "d3d9"]);
+    assert.deepEqual(compositor.layers.map(layer => layer.name), ["gl", "d3d9"]);
     const gl = bridge.glCanvas.layer, d3d9 = bridge.d3d9Canvas.layer;
     assert.ok(compositor.layers.every(layer => !layer.visible), "boot shows only the guest desktop");
 
@@ -122,7 +122,7 @@ const placed = layer => [layer.x, layer.y, layer.width, layer.height, layer.visi
     let toHost = null;
     const channel = { remote: false, post: message => toDevice.push(message), listen: handler => { toHost = handler; } };
     const plugin = V86GraphicsProxy({ onError: p.options.onError, glExecutor: p.options.glExecutor,
-        d3d8Executor: p.options.d3d8Executor, d3d9Executor: p.options.d3d9Executor });
+        d3d9Executor: p.options.d3d9Executor });
     assert.equal(plugin.name, "v86gl");
     assert.ok(plugin.wants_screen);
     assert.equal(typeof plugin.create_device({ remote: false, post() {}, listen() {} }).notify, "function",
@@ -130,9 +130,12 @@ const placed = layer => [layer.x, layer.y, layer.width, layer.height, layer.visi
     const started = plugin.start({ emulator: p.emulator, channel, screen: {
         canvas: p.screen, set_backend: value => p.backend.push(["set", value]),
         fallback: () => p.backend.push(["fallback"]), is_graphical: () => true } });
-    assert.deepEqual(toDevice, [{ type: "available", value: true }], "batches are taken while WebGPU starts");
+    assert.deepEqual(toDevice, [{ type: "initializing", value: true }], "startup batches wait for the CPU front end and capabilities");
     await started;
-    assert.equal(toDevice.length, 1, "and still once it is up");
+    assert.deepEqual(toDevice.filter(m => m.type === "available"), [{ type: "available", value: true }]);
+    assert.equal(toDevice.at(-1).type, "initializing");
+    assert.equal(toDevice.at(-1).value, false);
+    assert.ok(toDevice.some(m => m.type === "glslang" && m.error), "a missing compiler reaches the CPU as a terminal failure");
     assert.equal(p.backend[0][0], "set");
     const pushed = [];
     plugin.bridge.pushPCIBatch = event => pushed.push(event);
@@ -147,6 +150,23 @@ const placed = layer => [layer.x, layer.y, layer.width, layer.height, layer.visi
     assert.deepEqual(toDevice.at(-1), { type: "write", generation: 3, offset: 0x40, bytes: new Uint8Array([5]) },
         "a readback goes to the arena generation of its batch");
     assert.ok(pushed[0].isMemoryValid());
+    toHost({ type: "batch", id: 8, generation: 3, frameId: 10, bytes });
+    assert.ok(!pushed[0].isInlineMemoryValid(), "the next submission expires the inline arena");
+    assert.ok(pushed[0].isMemoryValid(), "dedicated response slots retain their arena lifetime");
+    const beforeLate = toDevice.length;
+    pushed[0].writeGuestMemory(0x40, new Uint8Array([6]), true);
+    assert.equal(toDevice.length, beforeLate, "an expired inline response is dropped on the local path too");
+    pushed[1].writeGuestMemory(0x40, new Uint8Array([7]), true);
+    assert.equal(toDevice.at(-1).inlineId, 8, "the device can also reject stale responses across threads");
+    const waitForSpace = plugin.bridge.graphicsJournal.waitForSpace;
+    let releaseHistory;
+    const historyPressure = new Promise(resolve => { releaseHistory = resolve; });
+    plugin.bridge.graphicsJournal.waitForSpace = () => historyPressure;
+    toHost({ type: "batch", id: 9, generation: 3, frameId: 11, bytes });
+    assert.notDeepEqual(toDevice.at(-1), { type: "done", id: 9 }, "local ACK waits for raw journal space");
+    releaseHistory();await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(toDevice.at(-1), { type: "done", id: 9 });
+    plugin.bridge.graphicsJournal.waitForSpace = waitForSpace;
     plugin.bridge.beginStateRestore = () => {};
     plugin.bridge.waitForIdle = async () => {};
     await plugin.before_restore();
@@ -164,8 +184,7 @@ const placed = layer => [layer.x, layer.y, layer.width, layer.height, layer.visi
     const r = fixture();
     const toRemote = [];
     let fromRemote = null;
-    const remote = V86GraphicsProxy({ glExecutor: r.options.glExecutor, d3d8Executor: r.options.d3d8Executor,
-        d3d9Executor: r.options.d3d9Executor });
+    const remote = V86GraphicsProxy({ glExecutor: r.options.glExecutor, d3d9Executor: r.options.d3d9Executor });
     await remote.start({ emulator: r.emulator, channel: { remote: true, post: (m, transfer) => toRemote.push([m, transfer]),
         listen: handler => { fromRemote = handler; } }, screen: { canvas: r.screen, set_backend() {}, fallback() {}, is_graphical: () => true } });
     const order = [];
@@ -192,17 +211,68 @@ const placed = layer => [layer.x, layer.y, layer.width, layer.height, layer.visi
     await remote.idle();
     assert.ok(toRemote.some(([m]) => m.type === "done" && m.id === 2));
     assert.equal(remote.stats.graphics_pending, 0);
+    // A completed GPU job can append its CPU continuation during draining.
+    // A save must include the appended work before preparing its checkpoint.
+    let prepared = false, saved = false, continuation;
+    const oldPrepare = remote.bridge.prepareSaveState, oldSerialize = remote.bridge.serializeCheckpoint;
+    remote.bridge.prepareSaveState = async () => { prepared = true; };
+    remote.bridge.serializeCheckpoint = () => new Uint8Array([42]);
+    remote.bridge.waitForSubmittedBatches = () => {
+        if (remote.lastEvent.frameId === 20) { batch(5, 21); return Promise.resolve(); }
+        return new Promise(resolve => { continuation = resolve; });
+    };
+    batch(4, 20);
+    const saving = remote.prepare_save().then(value => { saved = true; return value; });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(prepared, false); assert.equal(saved, false, "save waits for work appended by a completing GPU job");
+    continuation(); assert.deepEqual(await saving, new Uint8Array([42])); assert.equal(prepared, true);
+    remote.bridge.prepareSaveState = oldPrepare; remote.bridge.serializeCheckpoint = oldSerialize;
+    // A batch that fails loses only itself: acknowledged, renderer still available
+    remote.bridge.waitForSubmittedBatches = () => Promise.reject(new Error("a host bug"));
+    batch(3, 12);
+    await remote.idle();
+    assert.ok(toRemote.some(([m]) => m.type === "done" && m.id === 3));
+    assert.ok(!toRemote.some(([m]) => m.type === "available" && m.value === false),
+        "one failed batch does not take graphics away for the session");
+    // The arena's owner is gone: a record behind its batches ends its sessions
+    remote.bridge.waitForSubmittedBatches = () => Promise.resolve();
+    fromRemote({ type: "released" });
+    await remote.idle();
+    assert.ok(remote.lastEvent.released, "the release reaches the bridge in order");
+    assert.equal(remote.lastEvent.bytes[0] | remote.lastEvent.bytes[1] << 8, 0xffe2);
     await remote.destroy();
 
     // Without WebGPU the device hears that nothing renders
     const q = fixture({ webgpu: false });
     const toFailedDevice = [];
     const failedPlugin = V86GraphicsProxy({ onError: q.options.onError, glExecutor: q.options.glExecutor,
-        d3d8Executor: q.options.d3d8Executor, d3d9Executor: q.options.d3d9Executor });
+        d3d9Executor: q.options.d3d9Executor });
     await failedPlugin.start({ emulator: q.emulator, channel: { remote: false, post: m => toFailedDevice.push(m), listen() {} },
         screen: { canvas: q.screen, set_backend() {}, fallback() {}, is_graphical: () => true } });
-    assert.deepEqual(toFailedDevice.map(m => m.value), [true, false]);
+    assert.deepEqual(toFailedDevice.filter(m => m.type === "initializing").map(m => m.value), [true, false]);
+    assert.ok(!toFailedDevice.some(m => m.type === "available" && m.value));
     await failedPlugin.destroy();
+
+    // A slow compiler cannot expose a window where CPU queries accidentally
+    // fall back to the renderer. WebGPU being ready is insufficient.
+    const slow = fixture(), startupMessages = [], oldFetch = global.fetch;
+    let finishFetch;
+    global.fetch = () => new Promise(resolve => { finishFetch = resolve; });
+    const slowPlugin = V86GraphicsProxy({ onError: slow.options.onError, glExecutor: slow.options.glExecutor,
+        d3d9Executor: slow.options.d3d9Executor, glslang: "https://compiler.invalid/glslang.wasm" });
+    try {
+        const startup = slowPlugin.start({ emulator: slow.emulator,
+            channel: { remote: true, post: m => startupMessages.push(m), listen() {} },
+            screen: { canvas: slow.screen, set_backend() {}, fallback() {}, is_graphical: () => true } });
+        await slowPlugin.bridge.ready;
+        assert.ok(!startupMessages.some(m => m.type === "available"));
+        assert.deepEqual(startupMessages.filter(m => m.type === "initializing").map(m => m.value), [true]);
+        finishFetch({ arrayBuffer: async () => new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]).buffer });
+        await startup;
+        const compilerAt = startupMessages.findIndex(m => m.type === "glslang" && m.module);
+        const releasedAt = startupMessages.findIndex(m => m.type === "initializing" && !m.value);
+        assert.ok(compilerAt > 0 && releasedAt > compilerAt, "release startup only after sending the CPU compiler");
+    } finally { global.fetch = oldFetch; await slowPlugin.destroy(); }
 
     console.log("graphics_proxy_test: ok");
 })().catch(error => { console.error(error); process.exitCode = 1; });

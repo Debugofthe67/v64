@@ -1,0 +1,286 @@
+import {decode_vertex_program,decode_fragment_program} from "./nv40_program.js";
+import {translate_vertex_program,translate_fragment_program} from "./nv40_shader.js";
+import {NV40State} from "./nv40_state.js";
+import {NV40Render} from "./nv40_render.js";
+// NV40_3D control state. Method layouts: envytools rnndb/graph/nv30-40_3d.xml
+// and hwtest/pgraph_class_kelvin.cc (MIT). This implementation is original.
+// Draw, query and clear triggers are handled outside the state whitelist.
+const STATE_RANGES = [
+    [0x180, 0x1B8],
+    [0x200, 0x22C],
+    [0x234, 0x23C],
+    [0x260, 0x264],
+    [0x280, 0x28C],
+    [0x2B8, 0x38C],
+    [0x394, 0x398],
+    [0x3B0, 0x3B0],
+    [0x3B8, 0x3BC],
+    [0x8C0, 0x8C4],
+    [0x8CC, 0x8D8],
+    [0x8E0, 0x8E4],
+    [0x900, 0x97C],
+    [0xA00, 0xA04],
+    [0xA0C, 0xA0C],
+    [0xA1C, 0xA3C],
+    [0xA60, 0xB3C],
+    [0xB40, 0xB64],
+    [0xB80, 0xBFC],
+    [0x1428, 0x1430],
+    [0x1438, 0x1438],
+    [0x1450, 0x1454],
+    [0x145C, 0x145C],
+    [0x1478, 0x1508],
+    [0x1510, 0x1518],
+    [0x1520, 0x1528],
+    [0x1530, 0x1538],
+    [0x1540, 0x1548],
+    [0x1550, 0x1558],
+    [0x1560, 0x1568],
+    [0x1570, 0x1578],
+    [0x1580, 0x1588],
+    [0x1590, 0x1598],
+    [0x15A0, 0x15A8],
+    [0x15B0, 0x15B8],
+    [0x15C0, 0x15C8],
+    [0x15D0, 0x15D8],
+    [0x15E0, 0x15E8],
+    [0x15F0, 0x15F8],
+    [0x1680, 0x16BC],
+    [0x1710, 0x171C],
+    [0x1738, 0x177C],
+    [0x1804, 0x1804],
+    [0x181C, 0x1820],
+    [0x1828, 0x187C],
+    [0x1880, 0x1AFC],
+    [0x1C00, 0x1D00],
+    [0x1D60, 0x1D64],
+    [0x1D6C, 0x1D6C],
+    [0x1D78, 0x1D90],
+    [0x1D98, 0x1D9C],
+    [0x1DA4, 0x1DC0],
+    [0x1E40, 0x1E7C],
+    [0x1E94, 0x1EAC],
+    [0x1EE0, 0x1F7C],
+    [0x1FC0, 0x1FE0],
+    [0x1FF0, 0x1FF8],
+];
+const get = (o, at) => o.methods.get(at) || 0;
+// Private decoded state keys live outside the guest's 8 KiB method window.
+const VP_CODE = 0x10000, VP_CONSTANTS = 0x20000, VP_WORD = 0x30000, CONST_WORD = 0x30004, PRIMITIVE = 0x50000, VERTEX_MODE = 0x50004;
+export const NV40_QUERY_COUNT = 0x50008;
+
+export class NV40_3D
+{
+    constructor(graph)
+    {
+        this.graph=graph;this.device=graph.device;this.captured=new Map();this.translated=new Map();this.translation_bytes=0;
+        this.translation_stats={hits:0,misses:0,evictions:0};
+        this.state=new NV40State(this.device);this.backend=this.device.renderer?new NV40Render(this,this.device.renderer):null;
+    }
+    clear_translations() {this.translated.clear();this.translation_bytes=0;}
+    get busy() {return !!(this.backend && this.backend.pending);}
+    method(o, at, value, subc=0)
+    {
+        if(at & 3 || o.class_id !== 0x4097) return false;
+        if(at===0x1808 && value && this.device.trace.enabled)
+        {
+            const program=this.program(o), key=JSON.stringify([program.vertex,program.fragment && program.fragment.normalized]);
+            if(!this.captured.has(key) && this.captured.size>=64) this.captured.delete(this.captured.keys().next().value);
+            this.captured.set(key,program);
+        }
+        if(this.backend && at===0x1808)
+        {
+            if(value)
+            {
+                // Native Direct3D emits separate point/list/fan encodings
+                // (also documented by Bochs d3d_process_vertex). Keep the
+                // canonical GL encodings and reject other values.
+                const primitive=value===0x1001?1:value===0x1012?5:value===0x1015?7:value;
+                if(primitive>10 || get(o,PRIMITIVE)) throw new RangeError("NV40 nested/invalid BEGIN");
+                o.methods.set(PRIMITIVE,primitive);o.methods.delete(VERTEX_MODE);o.stream=[];
+            }
+            else
+            {
+                const mode=get(o,PRIMITIVE);
+                if(!mode) throw new RangeError("NV40 END without BEGIN");
+                const words=o.stream,indexed=get(o,VERTEX_MODE)===2;
+                let yielded=false;
+                try
+                {
+                    if(words.length && this.backend.draw(o,mode,indexed?null:words,indexed?words:null,subc)===false)
+                    {yielded=true;return null;}
+                }
+                finally
+                {
+                    if(!yielded){o.methods.delete(PRIMITIVE);o.methods.delete(VERTEX_MODE);o.stream=[];}
+                }
+            }
+            return true;
+        }
+        if(this.backend && [0x180C,0x1810,0x1814,0x1818,0x1824].includes(at))
+        {
+            const mode=at===0x1818?1:2,count=at===0x180C?2:at===0x1814 || at===0x1824?(value>>>24)+1:1;
+            if(!get(o,PRIMITIVE) || o.stream.length+count>1<<20) throw new RangeError("NV40 invalid vertex stream");
+            if(get(o,VERTEX_MODE) && get(o,VERTEX_MODE)!==mode) throw new RangeError("NV40 mixed inline and indexed vertices");
+            let values;
+            if(at===0x180C) values=[value&65535,value>>>16];
+            else if(at===0x1814) values=Array.from({length:count},(_,i)=>(value&0xFFFFFF)+i);
+            else if(at===0x1824) values=this.state.indices(o,value&0xFFFFFF,count);
+            else values=[value>>>0];
+            o.methods.set(VERTEX_MODE,mode);o.stream.push(...values);return true;
+        }
+        if(at === 0x17C8)
+        {
+            if(value !== 1 && value !== 2) throw new RangeError("NV40 invalid query reset");
+            if(value === 1)o.methods.set(NV40_QUERY_COUNT, 0);
+            return true;
+        }
+        if(at === 0x17CC || at === 0x1804)
+        {
+            if(value > 1) throw new RangeError("NV40 invalid query enable");
+            return true;
+        }
+        if(at === 0x1800)
+        {
+            const type=value>>>24;
+            if(type<1 || type>5) throw new RangeError("NV40 unsupported query report type");
+            if(!o.methods.has(0x1A8)) throw new RangeError("NV40 query DMA unbound");
+            const dma = this.device.dma.descriptor(get(o,0x1A8)*16), bytes = new Uint8Array(16), view = new DataView(bytes.buffer);
+            /** @type {bigint} */
+            const time = this.device.time();
+            view.setUint32(0,Number(time&0xFFFFFFFFn),true);view.setUint32(4,Number(time>>32n),true);
+            // Selectors 2..5 report hierarchical Z/Stencil cull statistics.
+            // This backend has no hierarchical cull cache: no tiles are
+            // rejected there. Ordinary per-fragment depth tests still run.
+            view.setUint32(8,type===1?get(o,NV40_QUERY_COUNT):0,true);
+            // A single checked DMA write publishes the timestamp, count and
+            // completion word together, after all preceding draws finish.
+            this.device.dma.write(dma,value&0xFFFFFF,bytes);return true;
+        }
+        if(at === 0x1D70 || at === 0x1D74)
+        {
+            const offset = get(o, 0x1D6C);
+            // 93.71's display producer emits 1+2*head in the high selector
+            // and a framebuffer byte address with TEXTURE_READ_RELEASE.
+            // Only the primary CRT and its zero-offset selector are modeled.
+            if(at===0x1D74 && offset===0x01000000){this.device.display.release_semaphore(value);return true;}
+            if(offset & ~0xFF0) throw new RangeError("NV40 fence selector is not implemented");
+            if(!o.methods.has(0x1A4)) throw new RangeError("NV40 fence DMA unbound");
+            const dma = this.device.dma.descriptor(get(o, 0x1A4) * 16), bytes = new Uint8Array(4);
+            if(dma.adjust) throw new RangeError("NV40 fence DMA must be page aligned");
+            new DataView(bytes.buffer).setUint32(0, value, true);
+            this.device.dma.write(dma, offset, bytes);
+            return true;
+        }
+        if(at===0x1D94) {this.state.clear(o,value);return true;}
+        if(!STATE_RANGES.some(([first, last]) => at >= first && at <= last) && !(at >= 0x1B00 && at <= 0x1BFC)) return false;
+        // Curie exposes sixteen filter-optimization words (Rankine has four).
+        // Keep their checked state. The high mode field also selects the
+        // format1f four-half texture view used by the original native driver;
+        // low sampling hints do not replace the host's filter kernel.
+        if(at >= 0xB00 && at <= 0xB3C && (value & ~0x000FFFDF || (value >>> 15 & 7) > 4))
+            throw new RangeError("NV40 invalid texture filter optimization");
+        // Curie has ten XF texture-coordinate controls, including TEX8/9.
+        // A zero word disables all three controls. Nonzero TEX8/9 controls
+        // remain explicit refusals until their raster semantics are modeled.
+        if(at>=0xB40 && at<=0xB64 && value&~0x111) throw new RangeError("NV40 invalid texture coordinate control");
+        if(at>=0xB60 && at<=0xB64 && value) throw new RangeError("NV40 extended texture coordinate control is not connected");
+        if(at === 0x1D6C && (value & ~0x0F000FF0 || (value >>> 24) > 4)) throw new RangeError("NV40 invalid fence offset");
+        if([0x1E9C, 0x1EA0, 0x1EFC].includes(at) && value >= 0x220) throw new RangeError("NV40 invalid vertex program address");
+        if(at === 0x1E9C) o.methods.set(VP_WORD, value);
+        else if(at === 0x1EFC) o.methods.set(CONST_WORD, value);
+        else if(at >= 0xB80 && at <= 0xBFC)
+        {
+            const cursor = get(o, VP_WORD);
+            if(cursor >= 0x220) throw new RangeError("NV40 vertex program upload overflow");
+            o.methods.set(VP_CODE + cursor * 16 + (at & 12), value >>> 0);
+            if((at & 12) === 12) o.methods.set(VP_WORD, cursor + 1);
+        }
+        else if(at >= 0x1F00 && at <= 0x1F7C)
+        {
+            const cursor = get(o, CONST_WORD);
+            if(cursor >= 0x220) throw new RangeError("NV40 vertex constant upload overflow");
+            o.methods.set(VP_CONSTANTS + cursor * 16 + (at & 12), value >>> 0);
+            if((at & 12) === 12) o.methods.set(CONST_WORD, cursor + 1);
+        }
+        return true;
+    }
+    programs()
+    {
+        return this.captured.size ? Array.from(this.captured.values()) :
+            Array.from(this.graph.objects.values()).filter(o=>o.class_id===0x4097).map(o=>this.program(o));
+    }
+    program(o, include_state = true)
+    {
+        const result={channel:o.channel,instance:o.instance,vertex:null,fragment:null,
+            state:include_state?Array.from(o.methods).filter(([at])=>at<0x2000):[],errors:[]};
+        try { result.vertex=decode_vertex_program([],0,get(o,0x1EA0),pc=>this.vertex_program(o,pc,1)); }
+        catch(error) { result.errors.push(String(error)); }
+        try
+        {
+            const pointer=get(o,0x8E4), selector=pointer&3, at=selector===1?0x184:selector===2?0x188:0;
+            if(!at || !o.methods.has(at)) throw new RangeError("NV40 fragment DMA unbound");
+            const dma=this.device.dma.descriptor(get(o,at)*16), offset=pointer&0xFFFFFFFC;
+            result.fragment=decode_fragment_program([],first=>{
+                const bytes=this.device.dma.read(dma,offset+first*4,16),view=new DataView(bytes.buffer);
+                return Array.from({length:4},(_,i)=>view.getUint32(i*4,true));
+            });
+        }
+        catch(error) { result.errors.push(String(error)); }
+        return result;
+    }
+    shaders(o, options = {})
+    {
+        // Drawing needs fresh checked shader code and inline constants, but
+        // the full method snapshot belongs only to program diagnostics.
+        const program = this.program(o,false);
+        if(program.errors.length) throw new RangeError(program.errors.join("; "));
+        const clips=this.state.clips(o);
+        const vertexOptions={...options,result_map:this.state.results(o),clips},fragmentOptions={...options,clips,
+            fog:{mode:o.methods.has(0x8CC)?get(o,0x8CC):0x2601,
+                constant:o.methods.has(0x8D0)?new Float32Array(Uint32Array.of(get(o,0x8D0)).buffer)[0]:1,
+                linear:o.methods.has(0x8D4)?new Float32Array(Uint32Array.of(get(o,0x8D4)).buffer)[0]:1}};
+        // Exact code and lowering state, never DMA addresses or hashes. Inline
+        // FP constants change independently of normalized instruction words.
+        // All decoded VP fields are determined by these exact instruction
+        // words and PCs. Avoid serializing their expanded diagnostic objects.
+        const vertexCode=program.vertex.instructions.map(i=>[i.pc,...i.words]);
+        const key=JSON.stringify([program.vertex.entry,vertexCode,Array.from(program.fragment.normalized),vertexOptions,fragmentOptions]);
+        let compiled=this.translated.get(key);
+        if(compiled)
+        {
+            this.translation_stats.hits++;this.translated.delete(key);this.translated.set(key,compiled);
+        }
+        else
+        {
+            this.translation_stats.misses++;
+            compiled={vertex:translate_vertex_program(program.vertex,vertexOptions),fragment:translate_fragment_program(program.fragment,fragmentOptions),bytes:0};
+            compiled.fragment.constant_values=[];
+            compiled.bytes=key.length*2+compiled.vertex.bytecode.byteLength+compiled.fragment.bytecode.byteLength;
+            if(compiled.bytes<=8<<20)
+            {
+                while(this.translated.size && (this.translated.size>=128 || this.translation_bytes+compiled.bytes>8<<20))
+                {
+                    const [old,entry]=this.translated.entries().next().value;
+                    this.translated.delete(old);this.translation_bytes-=entry.bytes;this.translation_stats.evictions++;
+                }
+                this.translated.set(key,compiled);this.translation_bytes+=compiled.bytes;
+            }
+        }
+        return {vertex:compiled.vertex,fragment:{...compiled.fragment,constant_values:program.fragment.constants.map(words=>Uint32Array.from(words))}};
+    }
+    vertex_program(o, first = get(o, 0x1EA0), count = 0x220 - first)
+    {
+        if(first < 0 || count < 0 || first + count > 0x220) throw new RangeError("NV40 vertex program range");
+        const words = new Uint32Array(count * 4);
+        for(let i = 0; i < words.length; i++) words[i] = get(o, VP_CODE + (first * 4 + i) * 4);
+        return words;
+    }
+    vertex_constants(o, first = 0, count = 0x220 - first)
+    {
+        if(first < 0 || count < 0 || first + count > 0x220) throw new RangeError("NV40 vertex constant range");
+        const words = new Uint32Array(count * 4);
+        for(let i = 0; i < words.length; i++) words[i] = get(o, VP_CONSTANTS + (first * 4 + i) * 4);
+        return words;
+    }
+}

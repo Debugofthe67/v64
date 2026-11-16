@@ -1,0 +1,32 @@
+{
+  "date": "2026-11-14",
+  "scope": "Diagnostic driver identity; the required 93.71/81.98 gates remain unchanged. Secondary 61.77 graphics acceptance is not claimed.",
+  "change": "Read DriverVersion from the started display device driver registry key through SetupDiOpenDevRegKey and RegQueryValueEx; report it beside the existing device status.",
+  "nativeProof": {
+    "driver": "Official unmodified NVIDIA 61.77",
+    "installation": "Native UpdateDriverForPlugAndPlayDevices succeeded; original signed-driver and older-file confirmation dialogs accepted, then cold booted from the saved overlay.",
+    "coldProbe": "BEGIN\r\nPROBE_ID 617701\r\nPCI PCI\\VEN_10DE&DEV_0045&SUBSYS_004510DE&REV_A1\r\nDEVICE PCI\\VEN_10DE&DEV_0045&SUBSYS_004510DE&REV_A1 problem=0 cm=0 started=1 service=nv driver={4D36E968-E325-11CE-BFC1-08002BE10318}\\0000 description=NVIDIA GeForce 6800 GT version=6.1.7.7\r\nPCI PCI\\VEN_8086&DEV_1237&SUBSYS_00000000&REV_02\r\nPCI PCI\\VEN_8086&DEV_7000&SUBSYS_00000000&REV_00\r\nPCI PCI\\VEN_8086&DEV_7010&SUBSYS_82D41043&REV_00\r\nENUM_END error=259 count=82 properties=82\r\nMODES count=673 1024x768x32=12\r\nMODE_TEST result=0\r\nMODE_SET result=4294967295\r\nPCI PCI\\VEN_10DE&DEV_0045&SUBSYS_004510DE&REV_A1\r\nDEVICE PCI\\VEN_10DE&DEV_0045&SUBSYS_004510DE&REV_A1 problem=0 cm=0 started=1 service=nv driver={4D36E968-E325-11CE-BFC1-08002BE10318}\\0000 description=NVIDIA GeForce 6800 GT version=6.1.7.7\r\nPCI PCI\\VEN_8086&DEV_1237&SUBSYS_00000000&REV_02\r\nPCI PCI\\VEN_8086&DEV_7000&SUBSYS_00000000&REV_00\r\nPCI PCI\\VEN_8086&DEV_7010&SUBSYS_82D41043&REV_00\r\nENUM_END error=259 count=82 properties=82\r\nSCREEN 640x480\r\nREGISTRY_FLUSH status=0\r\nEND\r\n",
+    "displayAcceptance": false,
+    "reason": "Device starts with version 6.1.7.7, but native 1024x768 mode set returns DISP_CHANGE_FAILED and screen remains 640x480."
+  },
+  "validation": [
+    "Native cold-start device and version report",
+    "MinGW no-CRT build with -Wall -Wextra -Werror, excluding pre-existing cast-function-type and conditional unused diagnostics"
+  ],
+  "sources": [
+    "https://www.nvidia.com/en-us/drivers/winxp-2k-6177/",
+    "https://download.nvidia.com/Windows/61.77/61.77_win2kxp_english.exe"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-6177-cold-ready/result.json",
+      "bytes": 1678,
+      "sha256": "6bcfcdf50708f34525af3c9393e13191be49d1e085e8ccf61a5d22d85c73fd0a"
+    },
+    {
+      "file": "build/nv40-fixtures/61.77_win2kxp_english.exe",
+      "bytes": 12631561,
+      "sha256": "ed3b2add671065fef939004973397a4ffabd8b4dd0c1f27c52c5fd55c5c3ca98"
+    }
+  ]
+}

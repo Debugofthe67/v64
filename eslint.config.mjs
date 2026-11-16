@@ -36,11 +36,18 @@ export default [
                 "URLSearchParams": "readonly",
                 "ImageData": "readonly",
                 "Image": "readonly",
+                "Event": "readonly",
+                "EventTarget": "readonly",
+                "ResizeObserver": "readonly",
+                "structuredClone": "readonly",
+                "btoa": "readonly",
+                "CompressionStream": "readonly",
                 "OffscreenCanvas": "readonly",
                 "BroadcastChannel": "readonly",
                 "HTMLElement": "readonly",
                 "HTMLTextAreaElement": "readonly",
                 "AbortController": "readonly",
+                "AbortSignal": "readonly",
                 "DecompressionStream": "readonly",
 
                 "AudioContext": "readonly",
@@ -144,6 +151,20 @@ export default [
             "valid-typeof": "error",
             "strict": "error"
         }
+    },
+    {
+        // ES module helpers and the native-platform decoders use the same
+        // camelCase API names as the graphics compilation boundary below.
+        files: ["**/*.mjs", "src/apple/**/*.js", "src/ios/**/*.js",
+            "src/graphics_adapters/geforce_6800/**/*.js", "src/app/ios_import_worker.js",
+            "tests/devices/geforce*.js"],
+        rules: {
+            "id-match": ["error", "^([a-zA-Z_$][a-zA-Z0-9_$]*)$", { onlyDeclarations: true }],
+        },
+    },
+    {
+        files: ["tests/**/*.{js,cjs,mjs}", "tools/**/*.mjs"],
+        languageOptions: { globals: { setImmediate: "readonly" } },
     },
     {
         // The standalone graphics bundle and its Node fixtures use CommonJS

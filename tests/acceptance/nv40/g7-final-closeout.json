@@ -1,0 +1,209 @@
+{
+  "stage": "G7 final integration/documentation closeout",
+  "status": "G0\u2013G7 implementation and scoped acceptance complete; experimental device with explicitly retained deviations and optional stages",
+  "branch": "refactor",
+  "acceptanceFixtures": {
+    "G0": "g0-win98-pci-bus.json",
+    "G1": "g1-native-modes-dos.json",
+    "G2": "g2-xp-9371-dxdiag-ddraw.json",
+    "G3": "g5-legacy-original-fixed-frame-review.json",
+    "G4": "g4-06-seven-feature-reference-review.json",
+    "G5": "g5-win98-8198-03-nine-iq-desktop-return.json",
+    "G6": "g6-xp-9371-06-final-gt1-work-windows.json"
+  },
+  "keyStepCommits": {
+    "featureReferenceReview": "eafc925c6",
+    "completedColorProfileObservation": "08c7e95ba",
+    "finalRepeatedProfiles": "36e6b91db"
+  },
+  "managerIntegration": {
+    "adapter": "geforce_6800",
+    "label": "GeForce 6800 GT (experimental)",
+    "vramMiB": [
+      128,
+      256
+    ],
+    "existingPresetsKeepOriginalAdapters": true,
+    "files": [
+      "src/app/ui/panels/devices.js",
+      "src/app/ui/describe.js",
+      "src/app/vm_config.js",
+      "src/app/vm_model.js",
+      "src/browser/vm_options.js",
+      "v86.d.ts"
+    ]
+  },
+  "validation": [
+    {
+      "command": "node tests/devices/geforce_present_capture.mjs",
+      "result": "PASS padded pitch/orientation/channels/bounds/unchanged VRAM"
+    },
+    {
+      "command": "node tests/devices/geforce_checkpoint.mjs",
+      "result": "PASS raw/zstd RAM+disk, decoded bounds, corruption and mismatched bundle rejection"
+    },
+    {
+      "command": "node tests/app/vm_config.mjs",
+      "result": "22 tests passed"
+    },
+    {
+      "command": "node tests/app/presets.mjs",
+      "result": "15 tests passed, including GeForce memory/ROM selection;780 choice combinations and5000 changes"
+    },
+    {
+      "command": "Two original XP93.71 GT1 work windows",
+      "result": "357.73/357.90s,36085/36259 draws; both GPU and non-software PGRAPH faults0; original images unchanged"
+    },
+    {
+      "command": "All NV40 fixture JSON and changed-document local file links",
+      "result": "PASS"
+    },
+    {
+      "command": "Firmware build Python syntax and git diff --check",
+      "result": "PASS"
+    }
+  ],
+  "historicalCoreValidation": "NV40 device/program/real-GPU controls and Closure checks recorded with the last GPU-core texture-layout fix6296a2159. Later changes are harness, capture conversion, checkpoint support and documentation; no new GPU-core change is implied.",
+  "retainedArtifactAudit": {
+    "file": "build/nv40-final-retained-artifact-hash-audit.json",
+    "sha256": "9dd7a1e9da69d5d0c600a65a9a9d02e94d60cfa12a7b9e8733a53758552bdc15",
+    "verifiedExistingFiles": 610,
+    "historicalSourcesResolved": [
+      {
+        "file": "tests/lib/geforce_checkpoint.mjs",
+        "expectedSHA256": "86f64edeb9d4676776fbec76faeda8a282e7ef1abfce07a7c77d63f199f14801",
+        "commit": "8504f95d42f37ca238490c570dcca43111c02e6f",
+        "meaning": "Executed historical source; current source is a later revision."
+      },
+      {
+        "file": "tests/devices/geforce_checkpoint.mjs",
+        "expectedSHA256": "7a04e9dfabbca626327de136849750a11f7bc50be3e78b0b412e469fd59a768d",
+        "commit": "8504f95d42f37ca238490c570dcca43111c02e6f",
+        "meaning": "Executed historical source; current source is a later revision."
+      },
+      {
+        "file": "tests/devices/geforce_guest.mjs",
+        "expectedSHA256": "4f40e0d61bd689e4d5331eda89704b6e7acd557241cac3064c4bff694d5ec8de",
+        "commit": "8504f95d42f37ca238490c570dcca43111c02e6f",
+        "meaning": "Executed historical source; current source is a later revision."
+      },
+      {
+        "file": "tests/devices/geforce_ui.c",
+        "expectedSHA256": "0042425f8eb1176f2c1b6de8622a6e103319e028fcac4537a2d87fce8dc40c85",
+        "commit": "0cc90695a7a1f457556fc6594cd3df914325cbd7",
+        "meaning": "Executed historical source; current source is a later revision."
+      }
+    ],
+    "largeOrArchivedExcluded": 45,
+    "guestOrRunRelativePathsListed": 230,
+    "absentHostReferences": 0,
+    "unresolvedMismatches": 0,
+    "limits": "Full SHA256 of retained existing file/artifact entries <=64MiB. Large raw/archived companions, guest/run-relative references and absent host references are listed separately; no complete scan of every string field is claimed. Self-referential final closeout excluded."
+  },
+  "planMigration": {
+    "originalPlanSHA256": "9dd9f4e342add533246d0d009e2098ddb0fbf613f9f467e73a39074804c0544c",
+    "originalBytes": 221997,
+    "historyPrefixBytes": 380,
+    "historySHA256": "9bc8563c990f1cd422df794e4ee9b66d5c73978b6c7d3829ff7462acce7f396f",
+    "historyBytes": 222377,
+    "originalTextPreservedVerbatimAfterPrefix": true,
+    "currentPlan": "docs/geforce-6800-plan.md",
+    "currentLines": 86,
+    "historicalPlan": "docs/geforce-6800-implementation-history.md",
+    "historicalOriginalVerbatimSHA256Verified": true,
+    "currentPlanSHA256": "48013361f8c07093265e71b79ad053f0d8a52dc966da4a3a6887f6dc41d31b66"
+  },
+  "spaceManagement": {
+    "recentClosedDiagnosticsCleanup": {
+      "removed": [
+        {
+          "path": "build/nv40-xp-mark06-final-isolated-profile-1/expanded",
+          "bytes": 65562135,
+          "kind": "Closed test only; canonical driver and FDA retained"
+        },
+        {
+          "path": "build/nv40-xp-mark06-final-isolated-profile-1/fda-final.img",
+          "bytes": 1474560,
+          "kind": "Closed test only; canonical driver and FDA retained"
+        },
+        {
+          "path": "build/nv40-xp-mark06-native-particle-repeats/expanded",
+          "bytes": 65562135,
+          "kind": "Closed test only; canonical driver and FDA retained"
+        },
+        {
+          "path": "build/nv40-xp-mark06-native-particle-repeats/fda-final.img",
+          "bytes": 1474560,
+          "kind": "Closed test only; canonical driver and FDA retained"
+        },
+        {
+          "path": "build/nv40-xp-mark06-final-scene-profile-1/expanded",
+          "bytes": 65562135,
+          "kind": "Closed test only; canonical driver and FDA retained"
+        },
+        {
+          "path": "build/nv40-xp-mark06-final-gt1-profile-1/expanded",
+          "bytes": 65562135,
+          "kind": "Closed test only; canonical driver and FDA retained"
+        },
+        {
+          "path": "build/nv40-xp-mark06-final-gt1-profile-1/fda-final.img",
+          "bytes": 1474560,
+          "kind": "Closed test only; canonical driver and FDA retained"
+        },
+        {
+          "path": "build/nv40-xp-mark06-gt1-completed-color-resume/expanded",
+          "bytes": 65562135,
+          "kind": "Closed test only; canonical driver and FDA retained"
+        },
+        {
+          "path": "build/nv40-xp-mark06-gt1-completed-color-resume/fda-final.img",
+          "bytes": 1474560,
+          "kind": "Closed test only; canonical driver and FDA retained"
+        }
+      ],
+      "bytes": 333708915,
+      "preserved": "All RAM/overlay archives, original BMPs/metadata, canonical drivers/FDA and original03 runtime IMG retained"
+    },
+    "finalProfilesCleanup": {
+      "removed": [
+        {
+          "path": "build/nv40-xp-mark06-final-gt1-work-profile-1/expanded",
+          "bytes": 65562135
+        },
+        {
+          "path": "build/nv40-xp-mark06-final-gt1-work-profile-1/fda-final.img",
+          "bytes": 1474560
+        },
+        {
+          "path": "build/nv40-xp-mark06-final-gt1-work-profile-2/expanded",
+          "bytes": 65562135
+        },
+        {
+          "path": "build/nv40-xp-mark06-final-gt1-work-profile-2/fda-final.img",
+          "bytes": 1474560
+        }
+      ],
+      "bytes": 134073390,
+      "preserved": "All paired RAM/overlay archives and images; canonical driver/FDA; required original03 runtime IMG"
+    },
+    "checkpointArchives": "build/nv40-final-gt1-work-archives.json",
+    "fullDecodedSHA256BeforeRawDeletion": true,
+    "compressedOverlaySupportFixture": "g6-compressed-overlay-restore.json",
+    "reserveMiB": 8192,
+    "requiredOriginal03RuntimePreserved": true
+  },
+  "privacy": "Private06 key is absent from changed tracked deliverables; licensed programs, RAM, driver binaries and raw registration UI stay in ignored local artifacts.",
+  "limits": [
+    "Reference reviews establish original scene content with retained pixel errors; Shader Particles individual positions differ substantially despite three identical native sequences. No unique arithmetic or random-seed cause is established.",
+    "GT1 time-distribution observations are completed batch surfaces, possibly intermediate; not final presentation/FPS, whole-default-suite timing or physical-NV40 equivalence.",
+    "The native drivers advertise capabilities beyond the validated subset. Explicit format/raster/firmware limits remain in gpu-deviations.md."
+  ],
+  "optionalStages": {
+    "A1": "Not triggered: both official drivers accept PCI mode",
+    "V1": "PVIDEO/YUV overlay deferred",
+    "P1": "Readback-free scanout deferred",
+    "O1": "Owner OpenGL-game acceptance deferred",
+    "W1": "Vista/7 WDDM deferred"
+  }
+}

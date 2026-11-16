@@ -60,6 +60,8 @@ pub struct CompileEnv {
     pub el1: bool,
     /// SP alignment is checked for SP-based accesses (SCTLR_EL1.SA or SA0)
     pub sp_checked: bool,
+    /// MMU-less IOP data accesses keep Device memory's natural alignment.
+    pub aligned_data: bool,
     /// leaving the page tail-calls the next page's function (jitrt::chain)
     pub chaining: bool,
     /// AdvSIMD templates (a64_neon; P6.3b)
@@ -580,6 +582,13 @@ struct Emitter<'a> {
     levels: Vec<Level>,
     blocks: &'a [Block],
     env: CompileEnv,
+    /// Keep A32 GPRs local when a page has no ordinary helper calls.
+    a32_gpr_locals: bool,
+    /// Conservative union of GPRs read or written anywhere in this page.
+    a32_gpr_mask: u16,
+    /// Compile-time IT mask of the current native instruction. Successful
+    /// accesses keep architectural ITSTATE clear; only a retry materializes it.
+    a32_itstate: u8,
     access: Option<u32>,
     step: StepAbi,
     /// the page's instruction words (helpers take theirs)
@@ -656,6 +665,27 @@ pub fn compile(bytes: &[u8], entries: &[u16], env: CompileEnv, name: String) -> 
         levels: Vec::new(),
         blocks: &blocks,
         env,
+        a32_gpr_locals: env.isa != Isa::A64
+            && (env.aligned_data
+                || blocks.iter().all(|block| {
+                    block
+                        .insts32
+                        .iter()
+                        .all(|(_, inst)| {
+                            // These pages previously used an IT helper. Keep
+                            // their register policy while making the return
+                            // native, avoiding a new full-GPR reload/writeback.
+                            !matches!(inst.kind, a32::Kind::Helper)
+                                && !(inst.itstate != 0
+                                    && (matches!(inst.kind, a32::Kind::Multiple { list, .. } if list & 0x8000 != 0)
+                                        || matches!(inst.kind, a32::Kind::Mem { rt: 15, .. })))
+                        })
+                })),
+        a32_itstate: 0,
+        a32_gpr_mask: blocks
+            .iter()
+            .flat_map(|b| &b.insts32)
+            .fold(0, |mask, (_, i)| mask | i.kind.gpr_mask()),
         access: None,
         step: StepAbi {
             exit_code: state::a64_page_exit as u32,
@@ -723,10 +753,13 @@ impl Emitter<'_> {
         self.s(BASE);
     }
     fn load_registers(&mut self) {
-        // (AArch32's registers and NZCV stay in memory: pagegen::a32)
+        // AArch32 keeps R0-R14 in locals too; its NZCV remains in memory.
         let a64 = self.env.isa == Isa::A64;
-        if a64 {
-            for i in 0..32 {
+        if a64 || self.a32_gpr_locals {
+            for i in 0..if a64 { 32 } else { 15 } {
+                if !a64 && self.a32_gpr_mask & (1 << i) == 0 {
+                    continue;
+                }
                 self.load64(x_address(i));
                 self.s(i);
             }
@@ -744,6 +777,14 @@ impl Emitter<'_> {
     }
     fn writeback(&mut self) {
         if self.env.isa != Isa::A64 {
+            if self.a32_gpr_locals {
+                for i in 0..15 {
+                    if self.a32_gpr_mask & (1 << i) == 0 {
+                        continue;
+                    }
+                    self.store64_at(x_address(i), i);
+                }
+            }
             self.store64_at(state::pc as u32, PC);
             return;
         }
@@ -1152,13 +1193,28 @@ impl Emitter<'_> {
     /// As `host`, an unaligned read copied to bounce slot `slot` (0 or 1:
     /// a pair's second element, whose copy must not replace the first's)
     fn host_in(&mut self, size: u32, write: bool, offset: u16, slot: u32) {
-        let (l, abi) = (self.lookup_locals(), Self::access_abi());
+        self.host_in_extra(size, write, offset, slot, 0);
+    }
+    /// A single scalar word read, eligible for uncached device read values.
+    fn host_read32(&mut self, offset: u16) { self.host_in_extra(4, false, offset, 0, 0x1000); }
+    fn host_in_extra(&mut self, size: u32, write: bool, offset: u16, slot: u32, extra: u32) {
+        if self.env.aligned_data && size > 1 {
+            self.g(ADDR);
+            self.b.wrap_i64_to_i32();
+            self.c32(size as i32 - 1);
+            self.b.and_i32();
+            self.retry_if(offset);
+        }
+        let (l, mut abi) = (self.lookup_locals(), Self::access_abi());
+        if extra != 0 {
+            abi.slow = "a64_page_access_scalar";
+        }
         let retry = self.f().retry;
         self.inline_lookup(
             &l,
             &abi,
             (size, false),
-            (write as u32) << 8 | slot << 10,
+            (write as u32) << 8 | slot << 10 | extra,
             offset as u64,
             retry,
         );
@@ -2959,6 +3015,12 @@ impl PageEmitter for Emitter<'_> {
     }
     fn block_start(&self, k: u32) -> u16 { self.blocks[k as usize].start }
     fn leave_to(&mut self, label: Label, target: u64) {
+        // Both inline and outlined access lookups leave through this method.
+        // Synchronize here, before the interpreter retries a faulting IT load
+        // or store, rather than writing/clearing PSTATE on every cache hit.
+        if self.a32_itstate != 0 && label == self.f().retry {
+            self.it_memory_state(self.a32_itstate);
+        }
         self.linear(target);
         // (AArch32's addresses wrap at 4 GiB)
         if self.env.isa != Isa::A64 {

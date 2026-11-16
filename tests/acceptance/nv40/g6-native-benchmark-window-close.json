@@ -1,0 +1,41 @@
+{
+  "stage": "G6 native benchmark top-level window close",
+  "status": "PASS: original06 main normal WM_CLOSE returns0; original launcher records EXIT_CODE0",
+  "motivation": "Keyboard exit after a restored snapshot did not establish main-window closure. The helper now addresses the observed application HWND explicitly.",
+  "guards": "Existing actual HWND/visible/enabled/benchmark-process and disabled-parent checks retained; /close additionally requires a top-level non-child window. Application confirmation/cancellation runs normally; no forced termination.",
+  "native": {
+    "guest": "XP93.71, original06",
+    "source": "build/nv40-xp-mark06-current-cold-iq/checkpoint-native-current06-four-iq-default6-ready.state.bundle.json",
+    "topWindow": "0x000500c6",
+    "publicToolDelivery": "Readonly data FDA; unique A:\\NVCLOSE.EXE",
+    "runReadinessMs": 15000,
+    "action": "/close 0x000500c6",
+    "actionResult": 0,
+    "originalProcessExitCode": 0,
+    "GPUdrawsBeforeFeatureLaunch": 0,
+    "immutableExitLog": "build/nv40-xp-mark06-feature-wait15/normal-main-close-launcher.txt"
+  },
+  "strictBuild": "MinGW -Os -nostdlib -Wall -Wextra -Werror, GUI subsystem",
+  "artifacts": {
+    "tests/devices/geforce_ui.c": {
+      "bytes": 14844,
+      "sha256": "03887fe522ee02e35a1b5e2fdfe3eeec5efd32b5ec08a6b0f841b9a2b9eaf2bd"
+    },
+    "build/NVCLOSE.EXE": {
+      "bytes": 20107,
+      "sha256": "6e7be96261ee06aec8995456e2c688e6f27d60571b872085ad1b3ccbb847c84e"
+    },
+    "build/nv40-xp-mark06-feature-wait15/direct-close-main-0.txt": {
+      "bytes": 322,
+      "sha256": "ea12781d791d47e720db23d77e6f7639250431d8a7da9700b049a1657128ef65"
+    },
+    "build/nv40-xp-mark06-feature-wait15/normal-main-close-launcher.txt": {
+      "bytes": 179,
+      "sha256": "b5f353e6b56dccc219a539db21007dc1df267ff9973689c72a20317f1e967659"
+    }
+  },
+  "limits": [
+    "Native Win9x WM_CLOSE behavior is not claimed by this XP-only control.",
+    "Empty /list after the last benchmark exits can still time out in the existing polling wrapper; launcher ExitCode0 is the closure evidence."
+  ]
+}

@@ -1,0 +1,165 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import {NVDMA} from "../../src/graphics_adapters/geforce_6800/nv_dma.js";
+import {NV2D} from "../../src/graphics_adapters/geforce_6800/nv_2d.js";
+import {NV40State} from "../../src/graphics_adapters/geforce_6800/nv40_state.js";
+const vram=new Uint8Array(2<<20),ramin=new DataView(vram.buffer,1<<20);
+const device={vram_size:vram.length,vram:()=>vram,vga:{lfb_region:1},machine:{mmio_ram_mark_dirty(){},is_bus_master:()=>true}};
+device.dma=new NVDMA(device);device.graph={device};device.graph.engine2d=new NV2D(device.graph);
+const state=new NV40State(device),o={methods:new Map([[0x194,0x10],[0x198,0x10],[0x200,3<<16],[0x204,2<<16],[0x208,0x148],[0x20C,16],[0x210,0x1000]])};
+ramin.setUint32(0x100,0x303D,true);ramin.setUint32(0x104,0xFFFF,true);ramin.setUint32(0x108,3,true);
+const surface=state.target(o);assert.equal(surface.d3d,21);assert.equal(surface.width,3);assert.equal(surface.height,2);
+vram.fill(0xAA,0x1000,0x1020);const data=Uint8Array.from({length:24},(_,i)=>i);
+state.write(surface,data);assert.deepEqual(state.read(surface),data);
+{
+const packed={...surface,pitch:12};
+const copied=state.read(packed),borrowed=state.read(packed,true);
+assert.equal(borrowed.buffer,vram.buffer,"explicit packed VRAM view avoids an attachment copy");
+assert.equal(borrowed.byteOffset,0x1000);
+vram[0x1000]^=1;
+assert.notEqual(copied[0],borrowed[0],"ordinary reads retain immutable snapshot ownership");
+vram[0x1000]^=1;
+assert.throws(()=>state.read({...packed,dma:{...packed.dma,flags:packed.dma.flags|0x8000}},true),/access denied/);
+assert.throws(()=>state.read({...packed,dma:{...packed.dma,limit:0x100F}},true),/limit/);
+assert.notEqual(state.read({...packed,offset:0x1002},true).buffer,vram.buffer,"unaligned views keep the copied path");
+assert.notEqual(state.read(surface,true).buffer,vram.buffer,"padded rows keep the copied path");
+}
+assert.deepEqual([...vram.subarray(0x100C,0x1010)],[170,170,170,170],"row padding remains outside a GPU readback");
+const short={...surface,dma:{...surface.dma,limit:0x1018}};const before=vram.slice(0x1000,0x1020);
+assert.throws(()=>state.write(short,data),/limit/);assert.deepEqual(vram.subarray(0x1000,0x1020),before,"late row fault leaves all rows intact");
+o.methods.set(0x208,2<<24|2<<16|0x208);o.methods.set(0x200,4<<16);o.methods.set(0x210,0x2000);
+const swizzled=state.target(o),pixels=Uint8Array.from({length:32},(_,i)=>i);state.write(swizzled,pixels);
+assert.deepEqual(state.read(swizzled),pixels);assert.deepEqual([...vram.subarray(0x2008,0x2010)],[16,17,18,19,20,21,22,23],"rectangular Morton rows interleave correctly");
+for(const [u,v,bpp] of [[0,3,1],[3,0,2],[1,3,4],[3,1,8],[2,2,16]])
+{
+    const full={...swizzled,width:2**u,height:2**v,u,v,bpp,offset:0x2100};
+    const image=Uint8Array.from({length:full.width*full.height*bpp},(_,i)=>i*37&255);
+    const ranges=device.dma.ranges.bind(device.dma);let calls=0;
+    device.dma.ranges=(...args)=>{calls++;return ranges(...args);};
+    try {state.write(full,image);assert.deepEqual(state.read(full),image);} finally {device.dma.ranges=ranges;}
+    assert.equal(calls,2,"complete Morton images validate one contiguous DMA span for each read/write");
+    for(let y=0;y<full.height;y++) for(let x=0;x<full.width;x++)
+    {
+        const at=device.graph.engine2d.address(full,x,y),linear=(y*full.width+x)*bpp;
+        assert.deepEqual(vram.slice(at,at+bpp),image.slice(linear,linear+bpp),"bulk Morton transfers match the checked pixel address");
+    }
+    const bad={...full,dma:{...full.dma,limit:full.offset+image.length-2}},before=vram.slice(full.offset,full.offset+image.length);
+    assert.throws(()=>state.write(bad,image),/limit/);assert.deepEqual(vram.slice(full.offset,full.offset+image.length),before);
+}
+o.methods.set(0x208,0x144);assert.equal(state.target(o).d3d,22,"native DirectDraw X8R8G8B8 RT encoding");
+o.methods.set(0x20C,4);assert.throws(()=>state.target(o),/pitch/);
+const f=v=>new Uint32Array(Float32Array.of(v).buffer)[0],inputs=[[0,[1,0]],[3,[1,1]]];
+o.methods.set(0x1740,0x822);o.methods.set(0x1C30,f(0.25));
+const inline=state.inline_vertices(o,[f(1),f(2),f(3),f(4)],inputs);
+assert.equal(inline.count,2);assert.equal(inline.stride,32);
+assert.deepEqual([...new Float32Array(inline.bytes.buffer)],[1,2,0,1,.25,0,0,1,3,4,0,1,.25,0,0,1]);
+assert.throws(()=>state.inline_vertices(o,[f(1)],inputs),/incomplete/);
+o.methods.set(0x19C,0x10);o.methods.set(0x1680,0x3000);
+new Float32Array(vram.buffer,0x3000,6).set([10,11,20,21,30,31]);
+const fetched=state.array_vertices(o,[2,0],inputs);
+assert.deepEqual([...new Float32Array(fetched.bytes.buffer)],[30,31,0,1,.25,0,0,1,10,11,0,1,.25,0,0,1]);
+const readVertex=device.dma.read.bind(device.dma),currentAttribute=state.attribute.bind(state);let vertexReads=0,currentReads=0;
+device.dma.read=(...args)=>{vertexReads++;return readVertex(...args);};
+state.attribute=(...args)=>{currentReads++;return currentAttribute(...args);};
+try
+{
+    const repeated=state.array_vertices(o,[2,0,2,0],inputs);
+    assert.deepEqual(repeated.bytes,new Uint8Array([...fetched.bytes,...fetched.bytes]));
+    assert.equal(vertexReads,1,"dense linear float vertices share one checked VRAM span within a draw");
+    assert.equal(currentReads,1,"only the disabled attribute reads its current value, once per draw");
+    new Float32Array(vram.buffer,0x3010,1)[0]=77;o.methods.set(0x1C30,f(.75));
+    const changed=state.array_vertices(o,[2],inputs);
+    assert.deepEqual([...new Float32Array(changed.bytes.buffer)],[77,31,0,1,.75,0,0,1],"the next draw observes CPU data and current-attribute changes");
+    assert.throws(()=>state.array_vertices(o,[0,-1],inputs),/index/,"cached data cannot hide a later invalid index");
+    o.methods.set(0x1740,0x22);vertexReads=0;state.array_vertices(o,[0,100,0],inputs);
+    assert.equal(vertexReads,1,"zero stride shares one actual vertex address");
+}
+finally {device.dma.read=readVertex;state.attribute=currentAttribute;o.methods.set(0x1740,0x822);o.methods.set(0x1C30,f(.25));}
+o.methods.set(0x181C,0x3100);o.methods.set(0x1820,0x10);
+new Uint16Array(vram.buffer,0x3100,4).set([99,2,0,1]);
+assert.deepEqual(state.indices(o,1,3),[2,0,1]);
+o.methods.set(0x1820,1);o.methods.set(0x1A0,0x10);
+new Uint32Array(vram.buffer,0x3100,4).set([99,0x10002,0,1]);
+assert.deepEqual(state.indices(o,1,3),[0x10002,0,1],"32-bit indices select DMA1 without truncation");
+o.methods.set(0x181C,0xFFFE);assert.throws(()=>state.indices(o,0,2),/limit/);
+o.methods.set(0x1820,0x20);assert.throws(()=>state.indices(o,0,1),/format/);
+o.methods.set(0x173C,0xFFFFFFFF);
+assert.deepEqual([...new Float32Array(state.array_vertices(o,[2],inputs).bytes.buffer)],[20,21,0,1,.25,0,0,1],"signed base vertex is added before address validation");
+assert.throws(()=>state.array_vertices(o,[0],inputs),/index/);o.methods.delete(0x173C);
+o.methods.set(0x1740,0x826);assert.throws(()=>state.array_vertices(o,[0],inputs),/format/);
+const floats=bytes=>[...new Float32Array(bytes.buffer)],record=(format,bytes)=>state.vertex_value(state.vertex_layout(format),Uint8Array.from(bytes));
+const decoded=(format,bytes)=>floats(Uint32Array.from(record(format,bytes)));
+assert.deepEqual(decoded(0x40,[0,0,255,255]),[1,0,0,1],"packed BGRA becomes RGBA");
+assert.deepEqual(decoded(0x41,[0,128,0,0,255,127,0,192]),[-1,0,1,Math.fround(-16384/32767)]);
+assert.deepEqual(decoded(0x43,[0,60,0,192,1,0,0,124]),[1,-2,2**-24,Infinity]);
+assert.deepEqual(decoded(0x24,[255,0]),[1,0,0,1]);
+assert.deepEqual(decoded(0x25,[0,128,255,127]),[-32768,32767,0,1]);
+assert.deepEqual(decoded(0x27,[255,128]),[255,128,0,1]);
+for(let value=0;value<256;value++)
+{
+    const bytes=[value,255-value,(value+73)&255,(value+149)&255];
+    const padded=Uint8Array.from([91,...bytes,17]).subarray(1,5);
+    assert.deepEqual(state.vertex_value(state.vertex_layout(0x40),padded),
+        [f(bytes[2]/255),f(bytes[1]/255),f(bytes[0]/255),f(bytes[3]/255)],"all packed color component values retain exact f32 bits");
+    for(let size=1;size<=4;size++) for(const type of [4,7])
+    {
+        const expected=bytes.slice(0,size).map(byte=>f(type===4?byte/255:byte));
+        while(expected.length<4)expected.push(expected.length===3?f(1):0);
+        assert.deepEqual(state.vertex_value(state.vertex_layout(size<<4|type),padded),expected);
+    }
+}
+assert.deepEqual(decoded(0x30,[1,2,3,4]),[Math.fround(3/255),Math.fround(2/255),Math.fround(1/255),1]);
+assert.throws(()=>state.vertex_value(state.vertex_layout(0x40),Uint8Array.of(1,2,3)),RangeError,"short vertex data still faults");
+assert.deepEqual(state.vertex_value(state.vertex_layout(0),Uint8Array.of(1,2,3,4)),[0,0,0,f(1)],"disabled formats keep default components");
+o.methods.set(0x1740,0x440);o.methods.set(0x1C00,f(0.75));vram.set([0,255,0,255],0x3000);
+assert.deepEqual(floats(state.array_vertices(o,[0],[[0,[1,0]]]).bytes),[0,1,0,1]);
+o.methods.set(0x1740,0x423);vram.set([0,60,0,64],0x3000);
+assert.deepEqual(floats(state.array_vertices(o,[0],[[0,[1,0]]]).bytes),[1,2,0,1],"missing enabled components use (0,0,0,1), not current attributes");
+o.methods.set(0x1740,0x114BB);o.methods.set(0x174C,0x114CC);
+const packed=state.inline_vertices(o,[f(1),f(2),f(3),f(1),0xFF336699],inputs);
+assert.deepEqual(floats(packed.bytes),[1,2,3,1,Math.fround(.2),Math.fround(.4),Math.fround(.6),1],"native alternate FLOAT4/D3DCOLOR formats consume five DWORDs");
+assert.deepEqual(state.vertex_layout(0x114EE),{type:5,size:2,bytes:4});
+assert.deepEqual(state.vertex_layout(0x118DD),{type:7,size:4,bytes:4});
+const skinWords=[f(1),f(2),f(3),0xFF80200B,f(.25),f(.75)],skinInputs=[[0,[1,0]],[1,[1,1]],[2,[1,2]]];
+for(const [at,value] of [[0x1740,0x118AA],[0x1744,0x118DD],[0x1748,0x11899],
+    [0x174C,2],[0x1680,0x3000],[0x1684,0x300C],[0x1688,0x3010]])o.methods.set(at,value);
+const skinValues=[1,2,3,1,11,32,128,255,.25,.75,0,1];
+assert.deepEqual(floats(state.inline_vertices(o,skinWords,skinInputs).bytes),skinValues,"DirectX UBYTE4 keeps unscaled bone indices and its four-byte stride");
+skinWords.forEach((word,i)=>new DataView(vram.buffer).setUint32(0x3000+i*4,word,true));
+assert.deepEqual(floats(state.array_vertices(o,[0],skinInputs).bytes),skinValues,"indexed UBYTE4 uses the same unsigned byte order and conversion");
+assert.throws(()=>state.vertex_layout(0x114BC),/DirectX/);
+o.methods.set(0x1740,0x23);o.methods.set(0x1744,2);o.methods.set(0x1748,2);o.methods.set(0x174C,2);
+assert.deepEqual(floats(state.inline_vertices(o,[0x40003C00],[[0,[1,0]]]).bytes),[1,2,0,1],"packed FP16 inline attributes consume one DWORD");
+const clear={methods:new Map([[0x194,0x10],[0x198,0x10],[0x200,2<<16],[0x204,2<<16],[0x208,0x148],
+    [0x20C,12],[0x210,0x5000],[0x22C,12],[0x214,0x6000],[0x8C0,1<<16|1],[0x8C4,1<<16|1],
+    [0x1D90,0xAABBCCDD],[0x1D8C,0x12345678],[0x32C,15]])};
+const memory=new DataView(vram.buffer);vram.fill(0xAA,0x5000,0x5020);
+memory.setUint32(0x5010,0x11223344,true);memory.setUint32(0x6010,0xAABBCCDD,true);
+state.clear(clear,0x51);
+assert.equal(memory.getUint32(0x5010,true),0x11BB33DD,"clear only the requested R/B channels inside the scissor");
+assert.equal(memory.getUint32(0x5000,true),0xAAAAAAAA);assert.equal(memory.getUint32(0x5008,true),0xAAAAAAAA,"clear preserves pitch padding");
+assert.equal(memory.getUint32(0x6010,true),0x123456DD,"depth clear preserves stencil");
+state.clear(clear,2);assert.equal(memory.getUint32(0x6010,true),0x123456D8,"stencil clear respects its write mask");
+ramin.setUint32(0x110,0x303D,true);ramin.setUint32(0x114,0x600D,true);ramin.setUint32(0x118,3,true);
+clear.methods.set(0x198,0x11);const colorsBefore=vram.slice(0x5000,0x5020);
+assert.throws(()=>state.clear(clear,0xF3),/limit/);assert.deepEqual(vram.subarray(0x5000,0x5020),colorsBefore,"late depth fault leaves color intact");
+clear.methods.set(0x198,0x10);clear.methods.set(0x208,0x128);clear.methods.set(0x22C,4);clear.methods.set(0x1D8C,0xBEEF);
+state.clear(clear,1);assert.equal(memory.getUint16(0x6006,true),0xBEEF,"D16 clear uses the low 16 bits");
+clear.methods.set(0x208,0x123);clear.methods.set(0x20C,4);clear.methods.set(0x1D90,0xF81F);
+memory.setUint16(0x5006,0x07E0,true);state.clear(clear,0x50);assert.equal(memory.getUint16(0x5006,true),0xFFFF,"RGB565 component masks preserve green");
+o.methods.set(0x1FC4,0x0144FE43);o.methods.set(0x1FC8,5);o.methods.set(0x1FF4,1<<14);
+const routes=state.results(o);assert.deepEqual(routes.find(([semantic])=>semantic===7),[7,5,-1,true]);
+o.methods.set(0x1FCC,0x92);o.methods.set(0x1FF4,0x3000);
+assert.deepEqual(state.results(o).filter(([semantic])=>semantic>=15),[[15,2,-1,true],[16,9,-1,true]]);
+o.methods.set(0x1FF4,1<<14);
+assert.deepEqual(routes.find(([semantic])=>semantic===1),[1,3,-1,false]);
+assert.deepEqual(routes.find(([semantic])=>semantic===5),[5,1,0,false]);
+assert.deepEqual(routes.find(([semantic])=>semantic===6),[6,1,1,false]);
+o.methods.set(0x1478,0x212121);o.methods.set(0x1FD0,0x1B0639);o.methods.set(0x1FD4,0x3C2500);o.methods.set(0x1FF4,0xFC0);
+assert.deepEqual(state.clips(o),[[0,14,1,-1],[1,1,2,1],[2,6,3,-1],[3,0,0,1],[4,9,1,-1],[5,15,0,1]],
+    "six clip planes use their independent byte-spaced TBUF component selectors and signs");
+o.methods.set(0x1FF4,0);assert(state.clips(o).every(([,register])=>register===-1),"disabled clip outputs are not read from TBUF");
+o.methods.set(0x1478,0);assert.deepEqual(state.clips(o),[]);
+for(const invalid of [3,0x1000000,4])
+{o.methods.set(0x1478,invalid);assert.throws(()=>state.clips(o),/invalid user clip plane/);}
+console.log("PASS: NV40 checked linear/Morton targets, atomic readback rows and inline/indexed vertex fetch");

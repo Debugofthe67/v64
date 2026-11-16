@@ -267,6 +267,81 @@ Use the release build (`TEST_RELEASE_BUILD=1`): the source tree runs the debug
 wasm. Runs from one state differ by about 10% in frames per second; compare
 several of each.
 
+### Native NV40 guests
+
+`tests/devices/geforce_xp.mjs` and `geforce_win98.mjs` use the original
+NVIDIA driver and the remote WebGPU renderer. Set `TEST_RELEASE_BUILD=1`,
+`NV_GPU_RENDERER=chrome`, `NV_HOLD=1`, `NV_TRACE=0` and `NV_CPU_PROFILE=1`.
+Restore the same `NV_STATE_LOAD` with its matching `NV_OVERLAY_LOAD` and
+`NV_GAME_OVERLAY_LOAD`; bundle manifests verify RAM and disk hashes before
+the guest runs. Logical `.state` and overlay `.bin` paths can load verified
+`.zst` companions directly without creating raw files. Disk-companion hashes
+continue to cover decoded sector bytes; original raw files take precedence.
+`NV_SECONDS` includes harness setup, so use the recorded
+sampling window when comparing runs. Capture and progress PNG work appears
+separately in the profile; `NV_CAPTURE_SECONDS=0` disables periodic captures.
+With CPU profiling, `NV_PROFILE_SCENES=1` or `2` retains that many nonempty
+1280×1024 BGRA images after 1,000 and 10,000 draws. `sceneCaptures` records
+whether each comes from a primary present or a completed GPU batch's color
+readback. Batch images can be intermediate surfaces; they do not establish
+a completed frame, presentation or FPS. No GPU work is added and scanout is
+unchanged. The bounded CPU copy/export cost remains inside the measured
+window. Review the original images, their kind and target metadata in
+`profile-window.json`; a black final buffer or display mode alone does not
+establish the sampled workload.
+
+At the end, `cpu-profile.cpuprofile` contains Node's weighted samples and
+`profile-window.json` records the actual counter window, Node CPU usage,
+GPU/texture/program counter snapshots, submitted-backend pending wall time
+and primary display-semaphore releases. Summarize an output directory with:
+
+```sh
+node tools/nv40_profile_report.mjs build/<native-run>
+```
+
+The resulting `profile-report.json` separates guest WASM/JIT, NV texture and
+vertex preparation, program preparation, scanout, capture, runtime and idle
+samples. These are host sampling categories, not GPU hardware timings.
+Backend pending time includes transport, rendering and readback and overlaps
+Node CPU work. Cache-byte deltas describe resident memory changes. Semaphore
+releases do not establish benchmark FPS or completed tests.
+Node process CPU includes worker threads and can exceed elapsed wall time.
+The report records non-monotonic V8 sample deltas, merges their timestamp
+overlap without adding elapsed time, and keeps profiler handshake times
+separate from the counter window.
+
+For performance acceptance, verify the scene and faults, run one guest at a
+time, record host conditions and compare repeated windows from the same
+checkpoint with the same cache-start conditions. Concurrent investigation
+profiles can locate expensive paths, but do not establish a performance gate.
+Start each repeat with a fresh renderer and empty host decode/translation
+caches. This does not clear the operating system or Metal driver caches.
+Record the original test selection and launch action; a default-suite loading
+window and a particular feature scene are different workloads. End profiling
+before saving a large RAM checkpoint, then finish any archive work before
+starting the next measured window.
+
+The [final NV40 repeated windows](../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
+use an already active original GT1 process, with no input during measurement.
+Their paired state, software hashes, actual color-batch observations, isolation,
+archive verification and unsuccessful earlier diagnostics are retained. The
+reported phase is rendering work, not whole-suite time or presentation FPS.
+
+The decoded-texture cache retains actual source bytes and decoded results,
+bounded by twice guest VRAM with a 64–512 MiB range and 1024 mip/face entries.
+For controlled comparisons, the test harness accepts `NV_TEXTURE_CACHE_MIB`
+(64/128/256/512) and `NV_TEXTURE_CACHE_ENTRIES` (256/512/1024); the sampling report
+records the chosen limits. A captured VRAM-only texture access sequence can
+also compare the old and current budgets without running a guest:
+
+```sh
+node tools/nv40_texture_workset.mjs <state> <draw-captures.jsonl> <report.json>
+```
+
+This replay hashes every returned image across three passes and compares
+miss/eviction counts against fixed snapshot VRAM. It does not reproduce
+evolving render targets or establish benchmark FPS.
+
 The harness itself costs the host about 5–8%: screenshots, logs, and the
 WebSocket channel to the renderer page in headless Chrome
 ([`tests/x64/gpu_remote_renderer.mjs`](../tests/x64/gpu_remote_renderer.mjs);

@@ -1,0 +1,243 @@
+{
+  "stage": "G4 original XP 93.71 3DMark05 fixed-frame capture",
+  "scope": "Capture completed; exact D3D9 proxy comparisons and final IQ acceptance remain open. Full16 functional result is recorded separately.",
+  "settings": {
+    "resolution": "1024x768",
+    "antiAliasing": "None",
+    "filtering": "Optimal",
+    "VS": "3_0",
+    "PS": "3_0",
+    "forceFullPrecision": false,
+    "disableDST": false,
+    "disablePostprocessing": false,
+    "softwareVS": false,
+    "colorMipmaps": false,
+    "referenceRasterizer": false
+  },
+  "images": [
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_fillrate1_0001.bmp",
+      "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026",
+      "width": 1024,
+      "height": 768,
+      "bytes": 2359352,
+      "meanRGB": [
+        0.0,
+        79.98205184936523,
+        96.00169881184895
+      ],
+      "minRGB": [
+        0,
+        15,
+        64
+      ],
+      "maxRGB": [
+        0,
+        128,
+        128
+      ],
+      "preview": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_fillrate1_0001.preview.png",
+      "test": "Fill Rate Single-Texturing",
+      "frame": 1
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_fillrate2_0001.bmp",
+      "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026",
+      "width": 1024,
+      "height": 768,
+      "bytes": 2359352,
+      "meanRGB": [
+        0.0,
+        79.98205184936523,
+        96.00169881184895
+      ],
+      "minRGB": [
+        0,
+        15,
+        64
+      ],
+      "maxRGB": [
+        0,
+        128,
+        128
+      ],
+      "preview": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_fillrate2_0001.preview.png",
+      "test": "Fill Rate Multi-Texturing",
+      "frame": 1
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_vscomplex_0001.bmp",
+      "sha256": "eb4072cb0fd44376aedc6b865dd9493c11d13484122ff18305cb0f6eadafdf88",
+      "width": 1024,
+      "height": 768,
+      "bytes": 2359352,
+      "meanRGB": [
+        72.5742670694987,
+        82.19816080729167,
+        41.14462661743164
+      ],
+      "minRGB": [
+        0,
+        0,
+        0
+      ],
+      "maxRGB": [
+        219,
+        226,
+        173
+      ],
+      "preview": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_vscomplex_0001.preview.png",
+      "test": "Vertex Shader Complex",
+      "frame": 1
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_vssimple_0001.bmp",
+      "sha256": "236aaa8382227db01509202d3ff84a35f92a0f616b2e901da169344097ff81f6",
+      "width": 1024,
+      "height": 768,
+      "bytes": 2359352,
+      "meanRGB": [
+        34.44781239827474,
+        34.44781239827474,
+        34.44781239827474
+      ],
+      "minRGB": [
+        0,
+        0,
+        0
+      ],
+      "maxRGB": [
+        255,
+        255,
+        255
+      ],
+      "preview": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_vssimple_0001.preview.png",
+      "test": "Vertex Shader Simple",
+      "frame": 1
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_GT1_0480.BMP",
+      "sha256": "1f66f908550155b4d0ebdf615e69a30a2ad5b3fb816d030674c97a300dc785ad",
+      "width": 1024,
+      "height": 768,
+      "bytes": 2359352,
+      "meanRGB": [
+        164.84315490722656,
+        167.22146479288736,
+        148.8441530863444
+      ],
+      "minRGB": [
+        0,
+        0,
+        0
+      ],
+      "maxRGB": [
+        255,
+        255,
+        255
+      ],
+      "preview": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_GT1_0480.preview.png",
+      "test": "Return to Proxycon",
+      "frame": 480
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_GT2_0897.BMP",
+      "sha256": "4fc6c3a52e55bb4c4cd88e672066998398301686dab4e78ecf27d27544f8c389",
+      "width": 1024,
+      "height": 768,
+      "bytes": 2359352,
+      "meanRGB": [
+        54.95680491129557,
+        81.45178731282552,
+        111.8529764811198
+      ],
+      "minRGB": [
+        0,
+        0,
+        0
+      ],
+      "maxRGB": [
+        255,
+        255,
+        255
+      ],
+      "preview": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_GT2_0897.preview.png",
+      "test": "Firefly Forest",
+      "frame": 897
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_GT3_1630.BMP",
+      "sha256": "51e2883d3af81c6bd429d8890e7582ba0592b790eec6dd20552760476689bb5c",
+      "width": 1024,
+      "height": 768,
+      "bytes": 2359352,
+      "meanRGB": [
+        164.95145161946616,
+        160.84478759765625,
+        156.12439600626627
+      ],
+      "minRGB": [
+        0,
+        0,
+        0
+      ],
+      "maxRGB": [
+        255,
+        255,
+        255
+      ],
+      "preview": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_GT3_1630.preview.png",
+      "test": "Canyon Flight",
+      "frame": 1630
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_PS_0001.BMP",
+      "sha256": "44bdee0c466b22049030c22c3e93ac47fce4d3110ffe01f14526ad9d7dd97c1f",
+      "width": 1024,
+      "height": 768,
+      "bytes": 2359352,
+      "meanRGB": [
+        61.77863566080729,
+        62.00455983479818,
+        57.487725575764976
+      ],
+      "minRGB": [
+        0,
+        0,
+        0
+      ],
+      "maxRGB": [
+        255,
+        255,
+        255
+      ],
+      "preview": "build/nv40-xp-mark05-iq-complete-artifacts/NV05IQ_PS_0001.preview.png",
+      "test": "Pixel Shader",
+      "frame": 1
+    }
+  ],
+  "project": "NV05N.3DR SHA256 remains the accepted full16 original export, unchanged.",
+  "extraction": "Eight original BMPs were read from the coherent embedded tools disk in the verified 10000-draw snapshot. Only lossless PNG previews were generated; BMP source bytes unchanged. Temporary 120 MiB tools export removed.",
+  "limits": [
+    "An initial GT2 attempt was interrupted by a UI diagnostic opening during rendering; the uninterrupted continuation used its pre-interruption healthy paired snapshot.",
+    "An extra Batch8 IQ attempt was stopped by the host after all eight required game/feature images were exported. It is not accepted as a completed IQ case; batch functional coverage comes from the independent original full16 export.",
+    "Raw benchmark scores are not isolated performance measurements."
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark05-iq-uninterrupted-gpu/iq-serial-success.json",
+      "bytes": 1326,
+      "sha256": "dace9f2f5650cc72d145c92ad13bad94996e548ccf5202eb2e5e8330029b005f"
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/extracted-artifacts.json",
+      "bytes": 1820,
+      "sha256": "cbd0e1520f1cd8f913e84bf08597b21547887e35209c1e58818bfa62fd55e80d"
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-complete-artifacts/NV05N.3DR",
+      "bytes": 3674,
+      "sha256": "1f370975587ea5cbc1c6126909733e1579e47a97feb636f89a21c22d66544249"
+    }
+  ]
+}

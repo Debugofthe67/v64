@@ -15,6 +15,12 @@ pub const CALL: u32 = 0x8664;
 /// The device's answer when there is no backdoor: the UDF stays undefined
 pub const NOT_HANDLED: i32 = i32::MIN;
 
+// Empty asynchronous reads need the host event loop to deliver a reply.
+// This is a scheduling hint, never a guest WFI or a fabricated response.
+static mut HOST_YIELD: bool = false;
+pub fn host_yield_requested() -> bool { unsafe { HOST_YIELD } }
+pub fn take_host_yield() -> bool { unsafe { core::ptr::replace(&raw mut HOST_YIELD, false) } }
+
 #[cfg(target_arch = "wasm32")]
 mod js {
     #[link(wasm_import_module = "env")]
@@ -45,6 +51,11 @@ pub fn call(word: u32, length: u32, thumb: bool) -> bool {
     if answer == NOT_HANDLED {
         return false;
     }
+    if r0 & 0xffff == 3 && answer == -2 {
+        unsafe {
+            HOST_YIELD = true;
+        }
+    }
     crate::aarch64::a32::set_reg(0, answer as u32);
     true
 }
@@ -61,7 +72,21 @@ pub fn a32_backdoor_translate(va: u32, write: bool) -> f64 {
     }
     let access = if write { Access::Write } else { Access::Read };
     match crate::aarch64::mmu::translate(va as u64, access, true, 1) {
-        Ok(t) if !t.device => t.pa as f64,
+        Ok(t) => {
+            // IOSurface is ordinary physical DRAM mapped uncached/Device by
+            // the guest. Its memory attributes do not turn it into an MMIO
+            // endpoint. Keep the EL0 translation/permission checks above,
+            // and only allow Device mappings whose backing is real RAM.
+            let ram = matches!(crate::aarch64::bus::bus().lookup(t.pa),
+                crate::aarch64::bus::Lookup::Ram { backing, writable, .. }
+                if backing < unsafe { crate::aarch64::bus::DEVICE_START } && (!write || writable));
+            if !t.device || ram {
+                t.pa as f64
+            }
+            else {
+                -1.0
+            }
+        },
         _ => -1.0,
     }
 }

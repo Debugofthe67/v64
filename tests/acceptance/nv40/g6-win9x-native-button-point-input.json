@@ -1,0 +1,23 @@
+{
+  "scope": "Native Windows input diagnostic: bounded /point for Button as well as SysTreeView32. No benchmark, driver or rendering semantics changed.",
+  "problem": "Win9x BS_OWNERDRAW rejects foreign-thread BM_CLICK after the earlier USER16 fault; direct mouse_event input is required.",
+  "change": "Reuse the existing validated client-coordinate absolute mouse_event path for Button. Visible/enabled benchmark ownership, ancestor and screen bounds remain enforced. /click still rejects Win9x BS_OWNERDRAW.",
+  "validation": {
+    "strictMingw": "PASS -Os -nostdlib -Wall -Wextra -Werror",
+    "nativeWin98": "Original Tip closed, original IQ opened and original Run handled through mouse input. Original GT1 save-success control text and complete BMP verified after GPU quiet60s.",
+    "successUI": "build/nv40-win98-mark03-point-sprite-fixed-iq/win98-gt1-after-file-flush-0.txt",
+    "bitmap": {
+      "file": "build/nv40-win98-mark03-point-sprite-fixed-iq/iq-artifacts/NV98F0101038.bmp",
+      "bytes": 2363392,
+      "sha256": "95fb9e85dfd8bf04b88023d0a5a9936bf058f80c759fdce1801d25f6c0f53f16"
+    },
+    "GT1SceneMAD": 1.0324179909446023,
+    "GT1SceneMax": 103,
+    "gpuFailures": 0
+  },
+  "source": "tests/devices/geforce_ui.c",
+  "limits": [
+    "Win98 headless desktop scanout stayed black after IQ readback, despite valid original save controls and BMP. That display issue remains separate.",
+    "This input-tool fix does not establish the whole Win98/G4 image or performance gates."
+  ]
+}

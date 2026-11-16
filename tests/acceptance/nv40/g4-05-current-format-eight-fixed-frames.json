@@ -1,0 +1,683 @@
+{
+  "stage": "G4 original05 latest-format eight fixed frames",
+  "status": "Eight original fixed-frame files and normal shutdown completed; per-pixel reference residuals retained",
+  "configuration": "XP93.71; release CPU808c5fc9; normal clock; RAM1024/VRAM256; original executable/default IQ controls",
+  "source": "build/nv40-xp-mark05-current-format-iq/checkpoint-native-current05-gt2-in-flight-space.state.bundle.json",
+  "resume": "build/nv40-native-disk-reserve-control/checkpoint-disk-reserve-1794732398813.state.bundle.json",
+  "saves": [
+    {
+      "case": "GT3",
+      "testIndex": 2,
+      "frame": 1630,
+      "draws": 1394,
+      "readbacks": 997,
+      "successUI": "build/nv40-xp-mark05-current-format-iq/fixed-GT3-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark05-current-format-iq/iq-artifacts/NV05CF_GT3_1630.BMP",
+      "bytes": 2359352,
+      "sha256": "051763e849693d10cd0c5e6112503dc859a2f816db17c3cb40170c639fe06319",
+      "hostTime": "2026-11-15T08:31:31.470799+00:00"
+    },
+    {
+      "case": "GT1",
+      "testIndex": 0,
+      "frame": 480,
+      "draws": 2852,
+      "readbacks": 1959,
+      "successUI": "build/nv40-xp-mark05-current-format-iq/fixed-GT1-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark05-current-format-iq/iq-artifacts/NV05CF_GT1_0480.BMP",
+      "bytes": 2359352,
+      "sha256": "e17e32f6bc85c33a1c4a8fa99a7fb66ace5205c4c8ee4c565383aeaf6c8603da",
+      "hostTime": "2026-11-15T08:34:36.424771+00:00"
+    },
+    {
+      "case": "GT2",
+      "testIndex": 1,
+      "frame": 897,
+      "draws": 0,
+      "readbacks": 0,
+      "successUI": "build/nv40-xp-mark05-current-format-resume/fixed-GT2-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_GT2_0897.BMP",
+      "bytes": 2359352,
+      "sha256": "7a805b290a4bd7bb35626dd2e08fb8abd928eeaa09646fdc1bf3311d32a0b0f7",
+      "hostTime": "2026-11-15T09:18:55.723346+00:00"
+    },
+    {
+      "case": "fillrate1",
+      "testIndex": 3,
+      "frame": 1,
+      "draws": 65,
+      "readbacks": 4,
+      "successUI": "build/nv40-xp-mark05-current-format-resume/fixed-fillrate1-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_fillrate1_0001.bmp",
+      "bytes": 2359352,
+      "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026",
+      "hostTime": "2026-11-15T09:20:58.375386+00:00"
+    },
+    {
+      "case": "fillrate2",
+      "testIndex": 4,
+      "frame": 1,
+      "draws": 74,
+      "readbacks": 6,
+      "successUI": "build/nv40-xp-mark05-current-format-resume/fixed-fillrate2-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_fillrate2_0001.bmp",
+      "bytes": 2359352,
+      "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026",
+      "hostTime": "2026-11-15T09:22:59.194021+00:00"
+    },
+    {
+      "case": "PS",
+      "testIndex": 5,
+      "frame": 1,
+      "draws": 422,
+      "readbacks": 294,
+      "successUI": "build/nv40-xp-mark05-current-format-resume/fixed-PS-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_PS_0001.BMP",
+      "bytes": 2359352,
+      "sha256": "c0db1fb7d9d953f9a3544bed23912e440b093a7c250e6b6cf84187749fdd4ec4",
+      "hostTime": "2026-11-15T09:25:32.775752+00:00"
+    },
+    {
+      "case": "vssimple",
+      "testIndex": 6,
+      "frame": 1,
+      "draws": 1012,
+      "readbacks": 826,
+      "successUI": "build/nv40-xp-mark05-current-format-resume/fixed-vssimple-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_vssimple_0001.bmp",
+      "bytes": 2359352,
+      "sha256": "236aaa8382227db01509202d3ff84a35f92a0f616b2e901da169344097ff81f6",
+      "hostTime": "2026-11-15T09:28:05.328444+00:00"
+    },
+    {
+      "case": "vscomplex",
+      "testIndex": 7,
+      "frame": 1,
+      "draws": 1586,
+      "readbacks": 1340,
+      "successUI": "build/nv40-xp-mark05-current-format-resume/fixed-vscomplex-success-0.txt",
+      "stableGPUSeconds": 60,
+      "artifact": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_vscomplex_0001.bmp",
+      "bytes": 2359352,
+      "sha256": "eb4072cb0fd44376aedc6b865dd9493c11d13484122ff18305cb0f6eadafdf88",
+      "hostTime": "2026-11-15T09:30:37.295729+00:00"
+    }
+  ],
+  "metrics": [
+    {
+      "case": "GT3",
+      "nativeReference": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-iq/iq-artifacts/NV05CF_GT3_1630.BMP",
+          "sha256": "051763e849693d10cd0c5e6112503dc859a2f816db17c3cb40170c639fe06319"
+        },
+        "reference": {
+          "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_GT3_1630.BMP",
+          "sha256": "705e344e085b00b0d3a1d32c066966608bc16f041b2bbedd77870b25542c99aa"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 525650,
+        "exact_pixel_percent": 27.083795720880676,
+        "mean_absolute_rgb_error": 3.7136299826882104,
+        "mean_signed_rgb_error": [
+          -0.07781566273082387,
+          0.03670987215909091,
+          0.05485950816761364
+        ],
+        "max_channel_error": 134,
+        "pixel_max_channel_error_percentiles": {
+          "50": 2,
+          "90": 13,
+          "95": 20,
+          "99": 42,
+          "99.9": 79
+        }
+      },
+      "previousImplementation": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-iq/iq-artifacts/NV05CF_GT3_1630.BMP",
+          "sha256": "051763e849693d10cd0c5e6112503dc859a2f816db17c3cb40170c639fe06319"
+        },
+        "reference": {
+          "file": "build/nv40-xp-mark05-source-precision-fixed-iq/iq-artifacts/NV05SF_GT3_1630.BMP",
+          "sha256": "051763e849693d10cd0c5e6112503dc859a2f816db17c3cb40170c639fe06319"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 0,
+        "exact_pixel_percent": 100.0,
+        "mean_absolute_rgb_error": 0.0,
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_channel_error": 0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        }
+      }
+    },
+    {
+      "case": "GT1",
+      "nativeReference": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-iq/iq-artifacts/NV05CF_GT1_0480.BMP",
+          "sha256": "e17e32f6bc85c33a1c4a8fa99a7fb66ace5205c4c8ee4c565383aeaf6c8603da"
+        },
+        "reference": {
+          "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_GT1_0480.BMP",
+          "sha256": "f8025c767096a4519237fb2f0cd33f224d6f277f329200ef30e5beaa7e23fc15"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 442799,
+        "exact_pixel_percent": 38.57657692649148,
+        "mean_absolute_rgb_error": 0.6164213238340436,
+        "mean_signed_rgb_error": [
+          -0.20288502086292615,
+          -0.19158796830610794,
+          -0.12019903009588068
+        ],
+        "max_channel_error": 128,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 2,
+          "95": 3,
+          "99": 6,
+          "99.9": 24
+        }
+      },
+      "previousImplementation": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-iq/iq-artifacts/NV05CF_GT1_0480.BMP",
+          "sha256": "e17e32f6bc85c33a1c4a8fa99a7fb66ace5205c4c8ee4c565383aeaf6c8603da"
+        },
+        "reference": {
+          "file": "build/nv40-xp-mark05-source-precision-fixed-iq/iq-artifacts/NV05SF_GT1_0480.BMP",
+          "sha256": "1973aee07ddd45e0a1b69e628720b242c04b0f2fe65ad83135c31f89f2bc1f43"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 890,
+        "exact_pixel_percent": 99.87654252485795,
+        "mean_absolute_rgb_error": 0.0006810968572443181,
+        "mean_signed_rgb_error": [
+          -0.00028852982954545456,
+          -0.0004161487926136364,
+          -0.0002704967151988636
+        ],
+        "max_channel_error": 45,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 1
+        }
+      }
+    },
+    {
+      "case": "GT2",
+      "nativeReference": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_GT2_0897.BMP",
+          "sha256": "7a805b290a4bd7bb35626dd2e08fb8abd928eeaa09646fdc1bf3311d32a0b0f7"
+        },
+        "reference": {
+          "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_GT2_0897.BMP",
+          "sha256": "b8b9550fcdc7b14ca7db044a3f706fb8070d073bc9ccfb0070828d0c77bd8434"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 528634,
+        "exact_pixel_percent": 26.669866388494324,
+        "mean_absolute_rgb_error": 1.006355516838305,
+        "mean_signed_rgb_error": [
+          -0.552032470703125,
+          -0.7744709361683239,
+          -0.5346152565696023
+        ],
+        "max_channel_error": 171,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 2,
+          "95": 5,
+          "99": 18,
+          "99.9": 55
+        }
+      },
+      "previousImplementation": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_GT2_0897.BMP",
+          "sha256": "7a805b290a4bd7bb35626dd2e08fb8abd928eeaa09646fdc1bf3311d32a0b0f7"
+        },
+        "reference": {
+          "file": "build/nv40-xp-mark05-source-precision-fixed-iq/iq-artifacts/NV05SF_GT2_0897.BMP",
+          "sha256": "1a7eda624dd94f914ef39667883a7b5a86721dc84b4edf5c7f5e9d760dfcf65b"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 80470,
+        "exact_pixel_percent": 88.83750221946023,
+        "mean_absolute_rgb_error": 0.2418490323153409,
+        "mean_signed_rgb_error": [
+          -0.10303427956321022,
+          -0.1712160977450284,
+          -0.07624400745738637
+        ],
+        "max_channel_error": 41,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 1,
+          "95": 2,
+          "99": 9,
+          "99.9": 21
+        }
+      }
+    },
+    {
+      "case": "fillrate1",
+      "nativeReference": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_fillrate1_0001.bmp",
+          "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+        },
+        "reference": {
+          "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_fillrate1_0001.bmp",
+          "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 0,
+        "exact_pixel_percent": 100.0,
+        "mean_absolute_rgb_error": 0.0,
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_channel_error": 0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        }
+      },
+      "previousImplementation": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_fillrate1_0001.bmp",
+          "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+        },
+        "reference": {
+          "file": "build/nv40-xp-mark05-source-precision-fixed-iq/iq-artifacts/NV05SF_fillrate1_0001.bmp",
+          "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 0,
+        "exact_pixel_percent": 100.0,
+        "mean_absolute_rgb_error": 0.0,
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_channel_error": 0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        }
+      }
+    },
+    {
+      "case": "fillrate2",
+      "nativeReference": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_fillrate2_0001.bmp",
+          "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+        },
+        "reference": {
+          "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_fillrate2_0001.bmp",
+          "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 0,
+        "exact_pixel_percent": 100.0,
+        "mean_absolute_rgb_error": 0.0,
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_channel_error": 0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        }
+      },
+      "previousImplementation": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_fillrate2_0001.bmp",
+          "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+        },
+        "reference": {
+          "file": "build/nv40-xp-mark05-source-precision-fixed-iq/iq-artifacts/NV05SF_fillrate2_0001.bmp",
+          "sha256": "639f5050a891b799965b2fd012834e3139dcfb0823eb466709645e325e884026"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 0,
+        "exact_pixel_percent": 100.0,
+        "mean_absolute_rgb_error": 0.0,
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_channel_error": 0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        }
+      }
+    },
+    {
+      "case": "PS",
+      "nativeReference": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_PS_0001.BMP",
+          "sha256": "c0db1fb7d9d953f9a3544bed23912e440b093a7c250e6b6cf84187749fdd4ec4"
+        },
+        "reference": {
+          "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_PS_0001.BMP",
+          "sha256": "56190dd058289f45605580f8b1f932cda1b158c637714f3e9b9bb399ed7b9c2a"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 462553,
+        "exact_pixel_percent": 35.83637584339488,
+        "mean_absolute_rgb_error": 0.4473733612985322,
+        "mean_signed_rgb_error": [
+          -0.05190762606534091,
+          -0.04058144309303977,
+          -0.029893354936079544
+        ],
+        "max_channel_error": 34,
+        "pixel_max_channel_error_percentiles": {
+          "50": 1,
+          "90": 1,
+          "95": 2,
+          "99": 3,
+          "99.9": 7
+        }
+      },
+      "previousImplementation": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_PS_0001.BMP",
+          "sha256": "c0db1fb7d9d953f9a3544bed23912e440b093a7c250e6b6cf84187749fdd4ec4"
+        },
+        "reference": {
+          "file": "build/nv40-xp-mark05-source-precision-fixed-iq/iq-artifacts/NV05SF_PS_0001.BMP",
+          "sha256": "c0db1fb7d9d953f9a3544bed23912e440b093a7c250e6b6cf84187749fdd4ec4"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 0,
+        "exact_pixel_percent": 100.0,
+        "mean_absolute_rgb_error": 0.0,
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_channel_error": 0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        }
+      }
+    },
+    {
+      "case": "vssimple",
+      "nativeReference": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_vssimple_0001.bmp",
+          "sha256": "236aaa8382227db01509202d3ff84a35f92a0f616b2e901da169344097ff81f6"
+        },
+        "reference": {
+          "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_vssimple_0001.bmp",
+          "sha256": "8d9d5e360e9ef81c792b55e35058a5d4d02855ba2a76e005bfdd0f675ab24faa"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 4165,
+        "exact_pixel_percent": 99.42224675958808,
+        "mean_absolute_rgb_error": 0.005777532404119318,
+        "mean_signed_rgb_error": [
+          0.0003398548473011364,
+          0.0003398548473011364,
+          0.0003398548473011364
+        ],
+        "max_channel_error": 1,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 1
+        }
+      },
+      "previousImplementation": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_vssimple_0001.bmp",
+          "sha256": "236aaa8382227db01509202d3ff84a35f92a0f616b2e901da169344097ff81f6"
+        },
+        "reference": {
+          "file": "build/nv40-xp-mark05-source-precision-fixed-iq/iq-artifacts/NV05SF_vssimple_0001.bmp",
+          "sha256": "236aaa8382227db01509202d3ff84a35f92a0f616b2e901da169344097ff81f6"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 0,
+        "exact_pixel_percent": 100.0,
+        "mean_absolute_rgb_error": 0.0,
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_channel_error": 0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        }
+      }
+    },
+    {
+      "case": "vscomplex",
+      "nativeReference": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_vscomplex_0001.bmp",
+          "sha256": "eb4072cb0fd44376aedc6b865dd9493c11d13484122ff18305cb0f6eadafdf88"
+        },
+        "reference": {
+          "file": "build/nv40-proxy05-fixed-iq-local/PX05IQ_vscomplex_0001.bmp",
+          "sha256": "082b55f91eb593ed7e9beddb3b9365caff57d4f1b8c75cc3bce6308c1acc6303"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 549550,
+        "exact_pixel_percent": 23.76847700639204,
+        "mean_absolute_rgb_error": 1.7632806951349431,
+        "mean_signed_rgb_error": [
+          0.5081592906605114,
+          0.7098777077414773,
+          -0.3271539861505682
+        ],
+        "max_channel_error": 58,
+        "pixel_max_channel_error_percentiles": {
+          "50": 2,
+          "90": 6,
+          "95": 8,
+          "99": 18,
+          "99.9": 31
+        }
+      },
+      "previousImplementation": {
+        "native": {
+          "file": "build/nv40-xp-mark05-current-format-resume/iq-artifacts/NV05CF_vscomplex_0001.bmp",
+          "sha256": "eb4072cb0fd44376aedc6b865dd9493c11d13484122ff18305cb0f6eadafdf88"
+        },
+        "reference": {
+          "file": "build/nv40-xp-mark05-source-precision-fixed-iq/iq-artifacts/NV05SF_vscomplex_0001.bmp",
+          "sha256": "eb4072cb0fd44376aedc6b865dd9493c11d13484122ff18305cb0f6eadafdf88"
+        },
+        "width": 1024,
+        "height": 768,
+        "roi_y": 0,
+        "roi_height": 704,
+        "pixels": 720896,
+        "different_pixels": 0,
+        "exact_pixel_percent": 100.0,
+        "mean_absolute_rgb_error": 0.0,
+        "mean_signed_rgb_error": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_channel_error": 0,
+        "pixel_max_channel_error_percentiles": {
+          "50": 0,
+          "90": 0,
+          "95": 0,
+          "99": 0,
+          "99.9": 0
+        }
+      }
+    }
+  ],
+  "comparisonReport": "build/nv40-05-current-eight-comparison.json",
+  "pairedCheckpoint": "build/nv40-xp-mark05-current-format-resume/checkpoint-native-current-format-eight-original-iq-saved.state.bundle.json",
+  "limits": [
+    "Two initial frames and six resumed saves are distinct runs. GT2 was already rendered in the real guard checkpoint and completed with original success UI plus fullBMP/quiet60; zero new draws is not a rerender.",
+    "Host inspector used an incorrect signal after the separate float probe. The healthy eight-image paired checkpoint was restored for stock normal shutdown; no clean shutdown is claimed for the interrupted process.",
+    "Metrics do not infer a new tolerance or establish remaining high-frequency noise causes."
+  ],
+  "normalShutdown": {
+    "kind": "cold-boot-only disk overlay pair; no RAM checkpoint",
+    "guest": "xp",
+    "memoryMiB": 1024,
+    "vramMiB": 256,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/3dmark05.img",
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark05-current-normal-shutdown/native-iq-normal-shutdown-os-overlay.bin",
+      "bytes": 127846776,
+      "sha256": "fc1945c48a436568b0d02522b768e711f1ba6e1211c2cbf2b71815909dbcd5aa"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-mark05-current-normal-shutdown/native-iq-normal-shutdown-game-overlay.bin",
+      "bytes": 443794,
+      "sha256": "74e4079caf4f29c564302d374d58da4ae3463ca8b1dd91ff2ce3a70cce3caa54"
+    },
+    "normalShutdown": {
+      "command": "stock XP shutdown.exe -s -t 0",
+      "eip": 2154770504,
+      "halted": 1,
+      "display": null,
+      "draws": 0,
+      "failures": 0
+    }
+  },
+  "shutdownScreen": "build/nv40-xp-mark05-current-normal-shutdown/capture-0003.png",
+  "referenceReview": {
+    "status": "Original fixed-frame content accepted with recorded local pixel residuals",
+    "viewedPairs": [
+      "build/nv40-05-current-GT1-reference.png",
+      "build/nv40-05-current-GT2-reference.png",
+      "build/nv40-05-current-GT3-reference.png",
+      "build/nv40-05-current-PS-reference.png",
+      "build/nv40-05-current-vssimple-reference.png",
+      "build/nv40-05-current-vscomplex-reference.png"
+    ],
+    "exactFillrateScenes": true,
+    "finding": "GT1/GT2 objects, shadows and lighting correspond. GT3 balloon roof/material now corresponds after source-precision fix; the water retains higher-frequency pattern differences. PS rocky lighting and both VS meshes/foliage correspond. All original resolution/frame settings and full-image metrics remain unchanged.",
+    "qualification": "The API reference and decoded native driver programs are different arithmetic/raster paths. The observed water/detail/edge residual is retained, without claiming a uniquely proven numerical cause or physical NV40 bit identity."
+  }
+}

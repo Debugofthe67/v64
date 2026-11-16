@@ -1,0 +1,69 @@
+{
+  "date": "2026-11-14",
+  "scope": "Bounded read-only native wait diagnostics; 06 timeout and full benchmark acceptance remain unresolved.",
+  "change": [
+    "NV_WATCH_MMIO_AFTER_DRAWS gates the existing 512-entry MMIO observer to a later draw phase.",
+    "NV_GUEST_CPU_SAMPLES captures at most 4096 guest PC/register/64-word safe stack samples at 100 ms host intervals; optional checked ordinary-RAM address reads four words. It does not modify page tables, guest memory, clocks or watchdogs.",
+    "NV_STATE_SAVE_STALL optionally saves one matching RAM/overlay bundle at the first existing no-pending-GPU FIFO-stall capture."
+  ],
+  "nativeProof": {
+    "phaseGate": {
+      "drawThreshold": 8000,
+      "capturedEntries": 512,
+      "observation": "All bounded entries were PTIMER9400 reads. A subsequent 181-second replay watching only c01044 captured no accesses and still reached the original display-driver timeout. Whole-run USER GET read counts alone do not identify the late wait."
+    },
+    "nativeStack": {
+      "source": "build/nv40-xp-mark06-user-get-stall2-before8000.state",
+      "driver": "Original93.71 nv4_disp.dll",
+      "runtimeBase": "bf9d5000",
+      "preferredFenceRead": "a3bb0",
+      "preferredFenceWait": "12c4d0",
+      "observation": "Native display fence polling reads through a4-byte pointer at fence-object+8. At the source checkpoint physicalacec000 holds8ac, a native caller requests937, and the submitted sequence is975."
+    },
+    "samples": {
+      "count": 1560,
+      "firstElapsed": 3.9661540840000007,
+      "firstCompletedFence": 2221,
+      "lastNonzeroElapsed": 98.849589834,
+      "lastNonzeroCompletedFence": 2407,
+      "draws": 1450,
+      "gpuProgressBeforeFailure": true,
+      "observation": "Fence values progress while real GPU work completes. The driver subsequently cleans up its objects/page mappings and shows its original timeout dialog; later DMA faults cannot by themselves be called the initiating cause."
+    },
+    "stall": {
+      "out": "build/nv40-xp-mark06-preteardown-stall",
+      "observation": "The first no-GPU-pending stall occurs after native page mappings are already being removed. Its saved paired snapshot is a teardown diagnostic, not a healthy recovery checkpoint."
+    }
+  },
+  "validation": [
+    "node --check tests/devices/geforce_guest.mjs",
+    "Native181-second focused MMIO replay",
+    "Native200-second bounded guest-PC/RAM replay",
+    "Native no-GPU-pending stall snapshot and bundle integrity"
+  ],
+  "sources": [
+    "https://github.com/volatilityfoundation/volatility/blob/master/volatility/plugins/overlays/windows/xp_sp3_x86_vtypes.py"
+  ],
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark06-native-fence-wait/guest-cpu-samples.json",
+      "bytes": 819849,
+      "sha256": "c7e55432d6bf9eb938dc24575376f8f9a3a29690157fd93af8f8355dccc1c1c0"
+    },
+    {
+      "file": "build/nv40-xp-mark06-user-get-stall2/mmio-watch.json",
+      "bytes": 570713,
+      "sha256": "4631765c1d42cfaa7c1469539c21df83efb75508eebbea404f2e1018823b1137"
+    },
+    {
+      "file": "build/nv40-xp-mark06-user-get-stack/trace.json",
+      "bytes": 5347515,
+      "sha256": "16e7b0ad66afa27af301276cb2da46557ba2e5b8732df014543f1ec7731aa93a"
+    },
+    {
+      "file": "build/nv40-xp-mark06-preteardown-stall/fifo-stalls.json",
+      "bytes": 5375624,
+      "sha256": "90cddb6d44806f1428abacb9951336c22de50f5ba4e92ae3abc8a6890e410d68"
+    }
+  ]
+}

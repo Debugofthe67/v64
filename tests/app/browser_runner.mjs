@@ -15,12 +15,18 @@
 //   node tests/app/browser_runner.mjs <page> [query arguments...]
 //   node tests/app/browser_runner.mjs tests/app/store_test.html
 // Needs Chrome (CHROME); TIMEOUT_MS (default 300000); BROWSER_DEBUG_PORT (DevTools).
+// BROWSER_PROFILE keeps a caller-owned disposable profile; BROWSER_PORT
+// preserves its origin for checkpoint benchmarks. BROWSER_WASM overrides
+// only build/v86-arm64.wasm, without replacing another test's build.
+// BROWSER_PROCESS_METRICS=1 adds this Chrome's cumulative per-process CPU
+// seconds to /__host_metrics (requires BROWSER_DEBUG_PORT). Sample outside
+// timed work; these are diagnostic brackets, never an FPS denominator.
 
 import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync as exec_file_sync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { create_disk_service } from "../../tools/disk-service.mjs";
 
@@ -62,12 +68,150 @@ const REPORTER = `<script>
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm",
     ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png" };
 
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), "v86-app-browser-"));
-let browser, timeout;
+const profile = process.env.BROWSER_PROFILE ? path.resolve(process.env.BROWSER_PROFILE) :
+    fs.mkdtempSync(path.join(os.tmpdir(), "v86-app-browser-"));
+if(process.env.BROWSER_PROFILE) fs.mkdirSync(profile, { recursive: true });
+let browser, timeout, focus_socket, finished=false;
+const focused = process.env.BROWSER_FOCUS === "1";
+// A headless window can become hidden after navigation on macOS. Keep a
+// protocol session open so rAF-driven presenters behave as a visible page.
+async function focus_page(endpoint)
+{
+    const origin = new URL(endpoint);origin.protocol = "http:";
+    let target;
+    for(let i=0;i<100&&!target;i++)
+    {
+        if(finished) return;
+        const list=await(await fetch(origin.origin+"/json/list")).json();
+        target=list.find(t=>t.type==="page"&&t.url.includes("/"+page));
+        if(!target) await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    if(!target) throw new Error("The acceptance page did not become available for focus emulation");
+    if(finished) return;
+    focus_socket=new WebSocket(target.webSocketDebuggerUrl);
+    await new Promise((resolve,reject)=>{focus_socket.onopen=resolve;focus_socket.onerror=reject;});
+    await new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>reject(new Error("Focus emulation timed out")),10000);
+        focus_socket.onmessage=({data})=>{const result=JSON.parse(data);if(result.id!==1) return;
+            clearTimeout(timer);result.error?reject(new Error(result.error.message)):resolve();};
+        focus_socket.send(JSON.stringify({id:1,method:"Emulation.setFocusEmulationEnabled",params:{enabled:true}}));
+    });
+}
+// Optional coordination with another test owned by the caller. The page can
+// pause only this fixed PID, never choose a process through request input.
+const timing_pid = Number(process.env.PAUSE_TEST_PID || 0);
+if(timing_pid && (!Number.isInteger(timing_pid) || timing_pid <= 1 || timing_pid === process.pid)) throw new Error("Invalid PAUSE_TEST_PID");
+let timing_paused = false;
+function timing_pause(paused)
+{
+    if(!timing_pid || timing_paused === paused) return;
+    try {
+        // A long matrix can outlive the mutation runner. Do not signal a
+        // recycled PID belonging to a different process.
+        const command = exec_file_sync("ps", ["-p", String(timing_pid), "-o", "command="], { encoding: "utf8" });
+        if(!command.includes("tests/glbridge/mutations.mjs")) { timing_paused = false;return; }
+        process.kill(timing_pid, paused ? "SIGSTOP" : "SIGCONT");timing_paused = paused;
+    }
+    catch(error) { if(error.code !== "ESRCH" && error.status !== 1) throw error;timing_paused = false; }
+}
+async function timing_quiet()
+{
+    const started = Date.now();
+    while(timing_paused)
+    {
+        const children = exec_file_sync("ps", ["-axo", "ppid=,stat="], { encoding: "utf8" }).trim().split("\n");
+        if(!children.some(line => { const [parent, status] = line.trim().split(/\s+/);return +parent === timing_pid && !status.startsWith("Z"); })) break;
+        if(Date.now() - started > 60000) throw new Error("in-flight mutation child did not settle");
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+}
 
-const server = http.createServer((req, res) =>
+async function chrome_process_metrics()
+{
+    // SystemInfo.getProcessInfo: cpuTime is cumulative seconds across all
+    // threads of each process. Connect only to the caller-owned Chrome.
+    // https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/SystemInfo.pdl
+    const port = Number(process.env.BROWSER_DEBUG_PORT);
+    if(!Number.isInteger(port) || port < 1 || port > 65535) throw Error("BROWSER_DEBUG_PORT required for process metrics");
+    const version = await (await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(2000) })).json();
+    const socket = new WebSocket(version.webSocketDebuggerUrl);
+    try
+    {
+        return await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(Error("Chrome process metrics timed out")), 2000);
+            const finish = (error, result) => { clearTimeout(timer);error ? reject(error) : resolve(result); };
+            socket.onerror = () => finish(Error("Chrome process metrics socket failed"));
+            socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: "SystemInfo.getProcessInfo" }));
+            socket.onmessage = ({ data }) => {
+                const message = JSON.parse(data);
+                if(message.id !== 1) return;
+                finish(message.error ? Error(message.error.message) : null,
+                    { time: Date.now(), processes: message.result?.processInfo });
+            };
+        });
+    }
+    finally { socket.close(); }
+}
+
+const server = http.createServer(async (req, res) =>
 {
     const address = new URL(req.url, "http://localhost");
+    if(address.pathname === "/__host_metrics")
+    {
+        const disk = fs.statfsSync(root);
+        let chrome;
+        if(process.env.BROWSER_PROCESS_METRICS === "1")
+        {
+            try { chrome = await chrome_process_metrics(); }
+            catch(error) { chrome = { error: error.message }; }
+        }
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ time: Date.now(), platform: os.platform(),
+            cpus: os.availableParallelism(), load_average: os.loadavg(),
+            memory_total: os.totalmem(), memory_free: os.freemem(), disk_available: disk.bavail * disk.bsize,
+            ...(chrome ? { chrome } : {}) }));
+        return;
+    }
+    if(req.method === "POST" && address.pathname === "/__artifact" && process.env.TEST_ARTIFACT_DIR)
+    {
+        const name=address.searchParams.get("name");
+        if(!name || !/^[a-zA-Z0-9_-]+\.(?:png|json|txt)$/.test(name)){res.writeHead(400).end();return;}
+        const chunks=[];let size=0;
+        req.on("data",b=>{size+=b.length;if(size>16*1024*1024)req.destroy();else chunks.push(b);});
+        req.on("end",()=>{
+            fs.mkdirSync(process.env.TEST_ARTIFACT_DIR,{recursive:true});
+            fs.writeFileSync(path.join(process.env.TEST_ARTIFACT_DIR,name),Buffer.concat(chunks));res.end("OK");
+        });
+        return;
+    }
+    if(req.method === "POST" && ["/__timing_begin", "/__timing_end"].includes(address.pathname))
+    {
+        try
+        {
+            const paused = address.pathname === "/__timing_begin";timing_pause(paused);
+            // Let a child already spawned by the stopped test settle. The
+            // benchmark also discards its first 21 frames before measuring.
+            if(paused && timing_paused) timing_quiet().then(() => res.end("OK"), error => { timing_pause(false);res.writeHead(500).end(String(error)); });
+            else res.end("OK");
+        }
+        catch(error) { res.writeHead(500).end(String(error)); }
+        return;
+    }
+    if(req.method === "POST" && address.pathname === "/__test_file")
+    {
+        const name = path.basename(address.searchParams.get("name") || "file");
+        const chunks = [];
+        req.on("data", data => chunks.push(data));
+        req.on("end", () =>
+        {
+            const directory = path.join(root, "build/browser-test-output");
+            fs.mkdirSync(directory, { recursive: true });
+            fs.writeFileSync(path.join(directory, name), Buffer.concat(chunks));
+            res.end("OK");
+        });
+        return;
+    }
     if(address.pathname === "/__service_file")
     {
         const name = path.basename(address.searchParams.get("name") || "");
@@ -119,7 +263,8 @@ const server = http.createServer((req, res) =>
         });
         return;
     }
-    const file = path.resolve(root, "." + decodeURIComponent(address.pathname));
+    const file = address.pathname === "/build/v86-arm64.wasm" && process.env.BROWSER_WASM ?
+        path.resolve(process.env.BROWSER_WASM) : path.resolve(root, "." + decodeURIComponent(address.pathname));
     if(!file.startsWith(root)) { res.writeHead(403).end(); return; }
     let size;
     try { size = fs.statSync(file).isFile() ? fs.statSync(file).size : -1; }
@@ -158,11 +303,15 @@ const server = http.createServer((req, res) =>
 
 function finish(code)
 {
+    if(finished) return;
+    finished=true;
+    focus_socket?.close();
+    timing_pause(false);
     clearTimeout(timeout);
     server.close();
     if(service) service.close();
     process.exitCode = code;
-    const remove = () => { try { fs.rmSync(profile, { recursive: true, force: true }); } catch(e) {} };
+    const remove = () => { if(!process.env.BROWSER_PROFILE) try { fs.rmSync(profile, { recursive: true, force: true }); } catch(e) {} };
     if(browser && browser.exitCode === null && browser.signalCode === null)
     {
         browser.on("exit", remove);
@@ -174,7 +323,7 @@ function finish(code)
 // (the runner stopped from outside: its Chrome stopped too, not left running the page's machine)
 for(const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => { finish(1); process.exit(1); });
 
-server.listen(0, "127.0.0.1", async () =>
+server.listen(Number(process.env.BROWSER_PORT || 0), "127.0.0.1", async () =>
 {
     const origin = "http://127.0.0.1:" + server.address().port;
     if(with_service)
@@ -192,12 +341,24 @@ server.listen(0, "127.0.0.1", async () =>
         ...(AUTOPLAY ? ["--autoplay-policy=no-user-gesture-required"] : []),
         ...(WEBGPU ? ["--enable-unsafe-webgpu", "--disable-background-timer-throttling", "--disable-renderer-backgrounding"] : []),
         // (BROWSER_DEBUG_PORT: DevTools on that port, to look at a long part while it runs)
-        ...(process.env.BROWSER_DEBUG_PORT ? ["--remote-debugging-port=" + process.env.BROWSER_DEBUG_PORT] : []),
+        ...(process.env.BROWSER_DEBUG_PORT || focused ? ["--remote-debugging-port=" + (process.env.BROWSER_DEBUG_PORT || "0")] : []),
         "--user-data-dir=" + profile, url,
     ], { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
-    browser.stderr.on("data", d => { stderr = (stderr + d).slice(-4000); });
+    let focusing=false;
+    browser.stderr.on("data", d => {
+        stderr = (stderr + d).slice(-4000);
+        const endpoint=focused&&!focusing&&stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/)?.[1];
+        if(endpoint){focusing=true;focus_page(endpoint).catch(error=>{console.error(error);finish(1);});}
+    });
     browser.on("error", error => { console.error(error); finish(1); });
+    browser.on("exit", (code, signal) =>
+    {
+        browser.stderr.destroy();
+        if(finished) return;
+        console.error("FAIL: Chrome exited before the test result (" + (signal || code) + ")");
+        finish(1);
+    });
     timeout = setTimeout(() =>
     {
         console.error("FAIL: timed out\n" + stderr);

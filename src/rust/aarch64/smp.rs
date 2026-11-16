@@ -162,6 +162,73 @@ pub fn a64_switch_core(core: u32) {
     switch_to(core as usize);
 }
 
+// The A4's IO processor uses its own bank of ARM registers in the otherwise
+// unused slot 1. PSCI and XNU still see only the one application core.
+#[no_mangle]
+pub fn a32_iop_select(iop: bool) {
+    assert!(crate::aarch64::cpu::cortex_a8() && core_count() == 1 && !crate::parallel::active());
+    switch_to(iop as usize);
+}
+
+#[no_mangle]
+pub fn a32_iop_reset() {
+    a32_iop_select(true);
+    reset_state(0, 0);
+    a32_iop_select(false);
+}
+
+#[no_mangle]
+pub fn a32_iop_slice(budget: u32, irq: bool, fiq: bool) -> bool {
+    use crate::aarch64::jit::pages::{self, Ran};
+    a32_iop_select(true);
+    if fiq && cpu::get_pstate() & cpu::PSTATE_F == 0 {
+        crate::aarch64::a32_system::take_interrupt(true);
+    }
+    else if irq && cpu::get_pstate() & cpu::PSTATE_I == 0 {
+        crate::aarch64::a32_system::take_interrupt(false);
+    }
+    let mut executed = 0;
+    let mut iop_waited = false;
+    let mut boundary = true;
+    while executed < budget {
+        let flow = if boundary && unsafe { pages::ENABLED } {
+            match pages::run(budget - executed) {
+                Ran::Native { retired, flow } => {
+                    executed += retired.max(1);
+                    unsafe { IOP_NATIVE += retired as u64 };
+                    boundary = true;
+                    flow
+                },
+                Ran::None => {
+                    boundary = false;
+                    executed += 1;
+                    pages::interpreted();
+                    execute::interpret_one()
+                },
+            }
+        }
+        else {
+            executed += 1;
+            pages::interpreted();
+            execute::interpret_one()
+        };
+        if matches!(flow, Flow::Jump(_) | Flow::Set) {
+            boundary = true;
+        }
+        if matches!(flow, Flow::Off | Flow::Wait(_)) {
+            iop_waited = true;
+            break;
+        }
+    }
+    a32_iop_select(false);
+    !iop_waited && executed >= budget
+}
+
+static mut IOP_NATIVE: u64 = 0;
+/// Native instructions of the IOP, independent of the application core.
+#[no_mangle]
+pub fn a32_iop_native() -> f64 { unsafe { IOP_NATIVE as f64 } }
+
 /// An event for `core` (its WFE ends)
 pub fn event_to(core: usize) {
     unsafe {
@@ -362,6 +429,11 @@ fn run_core(budget: u32) -> u32 {
     let mut next_tick = 1023;
     let mut boundary = true;
     while i < budget {
+        // A board may remove power during an MMIO instruction. Do not
+        // execute the instruction after it (PEHaltRestart cannot return).
+        if psci::request() != 0 {
+            break;
+        }
         if cfg!(feature = "parallel") && unsafe { crate::aarch64::isa_hooks::CORE_YIELD } != 0 {
             unsafe {
                 crate::aarch64::isa_hooks::CORE_YIELD = 0;
@@ -433,7 +505,7 @@ fn run_core(budget: u32) -> u32 {
                 return i;
             },
             // (YIELD: the other cores' turn; a spin loop waits for one of them)
-            Flow::Yield if several => return i,
+            Flow::Yield if several || crate::aarch64::backdoor::host_yield_requested() => return i,
             // (a DSB waits for other cores' acknowledgements, P8.3: a worker
             // waits here, taking the others' maintenance meanwhile, until a
             // kick asks it to stop; the machine's core returns, its loop
@@ -517,6 +589,10 @@ pub fn a64_run_slice(_now: f64) -> f64 {
             prepare(core);
             executed += run_core(budget);
             ran = true;
+            if crate::aarch64::backdoor::take_host_yield() {
+                unsafe { crate::core_stats::flush_core_statistics() };
+                return 0.0;
+            }
             if crate::parallel::active()
                 && unsafe { core::ptr::replace(&raw mut KICKED_NOW, false) }
             {
@@ -562,6 +638,7 @@ pub fn a64_worker_slice(budget: u32) -> f64 {
     }
     prepare(core);
     run_core(budget);
+    crate::aarch64::backdoor::take_host_yield();
     unsafe { crate::core_stats::flush_core_statistics() };
     crate::aarch64::timer::tick();
     if runnable(core) {
@@ -582,6 +659,7 @@ pub fn a64_boot(entry_low: u32, entry_high: u32, x0_low: u32, x0_high: u32) {
     let entry = entry_low as u64 | (entry_high as u64) << 32;
     let x0 = x0_low as u64 | (x0_high as u64) << 32;
     switch_to(0);
+    crate::aarch64::backdoor::take_host_yield();
     unsafe {
         for core in 1..MAX_CORES {
             SAVED[core].0.fill(0);

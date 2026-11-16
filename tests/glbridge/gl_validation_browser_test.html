@@ -1,0 +1,913 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>GL CPU validation and forwarding</title>
+<canvas id="gpu" width="64" height="64"></canvas>
+<pre id="result">RUNNING</pre>
+<script src="../../src/browser/glbridge/webgpu_host.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_protocol.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_constants.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_caps.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_math.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_client_arrays.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_pixel_maps.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_glslang.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_glsl.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_image_formats.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_texture_parameters.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_framebuffer_state.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_objects.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_state.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_raster.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_fixed.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_misc.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_rasterpos.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_pixelmaps.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_images.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_textures.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_stipple.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_list_arrays.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_lists.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_stencil_ext.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_render.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_buffers.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_arrays.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_names.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_queries.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_select_geometry.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_select.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_evaluators.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_state_layout.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shader_translator.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_cache_keys.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_fixed_function.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_arb_program.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_shadow_arb.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_program_geometry.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_polygon_clip.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_single_sample.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_bind_layouts.js"></script>
+<script src="../../src/browser/glbridge/gl-webgpu/gl_executor.js"></script>
+<script src="gl_stream_builder.js"></script>
+<script src="gl_shader_units_cases.js"></script>
+<script src="gl_texture_readback_cases.js"></script>
+<script src="gl_shader_mixed_cases.js"></script>
+<script src="gl_display_list_array_cases.js"></script>
+<script src="gl_display_list_pixel_cases.js"></script>
+<script src="gl_selection_cases.js"></script>
+<script src="gl_vertex_capture_cases.js"></script>
+<script src="gl_selection_program_cases.js"></script>
+<script>
+(async () => {
+    "use strict";
+    const { GLStream, GL } = GLTestStream, P = GLProtocol;
+    const check = (value, message) => { if (!value) throw new Error(message); };
+    try {
+        const compiler = await WebAssembly.compile(await (await fetch("../../bios/glslang.wasm")).arrayBuffer());
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow();
+            shadow.setGlslang(new V86GLGlslang.Glslang(compiler));
+            const s = new GLStream().makeCurrent(1, 0, 0, 64, 64, 1, 1)
+                .call("CLEAR_COLOR", 0, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("LINE_WIDTH", 3).call("LINE_WIDTH", 0)
+                .call("VIEWPORT", 0, 0, 0, -1).call("DEPTH_FUNC", 0)
+                .call("MATRIX_MODE", 0).call("LOAD_IDENTITY")
+                .call("COLOR4F", 0.25, 0.75, 0.5, 1).call("BEGIN", GL.QUADS)
+                .call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            s.queryError(); const error = s.payloadView();
+            const pixels = s.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            const bytes = s.bytes();
+            const executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), {
+                strict: true, writeGuestMemory: (offset, data) => bytes.set(data, offset),
+            });
+            await executor.initialize(); shadow.setCapabilities(executor.capabilities());
+            shadow.process(bytes); check(shadow.stats.rejected === 4, "CPU must reject all four invalid calls");
+            executor.submit(remote ? bytes.slice() : bytes, {}); await executor.idle();
+            await executor.device.queue.onSubmittedWorkDone();
+            for (let i = 0; i < 4; ++i) await new Promise(resolve => setTimeout(resolve, 0));
+            check(pixels.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "readback must finish");
+            const rgba = pixels.bytes.subarray(32);
+            check([64, 191, 128, 255].every((v, i) => Math.abs(rgba[i] - v) <= 1), "rejected state changed the pixels: " + Array.from(rgba));
+            if (!remote) check(error.view.getUint32(P.F.QUERY_ERROR.value, true) === GL.INVALID_VALUE, "first GL error must survive forwarding");
+            check(!executor.gpuErrors.errors.length, "WebGPU must accept the whole frame");
+            check(!executor.hostErrors.length && !executor.stats.refusals, "no host exception or unknown rejected opcode");
+            for (const [ref, clamped] of [[-7, 0], [1000, 255]]) {
+                const stencil = new GLStream().makeCurrent(1, 0, 0, 64, 64, 1, 1)
+                    .call("CLEAR_COLOR", 0, 0, 0, 1).call("CLEAR_STENCIL", clamped)
+                    .call("CLEAR", GL.COLOR_BUFFER_BIT | GL.STENCIL_BUFFER_BIT)
+                    .call("ENABLE", GL.STENCIL_TEST).call("STENCIL_FUNC", GL.EQUAL, ref, 0xFFFFFFFF)
+                    .call("COLOR4F", 0.25, 0.75, 0.5, 1).call("BEGIN", GL.QUADS)
+                    .call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                    .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+                const out = stencil.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+                const guest = stencil.bytes(); shadow.process(guest);
+                executor.options.writeGuestMemory = (offset, data) => guest.set(data, offset);
+                executor.submit(remote ? guest.slice() : guest, {}); await executor.idle();
+                check(out.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "stencil readback must finish");
+                check([64, 191, 128, 255].every((v, i) => Math.abs(out.bytes[32 + i] - v) <= 1),
+                    "stencil reference wrapped instead of clamping: " + ref);
+            }
+            const setup = new GLStream().makeCurrent(10, 0, 0, 64, 64, 10, 10)
+                .call("CREATE_SHADER", 1, GL.VERTEX_SHADER).shaderSource(1, "void main() { gl_Position = gl_Vertex; }").call("COMPILE_SHADER", 1)
+                .call("CREATE_SHADER", 2, GL.FRAGMENT_SHADER).shaderSource(2,
+                    "#version 120\nuniform bvec3 flags; uniform sampler2D images[2]; void main() { gl_FragColor = vec4(vec3(flags), 1.0) * texture2D(images[0], vec2(0.5)) * texture2D(images[1], vec2(0.5)); }")
+                .call("COMPILE_SHADER", 2).call("CREATE_PROGRAM", 5).call("ATTACH_SHADER", 5, 1).call("ATTACH_SHADER", 5, 2)
+                .call("LINK_PROGRAM", 5).call("USE_PROGRAM", 5);
+            const flags = setup.queryLocation(P.C.V86GL_LOCATION_KIND_UNIFORM, 5, "flags", 32);
+            const images = setup.queryLocation(P.C.V86GL_LOCATION_KIND_UNIFORM, 5, "images[1]", 32);
+            const first = setup.bytes(); shadow.process(first); executor.submit(remote ? first.slice() : first, {});
+            const flagsAt = flags.view.getInt32(P.F.QUERY_LOCATION.result, true), imagesAt = images.view.getInt32(P.F.QUERY_LOCATION.result, true) - 1;
+            check(flagsAt >= 0 && imagesAt >= 0, "CPU must link and reflect the GLSL program");
+            const draw = new GLStream().uniformfv(flagsAt, 3, 1, [-0, 2, -3]).uniformiv(imagesAt, 1, 3, [2, 0, 1])
+                .uniformiv(imagesAt + 1, 1, 1, [7])
+                .uniformfv(imagesAt, 1, 1, [0]).call("DELETE_SHADER", 2).call("DELETE_PROGRAM", 5);
+            for (const [unit, name, color] of [[2, 1, [255, 255, 255, 255]], [7, 2, [64, 128, 192, 255]]]) {
+                draw.call("ACTIVE_TEXTURE", GL.TEXTURE0 + unit).call("BIND_TEXTURE", GL.TEXTURE_2D, name)
+                    .call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.NEAREST)
+                    .texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(color));
+            }
+            draw.call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT).call("BEGIN", GL.QUADS)
+                .call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0).call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const out = draw.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), guest = draw.bytes();
+            shadow.process(guest); executor.options.writeGuestMemory = (offset, data) => guest.set(data, offset);
+            executor.submit(remote ? guest.slice() : guest, {}); await executor.idle();
+            check(out.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "GLSL readback must finish");
+            check([0, 128, 192, 255].every((v, i) => Math.abs(out.bytes[32 + i] - v) <= 1),
+                "uniform arrays, booleans or deferred deletion changed GLSL pixels: " + Array.from(out.bytes.subarray(32)));
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "GLSL frame must have no host errors");
+            for (const unit of [-1, 8, 7]) {
+                const s = new GLStream().uniformiv(imagesAt + 1, 1, 1, [unit]).call("VALIDATE_PROGRAM", 5);
+                const validation = s.queryObjectiv(P.C.V86GL_OBJECT_KIND_PROGRAM, 5, GL.VALIDATE_STATUS);
+                s.call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT).call("BEGIN", GL.QUADS)
+                    .call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0).call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+                const pixel = s.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = s.bytes();
+                shadow.process(memory); executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+                check(validation.view.getInt32(P.F.QUERY_OBJECT_IV.value, true) === +(unit === 7), "sampler validation status: " + unit);
+                const expected = unit === 7 ? [0, 128, 192, 255] : [255, 0, 0, 255];
+                check(expected.every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1), "invalid sampler changed pixels: " + unit);
+                check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "sampler frame must have no host errors");
+            }
+            const assembly = new GLStream().makeCurrent(20, 0, 0, 64, 64, 20, 20)
+                .programParameterARB(P.C.V86GL_PROGRAM_PARAMETER_ENV, GL.VERTEX_PROGRAM_ARB, 95, [0.25, 0.5, 0.75, 1])
+                .programParameterARB(P.C.V86GL_PROGRAM_PARAMETER_LOCAL, GL.VERTEX_PROGRAM_ARB, 95, [1, 1, 1, 1])
+                .programParameterARB(P.C.V86GL_PROGRAM_PARAMETER_LOCAL, GL.FRAGMENT_PROGRAM_ARB, 27, [1, 1, 1, 1])
+                .programStringARB(GL.VERTEX_PROGRAM_ARB, "!!ARBvp1.0\nMOV result.position,vertex.position;\nMUL result.color,program.env[95],program.local[95];\nEND")
+                .programStringARB(GL.FRAGMENT_PROGRAM_ARB, "!!ARBfp1.0\nMUL result.color,fragment.color,program.local[27];\nEND")
+                .call("ENABLE", GL.VERTEX_PROGRAM_ARB).call("ENABLE", GL.FRAGMENT_PROGRAM_ARB)
+                .call("CLEAR_COLOR", 0, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const arbOut = assembly.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), arbBytes = assembly.bytes();
+            shadow.process(arbBytes); executor.options.writeGuestMemory = (offset, data) => arbBytes.set(data, offset);
+            executor.submit(remote ? arbBytes.slice() : arbBytes, {}); await executor.idle();
+            check(arbOut.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "ARB readback must finish");
+            check([64, 128, 191, 255].every((v, i) => Math.abs(arbOut.bytes[32 + i] - v) <= 1),
+                "ARB default programs or high vertex/local parameter layout changed pixels: " + Array.from(arbOut.bytes.subarray(32)));
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "ARB frame must have no host errors");
+            for (const [z, expected] of [[0.25, [0, 0, 0, 255]], [0.05, [255, 0, 0, 255]]]) {
+                const raster = new GLStream().makeCurrent(30, 0, 0, 64, 64, 30, 30).call("CLEAR_COLOR", 0, 0, 0, 1)
+                    .call("CLEAR_DEPTH", 0.3).call("CLEAR", GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT)
+                    .call("ENABLE", GL.DEPTH_TEST).call("DEPTH_FUNC", GL.LESS).call("DEPTH_RANGE", 0.25, 0.75)
+                    .call("COLOR4F", 1, 0, 0, 1).call("WINDOW_POS3F", 31, 31, z)
+                    .bitmap(1, 1, 0, 0, 0, 0, new Uint8Array([0x80, 0, 0, 0]));
+                const pixel = raster.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = raster.bytes();
+                shadow.process(memory); executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+                check(pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "raster readback must finish");
+                check(expected.every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1), "WindowPos depth range changed the bitmap: " + z);
+            }
+            const mapped = new GLStream().makeCurrent(40, 0, 0, 64, 64, 40, 40)
+                .pixelMap("PIXEL_MAPUIV", GL.PIXEL_MAP_R_TO_R, [0, 0xFFFFFFFF, 0, 0xFFFFFFFF])
+                .pixelMap("PIXEL_MAPUSV", GL.PIXEL_MAP_G_TO_G, [65535, 0, 65535, 0])
+                .pixelMap("PIXEL_MAPFV", GL.PIXEL_MAP_B_TO_B, [0.25, 0.5, 0.75, 1]).pixelMap("PIXEL_MAPFV", GL.PIXEL_MAP_A_TO_A, [1])
+                .call("PIXEL_TRANSFERI", GL.MAP_COLOR, 1).call("WINDOW_POS3F", 31, 31, 0.5)
+                .drawPixels(1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([255, 0, 170, 255]))
+                .call("PIXEL_TRANSFERI", GL.MAP_COLOR, 0);
+            const mapPixel = mapped.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), mapMemory = mapped.bytes();
+            shadow.process(mapMemory); executor.options.writeGuestMemory = (offset, data) => mapMemory.set(data, offset);
+            executor.submit(remote ? mapMemory.slice() : mapMemory, {}); await executor.idle();
+            check(mapPixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "pixel-map readback must finish");
+            check([255, 255, 191, 255].every((v, i) => Math.abs(mapPixel.bytes[32 + i] - v) <= 1), "integer/short pixel maps changed pixels");
+            const goodFS = "uniform vec4 tint; void main() { gl_FragColor = tint; }";
+            const relink = new GLStream().makeCurrent(50, 0, 0, 64, 64, 50, 50)
+                .call("CREATE_SHADER", 1, GL.VERTEX_SHADER).shaderSource(1, "void main() { gl_Position = gl_Vertex; }").call("COMPILE_SHADER", 1)
+                .call("CREATE_SHADER", 2, GL.FRAGMENT_SHADER).shaderSource(2, goodFS).call("COMPILE_SHADER", 2)
+                .call("CREATE_PROGRAM", 5).call("ATTACH_SHADER", 5, 1).call("ATTACH_SHADER", 5, 2)
+                .call("LINK_PROGRAM", 5).call("USE_PROGRAM", 5);
+            const tint = relink.queryLocation(P.C.V86GL_LOCATION_KIND_UNIFORM, 5, "tint", 32);
+            shadow.process(relink.bytes()); executor.submit(remote ? relink.bytes().slice() : relink.bytes(), {});
+            const tintAt = tint.view.getInt32(P.F.QUERY_LOCATION.result, true);
+            for (const repaired of [false, true]) {
+                const frame = new GLStream();
+                if (!repaired) frame.uniformfv(tintAt, 4, 1, [0.25, 0.5, 0.75, 1]);
+                frame.shaderSource(2, repaired ? goodFS : "void main() { gl_FragColor = unknownValue; }")
+                    .call("COMPILE_SHADER", 2).call("LINK_PROGRAM", 5);
+                const linked = frame.queryObjectiv(P.C.V86GL_OBJECT_KIND_PROGRAM, 5, GL.LINK_STATUS);
+                if (!repaired) frame.call("USE_PROGRAM", 5); // rejected; old executable stays current
+                frame.call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                    .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                    .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+                const pixel = frame.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = frame.bytes();
+                shadow.process(memory); executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+                check(linked.view.getInt32(P.F.QUERY_OBJECT_IV.value, true) === +repaired, "CPU link status must describe the last attempt");
+                check(pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "relink readback must finish");
+                const expected = repaired ? [0, 0, 0, 0] : [64, 128, 191, 255];
+                check(expected.every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1),
+                    "failed link must keep installed code; successful link must zero uniforms: " + Array.from(pixel.bytes.subarray(32)));
+            }
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "relink frames must have no host errors");
+            const retained = new GLStream().makeCurrent(60, 0, 0, 64, 64, 60, 60)
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 7).call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.NEAREST)
+                .texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([64, 128, 192, 255]))
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 3).call("FRAMEBUFFER_TEXTURE", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 7, 0, 0)
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 0).makeCurrent(61, 0, 0, 64, 64, 61, 60)
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 7).call("ENABLE", GL.TEXTURE_2D).call("TEX_ENVI", GL.TEXTURE_ENV, GL.TEXTURE_ENV_MODE, GL.REPLACE)
+                .makeCurrent(60, 0, 0, 64, 64, 60, 60).names(P.GLFN.DELETE_TEXTURES, [7])
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 7)
+                .texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255]))
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 3).names(P.GLFN.DELETE_TEXTURES, [7]);
+            const oldAttachment = retained.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            retained.makeCurrent(61, 0, 0, 64, 64, 61, 60).call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const oldBinding = retained.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), retainedMemory = retained.bytes();
+            shadow.process(retainedMemory); executor.options.writeGuestMemory = (offset, data) => retainedMemory.set(data, offset);
+            executor.submit(remote ? retainedMemory.slice() : retainedMemory, {}); await executor.idle();
+            for (const pixel of [oldAttachment, oldBinding]) {
+                check(pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "retained image readback must finish");
+                check([64, 128, 192, 255].every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1),
+                    "name reuse redirected or destroyed a retained image: " + Array.from(pixel.bytes.subarray(32)));
+            }
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "retained images must have no host errors");
+            const fbos = new GLStream().makeCurrent(80, 0, 0, 64, 64, 80, 80);
+            for (const name of [1, 2, 3]) fbos.call("BIND_TEXTURE", GL.TEXTURE_2D, name)
+                .texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([16, 32, 48, 255]));
+            fbos.call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 3)
+                .call("FRAMEBUFFER_TEXTURE", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 1, 0, 0)
+                .call("FRAMEBUFFER_TEXTURE", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0 + 1, GL.TEXTURE_2D, 2, 0, 0)
+                .call("DRAW_BUFFER", GL.COLOR_ATTACHMENT0 + 1).call("READ_BUFFER", GL.COLOR_ATTACHMENT0 + 1)
+                .call("CLEAR_COLOR", 0, 1, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 4)
+                .call("FRAMEBUFFER_TEXTURE", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 3, 0, 0)
+                .call("CLEAR_COLOR", 0, 0, 1, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 3);
+            const previous = fbos.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            fbos.call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT);
+            const updated = fbos.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            fbos.call("READ_BUFFER", GL.COLOR_ATTACHMENT0);
+            const untouched = fbos.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            fbos.call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 4);
+            const otherFbo = fbos.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), fboMemory = fbos.bytes();
+            shadow.process(fboMemory); executor.options.writeGuestMemory = (offset, data) => fboMemory.set(data, offset);
+            executor.submit(remote ? fboMemory.slice() : fboMemory, {}); await executor.idle();
+            for (const [pixel, expected] of [[previous, [0, 255, 0, 255]], [updated, [255, 0, 0, 255]],
+                    [untouched, [16, 32, 48, 255]], [otherFbo, [0, 0, 255, 255]]]) {
+                check(pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "FBO selection readback must finish");
+                check(expected.every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1), "FBO read/draw selection leaked: " + Array.from(pixel.bytes.subarray(32)));
+            }
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "FBO selections must have no host errors");
+            for (const format of [GL.STENCIL_INDEX1_EXT, GL.STENCIL_INDEX4_EXT, GL.STENCIL_INDEX16_EXT]) {
+                const stencil = new GLStream().makeCurrent(90, 0, 0, 64, 64, 90, 90)
+                    .call("BIND_TEXTURE", GL.TEXTURE_2D, 1).texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, null)
+                    .call("BIND_RENDERBUFFER", GL.RENDERBUFFER_EXT, 9).call("RENDERBUFFER_STORAGE", GL.RENDERBUFFER_EXT, format, 1, 1)
+                    .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 3).call("VIEWPORT", 0, 0, 1, 1)
+                    .call("FRAMEBUFFER_TEXTURE", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 1, 0, 0)
+                    .call("FRAMEBUFFER_RENDERBUFFER", GL.FRAMEBUFFER_EXT, GL.STENCIL_ATTACHMENT, GL.RENDERBUFFER_EXT, 9)
+                    .call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR_STENCIL", 255).call("CLEAR", GL.COLOR_BUFFER_BIT | GL.STENCIL_BUFFER_BIT)
+                    .call("ENABLE", GL.STENCIL_TEST).call("STENCIL_FUNC", GL.EQUAL, 1000, 0xFFFFFFFF)
+                    .call("COLOR4F", 0.25, 0.5, 0.75, 1).call("BEGIN", GL.QUADS)
+                    .call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0).call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+                const pixel = stencil.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = stencil.bytes();
+                shadow.process(memory); executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+                check(pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "renderbuffer stencil readback must finish");
+                check([64, 128, 191, 255].every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1),
+                    "stencil precision must describe the actual eight-bit storage: " + format);
+            }
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "renderbuffer storage must have no host errors");
+            const textureState = new GLStream().makeCurrent(100, 0, 0, 64, 64, 100, 100)
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 7).texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]))
+                .call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.LINEAR_MIPMAP_LINEAR)
+                .call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_BORDER)
+                .call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_BORDER)
+                .call("TEX_PARAMETERF", GL.TEXTURE_2D, GL.TEXTURE_MAX_ANISOTROPY_EXT, 2.5)
+                .call("TEX_PARAMETERF", GL.TEXTURE_2D, GL.TEXTURE_MIN_LOD, 10).call("TEX_PARAMETERF", GL.TEXTURE_2D, GL.TEXTURE_MAX_LOD, -10)
+                .call("TEX_PARAMETERIV", GL.TEXTURE_2D, GL.TEXTURE_BORDER_COLOR, 4, 0, 1073741824, 2147483647, 2147483647)
+                .call("PUSH_ATTRIB", 0x40000).call("TEX_PARAMETERFV", GL.TEXTURE_2D, GL.TEXTURE_BORDER_COLOR, 4, 1, 0, 0, 1).call("POP_ATTRIB")
+                .call("ENABLE", GL.TEXTURE_2D).call("TEX_ENVI", GL.TEXTURE_ENV, GL.TEXTURE_ENV_MODE, GL.REPLACE)
+                .call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT).call("TEX_COORD2F", -2, -2)
+                .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const texturePixel = textureState.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), textureMemory = textureState.bytes();
+            shadow.process(textureMemory); executor.options.writeGuestMemory = (offset, data) => textureMemory.set(data, offset);
+            executor.submit(remote ? textureMemory.slice() : textureMemory, {}); await executor.idle();
+            check(texturePixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "texture parameter readback must finish");
+            check([0, 128, 255, 255].every((v, i) => Math.abs(texturePixel.bytes[32 + i] - v) <= 1), "integer border color or texture attribute restore changed pixels");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "texture parameters must have no host errors");
+            const precision = new GLStream().makeCurrent(110, 0, 0, 64, 64, 110, 110)
+                .texImage2D(GL.TEXTURE_2D, 0, GL.RGBA4, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([100, 150, 200, 255]))
+                .call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.NEAREST).call("ENABLE", GL.TEXTURE_2D)
+                .call("TEX_ENVI", GL.TEXTURE_ENV, GL.TEXTURE_ENV_MODE, GL.REPLACE)
+                .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const header = P.encodeRecord("QUERY_PARAMETER", { query_kind: P.C.V86GL_PARAMETER_TEXTURE_LEVEL,
+                target: GL.TEXTURE_2D, pname: GL.TEXTURE_RED_SIZE, index: 0, value_kind: P.C.V86GL_STATE_INTEGER, data_size: 8 });
+            const request = new Uint8Array(header.length + 8); request.set(header); precision.record(P.GLFN.QUERY_PARAMETER, request);
+            const bits = precision.payloadView(), precisePixel = precision.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = precision.bytes();
+            shadow.process(memory); executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+            executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+            check(bits.view.getUint32(P.F.QUERY_PARAMETER.status, true) === 1 && bits.view.getFloat64(header.length, true) === 4,
+                "texture level must report the uploader's four-bit precision");
+            check([102, 153, 204, 255].every((v, i) => Math.abs(precisePixel.bytes[32 + i] - v) <= 1), "texture precision query disagrees with pixels");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "texture precision must have no host errors");
+            for (const [format, sourceFormat, type, data, expected] of [
+                [GL.ALPHA16F_ARB, GL.ALPHA, GL.FLOAT, new Float32Array([0.25]), [64, 128, 191, 64]],
+                [GL.LUMINANCE16F_ARB, GL.LUMINANCE, GL.FLOAT, new Float32Array([0.25]), [64, 64, 64, 255]],
+                [GL.SLUMINANCE8, GL.LUMINANCE, GL.UNSIGNED_BYTE, new Uint8Array([128]), [55, 55, 55, 255]],
+            ]) {
+                const s = new GLStream().makeCurrent(120, 0, 0, 64, 64, 120, 120)
+                    .texImage2D(GL.TEXTURE_2D, 0, format, 1, 1, sourceFormat, type, new Uint8Array(data.buffer))
+                    .call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.NEAREST).call("ENABLE", GL.TEXTURE_2D)
+                    .call("TEX_ENVI", GL.TEXTURE_ENV, GL.TEXTURE_ENV_MODE, GL.REPLACE).call("COLOR4F", 0.25, 0.5, 0.75, 1)
+                    .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                    .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+                const pixel = s.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = s.bytes();
+                shadow.process(memory); executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+                check(expected.every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1), "texture base format storage changed pixels: " + format + " " + Array.from(pixel.bytes.subarray(32)));
+                check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "extended texture storage must have no host errors");
+            }
+            const validImage = new GLStream().makeCurrent(130, 0, 0, 64, 64, 130, 130)
+                .texImage2D(GL.TEXTURE_2D, 0, GL.RGBA8, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([20, 90, 170, 255]))
+                .call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.NEAREST).call("ENABLE", GL.TEXTURE_2D)
+                .call("TEX_ENVI", GL.TEXTURE_ENV, GL.TEXTURE_ENV_MODE, GL.REPLACE);
+            shadow.process(validImage.bytes()); executor.submit(remote ? validImage.bytes().slice() : validImage.bytes(), {});
+            const oldColor = [20, 90, 170, 255], newColor = [40, 140, 200, 255];
+            for (const [update, expected] of [
+                [s => s.texImage2D(GL.TEXTURE_2D, 0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255])), oldColor],
+                [s => s.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA8, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([255, 0, 0])), oldColor],
+                [s => s.texSubImage2D(GL.TEXTURE_2D, 0, 1, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255])), oldColor],
+                [s => s.texSubImage2D(GL.TEXTURE_2D, 0, 0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([255, 0, 0])), oldColor],
+                [s => s.texSubImage2D(GL.TEXTURE_2D, 0, 0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(newColor)), newColor],
+            ]) {
+                const s = update(new GLStream())
+                    .call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                    .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                    .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+                const pixel = s.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = s.bytes();
+                shadow.process(memory); executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+                check(expected.every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1), "texture update violated validation: " + Array.from(pixel.bytes.subarray(32)));
+                check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "rejected uploads must have no host errors");
+            }
+            const copy = new GLStream().makeCurrent(140, 0, 0, 64, 64, 140, 140)
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 100).texImage2D(GL.TEXTURE_2D, 0, GL.RGBA8, 4, 4, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(0))
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 1)
+                .call("FRAMEBUFFER_TEXTURE", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 100, 0, 0)
+                .call("CLEAR_COLOR", 0.2, 0.6, 0.8, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 2).call("COPY_TEX_IMAGE_2D", GL.TEXTURE_2D, 0, GL.RGBA8, 0, 0, 2, 2, 0)
+                .call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.NEAREST)
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 0).call("ENABLE", GL.TEXTURE_2D)
+                .call("TEX_ENVI", GL.TEXTURE_ENV, GL.TEXTURE_ENV_MODE, GL.REPLACE);
+            shadow.process(copy.bytes()); executor.submit(remote ? copy.bytes().slice() : copy.bytes(), {});
+            for (const valid of [true, false]) {
+                const s = new GLStream();
+                if (!valid) s.call("BIND_FRAMEBUFFER", GL.READ_FRAMEBUFFER, 1)
+                    .call("COPY_TEX_IMAGE_2D", GL.TEXTURE_2D, 0, 1, 0, 0, 1, 1, 0).call("BIND_FRAMEBUFFER", GL.READ_FRAMEBUFFER, 0);
+                s.call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                    .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                    .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+                const pixel = s.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = s.bytes();
+                shadow.process(memory); executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+                check([51, 153, 204, 255].every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1), "copy or rejected copy changed pixels: " + Array.from(pixel.bytes.subarray(32)));
+                check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "copies must have no host errors");
+            }
+            const mipmap = new GLStream().makeCurrent(150, 0, 0, 64, 64, 150, 150)
+                .call("BIND_TEXTURE", GL.TEXTURE_CUBE_MAP, 7)
+                .texImage2D(GL.TEXTURE_CUBE_MAP_POSITIVE_X, 0, GL.RGBA8, 4, 4, GL.RGBA, GL.UNSIGNED_BYTE,
+                    new Uint8Array(Array.from({ length: 16 }, () => [255, 0, 0, 255]).flat()))
+                .texImage2D(GL.TEXTURE_CUBE_MAP_POSITIVE_X, 1, GL.RGBA8, 2, 2, GL.RGBA, GL.UNSIGNED_BYTE,
+                    new Uint8Array(Array.from({ length: 4 }, () => [0, 0, 255, 255]).flat()))
+                .call("GENERATE_MIPMAP", GL.TEXTURE_CUBE_MAP)
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 1)
+                .call("FRAMEBUFFER_TEXTURE", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_CUBE_MAP_POSITIVE_X, 7, 1, 0);
+            const mipPixel = mipmap.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), mipMemory = mipmap.bytes();
+            const rejectedBefore = shadow.stats.rejected;
+            shadow.process(mipMemory); check(shadow.stats.rejected === rejectedBefore + 1, "incomplete cube generation must be rejected on CPU");
+            executor.options.writeGuestMemory = (offset, data) => mipMemory.set(data, offset);
+            executor.submit(remote ? mipMemory.slice() : mipMemory, {}); await executor.idle();
+            check(mipPixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "cube mipmap readback must finish");
+            check([0, 0, 255, 255].every((v, i) => mipPixel.bytes[32 + i] === v), "rejected mipmap generation replaced an existing face");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "mipmap rejection must have no host errors");
+            const vertices = new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]);
+            const buffers = new GLStream().makeCurrent(160, 0, 0, 64, 64, 160, 160)
+                .call("BIND_BUFFER", GL.ARRAY_BUFFER, 7)
+                .bufferData(GL.ARRAY_BUFFER, vertices.byteLength, GL.STATIC_DRAW, new Uint8Array(vertices.buffer))
+                .bufferData(GL.ARRAY_BUFFER, vertices.byteLength, 0, new Uint8Array(vertices.byteLength))
+                .pointerVBO("VERTEX_POINTER_VBO", 3, GL.FLOAT, 0, 0).call("ENABLE_CLIENT_STATE", GL.VERTEX_ARRAY)
+                .call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("COLOR4F", 0.25, 0.5, 0.75, 1).call("DRAW_ARRAYS_DIRECT", GL.QUADS, 0, 4);
+            const bufferPixel = buffers.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), bufferMemory = buffers.bytes();
+            const rejectedBuffers = shadow.stats.rejected; shadow.process(bufferMemory);
+            check(shadow.stats.rejected === rejectedBuffers + 1, "invalid buffer usage must be rejected on CPU");
+            executor.options.writeGuestMemory = (offset, data) => bufferMemory.set(data, offset);
+            executor.submit(remote ? bufferMemory.slice() : bufferMemory, {}); await executor.idle();
+            check(bufferPixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "buffer validation readback must finish");
+            check([64, 128, 191, 255].every((v, i) => Math.abs(bufferPixel.bytes[32 + i] - v) <= 1), "rejected buffer replacement changed geometry");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "buffer rejection must have no host errors");
+            const mappedBuffer = new GLStream().record(P.GLFN.QUERY_BUFFER_MAP,
+                P.encodeRecord("QUERY_BUFFER_MAP", { target: GL.ARRAY_BUFFER, access: GL.READ_WRITE_ARB, pointer: 0x10000 }));
+            const updateHeader = P.encodeRecord("BUFFER_SUB_DATA", { target: GL.ARRAY_BUFFER, offset: 0, size: vertices.byteLength, data_size: vertices.byteLength });
+            const update = new Uint8Array(updateHeader.length + vertices.byteLength); update.set(updateHeader);
+            mappedBuffer.record(P.GLFN.BUFFER_SUB_DATA, update)
+                .call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT).call("DRAW_ARRAYS_DIRECT", GL.QUADS, 0, 4);
+            const rejectedDrawPixel = mappedBuffer.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            mappedBuffer.record(P.GLFN.QUERY_BUFFER_UNMAP,
+                P.encodeRecord("QUERY_BUFFER_UNMAP", { target: GL.ARRAY_BUFFER }))
+                .call("CLEAR", GL.COLOR_BUFFER_BIT).call("DRAW_ARRAYS_DIRECT", GL.QUADS, 0, 4);
+            const mappedPixel = mappedBuffer.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), mappedMemory = mappedBuffer.bytes();
+            const rejectedMapped = shadow.stats.rejected; shadow.process(mappedMemory);
+            check(shadow.stats.rejected === rejectedMapped + 2, "updating or drawing mapped storage must be rejected on CPU");
+            executor.options.writeGuestMemory = (offset, data) => mappedMemory.set(data, offset);
+            executor.submit(remote ? mappedMemory.slice() : mappedMemory, {}); await executor.idle();
+            check([255, 0, 0, 255].every((v, i) => rejectedDrawPixel.bytes[32 + i] === v), "mapped vertex data must not draw");
+            check([64, 128, 191, 255].every((v, i) => Math.abs(mappedPixel.bytes[32 + i] - v) <= 1), "mapped storage rejection changed geometry");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "mapping replies must be CPU-only");
+            const names = new GLStream().makeCurrent(170, 0, 0, 64, 64, 170, 170)
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 1).texImage2D(GL.TEXTURE_2D, 0, GL.RGBA8, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([20, 90, 170, 255]));
+            const namesHeader = P.encodeRecord("QUERY_NAMES", { object_kind: P.C.V86GL_OBJECT_KIND_TEXTURE, count: 1, data_size: 4 });
+            const namesPayload = new Uint8Array(namesHeader.length + 4); namesPayload.set(namesHeader); names.record(P.GLFN.QUERY_NAMES, namesPayload);
+            const generated = names.payloadView(); shadow.process(names.bytes());
+            check(generated.view.getUint32(P.F.QUERY_NAMES.status, true) === 1, "name allocation must finish on CPU");
+            const textureName = generated.view.getUint32(namesHeader.length, true); check(textureName !== 1 && textureName !== 0, "generated name collided with a bound name");
+            executor.submit(remote ? names.bytes().slice() : names.bytes(), {});
+            const generatedDraw = new GLStream().names(P.GLFN.GEN_TEXTURES, [textureName]).call("BIND_TEXTURE", GL.TEXTURE_2D, textureName)
+                .texImage2D(GL.TEXTURE_2D, 0, GL.RGBA8, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255]))
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 1).call("TEX_PARAMETERI", GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.NEAREST)
+                .call("ENABLE", GL.TEXTURE_2D).call("TEX_ENVI", GL.TEXTURE_ENV, GL.TEXTURE_ENV_MODE, GL.REPLACE)
+                .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const namePixel = generatedDraw.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), namesMemory = generatedDraw.bytes();
+            shadow.process(namesMemory); executor.options.writeGuestMemory = (offset, data) => namesMemory.set(data, offset);
+            executor.submit(remote ? namesMemory.slice() : namesMemory, {}); await executor.idle();
+            check([20, 90, 170, 255].every((v, i) => namePixel.bytes[32 + i] === v), "allocating a new texture overwrote an application-named texture");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "name allocation must have no host errors");
+            const arbNames = new GLStream().makeCurrent(190, 0, 0, 64, 64, 190, 190)
+                .call("BIND_PROGRAM_ARB", GL.VERTEX_PROGRAM_ARB, 1)
+                .programStringARB(GL.VERTEX_PROGRAM_ARB, "!!ARBvp1.0\nMOV result.position,vertex.position;\nMOV result.color,vertex.color;\nEND");
+            const arbHeader = P.encodeRecord("QUERY_NAMES", { object_kind: P.C.V86GL_OBJECT_KIND_ARB_PROGRAM, count: 1, data_size: 4 });
+            const arbPayload = new Uint8Array(arbHeader.length + 4); arbPayload.set(arbHeader); arbNames.record(P.GLFN.QUERY_NAMES, arbPayload);
+            const arbName = arbNames.payloadView(); shadow.process(arbNames.bytes());
+            check(arbName.view.getUint32(arbHeader.length, true) === 2, "ARB allocation collided with an application-bound name");
+            executor.submit(remote ? arbNames.bytes().slice() : arbNames.bytes(), {}); await executor.idle();
+            const arbDraw = new GLStream().names(P.GLFN.GEN_PROGRAMS_ARB, [2]).call("BIND_PROGRAM_ARB", GL.VERTEX_PROGRAM_ARB, 2)
+                .programStringARB(GL.VERTEX_PROGRAM_ARB, "!!ARBvp1.0\nMOV result.position,vertex.position;\nMOV result.color,{0,0,1,1};\nEND")
+                .call("BIND_PROGRAM_ARB", GL.VERTEX_PROGRAM_ARB, 1).call("ENABLE", GL.VERTEX_PROGRAM_ARB)
+                .call("COLOR4F", 1, 0, 0, 1).call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const arbPixel = arbDraw.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), arbMemory = arbDraw.bytes();
+            shadow.process(arbMemory); executor.options.writeGuestMemory = (offset, data) => arbMemory.set(data, offset);
+            executor.submit(remote ? arbMemory.slice() : arbMemory, {}); await executor.idle();
+            check([255, 0, 0, 255].every((v, i) => arbPixel.bytes[32 + i] === v), "ARB allocation overwrote an application-named program");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "ARB name allocation must have no host errors");
+            const lifetime = new GLStream().makeCurrent(191, 0, 0, 64, 64, 191, 191)
+                .call("BIND_PROGRAM_ARB", GL.VERTEX_PROGRAM_ARB, 7)
+                .programStringARB(GL.VERTEX_PROGRAM_ARB, "!!ARBvp1.0\nMOV result.position,vertex.position;\nMOV result.color,program.local[3];\nEND")
+                .programParameterARB(P.C.V86GL_PROGRAM_PARAMETER_LOCAL, GL.VERTEX_PROGRAM_ARB, 3, [1, 0, 0, 1])
+                .makeCurrent(192, 0, 0, 64, 64, 192, 191).call("BIND_PROGRAM_ARB", GL.VERTEX_PROGRAM_ARB, 7)
+                .makeCurrent(191, 0, 0, 64, 64, 191, 191).names(P.GLFN.DELETE_PROGRAMS_ARB, [7])
+                .call("BIND_PROGRAM_ARB", GL.VERTEX_PROGRAM_ARB, 7)
+                .programStringARB(GL.VERTEX_PROGRAM_ARB, "!!ARBvp1.0\nMOV result.position,vertex.position;\nMOV result.color,program.local[3];\nEND")
+                .programParameterARB(P.C.V86GL_PROGRAM_PARAMETER_LOCAL, GL.VERTEX_PROGRAM_ARB, 3, [0, 0, 1, 1])
+                .makeCurrent(192, 0, 0, 64, 64, 192, 191).names(P.GLFN.DELETE_PROGRAMS_ARB, [7]);
+            const lifetimePixels = [];
+            for (const id of [192, 191]) {
+                lifetime.makeCurrent(id, 0, 0, 64, 64, id, 191).call("ENABLE", GL.VERTEX_PROGRAM_ARB)
+                    .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                    .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+                lifetimePixels.push(lifetime.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4));
+            }
+            const lifetimeMemory = lifetime.bytes(); shadow.process(lifetimeMemory);
+            executor.options.writeGuestMemory = (offset, data) => lifetimeMemory.set(data, offset);
+            executor.submit(remote ? lifetimeMemory.slice() : lifetimeMemory, {}); await executor.idle();
+            for (const [i, color] of [[0, [255, 0, 0, 255]], [1, [0, 0, 255, 255]]])
+                check(color.every((v, j) => lifetimePixels[i].bytes[32 + j] === v), "ARB deleted shared binding changed pixels in context " + i);
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "ARB lifetimes must have no host errors");
+            const glslNames = new GLStream().makeCurrent(193, 0, 0, 64, 64, 193, 193).call("CREATE_SHADER", 1, GL.VERTEX_SHADER);
+            for (const [kind, count] of [[P.C.V86GL_OBJECT_KIND_PROGRAM, 1], [P.C.V86GL_OBJECT_KIND_SHADER, 2]]) {
+                const header = P.encodeRecord("QUERY_NAMES", { object_kind: kind, count, data_size: count * 4 });
+                const payload = new Uint8Array(header.length + count * 4); payload.set(header); glslNames.record(P.GLFN.QUERY_NAMES, payload);
+            }
+            shadow.process(glslNames.bytes()); executor.submit(remote ? glslNames.bytes().slice() : glslNames.bytes(), {}); await executor.idle();
+            const glslDraw = new GLStream().call("CREATE_PROGRAM", 2).call("CREATE_SHADER", 3, GL.VERTEX_SHADER)
+                .shaderSource(3, "void main(){gl_Position=gl_Vertex;}").call("COMPILE_SHADER", 3).call("ATTACH_SHADER", 2, 3)
+                .call("CREATE_SHADER", 4, GL.FRAGMENT_SHADER).shaderSource(4, "void main(){gl_FragColor=vec4(0.25,0.5,0.75,1.0);}")
+                .call("COMPILE_SHADER", 4).call("ATTACH_SHADER", 2, 4).call("LINK_PROGRAM", 2).call("USE_PROGRAM", 2)
+                .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const glslPixel = glslDraw.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), glslMemory = glslDraw.bytes();
+            const glslRejected = shadow.stats.rejected; shadow.process(glslMemory);
+            check(shadow.stats.rejected === glslRejected, "matching GLSL reservations must accept creation");
+            executor.options.writeGuestMemory = (offset, data) => glslMemory.set(data, offset);
+            executor.submit(remote ? glslMemory.slice() : glslMemory, {}); await executor.idle();
+            check([64, 128, 191, 255].every((v, i) => Math.abs(glslPixel.bytes[32 + i] - v) <= 1), "CPU-generated GLSL names must render");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "GLSL name allocation must have no host errors");
+            const attachments = new GLStream().makeCurrent(194, 0, 0, 64, 64, 194, 194)
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 1).texImage2D(GL.TEXTURE_2D, 0, GL.RGBA8, 4, 4, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(64))
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 1)
+                .call("FRAMEBUFFER_TEXTURE_2D", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 1, 0, 0)
+                .call("FRAMEBUFFER_TEXTURE_2D", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 100, 0, 0)
+                .call("FRAMEBUFFER_TEXTURE_2D", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 1, 99, 0)
+                .call("FRAMEBUFFER_TEXTURE_1D", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 1, 0, 0)
+                .names(P.GLFN.GEN_RENDERBUFFERS, [2]).call("FRAMEBUFFER_RENDERBUFFER", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.RENDERBUFFER_EXT, 2)
+                .call("CLEAR_COLOR", 0.25, 0.5, 0.75, 1).call("CLEAR", GL.COLOR_BUFFER_BIT);
+            const attachmentPixel = attachments.readPixels(1, 1, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), attachmentMemory = attachments.bytes();
+            const attachmentRejected = shadow.stats.rejected; shadow.process(attachmentMemory);
+            check(shadow.stats.rejected === attachmentRejected + 4, "invalid attachments must be rejected before changing the FBO");
+            executor.options.writeGuestMemory = (offset, data) => attachmentMemory.set(data, offset);
+            executor.submit(remote ? attachmentMemory.slice() : attachmentMemory, {}); await executor.idle();
+            check([64, 128, 191, 255].every((v, i) => Math.abs(attachmentPixel.bytes[32 + i] - v) <= 1), "invalid FBO attachments changed the previous render target");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "FBO attachment validation must have no host errors");
+            const formats = new GLStream().makeCurrent(195, 0, 0, 64, 64, 195, 195)
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 1).texImage2D(GL.TEXTURE_2D, 0, GL.RGBA8, 4, 4, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(64))
+                .call("BIND_TEXTURE", GL.TEXTURE_2D, 2).texImage2D(GL.TEXTURE_2D, 0, GL.LUMINANCE8, 4, 4, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(64))
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 1).call("FRAMEBUFFER_TEXTURE_2D", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 1, 0, 0)
+                .call("CLEAR_COLOR", 0.25, 0.5, 0.75, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("FRAMEBUFFER_TEXTURE_2D", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0 + 1, GL.TEXTURE_2D, 2, 0, 0)
+                .call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT);
+            const failedFormatRead = formats.readPixels(1, 1, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4); failedFormatRead.bytes.fill(0xA5, 32);
+            formats.call("FRAMEBUFFER_TEXTURE_2D", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0 + 1, 0, 0, -1, -1);
+            const preservedFormatPixel = formats.readPixels(1, 1, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), formatMemory = formats.bytes();
+            const formatRejected = shadow.stats.rejected; shadow.process(formatMemory);
+            check(shadow.stats.rejected === formatRejected + 2, "incomplete FBO clear and readback must fail on CPU");
+            executor.options.writeGuestMemory = (offset, data) => formatMemory.set(data, offset);
+            executor.submit(remote ? formatMemory.slice() : formatMemory, {}); await executor.idle();
+            check(failedFormatRead.view.getUint32(P.F.READ_PIXELS.status, true) === P.C.V86GL_SYNC_QUERY_STATUS_FAILED &&
+                failedFormatRead.bytes.subarray(32).every(v => v === 0xA5), "incomplete readback must preserve output and report FAILED");
+            check([64, 128, 191, 255].every((v, i) => Math.abs(preservedFormatPixel.bytes[32 + i] - v) <= 1), "incomplete FBO rendering changed the old image");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "FBO completeness rejection must have no host errors");
+            const sharing = new GLStream().makeCurrent(196, 0, 0, 64, 64, 196, 196);
+            const image = (name, bind) => {
+                sharing.call("BIND_TEXTURE", GL.TEXTURE_2D, name).texImage2D(GL.TEXTURE_2D, 0, GL.RGBA8, 4, 4, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(64))
+                    .call(bind, GL.FRAMEBUFFER_EXT, bind === "BIND_FRAMEBUFFER_EXT" ? 7 : 9)
+                    .call("FRAMEBUFFER_TEXTURE_2D", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, name, 0, 0);
+            };
+            image(1, "BIND_FRAMEBUFFER_EXT"); sharing.call("CLEAR_COLOR", 1, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT);
+            image(2, "BIND_FRAMEBUFFER"); sharing.call("CLEAR_COLOR", 0, 0, 1, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .makeCurrent(197, 0, 0, 64, 64, 197, 196);
+            image(3, "BIND_FRAMEBUFFER"); sharing.call("CLEAR_COLOR", 0, 1, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 7).makeCurrent(196, 0, 0, 64, 64, 196, 196)
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 7).names(P.GLFN.DELETE_FRAMEBUFFERS, [7]);
+            image(4, "BIND_FRAMEBUFFER_EXT"); sharing.call("CLEAR_COLOR", 0, 0, 1, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .makeCurrent(197, 0, 0, 64, 64, 197, 196).names(P.GLFN.DELETE_FRAMEBUFFERS, [7]);
+            const oldShared = sharing.readPixels(1, 1, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            sharing.makeCurrent(196, 0, 0, 64, 64, 196, 196);
+            const newShared = sharing.readPixels(1, 1, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            sharing.call("BIND_FRAMEBUFFER_EXT", GL.FRAMEBUFFER_EXT, 9);
+            const privateFirst = sharing.readPixels(1, 1, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            sharing.makeCurrent(197, 0, 0, 64, 64, 197, 196).call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 9);
+            const privateSecond = sharing.readPixels(1, 1, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), sharingMemory = sharing.bytes();
+            const sharingRejected = shadow.stats.rejected; shadow.process(sharingMemory);
+            check(shadow.stats.rejected === sharingRejected, "FBO origin and retained bindings must be valid on CPU");
+            executor.options.writeGuestMemory = (offset, data) => sharingMemory.set(data, offset);
+            executor.submit(remote ? sharingMemory.slice() : sharingMemory, {}); await executor.idle();
+            for (const [pixel, expected] of [[oldShared, [255, 0, 0, 255]], [newShared, [0, 0, 255, 255]],
+                [privateFirst, [0, 0, 255, 255]], [privateSecond, [0, 255, 0, 255]]])
+                check(expected.every((v, i) => pixel.bytes[32 + i] === v), "FBO creation origin, deletion or name reuse changed pixels");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "FBO origin/lifetimes must have no host errors");
+            const fboQueries = new GLStream().call("BIND_RENDERBUFFER", GL.RENDERBUFFER_EXT, 1)
+                .call("RENDERBUFFER_STORAGE", GL.RENDERBUFFER_EXT, GL.DEPTH_COMPONENT16, 4, 4)
+                .call("FRAMEBUFFER_RENDERBUFFER", GL.FRAMEBUFFER_EXT, GL.DEPTH_ATTACHMENT, GL.RENDERBUFFER_EXT, 1);
+            const scalarQueries = [];
+            for (const [pname, value] of [[GL.RED_BITS, 8], [GL.DEPTH_BITS, 16], [GL.STENCIL_BITS, 0], [GL.SAMPLE_BUFFERS, 0], [GL.SAMPLES, 0]]) {
+                const header = P.encodeRecord("QUERY_STATE", { pname, value_kind: P.C.V86GL_STATE_INTEGER, data_size: 8 });
+                const payload = new Uint8Array(header.length + 8); payload.set(header); fboQueries.record(P.GLFN.QUERY_STATE, payload);
+                scalarQueries.push([fboQueries.payloadView(), value]);
+            }
+            const legacyDepthBits = fboQueries.queryInteger(GL.DEPTH_BITS), fboQueryMemory = fboQueries.bytes();
+            shadow.process(fboQueryMemory); executor.submit(remote ? fboQueryMemory.slice() : fboQueryMemory, {}); await executor.idle();
+            for (const [record, expected] of scalarQueries) check(record.view.getUint32(P.F.QUERY_STATE.status, true) === P.C.V86GL_SYNC_QUERY_STATUS_OK &&
+                record.view.getFloat64(P.RECORDS.QUERY_STATE.size, true) === expected, "FBO bit/sample queries must finish on CPU");
+            check(legacyDepthBits.view.getUint32(P.F.QUERY_INTEGER.value, true) === 16, "legacy integer queries must use the selected FBO's depth precision");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "FBO scalar queries must have no host errors");
+            const queries = new GLStream().makeCurrent(180, 0, 0, 64, 64, 180, 180).call("BEGIN_QUERY", GL.SAMPLES_PASSED, 7)
+                .call("COLOR4F", 0, 1, 0, 1).call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END")
+                .names(P.GLFN.GEN_QUERIES, []).names(P.GLFN.DELETE_QUERIES, [999])
+                .makeCurrent(181, 0, 0, 64, 64, 181, 180).call("BEGIN_QUERY", GL.SAMPLES_PASSED, 7).call("END_QUERY", GL.SAMPLES_PASSED)
+                .makeCurrent(180, 0, 0, 64, 64, 180, 180).call("END_QUERY", GL.SAMPLES_PASSED).call("FLUSH");
+            const queryRejected = shadow.stats.rejected; shadow.process(queries.bytes());
+            check(shadow.stats.rejected === queryRejected + 2, "active query name operations must be rejected on CPU");
+            executor.submit(remote ? queries.bytes().slice() : queries.bytes(), {}); await executor.idle();
+            const queryResults = new GLStream(), visibleQuery = queryResults.queryObjectiv(P.C.V86GL_OBJECT_KIND_QUERY, 7, GL.QUERY_RESULT);
+            queryResults.makeCurrent(181, 0, 0, 64, 64, 181, 180); const emptyQuery = queryResults.queryObjectiv(P.C.V86GL_OBJECT_KIND_QUERY, 7, GL.QUERY_RESULT);
+            const queryMemory = queryResults.bytes(); shadow.process(queryMemory); executor.options.writeGuestMemory = (offset, data) => queryMemory.set(data, offset);
+            executor.submit(remote ? queryMemory.slice() : queryMemory, {}); await executor.idle();
+            check(visibleQuery.view.getUint32(P.F.QUERY_OBJECT_IV.status, true) === 1 && emptyQuery.view.getUint32(P.F.QUERY_OBJECT_IV.status, true) === 1,
+                "query results must reach guest memory in both modes");
+            check(visibleQuery.view.getUint32(P.F.QUERY_OBJECT_IV.value, true) > 0 && emptyQuery.view.getUint32(P.F.QUERY_OBJECT_IV.value, true) === 0,
+                "identical query names in shared contexts must retain independent counts");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "private query objects must have no host errors");
+            const emptyFramebufferQuery = new GLStream().makeCurrent(182, 0, 0, 64, 64, 182, 182)
+                .call("BIND_FRAMEBUFFER", GL.FRAMEBUFFER_EXT, 99).call("BEGIN_QUERY", GL.SAMPLES_PASSED, 7).call("END_QUERY", GL.SAMPLES_PASSED);
+            const emptyResult = emptyFramebufferQuery.queryObjectiv(P.C.V86GL_OBJECT_KIND_QUERY, 7, GL.QUERY_RESULT), emptyMemory = emptyFramebufferQuery.bytes();
+            shadow.process(emptyMemory); executor.options.writeGuestMemory = (offset, data) => emptyMemory.set(data, offset);
+            executor.submit(remote ? emptyMemory.slice() : emptyMemory, {}); await executor.idle();
+            check(emptyResult.view.getUint32(P.F.QUERY_OBJECT_IV.status, true) === 1 && emptyResult.view.getUint32(P.F.QUERY_OBJECT_IV.value, true) === 0,
+                "an empty query must complete without rendering into an incomplete framebuffer");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "empty queries must have no host errors");
+        }
+        const unitReference = await (await fetch("gl_conformance/shader_units_reference.json")).json();
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow(); shadow.setGlslang(new V86GLGlslang.Glslang(compiler));
+            const executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize(); shadow.setCapabilities(executor.capabilities());
+            for (const [i, entry] of GLShaderUnitCases.entries()) {
+                const base = 200 + i * 10;
+                const setup = new GLStream().makeCurrent(base, 0, 0, 64, 64, base, base);
+                GLShaderUnitCases.appendProgram(setup, entry, base);
+                const linked = setup.queryObjectiv(P.C.V86GL_OBJECT_KIND_PROGRAM, base, GL.LINK_STATUS);
+                const updates = entry.updates || (entry.uniform ? [{ name: entry.uniform, components: 4, count: 1, value: entry.value }] : []);
+                const locations = updates.map(update => setup.queryLocation(P.C.V86GL_LOCATION_KIND_UNIFORM, base, update.name, 64));
+                shadow.process(setup.bytes()); executor.submit(remote ? setup.bytes().slice() : setup.bytes(), {}); await executor.idle();
+                check(linked.view.getInt32(P.F.QUERY_OBJECT_IV.value, true) === 1, entry.name + " CPU link failed");
+                const draw = new GLStream();
+                for (const [j, update] of updates.entries()) {
+                    const location = locations[j].view.getInt32(P.F.QUERY_LOCATION.result, true);
+                    check(location >= 0, entry.name + " missing uniform " + update.name);
+                    if (update.matrix) draw.uniformMatrixfv(location, update.matrix, update.count, false, update.value);
+                    else draw[update.integer ? "uniformiv" : "uniformfv"](location, update.components, update.count, update.value);
+                }
+                draw.call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                    .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+                const pixel = draw.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = draw.bytes();
+                shadow.process(memory); executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+                check(pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, entry.name + " pixel read failed");
+                check(unitReference[entry.name].pixel.every((v, j) => Math.abs(pixel.bytes[32 + j] - v) <= 1), entry.name + " differs from native: " + Array.from(pixel.bytes.subarray(32)));
+                check(!shadow.stats.rejected && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, entry.name + " host failure");
+            }
+        }
+        const textureReference = await (await fetch("gl_conformance/texture_readback_reference.json")).json();
+        for (const remote of [false, true]) for (const [i, entry] of textureReference.cases.entries()) {
+            const shadow = new V86GLShadow.GLShadow();
+            const executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize(); shadow.setCapabilities(executor.capabilities());
+            async function submit(stream) {
+                const memory = stream.bytes(); shadow.process(memory);
+                executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+            }
+            const setup = GLTextureReadbackCases.setup(entry, 300 + i);
+            const meta = GLTextureReadbackCases.query(setup, { target: entry.target, level: entry.level,
+                format: entry.format, type: entry.type, compressed: +entry.compressed, pointer: entry.pointer });
+            await submit(setup);
+            const F = P.F.QUERY_TEXTURE_IMAGE, H = P.RECORDS.QUERY_TEXTURE_IMAGE.size;
+            check(meta.view.getUint32(F.error, true) === entry.error, entry.name + " metadata error");
+            check(meta.view.getUint32(F.status, true) === (entry.error ? 2 : 1), entry.name + " metadata status");
+            if (entry.error) continue;
+            const r = P.decodeRecord("QUERY_TEXTURE_IMAGE", meta.view, 0), result = new Uint8Array(entry.size).fill(0xA5);
+            for (let offset = 0; offset < r.span;) {
+                const size = Math.min(r.span - offset, 19), stream = new GLStream();
+                const q = GLTextureReadbackCases.query(stream, { mode: offset + size === r.span ? 2 : 1,
+                    ticket: r.ticket, context_id: r.context_id, offset, data_size: size }, result.subarray(offset, offset + size));
+                await submit(stream);
+                check(q.view.getUint32(F.status, true) === 1, entry.name + " texture bytes failed");
+                result.set(q.bytes.subarray(H), offset); offset += size;
+            }
+            if (entry.type === GL.FLOAT) {
+                const little = !entry.name.startsWith("swapped"), a = new DataView(result.buffer), b = new DataView(Uint8Array.from(entry.bytes).buffer);
+                for (let j = 0; j < result.length; j += 4)
+                    check(Math.abs(a.getFloat32(j, little) - b.getFloat32(j, little)) < 1e-6, entry.name + " float pixel differs");
+            } else check(entry.bytes.every((v, j) => result[j] === v), entry.name + " native bytes differ: " + Array.from(result));
+            check(!shadow.stats.rejected && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, entry.name + " host failure");
+        }
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize(); shadow.setCapabilities(executor.capabilities());
+            async function submit(stream) {
+                const memory = stream.bytes(); shadow.process(memory);
+                executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+            }
+            const s = new GLStream().makeCurrent(500, 0, 0, 64, 64, 500, 500).call("BIND_TEXTURE", GL.TEXTURE_2D, 1);
+            GLTextureReadbackCases.image(s, GL.TEXTURE_2D, GL.RGBA8, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(0), 512, 256);
+            s.call("BIND_FRAMEBUFFER_EXT", GL.FRAMEBUFFER_EXT, 1)
+                .call("FRAMEBUFFER_TEXTURE_2D", GL.FRAMEBUFFER_EXT, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, 1, 0, 0)
+                .call("CLEAR_COLOR", 0.25, 0.5, 0.75, 1).call("CLEAR", GL.COLOR_BUFFER_BIT).call("BIND_FRAMEBUFFER_EXT", GL.FRAMEBUFFER_EXT, 0);
+            const q = GLTextureReadbackCases.query(s, { target: GL.TEXTURE_2D, format: GL.RGBA, type: GL.UNSIGNED_BYTE }); await submit(s);
+            const r = P.decodeRecord("QUERY_TEXTURE_IMAGE", q.view, 0);
+            check(r.span === 524288, "large texture span");
+            // A public-name reuse must not redirect a pending image read.
+            const change = new GLStream().names(P.GLFN.DELETE_FRAMEBUFFERS, [1]).names(P.GLFN.DELETE_TEXTURES, [1]).call("BIND_TEXTURE", GL.TEXTURE_2D, 1);
+            GLTextureReadbackCases.image(change, GL.TEXTURE_2D, GL.RGBA8, GL.RGBA, GL.UNSIGNED_BYTE, Uint8Array.from([0, 0, 0, 0]), 1, 1);
+            await submit(change);
+            for (const offset of [0, 262144]) {
+                const chunk = new GLStream(), data = GLTextureReadbackCases.query(chunk, { mode: offset ? 2 : 1,
+                    ticket: r.ticket, context_id: r.context_id, offset, data_size: 262144 }, new Uint8Array(262144).fill(0xA5));
+                await submit(chunk);
+                check(data.view.getUint32(P.F.QUERY_TEXTURE_IMAGE.status, true) === 1, "large texture chunk failed");
+                const pixels = data.bytes.subarray(P.RECORDS.QUERY_TEXTURE_IMAGE.size), expected = [64, 128, 191, 255];
+                check(pixels.every((v, i) => v === expected[i % 4]), "large texture did not retain the rendered image");
+            }
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "large texture host failure");
+        }
+        const mixedReference = await (await fetch("gl_conformance/shader_mixed_reference.json")).json();
+        for (const remote of [false, true]) for (const [i, entry] of GLShaderMixedCases.entries()) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize(); shadow.setCapabilities(executor.capabilities()); shadow.setGlslang(new V86GLGlslang.Glslang(compiler));
+            async function submit(s) {
+                const memory = s.bytes(); shadow.process(memory);
+                executor.options.writeGuestMemory = (offset, data) => memory.set(data, offset);
+                executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+            }
+            const base = 600 + i, s = new GLStream().makeCurrent(base, 0, 0, 64, 64, base, base);
+            GLShaderMixedCases.program(s, entry, 100);
+            const linked = s.queryObjectiv(P.C.V86GL_OBJECT_KIND_PROGRAM, 100, GL.LINK_STATUS);
+            const location = entry.sampler && s.queryLocation(P.C.V86GL_LOCATION_KIND_UNIFORM, 100, "probe", 64); await submit(s);
+            check(linked.view.getInt32(P.F.QUERY_OBJECT_IV.value, true) === 1, entry.name + " CPU link failed");
+            const draw = GLShaderMixedCases.setup(new GLStream(), entry);
+            if (location) draw.uniformiv(location.view.getInt32(P.F.QUERY_LOCATION.result, true), 1, 1, [1]);
+            GLShaderMixedCases.draw(draw, entry);
+            const pixel = draw.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4); await submit(draw);
+            check(pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1, entry.name + " read failed");
+            check(mixedReference[entry.name].pixel.every((v, j) => Math.abs(pixel.bytes[32 + j] - v) <= 1), entry.name + " native pixel differs: " + Array.from(pixel.bytes.subarray(32)));
+            check(!shadow.stats.rejected && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, entry.name + " host failure");
+        }
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize(); shadow.setCapabilities(executor.capabilities());
+            const s = new GLStream().makeCurrent(700, 0, 0, 64, 64, 700, 700).call("LINE_WIDTH", -1).call("LINE_WIDTH", 3);
+            const header = P.encodeRecord("BUFFER_DATA", { target: 0, size: 131072, data_size: 131072 }), invalid = new Uint8Array(header.length + 131072);
+            invalid.set(header); s.record(P.GLFN.BUFFER_DATA, invalid).call("CLEAR_COLOR", 0.25, 0.5, 0.75, 1).call("CLEAR", GL.COLOR_BUFFER_BIT);
+            s.queryError(); const error = s.payloadView(), pixel = s.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            const memory = s.bytes(), segments = shadow.process(memory);
+            executor.options.writeGuestMemory = (at, data, metadata) => memory.set(data, metadata.sourceOffset + at);
+            for (const { offset, length } of segments) {
+                const bytes = memory.subarray(offset, offset + length);
+                executor.submit(remote ? bytes.slice() : bytes, { sourceOffset: offset });
+            }
+            await executor.idle();
+            check(error.view.getUint32(P.F.QUERY_ERROR.status, true) === 1 && error.view.getUint32(P.F.QUERY_ERROR.value, true) === GL.INVALID_VALUE, "filtered CPU error query");
+            check(pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1 && [64, 128, 191, 255].every((v, i) => Math.abs(pixel.bytes[32 + i] - v) <= 1), "filtered stream readback offset/pixel");
+            check(!executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "filtered stream host failure");
+        }
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize(); shadow.setCapabilities(executor.capabilities());
+            const s = new GLStream().makeCurrent(800, 0, 0, 64, 64, 800, 800).call("BIND_BUFFER", GL.ARRAY_BUFFER, 7)
+                .bufferData(GL.ARRAY_BUFFER, 36, GL.STATIC_DRAW, new Uint8Array(new Float32Array([-1, -1, 0, 1, -1, 0, 0, 1, 0]).buffer))
+                .call("BIND_BUFFER", GL.ELEMENT_ARRAY_BUFFER, 9).bufferData(GL.ELEMENT_ARRAY_BUFFER, 6, GL.STATIC_DRAW, new Uint8Array(new Uint16Array([0, 1, 2]).buffer))
+                .makeCurrent(801, 0, 0, 64, 64, 801, 800).call("BIND_BUFFER", GL.ARRAY_BUFFER, 7).call("BIND_BUFFER", GL.ELEMENT_ARRAY_BUFFER, 9)
+                .pointerVBO("VERTEX_POINTER_VBO", 3, GL.FLOAT, 0, 0).call("ENABLE_CLIENT_STATE", GL.VERTEX_ARRAY).call("COLOR4F", 1, 0, 0, 1)
+                .call("PUSH_CLIENT_ATTRIB", 3).makeCurrent(800, 0, 0, 64, 64, 800, 800).names(P.GLFN.DELETE_BUFFERS, [7, 9])
+                .call("BIND_BUFFER", GL.ARRAY_BUFFER, 7).bufferData(GL.ARRAY_BUFFER, 36, GL.STATIC_DRAW, new Uint8Array(new Float32Array([2, 2, 0, 3, 2, 0, 2, 3, 0]).buffer))
+                .call("BIND_BUFFER", GL.ELEMENT_ARRAY_BUFFER, 9).bufferData(GL.ELEMENT_ARRAY_BUFFER, 6, GL.STATIC_DRAW, new Uint8Array(new Uint16Array([0, 0, 0]).buffer))
+                .makeCurrent(801, 0, 0, 64, 64, 801, 800).call("BIND_BUFFER", GL.ARRAY_BUFFER, 0).call("BIND_BUFFER", GL.ELEMENT_ARRAY_BUFFER, 0)
+                .pointerVBO("VERTEX_POINTER_VBO", 3, GL.FLOAT, 0, 0).call("POP_CLIENT_ATTRIB")
+                .call("CLEAR_COLOR", 0, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT).drawElementsDirect(GL.TRIANGLES, 3, GL.UNSIGNED_SHORT, 0, 0, 2);
+            const filled = s.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            s.call("CLEAR", GL.COLOR_BUFFER_BIT).call("POLYGON_MODE", GL.FRONT_AND_BACK, GL.POINT).call("POINT_SIZE", 3)
+                .drawElementsDirect(GL.TRIANGLES, 3, GL.UNSIGNED_SHORT, 0, 0, 2);
+            const point = s.readPixels(0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = s.bytes();
+            shadow.process(memory); executor.options.writeGuestMemory = (at, data) => memory.set(data, at);
+            executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+            for (const pixel of [filled, point]) check(pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1 &&
+                [255, 0, 0, 255].every((v, i) => pixel.bytes[32 + i] === v), "retained vertex/index buffer pixel: " + Array.from(pixel.bytes.subarray(32)));
+            check(!shadow.stats.rejected && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "retained buffer host failure");
+        }
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize();
+            const bitmap = new Uint8Array(128).fill(0xAA), s = new GLStream().makeCurrent(900, 0, 0, 64, 64, 900, 900);
+            const header = P.encodeRecord("POLYGON_STIPPLE_BITMAP", { data_size: 128 }), payload = new Uint8Array(header.length + 128);
+            payload.set(header); payload.set(bitmap, header.length); s.record(P.GLFN.POLYGON_STIPPLE_BITMAP, payload);
+            s.call("ENABLE", GL.POLYGON_STIPPLE).call("COLOR4F", 1, 0, 0, 1).call("CLEAR_COLOR", 0, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT)
+                .call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const pixels = s.readPixels(0, 8, 32, 1, GL.RGBA, GL.UNSIGNED_BYTE, 128);
+            s.call("BIND_BUFFER", GL.PIXEL_UNPACK_BUFFER, 1).bufferData(GL.PIXEL_UNPACK_BUFFER, 128, GL.STATIC_DRAW, new Uint8Array(128));
+            const query = P.encodeRecord("QUERY_POLYGON_STIPPLE", { mode: 1, pointer: 0, data_size: 320 }), data = new Uint8Array(query.length + 320);
+            data.set(query); s.record(P.GLFN.QUERY_POLYGON_STIPPLE, data);
+            s.call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END");
+            const unchanged = s.readPixels(0, 8, 32, 1, GL.RGBA, GL.UNSIGNED_BYTE, 128), memory = s.bytes();
+            shadow.process(memory); executor.options.writeGuestMemory = (at, bytes) => memory.set(bytes, at);
+            executor.submit(remote ? memory.slice() : memory, {}); await executor.idle();
+            for (const read of [pixels, unchanged]) {
+                check(read.view.getUint32(P.F.READ_PIXELS.status, true) === 1, "stipple pixel status");
+                for (let x = 0; x < 32; ++x) check(read.bytes[32 + x * 4] === (x % 2 ? 0 : 255), "stipple bit orientation at " + x);
+            }
+            check(!shadow.stats.rejected && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "stipple host failure");
+        }
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize();
+            const s = new GLStream().makeCurrent(1000, 0, 0, 64, 64, 1000, 1000), list = (operation, name = 0, value = 0) =>
+                s.record(P.GLFN.LIST_COMMAND, P.encodeRecord("LIST_COMMAND", { operation, name, value }));
+            s.call("CLEAR_COLOR", 0, 0, 0, 1).call("CLEAR", GL.COLOR_BUFFER_BIT);
+            list(1, 10, GL.COMPILE); s.call("COLOR4F", 1, 0, 0, 1); list(2);
+            list(1, 11, GL.COMPILE); list(3, 10);
+            s.call("BEGIN", GL.QUADS).call("VERTEX3F", -1, -1, 0).call("VERTEX3F", 1, -1, 0)
+                .call("VERTEX3F", 1, 1, 0).call("VERTEX3F", -1, 1, 0).call("END"); list(2);
+            const before = s.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4);
+            list(1, 10, GL.COMPILE); s.call("COLOR4F", 0, 1, 0, 1); list(2); list(3, 11);
+            const after = s.readPixels(31, 31, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, 4), memory = s.bytes(), segments = shadow.process(memory);
+            executor.options.writeGuestMemory = (at, data, metadata) => memory.set(data, at + (metadata.originalOffset || 0));
+            for (const segment of segments) {
+                const bytes = segment.bytes || memory.subarray(segment.offset, segment.offset + segment.length);
+                executor.submit(remote ? bytes.slice() : bytes, { originalOffset: segment.bytes ? 0 : segment.offset });
+            }
+            await executor.idle();
+            for (const [read, expected] of [[before, [0, 0, 0, 255]], [after, [0, 255, 0, 255]]])
+                check(read.view.getUint32(P.F.READ_PIXELS.status, true) === 1 && expected.every((v, i) => read.bytes[32 + i] === v), "CPU display list pixel " + Array.from(read.bytes.subarray(32)));
+            check(!shadow.stats.rejected && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "display list host failure");
+        }
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize();
+            const { stream, reads } = GLDisplayListArrayCases.build(), memory = stream.bytes(), segments = shadow.process(memory);
+            executor.options.writeGuestMemory = (at, data, metadata) => memory.set(data, at + (metadata.originalOffset || 0));
+            for (const segment of segments) {
+                const bytes = segment.bytes || memory.subarray(segment.offset, segment.offset + segment.length);
+                executor.submit(remote ? bytes.slice() : bytes, { originalOffset: segment.bytes ? 0 : segment.offset });
+            }
+            await executor.idle();
+            for (const { name, read, pixel } of reads) check(read.view.getUint32(P.F.READ_PIXELS.status, true) === 1 &&
+                pixel.every((v, i) => read.bytes[32 + i] === v), name + " captured list pixel " + Array.from(read.bytes.subarray(32)));
+            check(!shadow.current.error && !shadow.stats.rejected && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "captured list host failure");
+        }
+        const listPixelsReference = await (await fetch("gl_conformance/display_list_pixels_reference.json")).json();
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize();
+            const { stream, reads, queries, states } = GLDisplayListPixelCases.build(listPixelsReference.cases), memory = stream.bytes(), segments = shadow.process(memory);
+            executor.options.writeGuestMemory = (at, data, metadata) => memory.set(data, at + (metadata.originalOffset || 0));
+            for (const segment of segments) {
+                const bytes = segment.bytes || memory.subarray(segment.offset, segment.offset + segment.length);
+                executor.submit(remote ? bytes.slice() : bytes, { originalOffset: segment.bytes ? 0 : segment.offset });
+            }
+            await executor.idle();
+            for (const { name, read, expected } of reads) check(read.view.getUint32(P.F.READ_PIXELS.status, true) === 1 &&
+                expected.every((v, i) => read.bytes[32 + i] === v), name + " compiled pixel " + Array.from(read.bytes.subarray(32)));
+            for (const { name, read, expected, error, expectedError } of queries) check(read.view.getUint32(P.F.QUERY_POLYGON_STIPPLE.status, true) === 1 &&
+                expected.every((v, i) => read.bytes[48 + i] === v) && error.view.getUint32(P.F.QUERY_ERROR.status, true) === 1 &&
+                error.view.getUint32(P.F.QUERY_ERROR.value, true) === expectedError, name + " compiled stipple/error");
+            for (const { name, checks, expected } of states) check(checks.every((q, i) => q.view.getUint32(P.F.QUERY_STATE.status, true) === 1 &&
+                q.view.getFloat64(24, true) === expected[i]), name + " preserves client unpack state");
+            check(!shadow.current.error && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals,
+                "compiled pixel host failure " + JSON.stringify({ cpu: shadow.current.error, gpu: executor.gpuErrors.errors, host: executor.hostErrors, refusals: executor.stats.refusals }));
+        }
+        for (const remote of [false, true]) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            await executor.initialize();
+            executor.options.writeGuestMemory = (at, data, metadata) => metadata.guestBytes.set(data, at + (metadata.originalOffset || 0));
+            const submit = async stream => {
+                const memory = stream.bytes(), segments = shadow.process(memory);
+                for (const segment of segments || [{ offset: 0, length: memory.length }]) {
+                    const bytes = segment.bytes || memory.subarray(segment.offset, segment.offset + segment.length);
+                    executor.submit(remote ? bytes.slice() : bytes, { guestBytes: memory, originalOffset: segment.bytes ? 0 : segment.offset });
+                }
+                await executor.idle();
+            };
+            for (const [kind, expectedPixel] of [["selection", [0, 0, 0, 255]], ["feedback", [255, 0, 0, 255]]]) {
+                const entry = GLSelectionCases[kind](); await submit(entry.stream);
+                check(entry.result.view.getInt32(P.F.QUERY_RENDER_MODE.result, true) === entry.expectedResult, kind + " result count");
+                check(entry.pixel.view.getUint32(P.F.READ_PIXELS.status, true) === 1 && expectedPixel.every((v, i) => entry.pixel.bytes[32 + i] === v), kind + " leaves/updates screen as specified");
+                const { stream, response } = GLSelectionCases.read(entry.result); await submit(stream);
+                check(response.view.getUint32(P.F.QUERY_RENDER_MODE.status, true) === 1 && entry.expected.every((v, i) =>
+                    response.view[kind === "selection" ? "getUint32" : "getFloat32"](44 + i * 4, true) === v), kind + " CPU result bytes");
+            }
+            check(!shadow.current.error && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, "selection/feedback host failure");
+        }
+        const selectionPrograms = await (await fetch("gl_conformance/selection_program_reference.json")).json();
+        for (const remote of [false, true]) for (const entry of selectionPrograms.cases) {
+            const shadow = new V86GLShadow.GLShadow(), executor = new GLWebGPUExecutorModule.GLWebGPUExecutor(document.getElementById("gpu"), { strict: true });
+            shadow.setGlslang(new V86GLGlslang.Glslang(compiler)); await executor.initialize(); shadow.setCapabilities(executor.capabilities());
+            const submit = async stream => {
+                const memory = stream.bytes(), segments = shadow.process(memory);
+                for (const segment of segments || [{ offset: 0, length: memory.length }]) {
+                    const bytes = segment.bytes || memory.subarray(segment.offset, segment.offset + segment.length);
+                    executor.submit(remote ? bytes.slice() : bytes, { onVertexCapture: result => shadow.completeVertexCapture(result) });
+                }
+                await executor.idle();
+            };
+            const setup = GLSelectionProgramCases.setup(entry.name.includes("fragment"), entry.name.startsWith("arb_") ? "arb" : entry.name === "glsl_over_arb_select" ? "both" : "glsl"); await submit(setup.stream);
+            const draw = GLSelectionProgramCases.draw(entry.name, setup.location ? setup.location.view.getInt32(P.F.QUERY_LOCATION.result, true) : null); await submit(draw.stream);
+            check(draw.response.view.getUint32(P.F.QUERY_RENDER_MODE.status, true) === 1 && draw.response.view.getInt32(P.F.QUERY_RENDER_MODE.result, true) === entry.result, entry.name + " programmable result");
+            const read = GLSelectionProgramCases.read(draw.response); if (read.response) {
+                await submit(read.stream); check(entry.values.every((value, i) => Math.abs(value - read.response.view[entry.name.endsWith("select") ? "getUint32" : "getFloat32"](44 + i * 4, true)) <=
+                    (entry.name.endsWith("select") && (i === 1 || i === 2) ? 128 : 0.000001)), entry.name + " native programmable feedback");
+            }
+            check(!shadow.current.error && !executor.gpuErrors.errors.length && !executor.hostErrors.length && !executor.stats.refusals, entry.name + " programmable host failure");
+        }
+        document.getElementById("result").textContent = "PASS -- CPU fixed/programmable selection/feedback, validation/forwarding, captured display lists, polygon stipple, retained buffers, texture readback, GLSL lifetime/units/mixed fixed stages and ARB parameters preserve pixels in local and copied streams";
+    } catch (error) {
+        document.getElementById("result").textContent = "FAIL " + (error.stack || error);
+    }
+})();
+</script>

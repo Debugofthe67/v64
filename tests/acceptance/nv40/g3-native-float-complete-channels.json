@@ -1,0 +1,312 @@
+{
+  "stage": "G3/G4 native float and UNORM complete-channel control",
+  "status": "PASS: eleven supported draws, all API/readback checks successful, FAILURES0",
+  "driver": "Unmodified XP93.71 D3D9 HAL; latest release decoder; point/bilinear where supported",
+  "coverage": "All RGB channels including API missing-channel defaults, plus G32R32F. R16F explicitly NOTAVAILABLE/skipped. Existing RG/UNORM/FP16/FP32 coverage retained.",
+  "observations": {
+    "R32F": "Native TEX writes R only, then MOV constant1 to GB. Physical texture defaults need no change.",
+    "G32R32F": "Driver samples packed format15/mode3 UNORM16 twice and uses PK2US to reconstruct IEEE32 R/G; then supplies missing B=1. No new storage format is required.",
+    "expectedRGB": {
+      "scalar": "20ffff",
+      "paired": "2040ff",
+      "wide": "204080"
+    }
+  },
+  "draws": [
+    {
+      "apiFormat": 34,
+      "draw": 1586,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 21,
+          "format_mode": 0,
+          "bpp": 4,
+          "crossbar": 26958
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          7
+        ]
+      ]
+    },
+    {
+      "apiFormat": 34,
+      "draw": 1587,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 21,
+          "format_mode": 0,
+          "bpp": 4,
+          "crossbar": 26958
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          7
+        ]
+      ]
+    },
+    {
+      "apiFormat": 36,
+      "draw": 1588,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 21,
+          "format_mode": 3,
+          "bpp": 8,
+          "crossbar": 43598
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          4
+        ],
+        [
+          "TEX",
+          3
+        ]
+      ]
+    },
+    {
+      "apiFormat": 36,
+      "draw": 1589,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 21,
+          "format_mode": 3,
+          "bpp": 8,
+          "crossbar": 43598
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          4
+        ],
+        [
+          "TEX",
+          3
+        ]
+      ]
+    },
+    {
+      "apiFormat": 112,
+      "draw": 1590,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 31,
+          "format_mode": 0,
+          "bpp": 4,
+          "crossbar": 27108
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          7
+        ]
+      ]
+    },
+    {
+      "apiFormat": 112,
+      "draw": 1591,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 31,
+          "format_mode": 0,
+          "bpp": 4,
+          "crossbar": 27108
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          7
+        ]
+      ]
+    },
+    {
+      "apiFormat": 113,
+      "draw": 1592,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 31,
+          "format_mode": 3,
+          "bpp": 8,
+          "crossbar": 43748
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          4
+        ],
+        [
+          "TEX",
+          3
+        ]
+      ]
+    },
+    {
+      "apiFormat": 113,
+      "draw": 1593,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 31,
+          "format_mode": 3,
+          "bpp": 8,
+          "crossbar": 43748
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          4
+        ],
+        [
+          "TEX",
+          3
+        ]
+      ]
+    },
+    {
+      "apiFormat": 114,
+      "draw": 1594,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 28,
+          "format_mode": 0,
+          "bpp": 4,
+          "crossbar": 43748
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          1
+        ],
+        [
+          "MOV",
+          6
+        ],
+        [
+          "MOV",
+          7
+        ]
+      ]
+    },
+    {
+      "apiFormat": 115,
+      "draw": 1595,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 21,
+          "format_mode": 3,
+          "bpp": 8,
+          "crossbar": 43598
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          3
+        ],
+        [
+          "PK2US",
+          1
+        ],
+        [
+          "TEX",
+          12
+        ],
+        [
+          "PK2US",
+          2
+        ],
+        [
+          "MOV",
+          4
+        ],
+        [
+          "MOV",
+          7
+        ]
+      ]
+    },
+    {
+      "apiFormat": 116,
+      "draw": 1596,
+      "textures": [
+        {
+          "unit": 0,
+          "code": 28,
+          "format_mode": 4,
+          "bpp": 16,
+          "crossbar": 43748
+        }
+      ],
+      "fragmentOps": [
+        [
+          "TEX",
+          1
+        ],
+        [
+          "TEX",
+          2
+        ],
+        [
+          "TEX",
+          4
+        ],
+        [
+          "MOV",
+          7
+        ]
+      ]
+    }
+  ],
+  "artifacts": {
+    "tests/devices/geforce_float_texture.c": {
+      "bytes": 7727,
+      "sha256": "043460edaa75bc8409af9b85b498b1188aa97561081bde8f6e222b0afb36f7d5"
+    },
+    "build/NVFLOAT-v5.EXE": {
+      "bytes": 11666,
+      "sha256": "079c9fc48191a85f24269d5daf2b77c1fe3b11cfcdd91dfbccb879f9aebe476e"
+    },
+    "build/nv40-xp-mark05-current-format-resume/NVFLOAT.TXT": {
+      "bytes": 2144,
+      "sha256": "76cd6f73c9fde36dc572f326ebc3d6809097808ac03a4711ee9937dfc5fa4ef5"
+    },
+    "build/nv40-xp-mark05-current-format-resume/native-float-probe-eleven-programs.json": {
+      "bytes": 708100,
+      "sha256": "2b5b93d3bef8f5db2f073b71cbb290b6dedd8b36968619981953b6f7ee6e9cfe"
+    }
+  },
+  "limits": [
+    "This control does not replace original06 cold IQ verification.",
+    "The host process later ended due to an erroneous inspector signal. The completed log and eleven draws were retained; no normal shutdown is claimed for that process."
+  ],
+  "references": [
+    "https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/texldp---ps",
+    "https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dformat"
+  ],
+  "validation": {
+    "strictC": "MinGW -Wall -Wextra -Werror passes; same source as executed v5 control",
+    "native": "Eleven completed draws and RGB readbacks; FAILURES0; no emulator changes"
+  }
+}

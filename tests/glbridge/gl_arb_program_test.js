@@ -10,6 +10,7 @@
 
 "use strict";
 
+const { requireNaga } = require("./naga.js");
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
@@ -17,15 +18,8 @@ const path = require("path");
 const { spawnSync, execFileSync } = require("child_process");
 const arb = require("../../src/browser/glbridge/gl-webgpu/gl_arb_program.js");
 
-function findNaga() {
-    if (process.env.GL_NAGA) return process.env.GL_NAGA;
-    if (spawnSync("naga", ["--version"], { encoding: "utf8" }).status === 0)
-        return "naga";
-    const cargo = path.join(os.homedir(), ".cargo", "bin", "naga");
-    return fs.existsSync(cargo) ? cargo : null;
-}
 
-const naga = findNaga();
+const naga = requireNaga("gl_arb_program_test");
 const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "glwg-arb-"));
 let passed = 0;
 const failures = [];
@@ -95,6 +89,49 @@ END`, "fixed_fragment_outputs", {
         "the mixed stages use a byte-identical GLState layout");
 });
 
+test("constants in instructions, ranges and relative addressing assemble (review S2-48)", () => {
+    const fragment = compile("!!ARBfp1.0\nTEMP t;\nMUL t, fragment.color, 2.0;\n" +
+        "MAD_SAT t, t, {0.5, 0.25}, -1.0;\nPOW t.x, {0.25}.x, {0.5}.x;\nMOV result.color, t;\nEND\n", "inline_constants");
+    assert.match(fragment.wgsl, /vec4<f32>\(2(\.0)?, 2(\.0)?, 2(\.0)?, 2(\.0)?\)/, "a scalar is all four components");
+    assert.match(fragment.wgsl, /vec4<f32>\(0\.5, 0\.25, 0(\.0)?, 1(\.0)?\)/, "a short vector is filled with 0 and 1");
+    const vertex = compile(TRANSFORM.replace("MOV result.color, vertex.color;",
+        "PARAM arr[5] = { program.local[0..4] };\nADDRESS a;\nARL a.x, program.env[0].x;\n" +
+        "MOV result.color, arr[a.x-1];\nMOV result.color.secondary, program.env[a.x+2];"), "relative");
+    assert.match(vertex.wgsl, /arbParams\.local\[4\]/, "the range is five registers");
+    assert.match(vertex.wgsl, /\(arb_a\.x - 1\)/, "a negative offset");
+    assert.match(vertex.wgsl, /clamp\(\(arb_a\.x \+ 2\), 0, /);
+    assert.ok(vertex.reflection.stateFields.length >= 1);
+    assert.deepStrictEqual(compile("!!ARBfp1.0\nMOV result.color, fragment.texcoord[3];\nEND\n", "texcoords")
+        .reflection.fragmentTexCoords, [3]);
+});
+
+test("SWZ, result.depth, fog options, shadow targets and the remaining state bindings (S2-48..S2-50, S3)", () => {
+    const swz = compile("!!ARBfp1.0\nTEMP t;\nSWZ t, fragment.color, x,-y,0,1;\nMOV result.color, t;\nEND\n", "swz");
+    assert.match(swz.wgsl, /vec4<f32>\(\(fin\.frontColor\)\.x, -\(\(fin\.frontColor\)\.y\), 0\.0, 1\.0\)/);
+    for (const [label, write] of [["depth_z", "MOV result.depth.z, fragment.color.x;"],
+        ["depth_whole", "MOV result.depth, fragment.color;"]])
+        assert.match(compile("!!ARBfp1.0\nMOV result.color, fragment.color;\n" + write + "\nEND\n", label).wgsl,
+            /@builtin\(frag_depth\)/, "result.depth (S2-49)");
+    const fog = compile("!!ARBfp1.0\nOPTION ARB_fog_exp2;\nMOV result.color, fragment.color;\nEND\n", "fog_exp2");
+    assert.match(fog.wgsl, /mix\(glState\.fogColor\.rgb, color0\.rgb/);
+    const shadow = compile("!!ARBfp1.0\nOPTION ARB_fragment_program_shadow;\n" +
+        "TXP result.color, fragment.texcoord[0], texture[0], SHADOW2D;\nEND\n", "shadow");
+    assert.match(shadow.wgsl, /texture_depth_2d/);
+    assert.match(shadow.wgsl, /sampler_comparison/);
+    assert.deepStrictEqual(shadow.reflection.textures, [{ unit: 0, target: "SHADOW2D" }]);
+    const bindings = compile(TRANSFORM.replace("MOV result.color, vertex.color;",
+        "PARAM t[4] = { state.matrix.texture[1] };\nPARAM m[4] = { state.matrix.modelview[0] };\n" +
+        "PARAM r[2] = { state.matrix.mvp.row[1..2] };\nTEMP a;\nADD a, t[0], m[1];\nADD a, a, r[1];\n" +
+        "ADD a, a, state.lightprod[0].back.diffuse;\nADD a, a, state.material.front.emission;\n" +
+        "ADD result.color, a, state.texgen.eye.s;"), "state_bindings");
+    assert.match(bindings.wgsl, /glState\.textureMatrix\[1\]/);
+    assert.match(bindings.wgsl, /glState\.modelview\[0\]\[1\], glState\.modelview\[1\]\[1\]/,
+        "modelview[0] is the matrix, m[1] its row 1 (it was read as row 0)");
+    assert.match(bindings.wgsl, /glState\.backLightProduct\[0\]\.diffuse/);
+    const lit = compile("!!ARBfp1.0\nTEMP t;\nLIT t, fragment.color;\nMOV result.color, t;\nEND\n", "lit");
+    assert.match(lit.wgsl, /select\(pow\(max\(v\.y, 0\.0\), exponent\), 1\.0, exponent == 0\.0\)/, "0^0 is 1");
+});
+
 test("a write mask writes only the components it names", () => {
     const result = compile(`!!ARBvp1.0
 TEMP r0;
@@ -141,7 +178,7 @@ test("LIT and LOG emit their helper rather than an approximation", () => {
     const result = compile(`!!ARBvp1.0
 TEMP r0;
 LIT r0, vertex.position;
-LOG r0, vertex.position;
+LOG r0, vertex.position.x;
 MOV result.position, r0;
 END`, "lit_log");
     assert.ok(result.wgsl.indexOf("fn arbLit") >= 0);
@@ -151,9 +188,9 @@ END`, "lit_log");
 test("scalar instructions read only the x component", () => {
     const result = compile(`!!ARBvp1.0
 TEMP r0;
-RCP r0, vertex.position;
-RSQ r0, r0;
-POW r0, r0, r0;
+RCP r0, vertex.position.x;
+RSQ r0, r0.x;
+POW r0, r0.x, r0.x;
 MOV result.position, r0;
 END`, "scalar");
     assert.ok(result.wgsl.indexOf("1.0 / ") >= 0);
@@ -211,9 +248,10 @@ ADD result.color, r0, r2;
 END`, "textures");
     assert.strictEqual(result.reflection.textures.length, 3);
     assert.strictEqual(result.reflection.textures[2].target, "CUBE");
-    assert.ok(result.wgsl.indexOf("textureSample(t0") >= 0);
+    assert.ok(result.wgsl.includes("gl_arb_sample_0(t0, s0,"));
     assert.ok(result.wgsl.indexOf(".xy / ") >= 0, "TXP divides by w");
-    assert.ok(result.wgsl.indexOf("textureSampleBias(t2") >= 0);
+    assert.ok(/gl_arb_sample_2\(t2, s2, [^\n]+\.w, false\)/.test(result.wgsl), "TXB forwards the shader bias with its typed sampler");
+    assert.ok(result.reflection.stateFields.includes("samplerState"));
     assert.ok(result.wgsl.indexOf("texture_cube<f32>") >= 0);
 });
 
@@ -232,8 +270,8 @@ END`, "params");
         "a program which reads parameters declares their uniform binding");
     assert.strictEqual(result.reflection.usesEnv, true);
     assert.strictEqual(result.reflection.usesLocal, true);
-    assert.strictEqual(result.reflection.maxParameters, 28,
-        "28, not the ARB minimum of 24 -- see openglproxy/README.md");
+    assert.strictEqual(result.reflection.maxParameters, 96,
+        "ARB vertex programs provide the required 96 parameters");
 });
 
 test("an ARB program without parameters omits their unused binding", () => {
@@ -249,10 +287,10 @@ END`, "no_params");
 
 test("a parameter beyond the advertised count is refused", () => {
     const result = arb.compileARBProgram(`!!ARBvp1.0
-MOV result.position, program.env[40];
+MOV result.position, program.env[96];
 END`, {});
     assert.strictEqual(result.ok, false);
-    assert.ok(result.log.indexOf("28") >= 0, result.log);
+    assert.ok(result.log.indexOf("96") >= 0, result.log);
 });
 
 test("relative addressing through ARL indexes the uniform array", () => {
@@ -293,6 +331,15 @@ END`, "matrix_row");
     // WGSL indexes a matrix by column, so an ARB row has to be assembled.
     assert.ok(result.wgsl.indexOf("glState.mvp[0][1]") >= 0, result.wgsl);
     assert.ok(result.wgsl.indexOf("glState.mvp[3][1]") >= 0);
+});
+
+test("all program and texture matrix modifiers compile, with bounded indices", () => {
+    for (const type of ["program", "texture"]) for (const [modifier, suffix] of [["", ""], [".inverse", "Inverse"], [".transpose", "Transpose"], [".invtrans", "InverseTranspose"]]) {
+        const result = compile("!!ARBvp1.0\nPARAM m[4] = { state.matrix." + type + "[7]" + modifier + " };\nMOV result.position, m[0];\nEND", type + suffix);
+        assert.ok(result.reflection.stateFields.includes(type + "Matrix" + suffix));
+        compile("!!ARBvp1.0\nMOV result.position, state.matrix." + type + "[7]" + modifier + ".row[2];\nEND", type + suffix + "_row");
+        assert.equal(arb.compileARBProgram("!!ARBvp1.0\nMOV result.position, state.matrix." + type + "[8]" + modifier + ".row[0];\nEND", {}).ok, false);
+    }
 });
 
 test("an unknown state binding is refused with its name", () => {

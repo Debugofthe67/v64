@@ -615,13 +615,16 @@ function IDEChannel(controller, channel_nr, channel_config, command_base, contro
         {
             dbg_log(this.current_interface.name + ": write Command register", LOG_DISK);
         }
-        this.current_interface.status_reg &= ~(ATA_SR_ERR|ATA_SR_DF);
-        this.current_interface.ata_command(data);
         if(LOG_DETAILS & LOG_DETAIL_IRQ)
         {
             dbg_log(this.current_interface.name + ": lower IRQ " + this.irq, LOG_DISK);
         }
+        // A command write acknowledges the previous request. Do this before
+        // executing it: IDENTIFY and synchronous backends can assert a new
+        // completion immediately, which must remain until status is read.
         this.cpu.device_lower_irq(this.irq);
+        this.current_interface.status_reg &= ~(ATA_SR_ERR|ATA_SR_DF);
+        this.current_interface.ata_command(data);
     });
 
     //
@@ -2350,13 +2353,16 @@ IDEInterface.prototype.write_end = function()
         {
             dbg_assert(this.current_command === ATA_CMD_WRITE_SECTORS ||
                 this.current_command === ATA_CMD_WRITE_SECTORS_EXT ||
+                this.current_command === ATA_CMD_WRITE_MULTIPLE ||
                 this.current_command === ATA_CMD_WRITE_MULTIPLE_EXT,
                 "Unexpected command: " + h(this.current_command));
 
             // XXX: Should advance here, but do_write does all the advancing
             //this.ata_advance(this.current_command, 1);
             this.status_reg = ATA_SR_DRDY|ATA_SR_DSC|ATA_SR_DRQ;
-            this.data_end += this.sector_size;
+            const multiple = this.current_command === ATA_CMD_WRITE_MULTIPLE || this.current_command === ATA_CMD_WRITE_MULTIPLE_EXT;
+            this.data_end += Math.min(this.data_length - this.data_end,
+                this.sector_size * (multiple ? this.sectors_per_drq : 1));
             this.push_irq();
         }
     }
@@ -2368,19 +2374,21 @@ IDEInterface.prototype.ata_advance = function(cmd, sectors)
     {
         dbg_log(this.name + ": advance sectors=" + sectors + " old_sector_count_reg=" + this.sector_count_reg, LOG_DISK);
     }
-    this.sector_count_reg -= sectors;
-
-    if(cmd === ATA_CMD_READ_SECTORS_EXT ||
+    const is_lba48 = cmd === ATA_CMD_READ_SECTORS_EXT ||
             cmd === ATA_CMD_READ_MULTIPLE ||
             cmd === ATA_CMD_READ_DMA_EXT ||
             cmd === ATA_CMD_WRITE_SECTORS_EXT ||
             cmd === ATA_CMD_WRITE_MULTIPLE ||
-            cmd === ATA_CMD_WRITE_DMA_EXT)
+            cmd === ATA_CMD_WRITE_DMA_EXT;
+    this.sector_count_reg = this.sector_count_reg - sectors & (is_lba48 ? 0xFFFF : 0xFF);
+
+    if(is_lba48)
     {
-        var new_sector = sectors + this.get_lba48();
-        this.lba_low_reg = new_sector & 0xFF | new_sector >> 16 & 0xFF00;
-        this.lba_mid_reg = new_sector >> 8 & 0xFF;
-        this.lba_high_reg = new_sector >> 16 & 0xFF;
+        const next = sectors + this.get_lba48();
+        // Keep all six task-file bytes, including carries above 2^32 sectors.
+        this.lba_low_reg = next & 0xFF | (Math.floor(next / 2 ** 24) & 0xFF) << 8;
+        this.lba_mid_reg = Math.floor(next / 256) & 0xFF | (Math.floor(next / 2 ** 32) & 0xFF) << 8;
+        this.lba_high_reg = Math.floor(next / 65536) & 0xFF | (Math.floor(next / 2 ** 40) & 0xFF) << 8;
     }
     else if(this.is_lba)
     {
@@ -2388,7 +2396,7 @@ IDEInterface.prototype.ata_advance = function(cmd, sectors)
         this.lba_low_reg = new_sector & 0xFF;
         this.lba_mid_reg = new_sector >> 8 & 0xFF;
         this.lba_high_reg = new_sector >> 16 & 0xFF;
-        this.head = this.head & ~0xF | new_sector & 0xF;
+        this.head = new_sector >>> 24 & 0xF;
     }
     else // chs
     {
@@ -2402,6 +2410,7 @@ IDEInterface.prototype.ata_advance = function(cmd, sectors)
 
         dbg_assert(new_sector === this.get_chs());
     }
+    if(!is_lba48) this.device_reg = this.device_reg & 0xF0 | this.head;
 };
 
 IDEInterface.prototype.ata_read_sectors = function(cmd)
@@ -2444,7 +2453,7 @@ IDEInterface.prototype.ata_read_sectors = function(cmd)
             this.data_set(data);
             this.status_reg = ATA_SR_DRDY|ATA_SR_DSC|ATA_SR_DRQ;
             this.data_end = is_single ? this.sector_size : Math.min(byte_count, this.sectors_per_drq * this.sector_size);
-            this.ata_advance(cmd, is_single ? 1 : Math.min(count, this.sectors_per_track));
+            this.ata_advance(cmd, this.data_end / this.sector_size);
 
             this.push_irq();
             this.report_read_end(byte_count);

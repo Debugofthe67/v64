@@ -22,6 +22,47 @@ import { client, fake_renderer, i32s, ints, settle, text } from "./lib.mjs";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const DISPLAY = { width: 480, height: 800, dpi: 240 };
 
+// Two iOS processes can look up the same kernel IOSurface. Its backing
+// remains live until the last process closes it, including across restore.
+{
+    const host = new GLESHost(DISPLAY, fake_renderer());
+    const a = client(host), b = client(host);
+    const ca = (await a.connect()).call, cb = (await b.connect()).call;
+    const open = async (call, id, w = 64, h = 48, fmt = 0x42475241) =>
+        (await call("v86AcquireIOSurface", id, w, h, fmt)).ret;
+    const first = await open(ca, 7);
+    assert.ok(first);
+    assert.equal((await cb("v86ReadIOSurface", first, 0, 1, 0, 256)).ret, 0, "unopened names cannot read native pixels");
+    for(const [y, rows, flip, size] of [[0, 0, 0, 0], [48, 1, 0, 256], [0, 1, 2, 256], [0, 1, 0, 4]])
+        assert.equal((await ca("v86ReadIOSurface", first, y, rows, flip, size)).ret, 0, "invalid native read rejected before a GPU request");
+    const direct = await ca("v86ReadIOSurface", first, 1, 2, 1, 512);
+    assert.equal(direct.ret, 1);
+    assert.equal(direct.outs[0].length, 512, "pixel reply precedes the native completion status");
+    const bytes = new Uint8Array(64 * 48 * 4);
+    assert.equal((await cb("v86UploadIOSurface", first, 0, bytes)).ret, 0, "an unopened kernel name cannot modify pixels");
+    assert.equal((await ca("v86UploadIOSurface", first, 0, bytes.subarray(0, 4))).ret, 0);
+    assert.equal((await ca("v86UploadIOSurface", first, 0, bytes)).ret, 1);
+    assert.equal((await ca("v86IOSurfaceIsCurrent", first, 0)).ret, 1, "zero is a valid kernel seed");
+    assert.equal(await open(cb, 7), first);
+    assert.equal(await open(cb, 7, 16), 0);
+    assert.equal(await open(cb, 7, 64, 48, 0), 0);
+    assert.equal(await open(ca, 0), 0);
+    assert.equal(await open(ca, 8, 0), 0);
+    const other = await open(cb, 8);
+    assert.ok(other && other !== first);
+    host.set_state(host.get_state());
+    assert.equal(await open(cb, 7), first);
+    await cb("rcCloseColorBuffer", first);
+    a.process_pipe.close();
+    assert.ok(host.rc.color_buffers.has(first));
+    await cb("rcCloseColorBuffer", first);
+    assert.ok(!host.rc.color_buffers.has(first));
+    assert.notEqual(await open(cb, 7, 16, 8), first);
+    b.process_pipe.close();
+    assert.equal(host.rc.color_buffers.size, 0);
+    console.log("PASS: IOSurface identity, geometry and color-buffer lifetime across processes and restore");
+}
+
 // ---- configurations
 
 {

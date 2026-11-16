@@ -51,7 +51,7 @@ export function choices(config)
         cpu_types: CPU_TYPES.slice(),
         /** the CPU models to offer (cpu.profile), null (automatic) first */
         cpu_profiles: [null, ...allowed.cpu_profiles],
-        machine_types: allowed.machine_types,
+        machine_types: config.ios ? ["s5l8930"] : allowed.machine_types.filter(machine => machine !== "s5l8930"),
         graphics_adapters: allowed.graphics_adapters,
         net_devices: allowed.net_device_types,
         sound_devices: ranchu ? RANCHU_SOUND_DEVICES : virt ? VIRT_SOUND_DEVICES : SOUND_DEVICES,
@@ -197,6 +197,11 @@ function fit(c, notes)
         note("Display: " + c.display.adapter + (ranchu ? " (the ranchu machine has the emulator's framebuffer)" : virt ? " (the virt machine has no VGA)" : ""));
     }
     if(c.display.adapter !== "virtio_gpu" && c.display.displays > 1) { c.display.displays = 1; note("One display: only virtio-gpu has more"); }
+    if(c.display.adapter === "geforce_6800" && c.display.vram_mb !== null && ![128, 256].includes(c.display.vram_mb))
+    {
+        c.display.vram_mb = 256;
+        note("Video memory: 256 MB (GeForce 6800 GT supports 128 or 256 MB)");
+    }
     if(c.display.adapter !== "virtio_gpu" && c.display.vulkan !== "none") { c.display.vulkan = "none"; note("No Vulkan: only virtio-gpu has it"); }
     // (Android: its device model's machine and CPU, Cuttlefish's the arm64
     // virt machine, an emulator image's ranchu; Venus and gfxstream with theirs)

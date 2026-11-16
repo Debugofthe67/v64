@@ -293,6 +293,31 @@ pub enum Arith {
 impl Fp {
     pub fn arith<T: Format>(&mut self, op: Arith, a: u64, b: u64) -> u64 {
         let (a, b) = (self.input::<T>(a), self.input::<T>(b));
+        // Every finite normal binary32 product is exact in binary64 (at
+        // most 48 significant bits). For RN normal results this gives both
+        // the hardware-rounded value and an exact IXC test, even when the
+        // sticky inexact flag was initially clear. Keep NaNs, infinities,
+        // directed rounding and the tininess boundary on SoftFloat.
+        if T::BITS == 32 && op == Arith::Mul && self.fpcr & (3 << 22) == 0 {
+            let ordinary = |x: u32| {
+                let x = x & 0x7fff_ffff;
+                x == 0 || (0x0080_0000..0x7f80_0000).contains(&x)
+            };
+            if ordinary(a as u32) && ordinary(b as u32) {
+                let (x, y) = (f32::from_bits(a as u32), f32::from_bits(b as u32));
+                let product = x * y;
+                let bits = product.to_bits();
+                let magnitude = bits & 0x7fff_ffff;
+                if (0x0100_0000..0x7f80_0000).contains(&magnitude)
+                    || magnitude == 0 && (a & 0x7fff_ffff == 0 || b & 0x7fff_ffff == 0)
+                {
+                    if (x as f64) * (y as f64) != product as f64 {
+                        self.flags |= FPSR_IXC;
+                    }
+                    return bits as u64;
+                }
+            }
+        }
         let r = match op {
             Arith::Add => dispatch!(T, f32_add, f64_add, a, b),
             Arith::Sub => dispatch!(T, f32_sub, f64_sub, a, b),

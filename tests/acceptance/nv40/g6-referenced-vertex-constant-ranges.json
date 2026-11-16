@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-15",
+  "status": "Referenced native vertex constant ranges are uploaded freshly; relative addressing retains the complete bank.",
+  "change": "Compiled VP records bounded constant ranges below544. Rendering reads/uploads those ranges every draw, then applies its existing translated viewport/texture constants. Unsupported/test shader providers fall back to the full bank.",
+  "nativeProfile": {
+    "file": "build/nv40-xp-mark06-batch8-wide-batches/batch8-wide-diagnostic.cpuprofile",
+    "windowSeconds": 40.073967,
+    "vertexConstantsSelfSeconds": 3.11
+  },
+  "validation": {
+    "red": "Input-only program previously lacked a no-upload range description.",
+    "shader": "Empty/sparse/adjacent ranges and register543; relative access full544. All shader WGSL cases validate.",
+    "realGpu": "Constant543 changes .75→.25 with unchanged code produce191→64 pixels; all existing relative addressing, branch, sampler, pixel, query/alias/snapshot regressions pass.",
+    "closure": "0 errors/0 warnings"
+  },
+  "cpuMicrobenchmark": {
+    "source": "Unmodified native06 captured six-instruction Batch8 VP",
+    "ranges": [
+      [
+        72,
+        4
+      ]
+    ],
+    "fullBytesPerDraw": 8704,
+    "usedBytesPerDraw": 64,
+    "iterations": 10000,
+    "rounds": 7,
+    "unit": "Node CPU milliseconds",
+    "samples": {
+      "full": [
+        308.366,
+        292.76,
+        286.905,
+        282.274,
+        281.051,
+        281.708,
+        279.408
+      ],
+      "used": [
+        5.977,
+        5.823,
+        5.576,
+        4.952,
+        3.941,
+        3.755,
+        4.374
+      ]
+    },
+    "medians": {
+      "full": 282.274,
+      "used": 4.952
+    },
+    "sink": 0
+  },
+  "limits": [
+    "Ten thousand fresh reads, seven alternating rounds, explicit pre-round GC; exact selected words checked against the prior full-bank snapshot.",
+    "Original captured Batch8 VP reduces native constant payload8704→64bytes per draw; no skipped executable shader or guest memory write.",
+    "Not a native FPS or watchdog-fix claim."
+  ]
+}

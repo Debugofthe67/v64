@@ -326,8 +326,13 @@ PCI.prototype.create_i440fx = function()
         ],
         pci_bars: [],
         name: "82441FX PMC",
+        on_config_write: (offset,size) => {
+            if(offset<0x60 && offset+size>0x59) this.update_pam_writes();
+        },
+        on_config_restore: () => this.update_pam_writes(),
     };
     this.register_device(host_bridge);
+    this.update_pam_writes();
 
     this.isa_bridge = {
         pci_id: 1 << 3,
@@ -343,6 +348,21 @@ PCI.prototype.create_i440fx = function()
     };
     this.isa_bridge_space = this.register_device(this.isa_bridge);
     this.isa_bridge_space8 = new Uint8Array(this.isa_bridge_space.buffer);
+};
+
+// PAM0's upper nibble controls F0000-FFFFF; PAM1-6 each control two 16 KiB
+// regions starting at C0000. Bit 1 of each nibble enables shadow writes.
+// Reference encoding: Intel 82441FX / QEMU hw/pci-host/i440fx.c.
+PCI.prototype.update_pam_writes = function()
+{
+    const space=new Uint8Array(this.device_spaces[0].buffer);
+    let mask=space[0x59]&0x20?0xF000:0;
+    for(let i=0;i<6;i++)
+    {
+        if(space[0x5A+i]&2)mask|=1<<(i*2);
+        if(space[0x5A+i]&0x20)mask|=2<<(i*2);
+    }
+    this.cpu.set_pam_write_mask && this.cpu.set_pam_write_mask(mask);
 };
 
 /**
@@ -390,6 +410,7 @@ PCI.prototype.reset_functions = function()
             }
         });
         device.on_config_restore && device.on_config_restore();
+        this.update_expansion_rom(device);
     });
 };
 
@@ -463,6 +484,8 @@ PCI.prototype.set_state = function(state)
             continue;
         }
 
+        this.unmap_expansion_rom(device);
+
         for(var bar_nr = 0; bar_nr < device.pci_bars.length; bar_nr++)
         {
             var value = space[(0x10 >> 2) + bar_nr];
@@ -522,6 +545,7 @@ PCI.prototype.set_state = function(state)
             this.device_spaces[bdf].set(space.subarray(0, Math.min(space.length, this.device_spaces[bdf].length)));
         }
         device.on_config_restore && device.on_config_restore();
+        this.update_expansion_rom(device);
     }
 
     this.pci_addr.set(state[256]);
@@ -756,14 +780,24 @@ PCI.prototype.function_write = function(pci_id, offset, size, value)
             if(offset === 0x30)
             {
                 this.write_expansion_rom(device, space, value);
+                device.on_config_write && device.on_config_write(offset, size);
             }
             else
             {
+                this.unmap_expansion_rom(device);
                 this.write_bar(device, space, offset, value);
+                this.update_expansion_rom(device);
             }
         }
         else
         {
+            if(offset >= 0x30)
+            {
+                const shift = (offset & 3) * 8, mask = size === 1 ? 255 << shift : 65535 << shift;
+                this.write_expansion_rom(device, space, space[0x30 >> 2] & ~mask | value << shift & mask);
+                device.on_config_write && device.on_config_write(offset, size);
+                return;
+            }
             // (e.g. the Bochs BIOS: narrower writes leave BARs alone)
             dbg_log("Warning: PCI: Expected 32-bit write, got " + (size << 3) + "-bit (addr: " + h(offset) + ")", LOG_PCI);
         }
@@ -982,12 +1016,62 @@ PCI.prototype.write_expansion_rom = function(device, space, written)
         }
         else
         {
-            space[0x30 >> 2] = device.pci_rom_address | 0;
+            space[0x30 >> 2] = written & (-device.pci_rom_size | 1);
         }
     }
     else
     {
         space[0x30 >> 2] = 0;
+    }
+    this.update_expansion_rom(device);
+};
+
+/**
+ * Attach firmware to a function's expansion ROM BAR. Mapping follows the
+ * configuration space; firmware bytes and the host mapping are not snapshot data.
+ * @param {!Object} device
+ * @param {!Uint8Array} bytes
+ */
+PCI.prototype.set_expansion_rom = function(device, bytes)
+{
+    this.unmap_expansion_rom(device);
+    device.expansion_rom = { name: device.name + " ROM", bytes, base: 0 };
+    this.update_expansion_rom(device);
+};
+
+/** @param {!Object} device */
+PCI.prototype.unmap_expansion_rom = function(device)
+{
+    const rom = device.expansion_rom;
+    if(rom && rom.base)
+    {
+        this.io.mmap_unregister_range(rom.base, device.pci_rom_size, rom);
+        rom.base = 0;
+    }
+};
+
+/** @param {!Object} device */
+PCI.prototype.update_expansion_rom = function(device)
+{
+    const rom = device.expansion_rom;
+    if(!rom) return;
+    const space = this.device_spaces[device.pci_id], size = device.pci_rom_size;
+    const value = space[0x30 >> 2], base = (value & -size) >>> 0;
+    let decoded = !!(value & 1) && base !== 0 && this.memory_decoded(device.pci_id, base, size);
+    for(let i = 0; i < device.pci_bars.length && decoded; i++)
+    {
+        const bar = device.pci_bars[i];
+        if(!bar || space[4 + i] & 1) continue;
+        const other = this.bar_base(space, i, bar);
+        if(other && base < other + bar.size && other < base + size) decoded = false;
+    }
+    if(rom.base === (decoded ? base : 0)) return;
+    this.unmap_expansion_rom(device);
+    if(decoded)
+    {
+        rom.base = base;
+        this.io.mmap_register_range(base, size, rom,
+            address => rom.bytes[address - base] ?? 0xFF, () => {});
     }
 };
 
@@ -1011,6 +1095,7 @@ PCI.prototype.command_changed = function(bdf, old_command, command)
 
     const device = this.devices[bdf];
     device.on_command_change && device.on_command_change(old_command, command);
+    this.update_expansion_rom(device);
 
     if(device.pci_secondary_bus !== undefined &&
         (old_command ^ command) & (PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER))
@@ -1206,6 +1291,7 @@ PCI.prototype.upstream_changed = function(pci_id)
         }
     }
     device.on_upstream_change && device.on_upstream_change();
+    this.update_expansion_rom(device);
 };
 
 /**

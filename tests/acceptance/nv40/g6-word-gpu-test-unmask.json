@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-15",
+  "status": "Exact word-wise WebSocket unmasking reduces native test readback CPU; message ownership and protocol are unchanged.",
+  "evidence": {
+    "profile": "build/nv40-xp-mark06-batch8-sparse-constants/batch8-sparse-diagnostic.cpuprofile",
+    "windowSeconds": 40.084336,
+    "frameReaderCallbackSelfSeconds": 5.433
+  },
+  "change": "Aligned DWORD XOR uses a mask rotated for the byte prefix; short messages, prefix and tail retain byte XOR. The four wire mask bytes determine host word order directly.",
+  "validation": [
+    "1920 independent byte-oracle combinations cover offsets0..7, lengths0..79, three masks and untouched surrounding bytes",
+    "Every header/payload split, single-byte chunks, continuation/control/unmasked/close, 4MiB+7 payload, growth/compaction and independent ownership pass",
+    "Complete NV40 real GPU pixel/query/alias/snapshot regressions pass through the changed transport"
+  ],
+  "cpuMicrobenchmark": {
+    "payloadBytes": 4194311,
+    "chunkBytes": 32749,
+    "messagesPerRound": 16,
+    "rounds": 7,
+    "unit": "Node CPU milliseconds",
+    "sameFrameReaderForBoth": true,
+    "fullDecodedPayloadsIdentical": true,
+    "samples": {
+      "byte": [
+        86.795,
+        71.368,
+        73.905,
+        71.475,
+        76.185,
+        71.034,
+        72.198
+      ],
+      "word": [
+        41.471,
+        31.611,
+        25.725,
+        23.677,
+        21.446,
+        26.366,
+        26.501
+      ]
+    },
+    "medians": {
+      "byte": 72.198,
+      "word": 26.366
+    }
+  },
+  "limits": [
+    "Test-only remote renderer transport; no guest, driver, clock or watchdog changes.",
+    "Microbenchmark is CPU/byte identity evidence, not original FPS or a native watchdog fix."
+  ]
+}

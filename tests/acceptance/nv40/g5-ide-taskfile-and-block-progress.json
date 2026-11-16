@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-15",
+  "scope": "Independent IDE correctness fixes found while investigating native Win98 file-cache corruption; not a claimed root-cause fix.",
+  "source": "src/ide.js",
+  "reference": "https://github.com/qemu/qemu/blob/v9.2.0/hw/ide/core.c#L602",
+  "changes": [
+    "LBA28 advancement selects bits24..27 for the head, rather than the low address nibble, and keeps Device register readback synchronized for LBA28 and CHS.",
+    "LBA48 advancement preserves all six task-file bytes and carries above2^32 sectors; sector-count subtraction wraps at the command-defined8/16-bit width.",
+    "READ MULTIPLE initial progress uses the actual DRQ block size rather than CHS sectors-per-track.",
+    "WRITE MULTIPLE accepts both command forms and advances each subsequent DRQ by a whole configured block, bounded by the final partial block."
+  ],
+  "regression": {
+    "test": "tests/devices/ide_transfer_progress.js",
+    "before": "Four isolated old-source groups fail: selected-head reuse,task-file carries,initial multiple-read block progress,multiple-write IRQ boundaries.",
+    "selectedHeadExample": "Without a second Device write,the old implementation reads byte8628117504 instead of38182912 for the next request.",
+    "multipleWriteExample": "Four-sector mode,ten sectors: old IRQ boundaries4,5,6,7,8,9,10; corrected4,8,10.",
+    "after": "Source and release pass: real payload addresses,selected-head reuse,LBA28/48 carries,CHS sector/head/cylinder wrap,zero-count256-sector reads,multiple read/write boundaries,counts,and every written word.",
+    "suite": [
+      "ide_large_disk",
+      "ide_disk_image",
+      "disk_error",
+      "disk_writeback",
+      "disk_sector_size",
+      "33 AHCI cases"
+    ],
+    "release": "Closure0errors/0warnings; release transfer-progress,large-disk and33-case AHCI all pass."
+  },
+  "limits": [
+    "Currently running native benchmarks loaded the earlier IDE module and do not acquire this change through rebuilding.",
+    "The new transfer regression establishes these device bugs; fresh native testing is still required before connecting them to Win98 resource corruption.",
+    "No DAT,driver,benchmark bytes or original disk image is changed."
+  ]
+}

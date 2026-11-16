@@ -1,0 +1,255 @@
+{
+  "date": "2026-11-14",
+  "scope": "G4 original 03 cold-boot full eleven functional result and normal shutdown/export. Fixed IQ and performance remain open.",
+  "guest": "XP SP3, original 93.71, 256 MiB NV40, release Chrome WebGPU. Cold boot originated from a normally shut-down driver C overlay, not a warm benchmark RAM state.",
+  "command": "D:/NVLAUNCH.EXE E:/3DMark03.exe -nosysteminfo -nosplash E:/NV03F.3DR",
+  "settings": {
+    "Width": "1024",
+    "Height": "768",
+    "Anti-Aliasing": "None",
+    "Post-Processing": "No",
+    "Texture Filtering": "Optimal",
+    "Max Anisotropy": "4",
+    "Vertex Shaders": "Optimal",
+    "Force PS 1.1 in GT2 & GT3": "No",
+    "Repeat Tests": "Off",
+    "Fixed Framerate": "Off",
+    "Comment": "",
+    "Min CPU Frequency": "0 MHz",
+    "Max CPU Frequency": "0 MHz",
+    "Min GPU Engine Frequency": "0 MHz",
+    "Max GPU Engine Frequency": "0 MHz",
+    "Min GPU Memory Frequency": "0 MHz",
+    "Max GPU Memory Frequency": "0 MHz",
+    "Min Run Length Deviation": "0 %",
+    "Max Run Length Deviation": "0 %",
+    "Checksums Valid": "No",
+    "Display Changed": "No",
+    "NullPS": "No",
+    "Invalid Score": "No"
+  },
+  "nativeResults": [
+    {
+      "name": "3DMark Score",
+      "value": "355.000000000",
+      "unit": "3DMarks",
+      "status": "0",
+      "statusText": "",
+      "category": "Game Tests"
+    },
+    {
+      "name": "GT1 - Wings of Fury",
+      "value": "3.425220013",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "Game Tests"
+    },
+    {
+      "name": "GT2 - Battle of Proxycon",
+      "value": "3.245751858",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "Game Tests"
+    },
+    {
+      "name": "GT3 - Troll's Lair",
+      "value": "2.469919443",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "Game Tests"
+    },
+    {
+      "name": "GT4 - Mother Nature",
+      "value": "2.430098057",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "Game Tests"
+    },
+    {
+      "name": "CPU Score",
+      "value": "18.000000000",
+      "unit": "CPUMarks",
+      "status": "0",
+      "statusText": "",
+      "category": "CPU Tests"
+    },
+    {
+      "name": "CPU Test 1",
+      "value": "1.520894766",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "CPU Tests"
+    },
+    {
+      "name": "CPU Test 2",
+      "value": "0.469280660",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "CPU Tests"
+    },
+    {
+      "name": "Fill Rate (Single-Texturing)",
+      "value": "1076.128765283",
+      "unit": "texels/s",
+      "status": "0",
+      "statusText": "",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "Fill Rate (Multi-Texturing)",
+      "value": "1780.671995504",
+      "unit": "texels/s",
+      "status": "0",
+      "statusText": "",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "Vertex Shader",
+      "value": "0.531596780",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "Pixel Shader 2.0",
+      "value": "9.812851906",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "Ragtroll",
+      "value": "0.809716582",
+      "unit": "FPS",
+      "status": "0",
+      "statusText": "",
+      "category": "Feature Tests"
+    },
+    {
+      "name": "No sounds",
+      "value": "-1.000000000",
+      "unit": "FPS",
+      "status": "2",
+      "statusText": "Not supported",
+      "category": "Sound Tests"
+    },
+    {
+      "name": "24 sounds",
+      "value": "-1.000000000",
+      "unit": "FPS",
+      "status": "2",
+      "statusText": "Not supported",
+      "category": "Sound Tests"
+    },
+    {
+      "name": "60 sounds",
+      "value": "-1.000000000",
+      "unit": "FPS",
+      "status": "2",
+      "statusText": "Not supported",
+      "category": "Sound Tests"
+    }
+  ],
+  "legs": [
+    {
+      "prefix": "build/nv40-xp-mark03-cold-final",
+      "gpu": {
+        "batches": 5485,
+        "draws": 38526,
+        "bytes": 6745237432,
+        "readbacks": 8407,
+        "failures": 0,
+        "uploads": 2213,
+        "uploadBytes": 4205460564
+      },
+      "graphFaults": [],
+      "nonSoftwareFifoFaults": []
+    },
+    {
+      "prefix": "build/nv40-xp-mark03-cold-final-continue",
+      "gpu": {
+        "batches": 36102,
+        "draws": 170818,
+        "bytes": 67224452224,
+        "readbacks": 55385,
+        "failures": 0,
+        "uploads": 31067,
+        "uploadBytes": 15426485608
+      },
+      "graphFaults": [],
+      "nonSoftwareFifoFaults": []
+    },
+    {
+      "prefix": "build/nv40-xp-mark03-cold-final-continue2",
+      "gpu": {
+        "batches": 14934,
+        "draws": 70966,
+        "bytes": 21729829144,
+        "readbacks": 20273,
+        "failures": 0,
+        "uploads": 4585,
+        "uploadBytes": 7209836400
+      },
+      "graphFaults": [],
+      "nonSoftwareFifoFaults": []
+    }
+  ],
+  "totalGPU": {
+    "batches": 56521,
+    "draws": 280310,
+    "bytes": 95699518800,
+    "readbacks": 84065,
+    "failures": 0,
+    "uploads": 37865,
+    "uploadBytes": 26841782572
+  },
+  "completion": {
+    "allElevenReportedSuccess": true,
+    "originalLauncherExitCode": 0,
+    "soundTests": "All three report Not supported in the audio-less harness; no fabricated sound result.",
+    "shutdown": "Native shutdown.exe -s -t 0, observed Saving your settings followed by the established XP terminal shutdown HLT at EIP 0x806F3048, display.mode=null.",
+    "export": "After shutdown, saved coherent RAM/OS/game overlay bundle and read the original NV03F.3DR from the game FAT32 overlay. ZIP CRC verification and native XML parsing pass.",
+    "originalImagesUnchanged": true
+  },
+  "imageGate": false,
+  "performanceGate": false,
+  "limits": [
+    "Two coherent RAM/disk continuations, concurrent host workloads and UI activity invalidate performance comparison; native 355/18 scores are preserved as output, not accepted FPS.",
+    "Native XML says Checksums Valid=No and Invalid Score=No; both original fields are retained. No validity bit or benchmark file was altered.",
+    "This run predates the new L8/BX2 fixes; fixed IQ and final integration still require verification."
+  ],
+  "evidence": {
+    "build/nv40-xp-mark03-cold-final-continue2-artifacts/NV03F.3DR": {
+      "bytes": 3312,
+      "sha256": "8ca3ff04afc155787b7eac9ba98cbdc1867c0298ff1ff84923573d1276919933"
+    },
+    "build/nv40-xp-mark03-cold-final-continue2-artifacts/Result.xml": {
+      "bytes": 25226,
+      "sha256": "c5684661cfaf797b73a9fe8afe842e30fb15453910f016826e7cf81be9ee1739"
+    },
+    "build/nv40-xp-mark03-cold-final-continue2/NVLAUNCH.TXT": {
+      "bytes": 179,
+      "sha256": "8134bb6d24defa583883de5a02c8666107a891b17c0154bad38a8499a10d4215"
+    },
+    "build/nv40-xp-mark03-cold-final-continue2/result.json": {
+      "bytes": 563,
+      "sha256": "f3afb9097ddf4daccf23d5989b47c31d12e7235e6d695a3fd445e84e045db96a"
+    },
+    "build/nv40-xp-mark03-cold-final-continue2.state.bundle.json": {
+      "bytes": 928,
+      "sha256": "fafc0ec8039a6c9d2d70a008ac6e9dd8cfeccc4b9c4e5e79ca883537106fa954"
+    },
+    "build/nv40-xp-mark03-cold-final-continue2/capture-0204.png": {
+      "bytes": 32372,
+      "sha256": "4c355a3e064b34c7d66c7179590d93904958ad58c2b3bac862592a12cfb89399"
+    }
+  }
+}

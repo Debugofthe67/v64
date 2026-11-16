@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-14",
+  "status": "PULL1 now reports the actual last hardware engine submitted by the channel. Native 06 completion remains unverified.",
+  "register": "PFIFO CACHE1 PULL1 0x3254 low four bits",
+  "change": "Successful PGRAPH object binds and forwarded PGRAPH methods select engine 1, preserving semaphore/acquire bits. Puller builtins and software traps do not replace the last submitted hardware engine. Existing RAMFC save/restore preserves the field per channel.",
+  "sources": [
+    "https://envytools.readthedocs.io/en/latest/hw/fifo/puller.html",
+    "https://raw.githubusercontent.com/envytools/envytools/master/rnndb/fifo/nv4_pfifo.xml"
+  ],
+  "validation": {
+    "regressionBeforeFix": {
+      "expected": 131073,
+      "actual": 131072,
+      "log": "build/nv40-puller-last-engine-red.log"
+    },
+    "checks": [
+      "PGRAPH bind and ordinary method update the last engine",
+      "Semaphore target bits retained",
+      "REF builtin and software object trap retain last hardware engine",
+      "RAMFC round trip separates channel engine state",
+      "Full NV40 device regression",
+      "Complete actual WebGPU pixel/REF/alias/snapshot suite",
+      "Closure zero errors/warnings"
+    ],
+    "logs": [
+      "build/nv40-puller-last-engine-device.log",
+      "build/nv40-puller-last-engine-gpu.log",
+      "build/nv40-puller-last-engine-build.log"
+    ]
+  },
+  "limits": "Previous native 06 runs retained engine 0 despite PGRAPH work. This is a hardware-state correctness fix; no native timeout or performance improvement is claimed.",
+  "followup": {
+    "fixture": "g2-puller-software-target-native.json",
+    "correction": "The original software-trap assumption is superseded: the native ISR requires PULL1 to select the trapped software engine 0. PGRAPH engine and builtin behavior remain."
+  }
+}

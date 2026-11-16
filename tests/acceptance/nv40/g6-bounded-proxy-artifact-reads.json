@@ -1,0 +1,30 @@
+{
+  "stage": "G6 bounded original benchmark artifact extraction",
+  "change": "D3D_ARTIFACT_DIRECT=1 reads only named FAT32 files through the main-thread VM disk_buffer API, posts their bytes, and verifies browser/host SHA256. Default streamed full-disk export remains available for other configurations.",
+  "bounds": {
+    "files": 256,
+    "fatReaderBytes": 33554432,
+    "perFileBytes": 33554432,
+    "timeoutsMs": 120000
+  },
+  "liveValidation": {
+    "guest": "original XP 3DMark05 D3D9 proxy, main-thread CPU",
+    "command": "D3D_ARTIFACT_DIRECT=1 node tests/glbridge/d3d_benchmark_artifacts.mjs build/nv40-proxy05-gt3-vertex-control NVUI.TXT",
+    "files": [
+      {
+        "file": "NVUI.TXT",
+        "name": "NVUI.TXT",
+        "bytes": 7907,
+        "sha256": "aaa883838518e3192543af8ee44d4cc5da81a7d41d5a3cbdda0aad1258e71007"
+      }
+    ],
+    "temporaryDiskChunks": 0,
+    "missingArtifactRejected": true,
+    "syntaxCheck": "node --check tests/glbridge/d3d_benchmark_artifacts.mjs"
+  },
+  "limits": [
+    "Run after the original application has flushed its saved files.",
+    "Direct mode requires a main-thread guest exposing disk_buffer; worker configurations can use the existing streamed mode.",
+    "This is a test orchestration/storage improvement, not a native FPS measurement."
+  ]
+}

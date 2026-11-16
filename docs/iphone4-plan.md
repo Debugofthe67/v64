@@ -1,7 +1,8 @@
 # iPhone 4（A4，S5L8930）机器实施计划
 
-状态：研究性计划，尚未实现。2026-10-27 初稿；同日复核，修正与补充见“复核结论”。所有者决定把 iPhone 4 作为
-v86 的第一台 iOS 设备。S0 第 1 步已完成：固件与密钥已在所有者本机，核对结果见“复核结论”的“固件与密钥”。
+截至 2026-11-05，S1–S3 已用 iPhone3,1 的 10B329 固件验收。S4 已用原版内核从 NAND 挂载系统卷与数据卷，启动核心服务，加载系统钥匙包，并验证 C、D 两类文件写入、同步和重开后的内容。保留原版系统写入后断电，第二次冷启动已通过原版 YAFTL 全盘恢复并重新挂载两卷。浏览器入口与本地工具见 [iOS 使用说明](ios.md)。
+
+S5 已在完整系统冷启动中显示原版 iOS 锁屏，并用模拟触控滑动解锁进入原版主屏。S6 已通过连续熄屏唤醒、主屏翻页、原版双指缩放及 Safari 横竖屏往返。设置、备忘录、计算器、照片、日历、时钟和离线 Safari 均已完成原版界面操作验收。S7 已在 Chrome 用真实 IPSW 验证导入、擦除、从持久 NAND 冷启动、连续两轮唤醒和触控解锁。此前浏览器挂起恢复已验收到客体和 NAND 状态。
 
 本计划为 v86 增加机器类型 `machine_type: "s5l8930"`，模拟 iPhone 4（`iPhone3,1`，板子 N90AP），目标是
 iOS 6.1.3 启动到主屏幕，能触控操作，能运行系统自带的应用。
@@ -191,7 +192,7 @@ CPU”），以及能用哪些指令。两者混在 `cpu_profile` 里会出现�
 | `src/apple/devicetree.js` | 苹果设备树格式的解析与写回 |
 | `src/apple/vic.js`、`timer.js`、`uart.js`、`gpio.js`、`clock.js` | 中断、定时器、串口（Samsung 风格）、GPIO 与按键、时钟/电源门控/chipid/miu 寄存器 |
 | `src/apple/i2c.js`、`pmu.js`、`sensors.js` | I2C 控制器，电源管理芯片（RTC、电量、充电状态、背光），各种传感器 |
-| `src/apple/spi.js`、`multitouch.js` | SPI 控制器，多点触控控制器（Z2 协议）；照 ARM 机器的做法向页面宣告 `mouse-enable` 与 `absolute-pointer`，页面才会把触控板交给它，点击时也不锁指针 |
+| `src/apple/spi.js`、`multitouch.js` | SPI1 控制器，多点触控控制器（N90 的 N1 协议）；照 ARM 机器的做法向页面宣告 `mouse-enable` 与 `absolute-pointer`，页面才会把触控板交给它，点击时也不锁指针 |
 | `src/apple/h2fmi.js`、`cdma.js`、`aes.js` | NAND 控制器与 NAND 芯片模型，DMA 与 AES 引擎 |
 | `src/apple/clcd.js` | 显示控制器与 MIPI DSI、vsync 中断 |
 | `src/gles/`（与 Android 共用） | GLES 代理：解码器、影子状态、renderControl、后门传输（见 [gles-proxy-plan.md](gles-proxy-plan.md)）；后门的截获在 `src/rust/aarch64/a32.rs` |
@@ -329,7 +330,7 @@ libv86gles.dylib：v86 自己的编码器              镜像自带的编码器�
 - **客体库** `libv86gles.dylib`（armv7）：
   - 编码器由同一套规格文件生成 C 代码；
   - 构建：clang 加 cctools-port 的 ld64，链接用从固件导出表生成的桩，不需要苹果的 SDK；
-  - 注入：`DYLD_INSERT_LIBRARIES`（`launchd` 环境中设置，覆盖 `backboardd` 与各应用）；
+  - 10B329 的加载方式见下面 S5 系统进程加载记录。
   - 替换 Objective-C 的部分：`EAGLContext` 等类的方法在构造函数中替换。消息是动态分派的，共享缓存里的调用者
     也走得到；
   - 替换 C 函数不能只靠 dyld 的 `__interpose`：它只改进程与它装载的库之间的绑定，共享缓存
@@ -374,28 +375,26 @@ SGX 的内核驱动保持加载，但没有硬件：它的 MMIO 读回“空闲�
 
 照 Android 镜像的做法（[vm-manager.md](vm-manager.md) 的 “Android”，`src/app/android_catalog.js`、`android_import.js`、
 `android_import_worker.js`）：用户只选设备和版本、交出自己的文件，页面在本地验证、解密、打补丁、组装磁盘；
-开机时由 v86 从磁盘中读出内核与设备树。新模块是 `src/app/ios_catalog.js`、`ios_import.js`、`ios_import_worker.js`。
+开机时由 v86 从磁盘中读出内核与设备树。固件目录位于 `src/ios/catalog.js`，导入由 `src/app/ios_import.js` 和 `src/app/ios_import_worker.js` 处理。
 
-**入口。** 实验性机器默认不显示。**Preferences…** 里有一个开关“显示实验性机器（iPhone）”，打开时显示一段说明：
-固件与密钥由用户自己提供，只在本机处理，不得分享生成的磁盘。
+**入口。** 新建向导的 **Source** 页在 Android 镜像包下方直接显示 **iPhone 4 (GSM) · iOS 6.1.3 (.ipsw)**，
+并标注 **Experimental**。选中后由用户提供固件与密钥，浏览器在本地处理。
 
-**新建向导**（来源一步多出 **Apple 固件（IPSW）**）：
+**新建向导**（选择 iPhone 来源后进入专用流程）：
 
-1. **设备与版本。** 目录列出已验证的组合，v1 只有“iPhone 4（GSM，iPhone3,1）· iOS 6.1.3（10B329）”。每项列出
-   IPSW 的文件名、大小和哈希，以及验证状态。与 Android 目录不同，**不给下载链接**：文件由用户自己取得。
-2. **固件。** 把 IPSW 拖进向导（或选择文件）。页面在本地读取，不上传：
+1. **Source。** 固件卡片列出支持的组合“iPhone 4（GSM，iPhone3,1）· iOS 6.1.3（10B329）”及 IPSW 文件名、大小和哈希。
+   把自己的 IPSW 拖进向导或选择文件，页面在本地读取和验证。
    - 读出 `BuildManifest.plist`/`Restore.plist`，检查机型与版本和所选的一致；
    - 与目录中的哈希比对。
-3. **密钥。** 粘贴或载入一个密钥文件（JSON，字段为内核缓存、设备树、恢复 ramdisk 的 IV 与 key，以及根文件系统
-   的 key；格式见“复核结论”的“固件与密钥”），内容来自 The Apple Wiki 上该版本的页面。
+2. **Keys。** 从向导打开 The Apple Wiki 对应版本的页面，点击 **JSON** 一行的 **Keys**，保存并选择该文件即可自动验证。
+   也可粘贴完整 JSON 后点击验证。原有 `v86-ios-keys` 格式仍可使用，见“复核结论”的“固件与密钥”。
    - 页面立即试解密逐项验证：内核缓存解开后应是 `complzss` 头，设备树能解析，恢复 ramdisk 在 0x400 处是 HFS+
      卷头，根文件系统有 `encrcdsa` 头、解出的末尾是 UDIF 的 `koly` 尾；
    - 哪一项不对就标在哪一项上；
    - 密钥不保存：组装完成后不再需要。
-4. **磁盘。**
-   - 容量 16 或 32 GB（稀疏镜像，只占实际写入的空间），保存在浏览器磁盘或磁盘服务上；
-   - **完成** 后在 worker 里组装：解密、解压、本地打补丁、`nand_build`；显示进度，可取消。
-5. **摘要。** 硬件固定（A4、512 MiB、iPhone 4 的显示与按键），只能改名字。
+3. **Name。** 设置机器名称和备注。
+4. **NAND。** 使用浏览器内的 16 GB 稀疏镜像，可以选择本地图形适配器。
+5. **Summary。** 确认固定硬件（A4、512 MiB、iPhone 4 的显示与按键）。点击 **Finish** 后在 worker 中组装，支持查看进度和取消。
 
 **设置对话框**（`s5l8930` 机器只显示这些项）：
 
@@ -484,6 +483,10 @@ SGX 的内核驱动保持加载，但没有硬件：它的 MMIO 读回“空闲�
 
 ### S4 NAND、数据保护与系统启动
 
+**离线激活，2026-11-05。** 原版 10B329 `lockdownd` 的 `dealwith_activation` 已有本地 Activated 分支。模拟器准备镜像时，对通过完整 SHA-256 核验的私有副本改写一个 Thumb 分支（文件偏移 0xe22c），保留 `DisableHactivation` 检查，更新受影响的签名页，并只将重签后的哈希加入原版内核的信任表。新数据卷为 mobile 用户设置 `SetupDone`、`SetupFinishedAllSteps`、`SetupVersion=3` 和 `ForceNoBuddy`，符合原版 Preferences.framework 的设置检查。原版冷启动已记录两次实际进入激活分支，无需 SIM 或联网；使用这组偏好的启动越过了设置助理，只有完成标记的对照则反复启动 Setup。进入主屏仍是后续验收。
+
+Chrome 与本地工具的压缩结果可能不同。若重写后的资源在原有分配块中放不下，构建器在私有 HFSX 副本末尾追加连续区段，重写目录分配、分配位图和两个卷头。已对故意放宽压缩的三份系统程序逐字节回读，并用独立的 HFSX 检查器验证扩展后的卷。
+
 - H2FMI、NAND 模型、CDMA、AES 引擎（假 UID）；
 - `nand_build.mjs`；
 - 激活与首次设置的处理、基带缺席、传感器；
@@ -495,18 +498,68 @@ SGX 的内核驱动保持加载，但没有硬件：它的 MMIO 读回“空闲�
 
 ### S5 GL ES 代理
 
+直接引导为缺失或全零的 `/chosen/display-scale` 补上整数倍率 2，保留已有非零值。10B329 的 UIKit 从该属性读取无符号整数并转换成浮点数；原全零模板会让屏幕退回 1 倍。2026-11-05 的正常 NAND 冷启动中，已从运行中的原版 UIScreen 对象确认倍率为 2。独立构造的设备树测试覆盖默认值和已有值保留，原版启动文字、显示快照及构建回归通过。真实界面仍停在启动画面，此项不构成主屏验收。
+
+同次排查发现原版 CADisplay 与 UIScreen 的范围为 0×0。LCD 模型此前只设置窗口自己的地址、跨度和范围，遗漏全局窗口选择寄存器 0x1038 的位 0x100；DisplayPipe 因此没有读取启动窗口，并将零尺寸传给上层。复位现启用第一窗口，`boot.mjs --wait-root --display` 新增原版驱动实例的尺寸检查，已冷启动确认其接管 640×960 窗口，画面和快照检查同时通过。完整界面另行验收。
+
+**LCD 提交与 DART，2026-11-05。** 原版 DisplayPipe 将带序号的寄存器批次写入 0x103c；模型此前仅保存最后一个字，画面提交一直没有完成。现已解析批次和连续寄存器写入，更新 0x1048 的完成序号及 0x102c 的 0x100 状态。每次垂直回扫推进 0x1034 的 16 位计数；原版驱动会为带定时标志的批次预设计数，模型在指定回扫才应用。中断过滤器确认回扫位后，完成位仍可供原版工作线程读取。接收中及等待回扫的批次都保存进快照。
+
+两个 DART 另已实现四条流、各 64 个 4 MiB 段的页表选择与读回；有效条目映射 4 KiB 物理页。LCD 第一窗口使用 DART2 的流 0，原版启动驱动将 0x1000 映射到启动帧缓冲。扫描输出和宿主完整面板发布均按页访问，允许物理页不连续；发布前验证全部映射。独立回归覆盖流/段隔离、无效页、非连续像素、接收中恢复及旧快照。`boot.mjs --wait-root --display` 已冷启动验收原版批次完成、DART 像素及快照恢复，构建检查通过。补发旧快照遗失完成通知的诊断副本已结束数据迁移，并创建系统自身的 EAGL 上下文；正常完整冷启动与最终主屏像素仍在另行验收。
+
 - 前提：共用的 GLES 代理（解码器、影子状态、执行器）已经由 Android 32 位验证过（见“GPU”）。它可以与 S1–S4
   并行推进。
 - 后门指令、生成的 C 编码器与客体库的传输部分已在 gles-proxy-plan.md 的 E6 完成，并在 Linux armv7 上验证过。
 - 本阶段只做 iOS 独有的部分：客体库的注入与 C 函数的替换（S0 定的做法）、EAGL 到 renderControl 的对应、
   IOSurface、上屏（S0 定的做法）、Core Animation 的私有扩展、PVRTC。
 
+原版合成器的 GL 入口还使用客户内存中的顶点和索引。客体库在绘制时复制仍启用的顶点数组，按原始步长取数据并打包，索引缓冲路径仍传偏移。两种路径已在原版 backboardd 和 SpringBoard 的 EAGL 上下文中逐像素验证：先画 VBO 三角形，再用带填充的顶点和非连续索引覆盖为另一颜色。构建当前 WebGPU 渲染器后，可用 `tests/ios/system.mjs --draw` 复测；此项不代替主屏验收。
+
+原版合成器已提交带顶点和索引的绘图，目标是附到 FBO 的 640×960 IOSurface 纹理。客体库在结束该 FBO 的绘图时，将修改过的表面从 WebGPU 分批读回并写入原版 IOSurface，再交给原版 LCD 交换。原版两个进程的独立回归已逐像素核对 FBO 切换后的共享内存。普通纹理上传保留像素行填充；PVRTC1 在客体内展开成 RGBA，原版 GLES 入口已验证上传和整级替换。`make ios-pvrtc-tests` 可独立复测位深、环绕、透明度和小纹理；另有 784 组输入和 [PowerVR SDK 参考解码器](https://github.com/powervr-graphics/Native_SDK/blob/master/framework/PVRCore/texture/PVRTDecompress.cpp) 逐像素对照。真实主屏仍单独验收。
+
+**原版锁屏及主屏，2026-11-05。** 客体适配器等 WebGPU 像素读回并解锁 IOSurface 后，才让原版合成器提交对应图层。已写完的表面无需再等待 SGX 发出完成信号。这个处理只应用于识别出的 10B329 QuartzCore 和该适配器已完成的表面。原版 IOMobileFramebuffer 确认了换帧，LCD 实际选中了经 DART 映射的锁屏表面。可用 `tests/ios/system.mjs --screen` 检查实际扫描输出。一次完整冷启动中，滑动通过 N1、原版 HID 和 backboardd 投递给 SpringBoard，随后实际 LCD 输出显示图标、壁纸、状态栏和 Dock。该次解锁有明显延迟。
+
 验收：主屏幕显示正确（图标、壁纸、状态栏、Dock）；与真机截图（所有者提供，或公开的 iOS 6.1.3 截图）比较。
 
 ### S6 交互
 
-- 多点触控（Z2 协议：接受驱动上传的固件、报告就绪、送出触点帧）、按键（Home、电源、音量、静音开关）、
+- 多点触控（N90 的 N1 协议：接受驱动上传的固件、报告就绪、送出触点帧）、按键（Home、电源、音量、静音开关）、
   方向。
+
+10B329 原版设备树将 `multi-touch,n90` 挂在 SPI1；固件的驱动匹配项选择 `AppleMultitouchN1SPI`。Z2 匹配项用于 K48、K94、J1，不能直接当作 N90 协议。SPI2 是基带，继续作为非目标移除。
+
+已补 SPI0、SPI1 的独立控制寄存器、16 字节收发 FIFO、PIO 全双工传送和中断，并追加快照状态。直接引导为全零的外设时钟项补上模拟值，保留已有非零值：pclk 为 100 MHz、两个 SPI 的 nclk 为 24 MHz。这些是模型配置，不是测得的真机频率；原版驱动此前因 pclk 为零，在映射控制器之前就返回失败。
+
+原版 NAND 冷启动已匹配 N1 驱动，完成两字节唤醒命令及多次 16 字节探测，通过 VIC 中断 30 排空接收 FIFO并确认完成。在断开触控芯片的控制器验收中，返回 0xff 空总线后，驱动明确报告未找到 HBPP 并正常退出。可用 `node tests/ios/spi.mjs <原版固件目录> <NAND 镜像>` 复测此项 PIO 传输。设备测试覆盖 FIFO 背压、中断屏蔽与重开、在途快照；构建、原版启动文字和显示快照回归均通过。
+
+SPI1 另已接通原版 N1 上传固件使用的纯发送 DMA，通道 18、19 的中断路由到应用处理器。该驱动使用 32 字节回调环；控制位 0x10 启用的描述符进度现于中断前更新，旧的 NAND FIFO 模式保持原有语义。模拟器保留一次 SPI 请求在描述符批次间的字节位置及快照状态。独立设备测试覆盖 70 KB 分散数据、两种请求先后顺序、批次补充、在途恢复及不重复发送。原版冷启动在诊断空闲应答下，已发送约 53 KB 固件，处理 DMA 完成中断、回收描述符并结束 SPI 事务；运行上面命令时加 `--dma` 可复测。接收 DMA 尚未建模。
+
+**N1 启动协议，2026-11-05。** 现已连接独立的 N1 芯片模型。它校验分段上传的长度、头部与数据校验和，提供只读芯片标识、带掩码的校准寄存器、启动命令、接口版本和短报告的两阶段应答。上传的 ARM 代码由客体自己提供；模型不保存或执行这段代码，只实现芯片的外部协议。D1 报告 N1F55 家族标识；D3 单独报告小端格式、行列和模拟固件版本；D9 用百分之一毫米报告模拟的 50×75 mm 传感器。主机仍以 640×960 像素为输入坐标，与 UIKit 的点坐标分开。GPIO 20 的低电平复位会清除固件及协议状态，协议状态也加入快照。
+
+原版 10B329 冷启动已确认上传 256 字节校准数据和 53,196 字节固件，完成寄存器校准、启动命令、接口版本及 D1、D3、D0、A1、D9 五项报告读取，未触发属性缓存失败或设备重启。`node tests/ios/multitouch.mjs <原版固件目录> <NAND 镜像>` 可复测。独立设备回归覆盖损坏上传拒绝、在途恢复、寄存器掩码、只读标识、应答校验和、报告两阶段及硬件复位，构建检查通过。此启动协议阶段尚未验收触点帧。
+
+**N1 触点传输，2026-11-05。** GPIO 21 已连接帧队列中断，EB 两阶段传输提供长度查询、五字节头校验、数据校验和及 1/2 序号重试。二进制触点帧使用 24 字节头和 28 字节触点记录，支持五个活动触点及按下、移动、抬起；坐标限制在模拟面板内。浏览器鼠标与多点触控按显示区域缩放，并保持浏览器触点标识；控制器启动和恢复时通过 `mouse-enable`、`absolute-pointer` 启用页面输入。队列、活动触点、重试帧与传输中途状态均加入快照。旧设备快照按无待处理触点恢复。
+
+原版冷启动测试已逐项读取按下、移动、抬起，三帧分别使用 1、2、1 序号，各读取一次，无重试或固件恢复。私有观察器另确认三帧均通过原版内核校验并进入上层分发入口；这不等于已生成 HID 触控事件。独立回归覆盖两点触控、边界、损坏请求不消耗队列、同序号重传不重复消耗、在途恢复、宿主输入缩放与复位，构建检查通过。完整系统的触控解析、HID 事件及解锁/滑动操作仍待验收。帧字段的公开交叉参考见 [openiBoot 的结构定义](https://github.com/planetbeing/iphonelinux/blob/master/openiboot/includes/multitouch.h)。
+
+**N1 触点解析与 HID，2026-11-05。** 触点现在带手指类别，按原版 N90 配置选择的有效区域映射屏幕坐标，使用有符号的小端坐标并反转传感器 Y 轴。在正确读取 D1、D3 和 D9 的正常冷启动检查点中，原版 backboardd 对一次单指和一次双指的按下、移动、抬起共生成九个手指事件。按下和移动的 range、touch 均为 1，抬起均为 0；原版滤波后的横纵坐标最大偏差分别为屏宽的 0.71% 和屏高的 2.12%。该测试观察原版函数入口并继续执行其代码，未替换事件或返回值。解锁、翻页和双指缩放仍须用实际界面验收。
+
+触点路径编号从 1 开始，保留原版 HID 拒绝的编号 0。后续冷启动已观察到滑动事件进入 SpringBoard 的队列并最终解锁。延迟期间，SpringBoard 主线程在注册电源通知时等待 IOService 锁，原版显示驱动反复匹配背光服务，而背光服务在等待原版 NAND 发布 IONVRAM。
+
+NVRAM 分区现以块映射标志发布，原版 IOFlashNVRAM 能取得四颗芯片上各两个块的几何并初始化空白区。旧 v86 镜像的两份分区表在读取时兼容，无需重建或改写分区表。用旧镜像冷启动已验证原版背光驱动找到 CLCD，系统和数据卷正常挂载。面板彻底休眠后，DSI 软件复位现会清除通道低功耗状态，设备回归覆盖休眠请求清除后再复位的顺序。`tests/ios/system.mjs --panel-power` 已用原版 10B329 通过连续两轮电源键熄屏和 Home 键唤醒，每轮检查黑色与恢复后的彩色 LCD 像素。该次本地冷启动约 683 秒出现首个彩色帧。
+
+原版应用启动看门狗曾以 `0x8badf00d` 终止设置，报告的 20.27 秒窗口内设置取得 5.85 秒 CPU 时间。当时用 0.2 倍客体时钟给应用启动留出更多宿主时间。以这个速率恢复原版锁屏后，滑动进入主屏，打开设置并进入通用页面。界面动画与计时器也随客体时钟放慢。
+
+**原版应用和方向，2026-11-05。** 在 10B329 中，设置打开通用并修改自动锁定选项，备忘录通过原版软键盘输入并保存一条笔记，日历从日视图切到月视图，时钟的秒表开始并持续计时。主屏滑动切到第二页，打开实用工具中的计算器，触控计算 2 + 3 得到 5。Safari 通过宿主的旋转控制完成横屏、竖屏往返，原版工具栏和地址栏在 LCD 扫描输出中重新布局。
+
+Safari 的原版沙箱拒绝从数据卷打开 GLES 适配器。导入器现将适配器放在系统卷的 `/usr/lib` 中，将 Safari 的弱依赖指向该副本，并登记更新后的签名。系统卷已通过 HFSX 一致性检查。新镜像按原版沙箱规则冷启动，滑动解锁后打开原版 Safari，用原版键盘输入 `data:text/html,v86`，LCD 显示了离线页面及文字 `v86`。
+
+**原版双指缩放，2026-11-05。** 在设置的「移动和缩放」界面，从触控总线送入两根手指的张开和合拢轨迹。原版 UIKit 缩放控件实际收到逐步增大的比例，张开时最高约 3.80，松手后回弹到 1.50，合拢时降到约 0.53。诊断只记录函数的输入参数，缩放逻辑由原版代码执行。从测试 NAND 回读的 640×960 截图 PNG 含正确的壁纸与预览界面，照片查看器和移动缩放界面却显示蓝色内容。该缩放验收覆盖原版手势和控件状态，图片像素显示单独跟踪。
+
+原版照片已解码出有正确颜色的位图，但旧的不透明 RGB 表示进入图层后会显示蓝色，16 位缩略图也显示为黑色。照片进程加载的适配器用原版 CoreGraphics 将这些图像转成预乘 BGRA。正式镜像冷启动后，原版相机胶卷显示了刚截取的主屏图的缩略图，点开后完整图片可见。双指张开后图标实际放大，合拢后恢复整图。另一轮本地图形快照恢复保留了缩放后的画面，LCD 像素与保存前逐字节一致。
+
+同一原版运行中，编号 0 和 1 的按下、移动、抬起均通过了帧解析，只有编号 1 进入 HID 数字化器事件的构建路径。宿主鼠标和触屏现分配非零编号。旧快照里的在途 SPI 报告照常恢复，原版系统已忽略的活动触点 0 不再继续分配给宿主手指。
+
+**传感器，2026-11-05。** I2C2 上的 LIS331DLH 可按四个方向输出重力；MPU3100 提供静止时的角速度、温度、原始采样中断和 FIFO。I2C0 上的 AK8975B 提供稳定磁场和单次测量，CT700 提供室内光线和无遮挡距离。模型只启用设备树中同类备选器件的一颗。设备测试覆盖测量、读写、确认和在途快照；原版 10B329 已识别加速度计和陀螺仪、读到指南针工厂增益、探测 CT700，并两次读取 D1815 实时时钟。客体应用读取传感器和旋转仍待界面验收。寄存器参考：[ST LIS331DLH](https://www.st.com/resource/en/datasheet/lis331dlh.pdf)、[InvenSense MPU-3000 系列](https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-3050-Register-Map.pdf)；CT700 的读取布局来自本地固件驱动。
 
 验收：
 - 解锁、翻页、打开并使用自带应用；
@@ -515,7 +568,27 @@ SGX 的内核驱动保持加载，但没有硬件：它的 MMIO 读回“空闲�
 
 ### S7 集成与完善
 
-- 声音（I2S 与音频 codec 的最小模型，接到 v86 的音频输出）；
+**本地 IPA 安装，2026-11-14。** 控制台已增加 **Install IPA…** 和安装后的 **Open application**。
+浏览器准备 Worker 检查 ARMv7、重建资源封装和 iOS 6 ad-hoc 签名，经鉴权助手调用原生 MobileInstallation。
+安装后验证实际可执行文件身份，再持久提交信任清单；没有将原生验签返回值直接改为成功。
+真实 CPU Worker / OPFS 测试已通过 UIKit 安装、启动、触摸保存、2.0 更新到 3.0 保留计数 1，
+以及同一 NAND 关机冷启动后仍读取计数 1。同代次完整快照恢复后，助手重新鉴权、原生查询仍为 3.0。
+独立 GLES 样例已显示橙色三角形，并在点击后保存计数 1、改变背景颜色；其日志仍有 GL 错误诊断，
+没有宣称完整 GLES 一致性或任意游戏兼容。范围、原生校验适配及证据见 [IPA 安装计划](ios-ipa-install-plan.md)。
+
+**浏览器实测，2026-11-05。** Chrome 对原版 IPSW 及所有必需的本地密钥逐项验证，在浏览器私有存储中写入稀疏 NAND。设置页已擦除并重建数据，随后从保存的 NAND 自行加载内核和设备树，用 CPU Worker 启动原版 iOS，挂载两卷。运行中的客体和 NAND 已在浏览器本地挂起，并从库中恢复；该次挂起约占 110 MB。控制台的旋转按钮已验证更新屏幕坐标映射；客体应用自身的旋转另行验收。当前导入只支持 16 GB 布局和浏览器本地存储。
+
+在 NVRAM 和 DSI 修复后的 Chrome 冷启动中，约 34 分 44 秒出现原版锁屏。连续两轮电源键熄屏、Home 键唤醒都恢复了彩色锁屏。浏览器触控滑动后，LCD 实际显示了原版主屏的图标、壁纸和 Dock。此轮写入了主屏状态的挂起数据，随后测试脚本误回到控制台地址，完整图形状态从库中恢复仍待复测。
+
+**ARM32 JIT 冷启动对照，2026-11-06。** 从同一份未启动的 10B329 NAND 复制出 SHA-256 相同的镜像。隔离 Chrome 使用同一套构建与 0.2 倍客体时钟，每组各冷启动一次。从客体开始运行到原版锁屏首帧，JIT 关闭约 39 分 44 秒，开启约 23 分 12 秒，缩短约 42%。关闭组和开启组分别在 6 分 49 秒和 5 分 35 秒挂载数据卷，锁屏时 JIT 编译计数分别为 0 和 9,039。
+
+开启组通过滑动解锁。设置可修改自动锁定，日历可切到月视图，秒表推进，备忘录可保存，计算器得出 `2 + 3 = 5`，照片可打开客体截图。Safari 能打开，但输入离线地址时画面停滞，未通过离线页面渲染验收，故障尚未归因。
+
+虚拟机库默认对 iPhone 4 启用 ARM32 JIT。已保存的虚拟机在下次启动时采用默认值，配置中显式设置 `cpu.jit: false` 仍可关闭。
+
+**客体时钟冷启动对照，2026-11-06。** 隔离 Chrome 中使用同一份全新 10B329 NAND 的副本，开启 ARM32 JIT，每档各跑一次。到原版锁屏首帧，0.2 倍为 23 分 23 秒，0.5 倍为 12 分 19 秒，1.0 倍为 9 分 34 秒。1.0 倍通过熄屏唤醒、滑动解锁、设置、备忘录、计算器、照片、日历、时钟和 Safari 离线页面验收。图形模式现在默认使用 1.0 倍客体时钟，诊断仍可显式指定速率。
+
+- 完成界面启动所需的音频控制初始化（I2S 与音频 codec）；PCM 播放输出仍属于“之后再定”；
 - 快照（含 NAND overlay）；
 - 性能测量；
 - VM 管理器中作为实验性机器，按“界面”一节实现，`make app-tests` 增加向导与设置的用例；
@@ -525,7 +598,7 @@ SGX 的内核驱动保持加载，但没有硬件：它的 MMIO 读回“空闲�
 
 1. iOS 4.3.x、5.1.1、7.1.2（各版本的补丁与设备树差异）；
 2. iPod touch 4G；
-3. 安装用户自己的未加密 IPA（安装服务的签名检查补丁），验收经典的 GL ES 游戏；
+3. 扩展本地未加密 IPA 的兼容性，并验收经典 GL ES 游戏；基础安装、UIKit 存档持久化和自制 GLES 样例已完成；
 4. iPhone 4S（A5）：Cortex-A9 双核与 A5 外设，作为下一台机器的计划。
 
 ## 测试
@@ -564,13 +637,212 @@ CI 只跑 eslint、构建与 `make ci-tests`：不依赖苹果文件的 `make io
 | Core Animation 依赖 SGX 特有的私有扩展 | S5 画面不完整 | 先整理私有接口清单；软件渲染路径（若存在）作为过渡 |
 | `__interpose` 管不到共享缓存内部的调用 | Core Animation 的 GL 调用漏掉，主屏幕出不来 | S0 定替换做法：分派表、内联钩子或驱动插件（见“GPU”） |
 | 上屏走 IOMobileFramebuffer 的 IOSurface swap | 画面不更新 | 客体库接管 swap，转成 `rcFBPost`；或 CLCD 向宿主要回内容 |
-| iOS 的看门狗在慢 CPU 上杀进程 | SpringBoard 与应用反复重启 | 放慢机器时钟（ranchu 的做法） |
+| iOS 的看门狗在慢 CPU 上杀进程 | SpringBoard 与应用反复重启 | 在 1.0 倍客体时钟下测量启动热点与设备调度 |
 | 没有 GIC 的中断路径 | S1 收不到中断 | 新的入口直接置 IRQ/FIQ；裸机测试覆盖 |
 | 多点触控控制器的协议细节 | S6 没有触控 | openiBoot 的多点触控驱动；先用按键与辅助功能测试其余部分 |
 | A8 的性能与 JIT 覆盖 | 启动与界面慢 | v86 的 AArch32 页层；测量后针对热点优化 |
 | 法律风险 | 项目受影响 | 严格执行“法律与分发” |
 
 ## 复核结论
+
+**2026-11-04，10B329 的实机固件与 v86 串口。** 公开入口使用 `machine_type: "s5l8930"`、
+`graphics_adapter: "none"`、`ios.kernelcache` 和 `ios.devicetree`。默认选择单核 Cortex-A8 和 512 MiB。
+`build/ios/10B329` 下保留本地提取结果，固件不入库。
+
+- `LC_UNIXTHREAD` 给出的虚拟入口为 `0x80086084`。N90 主内存从 `0x40000000` 开始，
+  入口物理地址为 `0x40086084`。入口从 r0+4、+8、+12、+16 读取虚拟基址、物理基址、内存大小和临时页表起点。
+  页表起点必须按 16 KiB 对齐，内核从此处清零 40 KiB。
+- 此内核在 `0x8027ad4a` 从启动参数 +2 读取版本并检查它等于 3；命令行从 +0x38 取。
+  设备树指针使用虚拟地址。内核把 `/pram/reg` 作为启动跟踪缓冲区，模板中全零的范围会导致数据异常。
+- 设备树的总线地址需要经 `/arm-io/ranges` 翻译。UART0 在 `0x82500000`，IRQ 22；
+  四个 VIC 从 `0xbf200000` 开始，间隔 64 KiB。PMGR 的 24 MHz 计数器在 `0xbf102000`。
+  时间基准留零会触发内核的 `rtclock timebase_callback` panic。
+- 入口的 cache 清理循环给出 64 字节行、四路 32 KiB L1 和八路 512 KiB L2。
+  MIDR 暂用本机 QEMU Cortex-A8 的 `0x410fc080`，固件设备树没有给出芯片修订值。
+- UART0 输出了 corecrypto 的完整性、AES、TDES、SHA、HMAC、ECDSA 和 DRBG 自检结果。
+  IODTNVRAM 按小端 16 字节单位遍历 8 KiB 的 nvram-proxy-data。模板中的零长度分区会让遍历原地循环。
+  填入 common 分区后，IOKit 启动 AppleARMBacklight 和 AppleARMPerformanceController。
+- 不挂盘时运行 `node tests/ios/boot.mjs build/ios/10B329 --wait-root --display`。
+  它要求串口收到等待 Apple_HFS 根设备的消息，并验证修改过的显示内存能经快照恢复到逐像素一致。
+  CLCD 使用 `0x5f700000` 的 640×960、32 位启动帧缓冲。没有使用宿主绘制的替代启动画面。
+- 使用 `ios.ramdisk` 与 `rd=md0` 后，串口报告 `BSD root: md0, major 3, minor 0`。
+  调试恢复盘的工具将本地构建的静态 shell 替换到恢复盘副本中，回读验证可执行文件。
+  实测 10B329 的 BSD 初始化在 `0x802bbe68` 调用 IOSecureBSDRoot，随后 AppleARMPlatform 等待
+  SecureRootCallBack。调试副本用两个 Thumb NOP 替换此处的 BL。工具检查完整 SHA-256 和原指令，
+  拒绝其余版本、已修改的输入或已存在的输出文件。原始内核仍用于无盘 S1 测试。
+- S3 本机复测（以下命令从仓库根运行；输出目录须存在，镜像文件须为新文件）：
+  ```sh
+  sh tools/ios/guest/build-shell.sh build/ios/shell
+  node tools/ios/kernel_patch.mjs build/ios/10B329/kernelcache.n90.macho build/ios/shell/kernel.macho
+  node tools/ios/recovery-ramdisk.mjs build/ios/10B329/restore.dmg build/ios/shell/recovery-shell build/ios/shell/disk.dmg
+  node tests/ios/recovery.mjs build/ios/shell/kernel.macho build/ios/10B329/DeviceTree.n90ap.bin build/ios/shell/disk.dmg
+  ```
+  macOS 自带 clang、ld 与 codesign 可生成 armv7 静态 Mach-O 及 SHA-1/SHA-256 临时签名，无需 iOS SDK。
+  串口输入后，内核 sysctl 返回 Darwin 13.0.0、iPhone3,1、1 核、527433728 字节可用物理内存。
+  时钟门控和 CDMA 通道注册已过启动探测，CDMA 数据传送、
+  DART DMA 地址转换、NAND、密钥与完整电源模型还未验收。
+
+**S2 显示与中断记录。** 从用户的 IPSW 提取 `AppleLogo.ibootim`，可选 `ios.bootlogo` 将其合成到启动帧缓冲。
+在同一提取目录运行 `node tests/ios/boot.mjs 目录 --logo --iop --wait-root --display`。AppleCLCD 会核对
+第二段 CLCD 寄存器的 +0x60（宽高各减一）和 +0x50（显示使能）。内核实际从 VIC0+0xf00 取到
+VIC1 的向量 `0x8000002a`，随后到 CLCD+0x102c 查询状态。+0x1028 是掩码，状态位写一清除；
+完成中断时先写所属 VIC，再写 VIC0。PMU 寄存器 0x66、0x67 和 0x68 控制背光 DAC 和使能。
+
+**S4 辅助串口，2026-11-05。** 原版 UserEventAgent 打开电量计的 UART5 时，AppleSamsungSerial 在读取控制寄存器（物理地址 0x82a00004）时触发内核异常。现为设备树中六个辅助串口提供各自的控制、FIFO 状态与波特率寄存器，启动控制台仍用 UART0。用已有启动快照重放时，已观察到 UART5 多轮真实控制读写，系统随后开始读取 PMU 的 ADC 通道。电量计外设的串行应答仍待验证。
+
+D1815 PMU 的原版驱动写寄存器 0x30 启动 ADC，等待 GPIO 13 中断，然后读取状态块的第二个字节。此前它反复报告 ADC 状态停在 1。模拟转换现在锁存完成位，按板级设备树经 GPIO 控制器和 VIC 中断 116 通知内核。完整冷启动跟踪到了 32 次原版驱动读取含 0x20 的状态块，同次运行未再出现 ADC 状态超时。设备测试覆盖屏蔽、开中断、确认及快照恢复。未建模的模拟输入返回零；温度与电池电量数值尚待校验。
+
+**N90 面板识别，2026-11-05。** 恢复设备树在 `/arm-io/mipi-dsim/lcd` 留下为零的 `lcd-panel-id`。在该值为零的对照运行中，ApplePinotLCD 的启动方法返回失败，AppleCLCD 对象已出现在 IORegistry 但没有可打开的主显示器。backboardd 对显示列表的断言抛出 `NSInternalInconsistencyException: No window server display found`，随后被 launchd 重启。
+
+直接引导现在为缺失或全零的面板标识填写模拟值 1，保留设备树原有的非零值。这个值选择 Pinot 一类面板，不代表某块量产屏的厂商编号。仅替换这个字段时，10B329 的同一方法返回成功，串口报告面板标识 1、类别 1，并进入此前未到达的 AppleCLCD 抖动配置阶段。`tests/ios/boot.mjs <固件目录> --wait-root --display` 同时检查两项驱动日志、画面和快照。完整系统中，原版 IOMobileFramebufferGetMainDisplay 从返回 0xe00002c0 和空引用变为返回 0 和有效引用。未替换入口的 backboardd 执行 CAWindowServer 的 addDisplay: 后再次读取显示列表，越过了原先的断言。
+
+**S4 正在实施：需要运行 IOP 固件。** 未填充的闪存设备树会使 AppleIOPFMI 报告 32 个全零芯片 ID。
+在局部探测中，提供 NAND 几何后必须给 `/arm-io/clock-frequencies` 中的 0x21 项赋值，
+否则驱动在 `_fmiInitTimings` 的 `clockSpeedKHz > 0` 断言中停止。实验用 100 MHz，不代表测得的真机时钟。
+随后 AppleARM7M 向 0x86300100 发停止命令 0x10 并检查状态位 1，再写 +0x110（固件物理基址）、
++0x114（实测 256 KiB）并从本地地址零启动。固件内有 ARM 指令异常向量。v86 已用独立寄存器组执行此固件；
+IOP 的低地址映射到所选 DRAM，0xc0000000 起的窗口通向共享 DRAM，另有从 0xbf300000 开始的 VIC。
+用 `node tests/ios/flash.mjs build/ios/10B329` 可复测：实测 IOP 自己向 FMI 的命令窗口发出
+NAND READ（0x3000）。已支持擦除态和已写页读回，已接入稀疏物理镜像（见下文）。芯片读写、VSVFL/YAFTL、LwVM 和系统盘挂载分别验收；
+恢复盘 shell 不作为 S4 的验收依据。
+
+**S4 物理 NAND 镜像和分区，2026-11-04。** `ios.nand` 接受本地生成的四芯片稀疏镜像，使用通用磁盘后端按范围读取。
+每个总线有两个 CE，块大小为 128 页，每个 CE 有 0x1038 块。按总线、CE、物理行号排列；
+每页 8192 字节数据及 436 字节 spare，按位取反存储并将槽补齐到 8704 字节，稀疏空洞即全 0xff 的擦除页。
+构建工具不覆盖已有文件。以下两个实测走原版内核和真实 IOP 固件：
+
+- `node tests/ios/flash.mjs build/ios/10B329` 把标记写入 0 号芯片的第 0 页。
+  客体向 H2FMI 发出 0x3000 读命令，等待采样状态，经 CDMA 通道 5 的描述符将 1536 字节复制到应用 CPU 的 RAM；
+  IOFlashStorage 的分区解析器打印出该标记。
+- `node tests/ios/flash.mjs build/ios/10B329 --partition` 使用 `nand_build.mjs bootstrap`。
+  物理页 0、1 含 10B329 接受的 Grdn 分区表。客体识别 Boot Block、Effaceable、NVRAM、Firmware 和 Filesystem，
+  发布第 4 个分区，AppleNANDLegacyFTL 从物理块偏移 15 启动并通过 FIL、BUF、FPart 初始化。
+  这些偏移是模拟器的布局。每颗芯片末块含 DEVICEINFOBBT，第一颗另含 NANDDRIVERSIGN。原版内核读出 0x43313131，报告 VSVFL Register 和 VFL Init 均为 OK。四颗芯片的第 15 块各含 8 份 VSVFL 上下文，spare 按物理行号 whitening；原版驱动扫描环形目录后报告 VFL_Open [OK]。上下文选择 FTL 类型 2 后，原版驱动报告 YAFTL Register [OK]。独立读回测试覆盖四个物理槽。ce-bitmap 每个总线占 8 位，dbg-chipids 每个总线留 16 个槽。修正位图为 0x303 后，固件分别从 FMI0/CE0、FMI1/CE0、FMI0/CE1、FMI1/CE1 读取坏块表，回归测试核对四个物理地址。bootstrap 模式的 YAFTL 控制块为空，会触发只读全盘恢复。
+- 新增 format 模式写入干净的 CX01 检查点。控制块为 3997，逻辑页依次跨 FMI0/CE0、FMI1/CE0、FMI0/CE1、FMI1/CE1。10B329 读取控制页后报告 FTL_Open [OK] 并发布闪存服务。运行 node tests/ios/flash.mjs build/ios/10B329 --format --snapshot 可复测。
+- H2FMI 支持 DMA 编程数据与 spare、确认写入和按块擦除。设备测试验证只能清零已写位、擦除范围和快照恢复，包括跨页 DMA 的中间状态。当前格式化卷的逻辑页索引为空，尚需写入 LwVM、系统与数据卷并验证数据保护。
+
+**S4 逻辑卷，2026-11-04。** 构建器将本机的 HFS+/HFSX 系统与数据卷写入 NAND 的数据页、反向页表、索引页及 CX01 目录。
+LwVM 的逻辑扇区 0 含校验和及两个分区的块映射。10B329 识别两个分区，选择系统分区 disk0s1s1 为 BSD 根设备。
+数据分区为 disk0s1s2。带 NAND 的直接启动默认传 rd=disk0s1s1，显式 boot_args 仍优先。
+本机使用 1,271,173,120 字节的原版系统卷和一个 128 MiB 空白 HFSX 数据卷。独立读取器逐页核对两个源卷的全部字节。
+原版内核在 SecureRootCallBack 处等待。使用 S3 同一份本地调试内核（无 ramdisk），HFS 根卷挂载成功，原版系统卷的 launchd 以 PID 1 打印启动消息，随后调用 fsck_hfs。此后曾出现 YAFTL 批量读的元数据校验错误；数据卷挂载、密钥与核心服务仍待验收。
+
+```sh
+node tools/ios/nand_build.mjs volumes build/ios/root-native.img build/ios/10B329/rootfs.hfs build/ios/n90-data-probe.dmg
+node tests/ios/nand-volumes.mjs build/ios/root-native.img build/ios/10B329/rootfs.hfs build/ios/n90-data-probe.dmg
+node tests/ios/system.mjs build/ios/10B329 build/ios/root-native.img
+node tests/ios/system.mjs build/ios/10B329 build/ios/root-native.img --debug-kernel build/ios/shell/kernel.macho
+```
+
+**S4 系统与数据卷挂载，2026-11-04。** 10B329 恢复镜像的 fstab 使用 disk0s1 和 disk0s2。system-volume 在独立副本中将这两项改为实际的 LwVM 子分区 disk0s1s1 和 disk0s1s2，保留原挂载选项。CX01 检查点现在记录数据和索引块的下一个空闲页，首次写入不会覆写已编程页。Grdn 的第 5 项是物理块 14 上的 fbbt，AppleNANDFactoryBBT 匹配后系统才发布 Effaceable、NVRAM 和其他分区。
+
+data-volume 在 macOS 上生成稀疏的 HFSX 卷，容量 15,082,717,184 字节，复制系统卷 /private/var 下 60 个条目。
+构建器独立回读文件、符号链接、属主和权限。用本地调试内核启动后，fsck_hfs 检查两个正确的分区，客体报告系统卷只读挂在 /，数据卷可写挂在 /private/var。FIPS 用户空间自检通过。
+从 XNU 进程表同时读到 launchd (1)、mediaserverd (39)、lockdownd (45)、configd (48) 和 backboardd (26)，PID 可随启动次序变化。
+数据卷缺少系统钥匙包时，keybagd 打印 FATAL KEYBAG ERROR: kb_load，随后 launchd 关机。数据保护、持续运行与首次设置仍未验收。
+
+```sh
+node tools/ios/system-volume.mjs build/ios/10B329/rootfs.hfs build/ios/system-fstab.hfs
+node tools/ios/data-volume.mjs build/ios/system-fstab.hfs build/ios/var-full.hfs
+node tools/ios/nand_build.mjs volumes build/ios/seeded.img build/ios/system-fstab.hfs build/ios/var-full.hfs
+node tests/ios/nand-volumes.mjs build/ios/seeded.img build/ios/system-fstab.hfs build/ios/var-full.hfs
+node tests/ios/system.mjs build/ios/10B329 build/ios/seeded.img --debug-kernel build/ios/shell/kernel.macho --processes
+```
+
+**S4 可擦除密钥存储。** plog 使用 slice 标志，物理块 1–4 的启动页 16 保存第 1 代 Face 记录。头部、内容 CRC 和 BAG1 记录由构建器生成，BAG1 内的密钥材料仅供模拟设备使用。H2FMI 支持客体以三个 512 字节的 PIO 传输写入一张启动页，写到半个扇区时也可快照往返。
+运行 node tests/ios/flash.mjs build/ios/10B329 --lockers --snapshot，10B329 的 AppleEffaceableStorage 报告在 group 0 读取到第 1 代记录。尚须让 keybagd 从数据卷加载与此记录配套的系统钥匙包，并验证 UID 加解密。
+
+**S4 原版内核启动，2026-11-04。** A4 的 CDMA 通道 1 从内存取明文或密文，通道 2 将 AES-CBC 结果写回内存。两个通道分别向应用处理器发送完成中断。原版内核使用固定的模拟 UID 执行设备密钥派生，完成安全根设备回调。启动使用固件设备树原有的安全根前缀。
+
+在本机用带实验性系统钥匙包的 NAND 运行 `node tests/ios/system.mjs build/ios/10B329 build/ios/bag-candidate.img --processes`，未修改的 kernelcache 挂载了只读系统卷与可写数据卷，进程表同时出现 launchd（PID 1）、mediaserverd（39）、lockdownd（45）和 configd（48）。此项仅验收挂载与进程启动；系统钥匙包解锁和首次设置需独立验证。
+
+**S4 系统钥匙包，2026-11-04。** data-volume 生成与本机模拟 UID、BAG1 配套的无密码钥匙包，并将它写入数据卷的 `/keybags/systembag.kb`。目录属主为 root、模式为 0700，文件属主为 root、模式为 0600。建盘后逐项核对 62 个文件和目录的内容或元数据。主机侧用独立 AES 实现验证封装、SIGN 和十组类别密钥的完整性。
+
+在 10B329 原版内核和系统上，采样 keybagd 实际调用 syslog 时传入的格式化消息，读到 `main: System Keybag loaded`。同次启动可看到 backboardd、SpringBoard 的进程名。尚需验证带保护类别的文件读写、首次设置与激活，以及主屏幕画面。后续启动日志中出现 `AppleNANDLegacyFTL::readRegion: failed to read region 1` 和 `Failed to read syscfg region.`，下一步核对该出厂配置区。
+用 `node tests/ios/system.mjs build/ios/10B329 build/ios/provisioned-s4.img --keybag` 在新生成的 NAND 冷启动复测通过。检查器在客体内存里查找含线程 ID 和调用者名的完整日志，同时核对双卷挂载与四个核心进程。固件内置的消息常量无法单独满足此检查。
+在独立系统卷副本的 fstab 给数据卷启用 `protect` 后，原版内核在挂载输出中列出该标志，同一冷启动也通过了 `--keybag`。在钥匙包加载后调用客体的 open、fcntl、write、fsync、close、read 与 unlink，确认 D 类文件（类别 4）重开时类别和八字节负载均保留。受保护数据卷默认使用此挂载选项。C 类（首次解锁后可用）在同一启动阶段设置类别返回 EPERM，首次解锁和其他类别仍待验证。此测试没有检查 NAND 原始页上的密文。
+**S4 出厂配置。** 已确认 AppleNANDLegacyFTL 的第 1 区读取名为 DEVICEUNIQUEINFO 的物理特殊页。构建器在第一个芯片末块的第 2 页写入 SCfg，包含模拟器专用的 SrNm。用原版内核启动自建 NAND 后，在隔离的诊断运行中调用已注册的 AppleNANDLegacyFTL 实例的 readRegion(1)，IOKit 返回成功，缓冲区内的 44 字节 SCfg 和序列号与建盘输入一致。此项验收驱动读取路径，首次设置流程还需另测。
+**S4 文件保护类别，2026-11-05。** 生成工具现在分别处理钥匙包中设备专用的 WPKY（32 字节、零 IV 的 AES-CBC）和 HMCK、Dkey（RFC 3394）。物理可擦除区的 Dkey 与钥匙包中的 D 类密钥解密后相同。用修正后的数据卷与 NAND 冷启动，keybagd 成功加载系统包。在它报告加载成功后执行客体文件系统调用，设置 C 类（3）、写入、同步、关闭、重开、查询类别、读回并比对八字节内容，全部通过。此前的“EPERM”发生在旧镜像，单独看到系统包加载成功无法覆盖文件类别测试。仍须独立测试真实的锁定/解锁转换和物理 NAND 上的密文。
+
+
+
+
+**S4 系统卷零页，2026-11-05。** 10B329 对没有 YAFTL 映射的逻辑页可能保留读取缓冲区的旧内容。旧镜像从系统分区起点连续读取 32 MiB 时，前 8 MiB 正确，到 12 MiB 的累计 CRC32 出现差异。宿主端模拟跳过未映射的页，复现了全部八个检查点。构建器现为整个系统卷分配 NAND 页，并按数据卷的 HFS 分配位图保留已用块里的零页。旧镜像需从源卷重新构建。
+
+独立校验器已核对新镜像的两个完整源卷。用 `build-shell.sh <目录> --nand` 构建恢复 shell，以 `recovery-ramdisk.mjs` 放入恢复盘，再运行 `node tests/ios/recovery.mjs <内核> <设备树> <恢复盘> --nand <NAND> <系统HFS>`。在原版内核中，连续 128 次读取 256 KiB 后，全部八个累计 CRC32 均与源系统卷吻合。
+
+**S4 批量 NAND 读写，2026-11-05。** 原版 IOP 在较大的分页操作中会分批提供 CDMA 描述符。模拟器现在响应 FIFO 清空命令，保留批次结束时的剩余长度并通知 IOP 补充描述符。读操作等数据和备用区两个通道都完成再通知固件切页。设备测试还覆盖了描述符批次在一个 FIFO 请求中间结束，以及在该处保存、恢复快照。
+
+在一次性 NAND 上，原版内核已连续完成 32 次 1 MiB 写入。独立回读使用 `node tests/ios/nand-roundtrip.mjs <内核> <设备树> <带 --nand 命令的恢复盘>`，测试自行建盘，从数据分区第二页开始写入四份不同的 1 MiB 数据，关闭后重新打开，逐字节核对所有 4 MiB。修复前原版驱动在读取时报告 DMA 超时，修复后两次冷启动均通过。此项验收覆盖原始分区 I/O；系统长期运行单独验证。
+
+**S4 异常重启。** 重新建盘时，每个已分配 YAFTL 块使用独立序号，闭合块的反向页表标明闭合，检查点保留各在用块的序号和下一写入序号。此前恢复会对物理块 0–18 发出擦除，包括引导区、可擦除密钥和 VSVFL 上下文。现在由每颗芯片的 VSVFL 上下文将这些虚拟块指向保留池，真实物理引导分区保持原位。见 [openiBoot 的 VSVFL 映射实现](https://github.com/iDroid-Project/openiBoot/blob/master/vfl-vsvfl/vsvfl.c)。两次原版冷启动回归先把第一次启动的写入同步到测试镜像，再从头启动并要求第二次执行完整 YAFTL 恢复、重新挂载两卷且没有崩溃。用 `node tests/ios/nand-reboot.mjs <固件目录> <已准备的系统 HFSX> <数据 HFSX>` 复测。
+
+**S4 闪存命令与芯片时序。** 原版 IOP 在屏蔽普通中断时等待发出 PROGRAM CONFIRM，之后再读芯片自己的状态。现在 PROGRAM 可立即确认，芯片保持忙直到写完。若原版驱动此时提交同芯片的验证读，按芯片排序的后端让它等到写入完成，另一颗芯片可独立继续。ERASE 则在该芯片真正完成后才确认，避免原版 YAFTL 恢复提交成千上万条擦除命令，阻塞后续读取。空块按字检查，无需写入零。原版异步后端已从一次非正常关机完成 YAFTL 全量恢复，读出密钥区并检查、挂载两个 HFS 卷。设备测试覆盖两个状态的独立确认、验证读顺序、快照等待和重复擦除保留稀疏区域。
+
+**S5 接口核对，10B329。** 本机原版 armv7 共享缓存的 OpenGLES 含 344 个 `gl[A-Z]` 公共符号。反汇编确认 glClear、glDrawArrays、glDrawElements、glGetError 和 glViewport 经每线程的分派表调用。包装函数从 TPIDRURO（清低两位）偏移 0x78 取当前表，从表偏移 0x10 取驱动上下文作为第一个参数。五个函数的目标槽偏移依次为 0x3c、0x118、0x120、0x1ac、0x550。S5 客体适配层可据此为每个 EAGL 上下文设置分派表，需保留驱动上下文参数与原有寄存器、栈参数布局。
+
+QuartzCore 的动态依赖含 OpenGLES、IOSurface、IOMobileFramebuffer。其未定义符号含 EAGLContext、SwapBegin、SwapSetLayer、SwapEnd 和 SwapWait，但符号表没有逐个导入公共 gl 函数。仍须用运行中的合成进程验证实际绘制入口与最终呈现。
+运行 `node tests/ios/gl-dispatch.mjs build/ios/dp/cache-armv7`，测试从用户的共享缓存取出这五个位置无关的 Thumb 函数，并在 v86 的 AArch32 核心上实际执行。测试覆盖空上下文、驱动上下文指针、寄存器及栈上传参、返回值。此项覆盖公共入口的 ABI，上下文创建与合成仍须在系统客体内验证。
+**S5 客体与宿主通信，2026-11-05。** N90 支持显式启用 `gles_backdoor`。用 `sh tools/ios/guest/build-shell.sh build/ios/gles-shell --gles` 构建诊断程序，以 recovery-ramdisk 工具装入本地恢复盘后，运行 `tests/ios/recovery.mjs` 并加 `--gles`。10B329 原版内核中的用户态程序已用真实 UDF 指令探测接口、打开 opengles 服务、发送三个 renderControl 显示参数查询、读回 640×960 和 326 dpi、关闭连接。此测试使用应答检查通道，未提交图形帧。下一项是从客体创建渲染上下文并经真实渲染器核对像素。
+**S5 首张 GPU 测试帧，2026-11-05。** 用同一恢复盘构建流程和 `node tests/ios/recovery.mjs <原版内核> <设备树> <带 GLES 命令的恢复盘> --frame`，在本机 Chrome 的 WebGPU 设备上复测。iOS 用户进程经 UDF 创建上下文、窗口与颜色缓冲，画出绿色底面和左下角 2×2 红块，提交整帧并从宿主读回 8×8 采样区的全部 64 个像素。宿主把最终发布的全尺寸 RGBA 图像按当前 CLCD 窗口地址写回 XRGB 显存，经正常扫描输出。640×960 个像素逐一匹配；清空显存再恢复快照后，全部像素与保存前一致。这是恢复环境中的绘图验收。backboardd 的 EAGL/IOSurface 适配与 SpringBoard 主屏幕仍待验收。
+
+10B329 OpenGLES 的 Objective-C 方法表另确认了私有参数入口 `initWithAPI:properties:`、`texImageIOSurface:target:internalFormat:width:height:format:type:plane:invert:` 及 `attachImage:toCoreSurface:invertedRender:`。接下来需将这些系统调用方与已验证的传输、上屏路径接通。
+10B329 的本地共享缓存可直接生成驱动分派表头文件。工具核对 OpenGLES 的 UUID，从 344 个公开 Thumb 入口解出 322 个不同的槽位，最大字节偏移为 0xe58；部分别名共用同一槽。全部槽位已跟本机 LLVM 的独立反汇编逐一比对。AArch32 测试用生成的头文件安装回调，再实际执行原版函数核对 ABI。表头只描述位置，各函数的协议编码和私有调用约定仍需逐项支持。
+**S5 原版 OpenGLES 入口绘图，2026-11-05。** 恢复盘里的绘图程序现在可以调用 10B329 自带的 `glClearColor`、`glClear`、`glEnable` 和 `glScissor`。四个入口从线程分派表取出客体驱动回调，回调将实际参数发给宿主。测试覆盖四个浮点颜色分量及带栈参数的裁剪矩形。原版内核中实际绘制并读回 64 个采样像素，宿主核对 CLCD 的全部 640×960 个像素和恢复快照后的画面。此路径使用恢复环境创建的上下文，系统合成器创建上下文和提交桌面仍需独立验收。
+
+在本机运行 `sh tools/ios/guest/build-shell.sh <输出目录> --native-gles <dyld_shared_cache_armv7>`，用 `recovery-ramdisk.mjs` 装入本地恢复盘，再以 `tests/ios/recovery.mjs <原版内核> <设备树> <恢复盘> --native-frame` 验证。构建时从用户提供的缓存取出这四个入口，生成的私有文件只供本地测试。
+
+**S5 系统进程加载，2026-11-05。** 10B329 的 launchctl 从共享缓存内的 xpcd_cache.dylib 读取启动任务。对照运行已确认，仅在两份磁盘 plist 中加 DYLD_INSERT_LIBRARIES 时，两个进程的 dyld 映像清单均不含客体库。现用 `system-volume.mjs ... --gles` 在私有副本的 backboardd、SpringBoard 原有 Mach-O 头部空隙增加弱库依赖，重算改动页的签名哈希，保留原有依赖序号和权限声明。数据卷的 `--gles-library` 选项按 root:wheel、0755 安装 `/private/var/v86/libv86gles.dylib` 并回读验证。固件共享缓存保持原样。
+
+专用的 `graphics-kernel.mjs <原版内核> <已链接的系统卷> <客体库> <新内核>` 只接受已核对的 10B329 原版输入，将这两个副本和客体库的 CodeDirectory 哈希写入 AMFI 原生信任表，并跳过启动时清空该表头的一条指令。原有签名校验继续执行。在隔离的同版本客体中装入这组哈希后，分别从 backboardd 和 SpringBoard 的 dyld 映像清单读到了客体库，与原版 QuartzCore 和 OpenGLES 同驻。独立冷启动也已读回预置表头。映像清单证明加载，初始化、EAGL 调用与主屏幕呈现另行验收。
+客体库由 `sh tools/ios/guest/build-gles.sh <输出目录>` 构建。10B329 的 ARM 入口可以由 dyld 的模块初始化指针直接调用。机器只在启用 GLES 传输时在设备树的 /chosen 下发布版本号，客体库读取该属性后才执行 UDF。它向宿主查询实际显示大小，并通过 Objective-C 运行时接入 EAGLContext 的私有初始化方法，目前将初始化转交给原实现并记录结果。已从冷启动复测通过 `--graphics`：backboardd 和 SpringBoard 均已在本进程中加载客体库、挂接初始化方法、查询宿主并发出含各自 PID 与实测 640×960 的完整日志；同一运行还验证了核心进程、钥匙包和两个卷。独立快照复测中两者的 PID 分别是 26 和 65。目前该方法转交原实现，尚未让系统合成器经代理绘制主屏幕。
+
+本地验收命令（输出路径须是新文件，数据卷生成需要 macOS）：
+```sh
+sh tools/ios/guest/build-gles.sh build/ios/gpu
+node tools/ios/system-volume.mjs build/ios/10B329/rootfs.hfs build/ios/gpu/system.hfs --gles
+node tools/ios/data-volume.mjs build/ios/gpu/system.hfs build/ios/gpu/data.hfs --gles-library build/ios/gpu/libv86gles.dylib
+node tools/ios/nand_build.mjs volumes build/ios/gpu/flash.img build/ios/gpu/system.hfs build/ios/gpu/data.hfs
+node tools/ios/graphics-kernel.mjs build/ios/10B329/kernelcache.n90.macho build/ios/gpu/system.hfs build/ios/gpu/libv86gles.dylib build/ios/gpu/kernel.macho
+node tests/ios/system.mjs build/ios/10B329 build/ios/gpu/flash.img --debug-kernel build/ios/gpu/kernel.macho --graphics
+```
+**S5 原版 EAGL 上下文，2026-11-05。** 在 backboardd 中，原版 EAGLSharegroup 会调用 libGFXShared 的 gfxCreateSharedState，继而进入 IMGSGX535GLDriver。10B329 的 OpenGLES 从 GLEngine 按名称载入 17 项 GLI 接口。客体库的 `--host-contexts <本地共享缓存>` 构建模式核对框架 UUID、数据区和这组函数地址，接入 ES2 共享组和上下文的创建与销毁。iOS 本身继续管理 EAGL 对象、每线程的当前上下文和分派表。每个上下文按宿主返回的实际长度保存自己的 GL 字符串。
+
+用 `sh tools/ios/guest/build-gles.sh <目录> --check-host-contexts <dyld_shared_cache_armv7>` 构建带验收线程的客体库，然后依上面的流程创建数据卷、NAND 和调试内核，在 `system.mjs` 使用 `--contexts`。一次完整冷启动中，backboardd 和 SpringBoard 各自创建两个 EAGLContext，第一项创建的着色器可从第二项查询，切回第一项后成功删除。两个进程都读回了宿主渲染器名称、清除了当前上下文并释放对象。普通 `--host-contexts` 构建没有验收线程。该模式目前支持无窗口的 ES2 上下文；原生窗口、IOSurface 和最终上屏分开验收。 另一次完整冷启动在每个进程中增加第三个上下文，使用原版 Core Animation 的 `initWithAPI:properties:` 入口及加速、客户端保留释放、共享组三项属性。三个上下文之间的着色器共享、当前上下文切换、删除和释放均通过，随后原版 IOSurface 着色器绘图的全部像素也通过。
+
+`node tests/ios/gl-scalar.mjs <dyld_shared_cache_armv7>` 逐一执行 76 个原版入口，比较传输包的长度及每个字节，并验证 8 位和 32 位返回值。代码生成器使用同一份宿主命令定义，处理混合字节宽度、软浮点调用约定和栈参数。两个删除入口在 10B329 中机器码相同，驱动根据宿主共享组中的对象类型选择着色器或程序删除命令。
+
+**S5 IOSurface 标识与宿主缓冲。** 在原版 backboardd 的独立诊断运行中，IOSurfaceCreate 创建了 64×48 的 BGRA 表面，真实行跨度为 256 字节，IOSurfaceLookup 按内核 ID 成功取回同一表面。两条客体 GLES 连接用该 ID 调用 v86 私有命令后取得同一个宿主颜色缓冲句柄；释放第一条连接后，第二条仍能打开该缓冲。宿主协议测试另覆盖两个进程、几何不匹配、快照恢复、最后一次释放后复用同一内核 ID。此处验证了身份和引用寿命，纹理绑定和显示器提交需要像素级测试。
+
+在本机 WebGPU 上，`tests/ios/iosurface-render.mjs` 通过两条独立进程连接验证了宿主像素共享。写方将同一 IOSurface 的颜色缓冲绑作渲染缓冲，另一方将其绑作纹理。64×48 全部像素经第二方帧缓冲读回并与绿底、红角图案比对。快照恢复后，写方把红角改黄，读方观察到更新；写方另行分配普通渲染缓冲再清蓝，读方仍保留黄角和绿底。此测试覆盖宿主渲染器，客体 CAEAGLLayer 的窗口提交仍需验证。
+
+CPU 创建的 BGRA 表面也能作为 GL 输入。客体在 IOSurface 的只读锁内取得内核种子，按实际行跨度读取有效像素。非反转的原版纹理绑定保持 IOSurface 行顺序，QuartzCore 自行设置纹理坐标与投影。CAEAGLLayer 的窗口缓冲仍在复制时转换为 GL 窗口坐标。宿主保存最近导入的种子，同一种子的重复绑定保留 GPU 后续绘制的内容。测试逐像素核对了初次 CPU 导入、GPU 更新、重复导入、快照恢复和新种子的 CPU 更新。
+
+构建客体库时用 `--check-host-surfaces <dyld_shared_cache_armv7>`，完整 NAND 冷启动时用 `system.mjs --surfaces` 验证系统进程。backboardd 和 SpringBoard 均通过原版 EAGL 调用把同一块内核 IOSurface 绑定到两个上下文，在渲染缓冲上绘图，从纹理读回，64×48 的所有像素均匹配。另用 `--check-host-window` 构建和 `system.mjs --windows` 区分两项窗口验收。测试窗口在两个真实内核表面之间轮换，发布回调逐像素验证了连续两帧及行方向。启用保留内容时，第二帧只改左下角，另一个缓冲完整保留首帧背景。在同一次完整冷启动中，backboardd 和 SpringBoard 均在原版 CAEAGLLayer 上执行 renderbufferStorage:fromDrawable: 和 presentRenderbuffer:，发布后核对了内核 IOSurface 全部 64×48 像素。在测试中引用已经领到的缓冲，这个版本的原生窗口每帧只允许领取一次。整屏合成及 SpringBoard 主屏仍待验证。
+
+**S5 原版着色器绘图。** 使用 `--check-host-draw <本地共享缓存>` 构建客体库，用 `system.mjs ... --draw` 完整冷启动。backboardd 与 SpringBoard 均经过原版 glShaderSource 提交多段顶点着色器（含显式长度）和片段着色器，链接程序，查询属性位置，建立并更新顶点缓冲，再从非零偏移绘制三角形。两者在真实 IOSurface 上读回的 64×48 个像素全部为预期的洋红色。当前顶点指针支持绑定顶点缓冲的形式。
+
+原版 backboardd 的冷启动已绘制 640×960 锁屏。重放同一组原版绘制确认了纹理及输出表面应保持原生行顺序。最初面板仍停在开机表面：QuartzCore 把这张表面作为延迟图层提交，原版显示驱动等待 SGX 的完成通知。客体库只对已经读回并解锁的代理表面取消这一等待，并继续调用原版显示接口。完整冷启动已观察到原版驱动切换 DART 表面并输出原版壁纸、日期、时间、状态栏及解锁滑块；方向正确。可用 `tests/ios/system.mjs --screen` 核对真实面板的彩色输出。主屏和解锁仍单独验收。
+
+**S5 公开 GL 查询，2026-11-05。** 客体适配层已接通整数、浮点与布尔状态查询，以及着色器、程序状态、信息日志和着色器源码查询。传输按输出的元素数及字节宽度接收结果，压缩纹理格式等列表先查询实际长度，空的可选日志长度指针也会正确排空返回数据。`node tests/ios/gl-query.mjs <本地共享缓存>` 执行八个原版 ARM 入口，逐字节核对十个请求和对应应答，覆盖多值状态、动态长度、日志截断、空长度指针、非法负长度及输出两侧的保护值。
+
+另一次完整 NAND 冷启动在 backboardd 和 SpringBoard 中均通过编译与链接状态、当前程序、四分量清除颜色、四字节颜色掩码及视口查询，随后原版三角形绘图的全部 64×48 像素仍匹配。普通构建也已生成，真实系统合成器的主屏提交继续单独验证。
+
+**首次迁移与显示交换。** 正常异步读盘运行中，原版 DataMigrator 已记录地图和账户等迁移插件完成。在同一私有快照上改用同步读取底层文件字节、保留写入覆盖层的诊断对照中，DMPerformMigration 返回 1，DataMigrator 以 0 退出，SpringBoard 越过 BKSSystemAppCheckIn。随后 backboardd 的 SwapBegin、SwapSetLayer、SwapEnd 返回成功。首次交换提交了空图层，后续等待反复返回 0xe00002d5。内核逐帧确认了 CLCD 中断，但物理面板仍为启动画面。后续使用当前正式客体库的普通异步读盘冷启动，backboardd 已记录允许系统应用启动，随后启动 Setup。该长跑未再出现 NAND IOP 超时。Setup 的原版报告显示启动看门狗超时，全系统 CPU 时间约 36.8 秒，应用自身约 3.1 秒。SpringBoard 后续有一次崩溃重启，物理面板仍为两色启动画面。相同迁移后快照的正常时钟与十分之一速时钟对照都仍停在两色启动画面，慢时钟运行也出现 SpringBoard 重启，不能仅以降低时钟解决。主屏像素仍待验收。 在迁移后的一次性诊断客体中，原版内核的线程转储显示 Setup 主线程等待 SpringBoardServices；SpringBoard 主线程等待 FigPlayerRemoteCreate；mediaserverd 主线程停在 FigPlayerCMSession 的一次性初始化，另一个线程正在设置 CoreAudio 属性。正在核对音频设备初始化所需的硬件应答。
+
+新增的双芯片回归覆盖了一颗芯片预读时另一颗仍在等待 DMA 的情况。模拟器为已启动的传输保留源页和列，恢复快照后仍能读出原来的字节，下一颗芯片的新页也能按序读取。
+
+另在多次较长的启动运行中记录到 AppleIOPFMI 等待多页读取超时，向 IOP 发 NMI 后内核 panic。原配置也可复现。持续运行的验收需要覆盖这个故障。
+同一迁移快照中，原版固件反复读取闪存序列器的完成位。等待宿主异步 I/O 时，当前实现缩短下一次协处理器执行片段，待数据就绪即恢复正常长度，保留固件自己的指令、完成中断与超时规则。每颗芯片最多保留一个 16 页的只读范围，写入、擦除和恢复会清除相应缓存。相邻页预读失败时单独重读所需页。设备回归及原版 iOS 在一次性 NAND 的 4 MiB 写入、关闭、重开和逐字节读回均通过。单独合并读取的长跑对照仍可触发超时。
+
+
+
+
+
+
+
+
+
 
 **2026-10-27 复核初稿。** 对照 v86 的代码与公开资料核对，结果已经写进上文，这里汇总。S0 拿到固件后整理的清单也
 写在这一节。
@@ -612,7 +884,7 @@ CI 只跑 eslint、构建与 `make ci-tests`：不依赖苹果文件的 `make io
       `disk image (Apple_HFSX : 5)`，区分大小写的 HFS+，1212 MiB；
     - iBSS/iBEC/iBoot/LLB 是 `iBoot-1537.9.55`；启动图片是 `iBootIm`。
 
-密钥文件的格式（向导第 3 步载入的也是它；`images` 的键用密钥页面上的项名，这里的值是占位）：
+`v86-ios-keys` 的格式（向导也可直接载入 The Apple Wiki 的 JSON；下例的密钥值是占位）：
 
 ```json
 {
@@ -634,6 +906,20 @@ CI 只跑 eslint、构建与 `make ci-tests`：不依赖苹果文件的 `make io
 }
 ```
 
+**S6 按键硬件输入，2026-11-05。** N90 设备树的五个按键连接 GPIO 0–4。它们是低电平有效，未按下时现在返回高电平。此前全零初值会让原版驱动读到持续按下。GPIO 配置写入和外部电平分开，按下、松开各锁存一次中断，重复状态不产生新边沿。宿主可用 `emulator.ios_send_button("home", true)` 按下，再用 `false` 松开；另支持 `power`、`volume-up`、`volume-down`、`mute`。设备测试覆盖电平、中断确认、按住时恢复快照和旧快照默认状态。在按键修复后完成迁移的原版客体中，依次按下、松开五个按键，原版 GPIO 驱动确认了全部边沿；原版 AppleM68Buttons 随后向 IOHIDEventService 发出恰好十个事件。Home、电源、音量加减分别为消费页的 0x40、0x30、0xe9、0xea，静音为电话页的 0x2e，每项的按下值为 1、松开值为 0。此项确认系统输入分派，尚未观察到电源键引起背光变化，主屏操作效果另行验收。按键极性另与 [openiBoot 的 A4 按键实现](https://github.com/iDroid-Project/openiBoot/blob/master/plat-a4/buttons.c) 核对。
+
+**S5 着色器数组与矩阵参数，2026-11-05。** 客体库现将 ES2 的 8 种浮点、整数向量数组及 2×2、3×3、4×4 矩阵展平成共享协议中的参数字节；同时转发 uniform 名称查询和 attribute 位置绑定。矩阵的单字节转置参数后紧跟未对齐的长度字段，不能按宿主 C 结构体的对齐传送。所有者原版 ARM 入口测试覆盖双元素数组、非对称矩阵、空数组、忽略的位置 -1、负数、空指针和长度溢出，与宿主独立编码器逐包比较通过。
+
+完整 iOS 冷启动复测中，backboardd 和 SpringBoard 各自用原版入口绑定 attribute 位置、查找五个 uniform，并向顶点着色器设置三种矩阵、向片元着色器设置浮点和整数数组。两个进程的全部 64×48 输出像素均正确，原有上下文共享、IOSurface 和挂载验收同时通过。该项是绘图适配验收，真实系统主屏仍待验收。可用 `node tests/ios/gl-uniform.mjs <原版共享缓存>` 复测参数 ABI。
+
+**S7 音频控制的前置接口，2026-11-05。** 迁移后的原版内核等待栈显示，音频编解码器的启动停在取得 Mikey 接口；I2C 记录同时显示地址 0x39 的复位请求返回缺少从设备。现在在第一条 I2C 总线上提供 CD3282 控制寄存器、软件复位和带自动递增地址的读写，耳机和线控保持未接入。寄存器及未读完的控制器 FIFO 随快照保存，旧快照将新接口恢复到复位状态。另一个 I2C 总线不响应这个地址。
+
+一次原版 10B329 冷启动已连续完成复位、配置写入和版本读取，三个事务均获完成状态，先前的 Mikey 复位错误消失。设备回归覆盖复位、配置、只读检测位、事务中恢复和旧快照兼容，构建检查通过。此项仅验收控制接口；后续编解码器识别、媒体服务正常就绪及 PCM 播放仍待完成。
+
+**S7 编解码器与 I2S 控制寄存器。** Mikey 接口可用后，原版 CS42L61 驱动开始读取电源寄存器，继而访问 I2S；未提供 I2S 窗口时，原版内核在该处产生数据访问异常。现为地址 0x4a 提供独立的 CS42L61 控制寄存器及只读标识，为三个 I2S 控制器提供独立配置窗口和停钟完成位。新设备追加到快照序列末尾，旧快照按复位状态恢复。
+
+原版冷启动中，CS42L61 已连续完成电源、静音、增益及路由配置读写，Mikey 完成中断掩码和未插入耳机的检测；I2S0、I2S2 均执行原版停钟序列并读到完成应答。此后两个 NAND 卷通过检查并挂载，未再发生上述 I2S 访问异常。设备回归、构建检查以及原版启动显存和快照回归均通过。尚未接入 I2S 的 PCM DMA，此处不构成播放验收；正在继续观察媒体服务及界面启动。 本地可运行 `node tests/ios/audio.mjs <原版固件目录> <NAND 镜像>`，测试让原版驱动执行并逐项核对 Mikey 复位、配置、无耳机检测、CS42L61 控制事务和 I2S 停钟应答，不需要图形渲染器。该原版内核回归已通过。
+
 ## 待所有者决定
 
 1. 机器名 `s5l8930`、型号字段 `apple_model` 是否合适。
@@ -642,7 +928,6 @@ CI 只跑 eslint、构建与 `make ci-tests`：不依赖苹果文件的 `make io
 3. 首个系统版本用 iOS 6.1.3，还是更轻的 4.3.x。4.3.x 没有 LwVM 与 backboardd，守护进程更少，开机路径更短，
    S4 的风险小；6.1.3 的界面更有代表性，能跑的应用也多。
 4. 激活绕过不可行时，是否把首个型号改为 iPod touch 4G（它去掉 SIM 与基带，但本身可能也要激活）。
-5. 实验性机器默认隐藏、由 Preferences 的开关打开（见“界面”），是否合适；Home 键映射到 Esc 是否可以。
 
 ## 规范与实现参考
 

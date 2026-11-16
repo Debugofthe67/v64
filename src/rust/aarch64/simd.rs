@@ -32,10 +32,30 @@ pub fn ones(bits: u32) -> u64 {
     }
 }
 #[inline(always)]
-pub fn elem(x: u128, index: u32, esize: u32) -> u64 { (x >> (index * esize)) as u64 & ones(esize) }
+pub fn elem(x: u128, index: u32, esize: u32) -> u64 {
+    let at = index * esize;
+    // Architectural lanes are aligned within a 64-bit half. Avoid the
+    // compiler-rt 128-bit variable-shift helper on Wasm for every lane.
+    if matches!(esize, 8 | 16 | 32 | 64) {
+        let half = if at < 64 { x as u64 } else { (x >> 64) as u64 };
+        return (half >> (at & 63)) & ones(esize);
+    }
+    (x >> at) as u64 & ones(esize)
+}
 #[inline(always)]
 pub fn with_elem(x: u128, index: u32, esize: u32, value: u64) -> u128 {
     let at = index * esize;
+    if matches!(esize, 8 | 16 | 32 | 64) {
+        let mask = ones(esize) << (at & 63);
+        let value = (value & ones(esize)) << (at & 63);
+        let (lo, hi) = (x as u64, (x >> 64) as u64);
+        return if at < 64 {
+            ((lo & !mask | value) as u128) | ((hi as u128) << 64)
+        }
+        else {
+            (lo as u128) | (((hi & !mask | value) as u128) << 64)
+        };
+    }
     x & !((ones(esize) as u128) << at) | ((value & ones(esize)) as u128) << at
 }
 /// The element as a signed value

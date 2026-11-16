@@ -23,12 +23,20 @@
 
 (function(global) {
     "use strict";
+    const surfaceFactory = global.D9WGSurfaceOps ||
+        (typeof require === "function" ? require("./d9wg_surface_ops.js") : null);
+    if (!surfaceFactory) throw new Error("ddraw_ops.js requires d9wg_surface_ops.js");
+    const { ddBlitShaderSource, clipRects, clipDestination } = surfaceFactory;
+    const formats = global.D9WGFormats ||
+        (typeof require === "function" ? require("./d9wg_formats.js") : null);
 
-    const OP_DD_BLT = 0x500;
-    const OP_DD_SET_COLOR_KEY = 0x501;
-    const OP_DD_SET_SURFACE_PALETTE = 0x502;
-    const OP_DD_SET_DISPLAY_MODE = 0x503;
-    const OP_DD_UPDATE_OVERLAY = 0x504;
+    const D9WG = global.D9WGProtocol ||
+        (typeof require === "function" ? require("./d9wg_protocol.js") : null);
+    const OP_DD_BLT = D9WG.OP.DD_BLT;
+    const OP_DD_SET_COLOR_KEY = D9WG.OP.DD_SET_COLOR_KEY;
+    const OP_DD_SET_SURFACE_PALETTE = D9WG.OP.DD_SET_SURFACE_PALETTE;
+    const OP_DD_SET_DISPLAY_MODE = D9WG.OP.DD_SET_DISPLAY_MODE;
+    const OP_DD_UPDATE_OVERLAY = D9WG.OP.DD_UPDATE_OVERLAY;
 
     const DDBLT_KEY_SOURCE = 1 << 0;
     const DDBLT_KEY_DESTINATION = 1 << 1;
@@ -37,6 +45,7 @@
     const DDBLT_COLOR_FILL = 1 << 4;
     const DDBLT_DEPTH_FILL = 1 << 5;
     const DDBLT_FILTER_LINEAR = 1 << 6;
+    const DDBLT_SOURCE_RECT_F32 = 1 << 7;
 
     const DDCKEY_SOURCE_BLT = 0;
     const DDCKEY_DESTINATION_BLT = 1;
@@ -56,237 +65,34 @@
     const DDSCL_EXCLUSIVE = 1 << 1;
     const DDSCL_FULLSCREEN = 1 << 2;
 
-    const BUFFER_USAGE_UNIFORM = 0x40;
-    const BUFFER_USAGE_COPY_DST = 0x8;
-    const TEXTURE_USAGE_COPY_SRC = 0x01;
-    const TEXTURE_USAGE_COPY_DST = 0x02;
-    const TEXTURE_USAGE_TEXTURE_BINDING = 0x04;
-    const TEXTURE_USAGE_RENDER_ATTACHMENT = 0x10;
-    const SHADER_STAGE_VERTEX = 0x1;
-    const SHADER_STAGE_FRAGMENT = 0x2;
-
-    const PALETTE_ENTRIES = 256;
-    const PALETTE_BYTES = PALETTE_ENTRIES * 16; // array<vec4<f32>, 256>
-    const UNIFORM_BYTES = 128;                  // eight vec4s, see WGSL below
-
-    // The blit uniform block, built once per op.
-    //   0  source_rect  u, v, du, dv  (du/dv negative when mirrored)
-    //  16  source_size   level width, level height
-    //  32  key_low       r, g, b (or the palette index in .x)
-    //  48  key_high
-    //  64  fill          float fill colour
-    //  80  fill_index    index fill
-    //  96  destination key low
-    // 112  destination key high
-    function packUniforms(op) {
-        const buffer = new ArrayBuffer(UNIFORM_BYTES);
-        const floats = new Float32Array(buffer);
-        const uints = new Uint32Array(buffer);
-        floats[0] = op.sourceRect[0];
-        floats[1] = op.sourceRect[1];
-        floats[2] = op.sourceRect[2];
-        floats[3] = op.sourceRect[3];
-        floats[4] = op.sourceSize ? op.sourceSize[0] : 1;
-        floats[5] = op.sourceSize ? op.sourceSize[1] : 1;
-        const key = op.colorKey;
-        uints[8] = key ? (key.low >>> 16) & 0xff : 0;
-        uints[9] = key ? (key.low >>> 8) & 0xff : 0;
-        uints[10] = key ? key.low & 0xff : 0;
-        uints[11] = key ? key.low & 0xff : 0;
-        uints[12] = key ? (key.high >>> 16) & 0xff : 0;
-        uints[13] = key ? (key.high >>> 8) & 0xff : 0;
-        uints[14] = key ? key.high & 0xff : 0;
-        uints[15] = key ? key.high & 0xff : 0;
-        // An indexed source compares the index itself, which the guest put in
-        // the low byte of both ends.
-        if (op.sourceKind === "index" && key) {
-            uints[8] = key.low & 0xff;
-            uints[12] = key.high & 0xff;
-        }
-        const fill = op.fill || [0, 0, 0, 0];
-        floats[16] = fill[0];
-        floats[17] = fill[1];
-        floats[18] = fill[2];
-        floats[19] = fill[3];
-        uints[20] = op.fillIndex >>> 0;
-        const destinationKey = op.destinationColorKey;
-        uints[24] = destinationKey
-            ? (destinationKey.low >>> 16) & 0xff : 0;
-        uints[25] = destinationKey
-            ? (destinationKey.low >>> 8) & 0xff : 0;
-        uints[26] = destinationKey ? destinationKey.low & 0xff : 0;
-        uints[27] = destinationKey ? destinationKey.low & 0xff : 0;
-        uints[28] = destinationKey
-            ? (destinationKey.high >>> 16) & 0xff : 0;
-        uints[29] = destinationKey
-            ? (destinationKey.high >>> 8) & 0xff : 0;
-        uints[30] = destinationKey ? destinationKey.high & 0xff : 0;
-        uints[31] = destinationKey ? destinationKey.high & 0xff : 0;
-        if (op.destinationKind === "index" && destinationKey) {
-            uints[24] = destinationKey.low & 0xff;
-            uints[28] = destinationKey.high & 0xff;
-        }
-        return new Uint8Array(buffer);
-    }
-
-    function ddBlitShaderSource(variant) {
-        const indexedSource = variant.sourceKind === "index";
-        const noSource = variant.sourceKind === "none";
-        const indexedDestination = variant.destinationKind === "index";
-        const outputType = indexedDestination ? "vec4<u32>" : "vec4<f32>";
-        const lines = [];
-        lines.push(`struct D9DDBlitUniforms {
-    source_rect: vec4<f32>,
-    source_size: vec4<f32>,
-    key_low: vec4<u32>,
-    key_high: vec4<u32>,
-    fill: vec4<f32>,
-    fill_index: vec4<u32>,
-    destination_key_low: vec4<u32>,
-    destination_key_high: vec4<u32>,
-};
-@group(0) @binding(0) var<uniform> blit: D9DDBlitUniforms;`);
-        if (!noSource) {
-            lines.push(indexedSource
-                ? "@group(0) @binding(1) var d9dd_source: texture_2d<u32>;"
-                : "@group(0) @binding(1) var d9dd_source: texture_2d<f32>;");
-            if (!indexedSource)
-                lines.push("@group(0) @binding(2) var d9dd_sampler: sampler;");
-        }
-        if (variant.paletteResolve) {
-            lines.push(`struct D9DDPalette {
-    entries: array<vec4<f32>, ${PALETTE_ENTRIES}>,
-};
-@group(0) @binding(3) var<uniform> d9dd_palette: D9DDPalette;`);
-        }
-        if (variant.destinationKey) {
-            lines.push(variant.destinationKind === "index"
-                ? "@group(0) @binding(4) var d9dd_destination_key: texture_2d<u32>;"
-                : "@group(0) @binding(4) var d9dd_destination_key: texture_2d<f32>;");
-        }
-        lines.push(`
-struct D9DDBlitOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn d9dd_vs_main(@builtin(vertex_index) index: u32) -> D9DDBlitOutput {
-    // Two triangles over the whole viewport; setViewport restricts the output
-    // to the destination rectangle, so no destination maths belongs here.
-    var corners = array<vec2<f32>, 6>(
-        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
-        vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0));
-    let corner = corners[index];
-    var result: D9DDBlitOutput;
-    result.position = vec4<f32>(corner.x * 2.0 - 1.0, 1.0 - corner.y * 2.0,
-        0.0, 1.0);
-    // Mirroring is a negative extent in source_rect rather than a shader
-    // variant of its own: DDBLTFX_MIRRORLEFTRIGHT/UPDOWN are exactly a
-    // reversed traversal of the source rectangle.
-    result.uv = blit.source_rect.xy + corner * blit.source_rect.zw;
-    return result;
-}`);
-        const body = [];
-        if (variant.destinationKey) {
-            body.push("    let destination_texel = vec2<i32>(stage_in.position.xy);");
-            if (indexedDestination) {
-                body.push(`    let destination_index = textureLoad(
-        d9dd_destination_key, destination_texel, 0).r;
-    if (destination_index < blit.destination_key_low.x ||
-            destination_index > blit.destination_key_high.x) {
-        discard;
-    }`);
-            } else {
-                body.push(`    let destination_color = textureLoad(
-        d9dd_destination_key, destination_texel, 0);
-    let destination_quantised = vec3<u32>(round(destination_color.rgb * 255.0));
-    if (any(destination_quantised < blit.destination_key_low.rgb) ||
-            any(destination_quantised > blit.destination_key_high.rgb)) {
-        discard;
-    }`);
-            }
-        }
-        if (noSource) {
-            body.push(indexedDestination
-                ? "    return vec4<u32>(blit.fill_index.x, 0u, 0u, 0u);"
-                : "    return blit.fill;");
-        } else if (indexedSource) {
-            body.push(`    let texel = vec2<i32>(clamp(
-        floor(stage_in.uv * blit.source_size.xy), vec2<f32>(0.0, 0.0),
-        max(blit.source_size.xy - vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 0.0))));
-    let index = textureLoad(d9dd_source, texel, 0).r;`);
-            if (variant.colorKey)
-                body.push(`    if (index >= blit.key_low.x && index <= blit.key_high.x) {
-        discard;
-    }`);
-            if (indexedDestination)
-                body.push("    return vec4<u32>(index, 0u, 0u, 0u);");
-            else if (variant.paletteResolve)
-                body.push("    return d9dd_palette.entries[index];");
-            else
-                // No palette bound: the indices are all the host has, and
-                // inventing colours for them would be a picture the app never
-                // asked for. Grey ramp, and the guest is told through the
-                // ddPaletteMissing counter.
-                body.push("    let level = f32(index) / 255.0;\n" +
-                    "    return vec4<f32>(level, level, level, 1.0);");
-        } else {
-            body.push("    let color = textureSample(d9dd_source, " +
-                "d9dd_sampler, stage_in.uv);");
-            if (variant.colorKey)
-                // Quantised back to the 8-bit-per-channel domain the key lives
-                // in. Both ends of the key were widened from the surface
-                // format by the same truncating 255/max scale in the guest
-                // (ddraw_expand_channel), and the upload widened the texels the
-                // same way, so this comparison is exact rather than nearly so.
-                body.push(`    let quantised = vec3<u32>(round(color.rgb * 255.0));
-    if (all(quantised >= blit.key_low.rgb) &&
-            all(quantised <= blit.key_high.rgb)) {
-        discard;
-    }`);
-            body.push(indexedDestination
-                ? "    return vec4<u32>(u32(round(color.r * 255.0)), 0u, 0u, 0u);"
-                : "    return color;");
-        }
-        lines.push(`
-@fragment
-fn d9dd_ps_main(stage_in: D9DDBlitOutput) -> @location(0) ${outputType} {
-${body.join("\n")}
-}
-`);
-        return lines.join("\n");
-    }
 
     const ddrawOps = {
         // ---- 0x500 DD_BLT ----------------------------------------------
         onDDBlt(bytes, view, offset, length) {
-            if (length < 80) {
-                ++this.stats.malformedBatches;
-                return;
-            }
-            const state = this.deviceState(view.getUint32(offset, true));
-            const sourceHandle = view.getUint32(offset + 4, true);
-            const sourceLevel = view.getUint32(offset + 8, true);
-            const sourceFace = view.getUint32(offset + 12, true);
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.DDBlt.device_handle, true));
+            const sourceHandle = view.getUint32(offset + D9WG.F.DDBlt.source_handle, true);
+            const sourceLevel = view.getUint32(offset + D9WG.F.DDBlt.source_level, true);
+            const sourceFace = view.getUint32(offset + D9WG.F.DDBlt.source_face, true);
+            const flags = view.getUint32(offset + D9WG.F.DDBlt.flags, true);
+            const sourceCoordinate = at => flags & DDBLT_SOURCE_RECT_F32
+                ? view.getFloat32(at, true) : view.getInt32(at, true);
             const sourceRect = {
-                left: view.getInt32(offset + 16, true),
-                top: view.getInt32(offset + 20, true),
-                right: view.getInt32(offset + 24, true),
-                bottom: view.getInt32(offset + 28, true),
+                left: sourceCoordinate(offset + D9WG.F.DDBlt.source_rect),
+                top: sourceCoordinate(offset + D9WG.F.DDBlt.source_rect + 4),
+                right: sourceCoordinate(offset + D9WG.F.DDBlt.source_rect + 8),
+                bottom: sourceCoordinate(offset + D9WG.F.DDBlt.source_rect + 12),
             };
-            const destinationHandle = view.getUint32(offset + 32, true);
-            const destinationLevel = view.getUint32(offset + 36, true);
-            const destinationFace = view.getUint32(offset + 40, true);
-            const flags = view.getUint32(offset + 44, true);
+            const destinationHandle = view.getUint32(offset + D9WG.F.DDBlt.destination_handle, true);
+            const destinationLevel = view.getUint32(offset + D9WG.F.DDBlt.destination_level, true);
+            const destinationFace = view.getUint32(offset + D9WG.F.DDBlt.destination_face, true);
             const destinationRect = {
-                left: view.getInt32(offset + 48, true),
-                top: view.getInt32(offset + 52, true),
-                right: view.getInt32(offset + 56, true),
-                bottom: view.getInt32(offset + 60, true),
+                left: view.getInt32(offset + D9WG.F.DDBlt.destination_rect, true),
+                top: view.getInt32(offset + D9WG.F.DDBlt.destination_rect + 4, true),
+                right: view.getInt32(offset + D9WG.F.DDBlt.destination_rect + 8, true),
+                bottom: view.getInt32(offset + D9WG.F.DDBlt.destination_rect + 12, true),
             };
-            const fillColor = view.getUint32(offset + 64, true);
-            const fillDepth = view.getFloat32(offset + 68, true);
+            const fillColor = view.getUint32(offset + D9WG.F.DDBlt.fill_color, true);
+            const fillDepth = view.getFloat32(offset + D9WG.F.DDBlt.fill_depth, true);
 
             this.stats.ddBlits = (this.stats.ddBlits || 0) + 1;
 
@@ -322,6 +128,13 @@ ${body.join("\n")}
             // together or a partly off-screen sprite stretches instead of
             // being cut off.
             const isFill = (flags & (DDBLT_COLOR_FILL | DDBLT_DEPTH_FILL)) !== 0;
+            if ((flags & DDBLT_SOURCE_RECT_F32) && (isFill ||
+                    !Object.values(sourceRect).every(Number.isFinite) ||
+                    sourceRect.right <= sourceRect.left || sourceRect.bottom <= sourceRect.top)) {
+                this.ddRefuse("fractional-source-rectangle", "invalid fractional DirectDraw source rectangle",
+                    { sourceHandle, flags, sourceRect });
+                return;
+            }
             const clipped = isFill
                 ? clipDestination(destinationRect, destinationWidth,
                     destinationHeight)
@@ -372,7 +185,7 @@ ${body.join("\n")}
                 }
                 const frame = this.ensureFrame();
                 const viewport = clipped.viewport;
-                frame.ops.push({
+                frame.record({
                     kind: "rect-clear",
                     targets: {
                         key: "dd-depth:" + destinationHandle + ":" +
@@ -404,31 +217,31 @@ ${body.join("\n")}
                 ? this.targetViewFor(destination, destinationLevel, false,
                     Math.min(destinationFace,
                         (destination.layerCount || 1) - 1))
-                : null;
+                : (this.deviceBackBuffer(state), state.backBufferView);
 
             if (flags & DDBLT_COLOR_FILL) {
+                if (destination && destination.isDepth) {
+                    this.ddRefuse("depth-color-fill","A color fill cannot target a depth surface",{destinationHandle});return;
+                }
                 noteWindowedScreenWrite();
                 const frame = this.ensureFrame();
-                frame.ops.push({
+                frame.record({
                     kind: "ddblit",
                     sourceKind: "none",
                     destinationKind: destinationIndexed ? "index" : "float",
                     destinationView, destinationFormat,
                     sourceRect: [0, 0, 1, 1],
                     viewport: clipped.viewport,
-                    // A DirectDraw fill colour is in the destination surface's
-                    // own format. The guest converts an RGB destination's fill
-                    // to D3DCOLOR; an indexed one carries the raw index.
-                    fill: destinationIndexed ? null : [
-                        ((fillColor >>> 16) & 0xff) / 255,
-                        ((fillColor >>> 8) & 0xff) / 255,
-                        (fillColor & 0xff) / 255,
-                        ((fillColor >>> 24) & 0xff) / 255,
-                    ],
+                    // DDBLTFX.dwFillColor is a native destination pixel, not
+                    // D3DCOLOR. An implicit primary inherits the display mode.
+                    fill: destinationIndexed ? null : formats.nativeFillRGBA(
+                        destination ? destination.format :
+                            state.ddDisplayMode && state.ddDisplayMode.bitsPerPixel === 16 ? 23 : 22,
+                        fillColor, !!(destination && destination.ddXrgbBits)),
                     fillIndex: destinationIndexed ? (fillColor & 0xff) : 0,
                     destinationColorKey,
                     destinationTexture: destination
-                        ? destination.gpuTexture : null,
+                        ? destination.gpuTexture : this.deviceBackBuffer(state),
                     destinationLevel,
                     destinationFace,
                     destinationSize: [destinationWidth, destinationHeight],
@@ -460,6 +273,27 @@ ${body.join("\n")}
             const sourceIndexed = !!(source && source.ddIndexed);
             const sourceFormat = source
                 ? (source.gpuFormat || "rgba8unorm") : this.format;
+
+            if ((source && source.isDepth) || (destination && destination.isDepth)) {
+                if (!source || !destination || !source.isDepth || !destination.isDepth ||
+                        source.format !== destination.format || (flags & ~(DDBLT_MIRROR_X|DDBLT_MIRROR_Y)) || sourceFace || destinationFace ||
+                        (source.sampleCount||1)!==1 || (destination.sampleCount||1)!==1) {
+                    this.ddRefuse("depth-blit-descriptor","DirectDraw depth blit requires matching single-sample depth surfaces",{sourceHandle,destinationHandle,flags});
+                    return;
+                }
+                const src=clipped.source;
+                if (src.left<0||src.top<0||src.right>sourceWidth||src.bottom>sourceHeight) {
+                    this.ddRefuse("depth-blit-source","DirectDraw depth blit source is out of bounds",{sourceHandle});return;
+                }
+                const frame=this.ensureFrame();
+                frame.record({kind:"depth-blit",sourceTexture:source.gpuTexture,sourceLevel,sourceWidth,sourceHeight,
+                    sourceRect:src,destinationTexture:destination.gpuTexture,destinationView,format:destination.format,
+                    viewport:clipped.viewport,mirrorX:!!(flags&DDBLT_MIRROR_X),mirrorY:!!(flags&DDBLT_MIRROR_Y)});
+                source.frameReferenced=destination.frameReferenced=frame.serial;
+                this.markTextureSubresourceWritten(destination,destinationLevel,destinationFace);
+                this.stats.ddDepthBlits=(this.stats.ddDepthBlits||0)+1;
+                return;
+            }
 
             if (!sourceIndexed && destinationIndexed) {
                 // Colour matching an RGB image into someone else's palette is
@@ -504,6 +338,13 @@ ${body.join("\n")}
                 sourceLevel === destinationLevel &&
                 sourceFace === destinationFace);
 
+            const sameXrgbBits = !!(source && destination &&
+                source.ddXrgbBits && destination.ddXrgbBits &&
+                source.format === destination.format);
+            const forceOpaqueAlpha = !sameXrgbBits && !!(
+                (source && source.ddXrgbBits) ||
+                (destination && destination.ddXrgbBits));
+
             // The straight copy: nothing to key, nothing to mirror, no scale,
             // no format change, and two real textures. copyTextureToTexture is
             // both cheaper and exact, and it works for r8uint where a render
@@ -511,10 +352,11 @@ ${body.join("\n")}
             const scaled = width !== clipped.viewport[2] ||
                 height !== clipped.viewport[3];
             if (!colorKey && !destinationColorKey && !mirrorX && !mirrorY &&
-                    !scaled && source && !selfBlt &&
-                    destination && sourceFormat === destinationFormat) {
+                    !scaled && !forceOpaqueAlpha && source && !selfBlt &&
+                    destination && sourceFormat === destinationFormat &&
+                    [src.left, src.top, width, height].every(Number.isInteger)) {
                 const frame = this.ensureFrame();
-                frame.ops.push({ kind: "copy",
+                frame.record({ kind: "copy",
                     source: { texture: source.gpuTexture,
                         mipLevel: sourceLevel,
                         origin: { x: src.left, y: src.top, z: sourceFace } },
@@ -532,7 +374,10 @@ ${body.join("\n")}
             }
 
             let paletteBuffer = null;
-            if (sourceIndexed && !destinationIndexed) {
+            // Native ordinary P8 -> RGB surface copies use the index grey
+            // ramp. Presentation and keyed conversions resolve the palette.
+            if (sourceIndexed && !destinationIndexed &&
+                    (!destination || colorKey || destinationColorKey)) {
                 paletteBuffer = this.ddPaletteBufferFor(source);
                 if (!paletteBuffer)
                     this.stats.ddPaletteMissing =
@@ -545,14 +390,14 @@ ${body.join("\n")}
             const dv = height / sourceHeight;
             const frame = this.ensureFrame();
             noteWindowedScreenWrite();
-            frame.ops.push({
+            frame.record({
                 kind: "ddblit",
                 sourceKind: sourceIndexed ? "index" : "float",
                 destinationKind: destinationIndexed ? "index" : "float",
                 sourceView: source
                     ? this.blitSourceView(source, sourceLevel, sourceFace)
-                    : null,
-                sourceTexture: source ? source.gpuTexture : null,
+                    : (this.deviceBackBuffer(state), state.backBufferView),
+                sourceTexture: source ? source.gpuTexture : this.deviceBackBuffer(state),
                 sourceLevel,
                 sourceFace,
                 sourceSnapshot: selfBlt,
@@ -564,9 +409,10 @@ ${body.join("\n")}
                 sourceSize: [sourceWidth, sourceHeight],
                 viewport: clipped.viewport,
                 colorKey: colorKey || null,
+                forceOpaqueAlpha,
                 destinationColorKey,
                 destinationTexture: destination
-                    ? destination.gpuTexture : null,
+                    ? destination.gpuTexture : this.deviceBackBuffer(state),
                 destinationLevel,
                 destinationFace,
                 destinationSize: [destinationWidth, destinationHeight],
@@ -591,11 +437,11 @@ ${body.join("\n")}
 
         // ---- 0x501 DD_SET_COLOR_KEY ------------------------------------
         onDDSetColorKey(bytes, view, offset) {
-            const handle = view.getUint32(offset, true);
-            const kind = view.getUint32(offset + 4, true);
-            const low = view.getUint32(offset + 8, true);
-            const high = view.getUint32(offset + 12, true);
-            const present = view.getUint32(offset + 16, true) !== 0;
+            const handle = view.getUint32(offset + D9WG.F.DDSetColorKey.surface_handle, true);
+            const kind = view.getUint32(offset + D9WG.F.DDSetColorKey.key_kind, true);
+            const low = view.getUint32(offset + D9WG.F.DDSetColorKey.color_low, true);
+            const high = view.getUint32(offset + D9WG.F.DDSetColorKey.color_high, true);
+            const present = view.getUint32(offset + D9WG.F.DDSetColorKey.present, true) !== 0;
             const resource = this.resources.get(handle);
             if (!resource) return;
             if (!resource.ddColorKey) resource.ddColorKey = {};
@@ -606,8 +452,8 @@ ${body.join("\n")}
 
         // ---- 0x502 DD_SET_SURFACE_PALETTE ------------------------------
         onDDSetSurfacePalette(bytes, view, offset) {
-            const handle = view.getUint32(offset, true);
-            const paletteIndex = view.getUint32(offset + 4, true);
+            const handle = view.getUint32(offset + D9WG.F.DDSetSurfacePalette.surface_handle, true);
+            const paletteIndex = view.getUint32(offset + D9WG.F.DDSetSurfacePalette.palette_index, true);
             const resource = this.resources.get(handle);
             if (!resource) return;
             resource.ddPaletteIndex = paletteIndex;
@@ -620,13 +466,13 @@ ${body.join("\n")}
 
         // ---- 0x503 DD_SET_DISPLAY_MODE ---------------------------------
         onDDSetDisplayMode(bytes, view, offset) {
-            const state = this.deviceState(view.getUint32(offset, true));
-            const width = view.getUint32(offset + 4, true);
-            const height = view.getUint32(offset + 8, true);
-            const bitsPerPixel = view.getUint32(offset + 12, true);
-            const refreshRate = view.getUint32(offset + 16, true);
-            const cooperativeFlags = view.getUint32(offset + 20, true);
-            const guestModeChanged = view.getUint32(offset + 24, true) !== 0;
+            const state = this.deviceState(view.getUint32(offset + D9WG.F.DDSetDisplayMode.device_handle, true));
+            const width = view.getUint32(offset + D9WG.F.DDSetDisplayMode.width, true);
+            const height = view.getUint32(offset + D9WG.F.DDSetDisplayMode.height, true);
+            const bitsPerPixel = view.getUint32(offset + D9WG.F.DDSetDisplayMode.bits_per_pixel, true);
+            const refreshRate = view.getUint32(offset + D9WG.F.DDSetDisplayMode.refresh_rate, true);
+            const cooperativeFlags = view.getUint32(offset + D9WG.F.DDSetDisplayMode.cooperative_flags, true);
+            const guestModeChanged = view.getUint32(offset + D9WG.F.DDSetDisplayMode.guest_mode_changed, true) !== 0;
             state.ddDisplayMode = { width, height, bitsPerPixel, refreshRate,
                 cooperativeFlags, guestModeChanged };
             const exclusiveFullscreen =
@@ -652,8 +498,8 @@ ${body.join("\n")}
                     // A mode switch invalidates the old primary contents.  Do
                     // not let recorded ops or a retained texture with the old
                     // dimensions survive into the first Present of this mode.
-                    this.discardFrame();
-                    this.retireActiveSessionBackBuffer();
+                    this.finishFrame(false);
+                    this.retireDeviceBackBuffer(state);
                     state.backBufferWidth = width;
                     state.backBufferHeight = height;
                     if ((state.sampleCount || 1) > 1) {
@@ -686,18 +532,14 @@ ${body.join("\n")}
 
         // ---- 0x504 DD_UPDATE_OVERLAY ----------------------------------
         onDDUpdateOverlay(bytes, view, offset, length) {
-            if (length < 52) {
-                ++this.stats.malformedBatches;
-                return;
-            }
-            const surfaceHandle = view.getUint32(offset, true);
-            const overlayId = view.getUint32(offset + 4, true);
+            const surfaceHandle = view.getUint32(offset + D9WG.F.DDUpdateOverlay.surface_handle, true);
+            const overlayId = view.getUint32(offset + D9WG.F.DDUpdateOverlay.overlay_id, true);
             const resource = this.resources.get(surfaceHandle);
             if (!resource) return;
             const state = this.deviceState(resource.deviceHandle || 0);
             if (!state.ddOverlays) state.ddOverlays = new Map();
-            const flags = view.getUint32(offset + 40, true);
-            const destinationHandle = view.getUint32(offset + 48, true);
+            const flags = view.getUint32(offset + D9WG.F.DDUpdateOverlay.flags, true);
+            const destinationHandle = view.getUint32(offset + D9WG.F.DDUpdateOverlay.destination_handle, true);
             const old = state.ddOverlays.get(overlayId) || {};
             if (flags & DDOVER_HIDE) {
                 state.ddOverlays.delete(overlayId);
@@ -717,19 +559,19 @@ ${body.join("\n")}
                 surfaceHandle,
                 destinationHandle,
                 sourceRect: [
-                    view.getInt32(offset + 8, true),
-                    view.getInt32(offset + 12, true),
-                    view.getInt32(offset + 16, true),
-                    view.getInt32(offset + 20, true),
+                    view.getInt32(offset + D9WG.F.DDUpdateOverlay.source_rect, true),
+                    view.getInt32(offset + D9WG.F.DDUpdateOverlay.source_rect + 4, true),
+                    view.getInt32(offset + D9WG.F.DDUpdateOverlay.source_rect + 8, true),
+                    view.getInt32(offset + D9WG.F.DDUpdateOverlay.source_rect + 12, true),
                 ],
                 destinationRect: [
-                    view.getInt32(offset + 24, true),
-                    view.getInt32(offset + 28, true),
-                    view.getInt32(offset + 32, true),
-                    view.getInt32(offset + 36, true),
+                    view.getInt32(offset + D9WG.F.DDUpdateOverlay.destination_rect, true),
+                    view.getInt32(offset + D9WG.F.DDUpdateOverlay.destination_rect + 4, true),
+                    view.getInt32(offset + D9WG.F.DDUpdateOverlay.destination_rect + 8, true),
+                    view.getInt32(offset + D9WG.F.DDUpdateOverlay.destination_rect + 12, true),
                 ],
                 flags,
-                zOrder: view.getUint32(offset + 44, true),
+                zOrder: view.getUint32(offset + D9WG.F.DDUpdateOverlay.z_order, true),
                 visible: (flags & DDOVER_SHOW) ? true : !!old.visible,
                 // Snapshot the key at UpdateOverlay time. DuplicateSurface
                 // aliases share one texture handle but have independent COM
@@ -746,413 +588,14 @@ ${body.join("\n")}
                 (this.stats.ddOverlayUpdates || 0) + 1;
         },
 
-        /* Build a disposable scanout image instead of drawing overlays into
-         * the retained D3D back buffer. Hiding or moving one therefore exposes
-         * the untouched primary immediately, and readback never sees scanout-
-         * only overlay pixels. */
-        replayDDOverlays(encoder, state, sourceTexture, width, height, frame) {
-            if (!state || !state.ddOverlays) return null;
-            const overlays = [...state.ddOverlays.values()]
-                .filter(entry => entry.visible)
-                .sort((a, b) => a.zOrder - b.zOrder);
-            if (!overlays.length) return null;
-            const composite = this.device.createTexture({
-                label: "DirectDraw overlay composite",
-                size: { width, height, depthOrArrayLayers: 1 },
-                format: this.format,
-                mipLevelCount: 1,
-                usage: TEXTURE_USAGE_COPY_SRC | TEXTURE_USAGE_COPY_DST |
-                    TEXTURE_USAGE_TEXTURE_BINDING |
-                    TEXTURE_USAGE_RENDER_ATTACHMENT,
-            });
-            encoder.copyTextureToTexture({ texture: sourceTexture },
-                { texture: composite },
-                { width, height, depthOrArrayLayers: 1 });
-            const compositeView = composite.createView();
-
-            for (const overlay of overlays) {
-                const source = this.resources.get(overlay.surfaceHandle);
-                if (!source || !source.gpuTexture) continue;
-                const sourceWidth = source.width;
-                const sourceHeight = source.height;
-                const sourceRect = {
-                    left: overlay.sourceRect[0], top: overlay.sourceRect[1],
-                    right: overlay.sourceRect[2], bottom: overlay.sourceRect[3],
-                };
-                const destinationRect = {
-                    left: overlay.destinationRect[0],
-                    top: overlay.destinationRect[1],
-                    right: overlay.destinationRect[2],
-                    bottom: overlay.destinationRect[3],
-                };
-                const clipped = clipRects(sourceRect, destinationRect,
-                    width, height);
-                if (!clipped) continue;
-                const sourceIndexed = !!source.ddIndexed;
-                const sourceColorKey = (overlay.flags & DDOVER_KEY_SOURCE)
-                    ? overlay.sourceColorKey : null;
-                const destinationColorKey =
-                    (overlay.flags & DDOVER_KEY_DESTINATION)
-                        ? overlay.destinationColorKey : null;
-                if ((overlay.flags & DDOVER_KEY_SOURCE) && !sourceColorKey)
-                    continue;
-                if ((overlay.flags & DDOVER_KEY_DESTINATION) &&
-                        !destinationColorKey)
-                    continue;
-                let paletteBuffer = null;
-                if (sourceIndexed) paletteBuffer = this.ddPaletteBufferFor(source);
-                const src = clipped.source;
-                const sourceU = src.left / sourceWidth;
-                const sourceV = src.top / sourceHeight;
-                const sourceDU = (src.right - src.left) / sourceWidth;
-                const sourceDV = (src.bottom - src.top) / sourceHeight;
-                const transient = this.replayDDBlit(encoder, {
-                    sourceKind: sourceIndexed ? "index" : "float",
-                    destinationKind: "float",
-                    sourceView: this.blitSourceView(source, 0, 0),
-                    destinationView: compositeView,
-                    destinationFormat: this.format,
-                    sourceFormat: source.gpuFormat || "rgba8unorm",
-                    sourceRect: [
-                        (overlay.flags & DDOVER_MIRROR_X)
-                            ? sourceU + sourceDU : sourceU,
-                        (overlay.flags & DDOVER_MIRROR_Y)
-                            ? sourceV + sourceDV : sourceV,
-                        (overlay.flags & DDOVER_MIRROR_X)
-                            ? -sourceDU : sourceDU,
-                        (overlay.flags & DDOVER_MIRROR_Y)
-                            ? -sourceDV : sourceDV,
-                    ],
-                    sourceSize: [sourceWidth, sourceHeight],
-                    viewport: clipped.viewport,
-                    colorKey: sourceColorKey,
-                    destinationColorKey,
-                    destinationTexture: sourceTexture,
-                    destinationLevel: 0,
-                    destinationFace: 0,
-                    destinationSize: [width, height],
-                    paletteBuffer,
-                    paletteResolve: !!paletteBuffer,
-                    filterPoint: sourceIndexed,
-                }, compositeView, composite);
-                if (transient) frame.transientBuffers.push(transient);
-                this.stats.ddOverlayComposites =
-                    (this.stats.ddOverlayComposites || 0) + 1;
-            }
-            return composite;
-        },
-
         // ---- helpers ---------------------------------------------------
         ddRefuse(key, message, details) {
             this.stats.ddBlitsSkipped = (this.stats.ddBlitsSkipped || 0) + 1;
             this.warnOnce("ddraw-" + key, message, details || {});
         },
 
-        // The GPU copy of the palette a surface samples through, or null when
-        // the guest has not sent one yet.
-        ddPaletteBufferFor(resource) {
-            const index = resource.ddPaletteIndex;
-            if (index === undefined) return null;
-            const key = (resource.deviceHandle || 0) + ":" + index;
-            const rgba = this.palettes && this.palettes.get(key);
-            if (!rgba) return null;
-            if (!this.ddPaletteBuffers) this.ddPaletteBuffers = new Map();
-            let entry = this.ddPaletteBuffers.get(key);
-            if (!entry) {
-                entry = {
-                    buffer: this.device.createBuffer({
-                        label: "DirectDraw palette " + key,
-                        size: PALETTE_BYTES,
-                        usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST,
-                    }),
-                    serial: -1,
-                };
-                this.ddPaletteBuffers.set(key, entry);
-            }
-            const serial = (this.ddPaletteSerials &&
-                this.ddPaletteSerials.get(key)) || 0;
-            if (entry.serial !== serial) {
-                const floats = new Float32Array(PALETTE_ENTRIES * 4);
-                for (let i = 0; i < PALETTE_ENTRIES; ++i) {
-                    floats[i * 4] = rgba[i * 4] / 255;
-                    floats[i * 4 + 1] = rgba[i * 4 + 1] / 255;
-                    floats[i * 4 + 2] = rgba[i * 4 + 2] / 255;
-                    floats[i * 4 + 3] = rgba[i * 4 + 3] / 255;
-                }
-                this.device.queue.writeBuffer(entry.buffer, 0, floats);
-                entry.serial = serial;
-                this.stats.ddPaletteUploads =
-                    (this.stats.ddPaletteUploads || 0) + 1;
-            }
-            return entry.buffer;
-        },
 
-        // DirectDraw keeps P8 surfaces as r8uint so blits and readback preserve
-        // the application's indices.  Fixed-function D3D sampling, however,
-        // needs filterable colours. Build a companion RGBA texture from the
-        // CPU index shadows and the palette attached to this *surface* (not the
-        // device-global D3D9 palette). A keyed companion sets alpha to zero by
-        // comparing the original index, so duplicate palette colours cannot
-        // make an unrelated texel transparent.
-        ddIndexedSampleViewFor(resource, colorKey) {
-            if (!resource || !resource.ddIndexed) return null;
-            const paletteIndex = resource.ddPaletteIndex;
-            const paletteKey = paletteIndex === undefined ? null
-                : (resource.deviceHandle || 0) + ":" + paletteIndex;
-            const palette = paletteKey && this.palettes
-                ? this.palettes.get(paletteKey) : null;
-            const paletteSerial = paletteKey && this.ddPaletteSerials
-                ? (this.ddPaletteSerials.get(paletteKey) || 0) : 0;
-            const keyLow = colorKey ? colorKey.low & 0xff : -1;
-            const keyHigh = colorKey ? colorKey.high & 0xff : -1;
-            const variant = colorKey ? "keyed" : "plain";
-            const serial = [resource.ddContentSerial || 0, paletteKey || "-",
-                paletteSerial, keyLow, keyHigh].join(":");
-            if (!resource.ddSampleViews) resource.ddSampleViews = new Map();
-            const old = resource.ddSampleViews.get(variant);
-            if (old && old.serial === serial) return old.view;
-
-            const layers = resource.layerCount || 1;
-            const texture = this.device.createTexture({
-                label: "DirectDraw indexed D3D sample view",
-                size: { width: resource.width, height: resource.height,
-                    depthOrArrayLayers: layers },
-                format: "rgba8unorm",
-                mipLevelCount: Math.max(1, resource.levelCount || 1),
-                usage: TEXTURE_USAGE_COPY_DST | TEXTURE_USAGE_TEXTURE_BINDING,
-            });
-            for (const shadow of resource.textureShadows
-                    ? resource.textureShadows.values() : []) {
-                const rgba = new Uint8Array(shadow.width * shadow.height * 4);
-                for (let pixel = 0; pixel < shadow.width * shadow.height;
-                        ++pixel) {
-                    const index = shadow.data[pixel];
-                    const at = pixel * 4;
-                    if (palette) {
-                        rgba[at] = palette[index * 4];
-                        rgba[at + 1] = palette[index * 4 + 1];
-                        rgba[at + 2] = palette[index * 4 + 2];
-                        rgba[at + 3] = palette[index * 4 + 3];
-                    } else {
-                        rgba[at] = rgba[at + 1] = rgba[at + 2] = index;
-                        rgba[at + 3] = 0xff;
-                    }
-                    if (colorKey && index >= keyLow && index <= keyHigh)
-                        rgba[at + 3] = 0;
-                }
-                this.device.queue.writeTexture({ texture,
-                    mipLevel: shadow.level,
-                    origin: { x: 0, y: 0, z: shadow.layer || 0 } }, rgba,
-                    { bytesPerRow: shadow.width * 4,
-                        rowsPerImage: shadow.height },
-                    { width: shadow.width, height: shadow.height,
-                        depthOrArrayLayers: 1 });
-            }
-            const entry = { texture, serial, view: texture.createView({
-                dimension: resource.textureType === "cube" ? "cube" : "2d",
-            }) };
-            resource.ddSampleViews.set(variant, entry);
-            if (old) this.retireGPUObject(old.texture);
-            this.stats.ddIndexedSampleResolves =
-                (this.stats.ddIndexedSampleResolves || 0) + 1;
-            return entry.view;
-        },
-
-        ddBlitPipelineFor(variant) {
-            const key = [variant.destinationFormat, variant.sourceKind,
-                variant.destinationKind, variant.colorKey ? "key" : "-",
-                variant.destinationKey ? "dest-key" : "-",
-                variant.paletteResolve ? "pal" : "-",
-                variant.filterPoint ? "point" : "linear"].join("|");
-            if (!this.ddBlitPipelines) this.ddBlitPipelines = new Map();
-            let entry = this.ddBlitPipelines.get(key);
-            if (entry) return entry;
-            const module = this.moduleFor(ddBlitShaderSource(variant),
-                "ddraw blit " + key);
-            const entries = [
-                { binding: 0, visibility: SHADER_STAGE_VERTEX |
-                    SHADER_STAGE_FRAGMENT, buffer: { type: "uniform" } },
-            ];
-            if (variant.sourceKind === "index")
-                entries.push({ binding: 1, visibility: SHADER_STAGE_FRAGMENT,
-                    texture: { sampleType: "uint" } });
-            else if (variant.sourceKind === "float") {
-                entries.push({ binding: 1, visibility: SHADER_STAGE_FRAGMENT,
-                    texture: { sampleType: "float" } });
-                entries.push({ binding: 2, visibility: SHADER_STAGE_FRAGMENT,
-                    sampler: { type: "filtering" } });
-            }
-            if (variant.paletteResolve)
-                entries.push({ binding: 3, visibility: SHADER_STAGE_FRAGMENT,
-                    buffer: { type: "uniform" } });
-            if (variant.destinationKey)
-                entries.push({ binding: 4, visibility: SHADER_STAGE_FRAGMENT,
-                    texture: { sampleType: variant.destinationKind === "index"
-                        ? "uint" : "float" } });
-            const bindGroupLayout =
-                this.device.createBindGroupLayout({ entries });
-            const pipeline = this.device.createRenderPipeline({
-                label: "DirectDraw blit " + key,
-                layout: this.device.createPipelineLayout(
-                    { bindGroupLayouts: [bindGroupLayout] }),
-                vertex: { module, entryPoint: "d9dd_vs_main" },
-                fragment: { module, entryPoint: "d9dd_ps_main",
-                    targets: [{ format: variant.destinationFormat }] },
-                primitive: { topology: "triangle-list" },
-            });
-            const sampler = variant.sourceKind === "float"
-                ? this.device.createSampler({
-                    magFilter: variant.filterPoint ? "nearest" : "linear",
-                    minFilter: variant.filterPoint ? "nearest" : "linear",
-                    addressModeU: "clamp-to-edge",
-                    addressModeV: "clamp-to-edge",
-                })
-                : null;
-            entry = { pipeline, bindGroupLayout, sampler };
-            this.ddBlitPipelines.set(key, entry);
-            return entry;
-        },
-
-        // Runs a recorded DirectDraw blit inside finishFrame, where the swap
-        // chain view exists.
-        replayDDBlit(encoder, op, swapView, swapTexture) {
-            const destinationView = op.destinationView || swapView;
-            if (!destinationView) return null;
-            // A swap-chain source is whatever the canvas format is, never an
-            // index texture, and the variant has to say so or the pipeline
-            // declares a texture_2d<u32> for a float view.
-            const swapchainSource = op.sourceKind !== "none" && !op.sourceView;
-            const variant = {
-                // The swap-chain image is whatever the canvas format is and is
-                // never an index texture, so a blit that reads it is a float
-                // blit no matter what the recorded kind said.
-                sourceKind: swapchainSource ? "float" : op.sourceKind,
-                destinationKind: op.destinationView
-                    ? op.destinationKind : "float",
-                destinationFormat: op.destinationView
-                    ? op.destinationFormat : this.format,
-                colorKey: !!op.colorKey,
-                destinationKey: !!op.destinationColorKey,
-                paletteResolve: !!op.paletteBuffer,
-                filterPoint: !!op.filterPoint,
-            };
-            let snapshotTexture = null;
-            let snapshotView = null;
-            let destinationKeyView = null;
-            if (variant.destinationKey || op.sourceSnapshot) {
-                const snapshotSource = variant.destinationKey
-                    ? (op.destinationTexture || swapTexture)
-                    : op.sourceTexture;
-                const size = variant.destinationKey
-                    ? (op.destinationSize || [1, 1])
-                    : (op.sourceSize || [1, 1]);
-                if (!snapshotSource || !size[0] || !size[1]) return null;
-                snapshotTexture = this.device.createTexture({
-                    label: variant.destinationKey
-                        ? "DirectDraw destination colour-key snapshot"
-                        : "DirectDraw self-blit snapshot",
-                    size: { width: size[0], height: size[1],
-                        depthOrArrayLayers: 1 },
-                    format: variant.destinationKey
-                        ? variant.destinationFormat : op.sourceFormat,
-                    mipLevelCount: 1,
-                    usage: TEXTURE_USAGE_COPY_DST |
-                        TEXTURE_USAGE_TEXTURE_BINDING,
-                });
-                encoder.copyTextureToTexture({ texture: snapshotSource,
-                    mipLevel: variant.destinationKey
-                        ? (op.destinationLevel || 0) : (op.sourceLevel || 0),
-                    origin: { x: 0, y: 0,
-                        z: variant.destinationKey
-                            ? (op.destinationFace || 0) : (op.sourceFace || 0) } },
-                    { texture: snapshotTexture },
-                    { width: size[0], height: size[1],
-                        depthOrArrayLayers: 1 });
-                snapshotView = snapshotTexture.createView();
-                if (variant.destinationKey) destinationKeyView = snapshotView;
-            }
-            const sourceView = op.sourceKind === "none" ? null
-                : (op.sourceSnapshot ? snapshotView : (op.sourceView || swapView));
-            if (op.sourceKind !== "none" && !sourceView) return null;
-            const entry = this.ddBlitPipelineFor(variant);
-            const uniform = this.device.createBuffer({
-                size: UNIFORM_BYTES,
-                usage: BUFFER_USAGE_UNIFORM | BUFFER_USAGE_COPY_DST,
-            });
-            this.device.queue.writeBuffer(uniform, 0, packUniforms(op));
-            const entries = [{ binding: 0, resource: { buffer: uniform } }];
-            if (variant.sourceKind !== "none") {
-                entries.push({ binding: 1, resource: sourceView });
-                if (variant.sourceKind === "float")
-                    entries.push({ binding: 2, resource: entry.sampler });
-            }
-            if (variant.paletteResolve)
-                entries.push({ binding: 3,
-                    resource: { buffer: op.paletteBuffer } });
-            if (variant.destinationKey)
-                entries.push({ binding: 4, resource: destinationKeyView });
-            const bindGroup = this.device.createBindGroup({
-                layout: entry.bindGroupLayout, entries });
-            const pass = encoder.beginRenderPass({
-                colorAttachments: [{ view: destinationView,
-                    loadOp: "load", storeOp: "store" }],
-            });
-            ++this.stats.renderPasses;
-            pass.setPipeline(entry.pipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.setViewport(op.viewport[0], op.viewport[1], op.viewport[2],
-                op.viewport[3], 0, 1);
-            pass.draw(6);
-            pass.end();
-            if (!snapshotTexture) return uniform;
-            return { destroy() {
-                uniform.destroy();
-                snapshotTexture.destroy();
-            } };
-        },
     };
-
-    // A destination rectangle is clipped to the surface; the source rectangle
-    // follows it proportionally, which is what makes a sprite that runs off the
-    // edge of the screen show its left half rather than its whole self squeezed
-    // into the space that was left.
-    function clipRects(source, destination, width, height) {
-        const destinationWidth = destination.right - destination.left;
-        const destinationHeight = destination.bottom - destination.top;
-        const sourceWidth = source.right - source.left;
-        const sourceHeight = source.bottom - source.top;
-        if (destinationWidth <= 0 || destinationHeight <= 0 ||
-                sourceWidth <= 0 || sourceHeight <= 0)
-            return null;
-        const scaleX = sourceWidth / destinationWidth;
-        const scaleY = sourceHeight / destinationHeight;
-        const left = Math.max(0, destination.left);
-        const top = Math.max(0, destination.top);
-        const right = Math.min(width, destination.right);
-        const bottom = Math.min(height, destination.bottom);
-        if (right <= left || bottom <= top) return null;
-        return {
-            viewport: [left, top, right - left, bottom - top],
-            source: {
-                left: source.left + Math.round((left - destination.left) * scaleX),
-                top: source.top + Math.round((top - destination.top) * scaleY),
-                right: source.right -
-                    Math.round((destination.right - right) * scaleX),
-                bottom: source.bottom -
-                    Math.round((destination.bottom - bottom) * scaleY),
-            },
-        };
-    }
-
-    function clipDestination(destination, width, height) {
-        const left = Math.max(0, destination.left);
-        const top = Math.max(0, destination.top);
-        const right = Math.min(width, destination.right);
-        const bottom = Math.min(height, destination.bottom);
-        if (right <= left || bottom <= top) return null;
-        return { viewport: [left, top, right - left, bottom - top],
-            source: { left: 0, top: 0, right: 0, bottom: 0 } };
-    }
 
     function installDDrawOps(ExecutorClass) {
         if (!ExecutorClass || ExecutorClass._ddrawOpsInstalled) return;
@@ -1222,7 +665,7 @@ ${body.join("\n")}
             OP_DD_SET_DISPLAY_MODE, OP_DD_UPDATE_OVERLAY,
             DDBLT_KEY_SOURCE, DDBLT_KEY_DESTINATION, DDBLT_MIRROR_X,
             DDBLT_MIRROR_Y, DDBLT_COLOR_FILL, DDBLT_DEPTH_FILL,
-            DDBLT_FILTER_LINEAR,
+            DDBLT_FILTER_LINEAR, DDBLT_SOURCE_RECT_F32,
             DDOVER_SHOW, DDOVER_HIDE, DDOVER_KEY_SOURCE,
             DDOVER_KEY_DESTINATION, DDOVER_MIRROR_X, DDOVER_MIRROR_Y,
             DDOVER_KEY_SOURCE_OVERRIDE, DDOVER_KEY_DESTINATION_OVERRIDE,

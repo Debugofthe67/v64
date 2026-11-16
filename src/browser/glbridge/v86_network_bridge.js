@@ -1,17 +1,28 @@
 // v86 PCI DMA graphics router.
 //
-// OpenGL records are executed directly by gl-webgpu/gl_executor.js. D3D8 and
-// D3D9 keep their tagged envelopes on the same v86gl.sys transport, but there
-// is deliberately no GL4ES/WebGL decoder or fallback in this file.
+// OpenGL records are executed directly by gl-webgpu/gl_executor.js. D3D9
+// (which d3d8.dll and ddraw.dll also speak) keeps its tagged envelope on the
+// same v86gl.sys transport, but there is deliberately no GL4ES/WebGL decoder
+// or fallback in this file.
 
 (function(global) {
     "use strict";
 
     const GraphicsJournal = global.V86GraphicsJournal ||
         (typeof require === "function" ? require("./graphics_journal.js").GraphicsJournal : null);
+    const snapshotCodec = global.GLSnapshotCodec ||
+        (typeof require === "function" ? require("./gl-webgpu/gl_snapshot_codec.js") : null);
+    const rendererSnapshot = global.GLRendererSnapshot ||
+        (typeof require === "function" ? require("./gl-webgpu/gl_renderer_snapshot.js") : null);
     const V86GL_BRIDGE_VERSION = "gl-webgpu-only-v1-20260824";
+    // The retired D8WG renderer's envelope: a d3d8.dll from before D3D8 was
+    // translated onto D9WG. Refused, with a message.
     const CTRL_D3D8_BATCH = 0xFFE0;
     const CTRL_D3D9_BATCH = 0xFFE1;
+    // Not from the guest: v86gl_device.js saw the arena's owner release it,
+    // so every session submitted since the previous release is over. A
+    // record like a batch's so the journal replays it in order.
+    const CTRL_OWNER_RELEASED = 0xFFE2;
     const EXTENDED_RECORD_SIZE = 0xFFFF;
     const CHECKPOINT_MAGIC = 0x32534756; // "VGS2"
     const CHECKPOINT_VERSION = 2;
@@ -44,6 +55,18 @@
         return asBytes(value).slice();
     }
 
+    function ownerReleasedRecord(ownerToken) {
+        const scoped = ownerToken !== undefined;
+        if (scoped && (!Number.isInteger(ownerToken) || ownerToken < 0 || ownerToken > 0xffffffff))
+            throw new Error("invalid graphics owner token");
+        const bytes = new Uint8Array(scoped ? 12 : 8);
+        const view = new DataView(bytes.buffer);
+        view.setUint16(0, CTRL_OWNER_RELEASED, true);
+        view.setUint16(2, EXTENDED_RECORD_SIZE, true);
+        if (scoped) { view.setUint32(4, 4, true);view.setUint32(8, ownerToken, true); }
+        return bytes;
+    }
+
     class V86GLNetworkBridge {
         constructor(emulator, canvas, options) {
             this.emulator = emulator;
@@ -56,20 +79,16 @@
                 throw new Error("the graphics bridge needs a compositor (webgpu_compositor.js)");
             const layer = name => this.compositor.createLayer(name).canvas;
             this.glCanvas = this.options.glCanvas || layer("gl");
-            this.d3d8Canvas = this.options.d3d8Canvas || layer("d3d8");
             this.d3d9Canvas = this.options.d3d9Canvas || layer("d3d9");
             this.screenCanvas = this.options.screenCanvas || this.compositor.canvas || null;
             this.destroyed = false;
             this.memoryGeneration = 0;
 
             this.glExecutor = null;
-            this.d3d8Executor = null;
             this.d3d9Executor = null;
             this.glSurface = this.emptySurface();
-            this.d3d8Surface = this.emptySurface();
             this.d3d9Surface = this.emptySurface();
             this.activeOwner = null;
-            this.d3d8OwnerSessionKey = null;
             this.d3d9OwnerSessionKey = null;
             this.d3d9SwapChainCanvases = new Map();
             this.d3d9SwapChainSurfaces = new Map();
@@ -93,7 +112,6 @@
 
             // Batches arrive through graphics_proxy.js
             this.installGLExecutor();
-            this.installD3D8Executor();
             this.installD3D9Executor();
         }
 
@@ -109,7 +127,11 @@
 
         installGLExecutor() {
             if (this.options.glExecutor) {
+                // (one made elsewhere still answers into guest memory through this bridge)
                 this.glExecutor = this.options.glExecutor;
+                if (this.glExecutor.options && !this.glExecutor.options.writeGuestMemory)
+                    this.glExecutor.options.writeGuestMemory = (offset, data, metadata, inline) =>
+                        this.writeGLGuestMemory(offset, data, metadata, inline);
                 return;
             }
             const install = this.options.installGLWebGPUExecutor ||
@@ -136,67 +158,23 @@
                 }
                 if (typeof userSurface === "function") userSurface(surface, reason);
             };
-            executorOptions.writeGuestMemory = (offsetInBatch, data, metadata) => {
-                if (this.destroyed || this.suspended || this.restoringState || this.replayingState) return;
-                if (metadata && metadata.graphicsGeneration !== undefined &&
-                    metadata.graphicsGeneration !== this.memoryGeneration) return;
-                if (!metadata || metadata.batchAddress === undefined) return;
-                if (typeof metadata.writeGuestMemory === "function")
-                    return metadata.writeGuestMemory(32 + offsetInBatch, asBytes(data));
-                if (!this.emulator ||
-                        typeof this.emulator.write_memory !== "function") return;
-                this.emulator.write_memory(asBytes(data),
-                    (metadata.batchAddress + offsetInBatch) >>> 0);
-            };
+            executorOptions.writeGuestMemory = (offsetInBatch, data, metadata, inline) =>
+                this.writeGLGuestMemory(offsetInBatch, data, metadata, inline);
             this.glExecutor = install(this.glCanvas, executorOptions);
         }
 
-        installD3D8Executor() {
-            if (this.options.d3d8Executor) {
-                this.d3d8Executor = this.options.d3d8Executor;
-                return;
-            }
-            const install = this.options.installD3D8WebGPUExecutor ||
-                global.installD3D8WebGPUExecutor;
-            if (!this.d3d8Canvas || typeof install !== "function") return;
-            const opts = { ...(this.options.d3d8 || {}) };
-            if (!opts.host && this.layerHost(this.d3d8Canvas))
-                opts.host = this.layerHost(this.d3d8Canvas);
-            const userSurface = opts.onSurface;
-            const userPresent = opts.onPresent;
-            const userDestroy = opts.onDestroy;
-            opts.onSurface = (surface, reason) => {
-                const session = surface.sessionKey || null;
-                if (reason === "hide" || surface.visible === false) {
-                    if (!session || session === this.d3d8OwnerSessionKey) {
-                        this.d3d8Surface = { ...this.d3d8Surface, ...surface };
-                        if (this.activeOwner === "d3d8") this.hideLayers();
-                    }
-                } else {
-                    this.d3d8OwnerSessionKey = session;
-                    this.d3d8Surface = { ...this.d3d8Surface, ...surface };
-                    this.placeOwner("d3d8", false);
-                }
-                if (typeof userSurface === "function") userSurface(surface, reason);
-            };
-            opts.onPresent = (surface, stats) => {
-                this.d3d8OwnerSessionKey = surface.sessionKey || null;
-                this.d3d8Surface = { ...this.d3d8Surface, ...surface };
-                if (surface.visible === false) this.hideLayers();
-                else this.showOwner("d3d8");
-                if (typeof userPresent === "function") userPresent(surface, stats);
-            };
-            opts.onDestroy = (surface, reason) => {
-                const session = surface.sessionKey || null;
-                if (!session || session === this.d3d8OwnerSessionKey) {
-                    this.d3d8OwnerSessionKey = null;
-                    this.d3d8Surface = { ...this.d3d8Surface, ...surface,
-                        visible: false };
-                    if (this.activeOwner === "d3d8") this.hideLayers();
-                }
-                if (typeof userDestroy === "function") userDestroy(surface, reason);
-            };
-            this.d3d8Executor = install(this.d3d8Canvas, opts);
+        // An answer the GL executor writes into the batch's record in guest memory
+        writeGLGuestMemory(offsetInBatch, data, metadata, inline = true) {
+            if (this.destroyed || this.suspended || this.restoringState || this.replayingState) return;
+            if (metadata && metadata.graphicsGeneration !== undefined &&
+                metadata.graphicsGeneration !== this.memoryGeneration) return;
+            if (!metadata || metadata.batchAddress === undefined) return;
+            if (typeof metadata.writeGuestMemory === "function")
+                return metadata.writeGuestMemory(32 + offsetInBatch, asBytes(data), inline);
+            if (!this.emulator ||
+                    typeof this.emulator.write_memory !== "function") return;
+            this.emulator.write_memory(asBytes(data),
+                (metadata.batchAddress + offsetInBatch) >>> 0);
         }
 
         installD3D9Executor() {
@@ -296,12 +274,12 @@
                 const layer = this.compositor.createLayer("d3d9 swap chain " + surface.swapChain);
                 layer.canvas.width = Math.max(1, surface.width || 1);
                 layer.canvas.height = Math.max(1, surface.height || 1);
-                this.d3d9SwapChainCanvases.set(surface.swapChain, layer.canvas);
+                this.d3d9SwapChainCanvases.set(this.d3d9SwapChainKey(surface), layer.canvas);
                 return layer.canvas;
             };
             const userSwapChainSurface = opts.onSwapChainSurface;
             opts.onSwapChainSurface = (surface, reason) => {
-                if (reason === "destroy") this.removeD3D9SwapChain(surface.swapChain);
+                if (reason === "destroy") this.removeD3D9SwapChain(surface);
                 else this.placeD3D9SwapChain(surface);
                 if (typeof userSwapChainSurface === "function")
                     userSwapChainSurface(surface, reason);
@@ -313,6 +291,12 @@
             if (this.destroyed || this.failed) return;
             event.handled = true;
             const bytes = asBytes(event && event.bytes);
+            if (this.isEnvelope(bytes, CTRL_D3D8_BATCH)) {
+                if (!this.d8wgReported) console.error("[v86gl] a D8WG batch from a d3d8.dll that predates the " +
+                    "D3D9 translation layer; this host no longer renders D8WG, replace the guest's d3d8.dll");
+                this.d8wgReported = true;
+                return;
+            }
             if (this.restoringState) {
                 this.pendingBatches.push({ ...event, bytes: bytes.slice() });
                 return;
@@ -322,8 +306,20 @@
         }
 
         executePCIBatch(event, bytes) {
-            if (this.isEnvelope(bytes, CTRL_D3D8_BATCH))
-                return this.pushD3D8PCIBatch(event, bytes);
+            if (this.isEnvelope(bytes, CTRL_OWNER_RELEASED)) {
+                const size = u32(bytes, 4);
+                if ((size !== 0 && size !== 4) || bytes.length !== 8 + size)
+                    throw new Error("invalid graphics owner release");
+                const ownerToken = size ? u32(bytes, 8) : undefined;
+                if (!ownerToken && this.glExecutor) this.glExecutor.endOwnerSessions();
+                const executor = this.d3d9Executor;
+                if (!executor) return;
+                // submit() is asynchronous even with a ready local device.
+                // Queue retirement on the same chain so accepted batches can
+                // never recreate a session after its owner was released.
+                executor.work = Promise.resolve(executor.work).then(() => executor.endOwnerSessions(ownerToken));
+                return executor.work;
+            }
             if (this.isEnvelope(bytes, CTRL_D3D9_BATCH))
                 return this.pushD3D9PCIBatch(event, bytes);
             this.pushGLPCIBatch(event, bytes);
@@ -341,6 +337,7 @@
             }
             this.glExecutor.submit(bytes, {
                 ...(event.replay ? { replay: true } : {}),
+                ...(event.ownerToken ? { ownerToken: event.ownerToken } : {}),
                 pciFrameId: event.frameId >>> 0,
                 submitCount: event.submitCount >>> 0,
                 descriptorCommandCount: event.commandCount >>> 0,
@@ -348,32 +345,16 @@
                     event.batchAddr >>> 0,
                 responseBase: event.responseBase,
                 writeGuestMemory: event.writeGuestMemory,
+                onVertexCapture: event.onVertexCapture,
+                onProgramLink: event.onProgramLink,
                 isMemoryValid: event.isMemoryValid,
+                isInlineMemoryValid: event.isInlineMemoryValid,
                 graphicsGeneration: this.memoryGeneration,
             });
             if (event.flags & 1) {
                 this.glExecutor.onSwapBuffers();
                 this.showOwner("gl");
             }
-        }
-
-        pushD3D8PCIBatch(event, bytes) {
-            if (!this.d3d8Executor ||
-                    typeof this.d3d8Executor.submit !== "function") {
-                console.error("[d3d8-webgpu] executor unavailable");
-                return;
-            }
-            const payloadBytes = u32(bytes, 4);
-            if (payloadBytes !== bytes.byteLength - 8) {
-                console.error("[d3d8-webgpu] malformed D8WG envelope");
-                return;
-            }
-            return this.d3d8Executor.submit(bytes.subarray(8), {
-                ...(event.replay ? { replay: true } : {}),
-                pciFrameId: event.frameId >>> 0,
-                submitCount: event.submitCount >>> 0,
-                descriptorCommandCount: event.commandCount >>> 0,
-            });
         }
 
         pushD3D9PCIBatch(event, bytes) {
@@ -407,6 +388,7 @@
             };
             return this.d3d9Executor.submit(bytes.subarray(8), {
                 ...(event.replay ? { replay: true } : {}),
+                ...(event.ownerToken ? { ownerToken: event.ownerToken } : {}),
                 pciFrameId: event.frameId >>> 0,
                 submitCount: event.submitCount >>> 0,
                 descriptorCommandCount: event.commandCount >>> 0,
@@ -417,10 +399,11 @@
 
         recordGraphicsBatch(event, bytes) {
             this.preparedCheckpoint = null;
+            if (this.glExecutor?.saveSnapshot && !event.barrier && !this.isEnvelope(bytes, CTRL_D3D9_BATCH) &&
+                !this.isEnvelope(bytes, CTRL_OWNER_RELEASED)) return;
             this.graphicsJournal.append(event, bytes);
             this.graphicsJournalBytes += JOURNAL_ENTRY_BYTES + bytes.byteLength;
-            if (!event.barrier && !this.isEnvelope(bytes, CTRL_D3D8_BATCH) &&
-                    !this.isEnvelope(bytes, CTRL_D3D9_BATCH))
+            if (!event.barrier && !this.isEnvelope(bytes, CTRL_D3D9_BATCH))
                 this.glJournalBytes += bytes.byteLength;
         }
 
@@ -443,11 +426,20 @@
 
         parseCheckpoint(checkpoint) {
             const bytes = asBytes(checkpoint);
+            if (bytes.length >= 4 && u32(bytes, 0) === 0x31534C47) {
+                try {
+                    const resources = snapshotCodec.decode(bytes);
+                    if (resources.version !== 4 || !(resources.history instanceof Uint8Array) || !(resources.renderer instanceof Uint8Array))
+                        throw new Error("invalid resource checkpoint");
+                    rendererSnapshot.inspect(resources.renderer);
+                    return { ...this.parseCheckpoint(resources.history), resourceState: resources };
+                } catch (error) { throw new Error("invalid graphics resource checkpoint: " + error.message); }
+            }
             if (bytes.byteLength < CHECKPOINT_HEADER_BYTES)
                 throw new Error("graphics checkpoint is truncated");
             const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
             const version = view.getUint16(4, true);
-            if (version === 3) {
+            if (version === 3 || version === 4) {
                 const parsed = GraphicsJournal.parse(bytes);
                 if (parsed.legacy.length && (parsed.legacy.length < CHECKPOINT_HEADER_BYTES ||
                         new DataView(parsed.legacy.buffer).getUint16(4, true) !== 1))
@@ -467,8 +459,9 @@
                 const d3d8Bytes = view.getUint32(16, true);
                 if (header + glBytes + d3d8Bytes !== total)
                     throw new Error("graphics checkpoint lengths are invalid");
-                return { version, gl: bytes.slice(header, header + glBytes),
-                    d3d8: bytes.slice(header + glBytes), records: [] };
+                if (d3d8Bytes)
+                    throw new Error("graphics checkpoint holds state of the retired D8WG (D3D8) renderer");
+                return { version, gl: bytes.slice(header, header + glBytes), records: [] };
             }
             const legacyBytes = view.getUint32(12, true);
             if (legacyBytes > total - header)
@@ -503,7 +496,7 @@
         }
 
         async waitForIdle(flush, allowFailure = false) {
-            const executors = [this.glExecutor, this.d3d8Executor, this.d3d9Executor].filter(Boolean);
+            const executors = [this.glExecutor, this.d3d9Executor].filter(Boolean);
             for (const executor of executors) {
                 try {
                     if (executor.readyPromise) await executor.readyPromise;
@@ -515,7 +508,6 @@
             }
             if (flush) {
                 if (this.glExecutor && this.glExecutor.flushFrame) this.glExecutor.flushFrame();
-                if (this.d3d8Executor && this.d3d8Executor.finishFrame) this.d3d8Executor.finishFrame(false);
                 if (this.d3d9Executor && this.d3d9Executor.flushForCheckpoint)
                     this.d3d9Executor.flushForCheckpoint();
             }
@@ -525,10 +517,7 @@
                     else if (executor.idle) await executor.idle();
                     const queue = executor.device && executor.device.queue;
                     if (queue && queue.onSubmittedWorkDone) await queue.onSubmittedWorkDone();
-                    if (executor.failed) throw executor.failed;
                 } catch (error) {
-                    // Loading a good checkpoint must recover an executor that
-                    // failed while processing the timeline being discarded.
                     if (!allowFailure) throw error;
                 }
             }
@@ -537,13 +526,13 @@
         async waitForSubmittedBatches() {
             // Drain JS continuations/readbacks without inserting a GPU fence for
             // every transport batch. Checkpoint barriers still fence the GPU.
-            for (const executor of [this.glExecutor, this.d3d8Executor, this.d3d9Executor]) {
+            for (const executor of [this.glExecutor, this.d3d9Executor]) {
                 if (!executor) continue;
                 if (executor.checkpointIdle) await executor.checkpointIdle();
                 else if (executor.idle) await executor.idle();
                 else if (executor.work) await executor.work;
-                if (executor.failed) throw executor.failed;
             }
+            await this.graphicsJournal.waitForSpace();
         }
 
         // The checkpoint travels in the snapshot as the device's host state
@@ -553,7 +542,16 @@
             // Flushes can split an unfinished frame/query. Replay that boundary
             // too, including when this checkpoint later becomes a parent save.
             this.recordGraphicsBatch({ barrier: true }, new Uint8Array(0));
-            this.preparedCheckpoint = await this.graphicsJournal.snapshot(this.legacyCheckpoint);
+            if (this.glExecutor?.saveSnapshot) {
+                const renderer = await this.glExecutor.saveSnapshot();
+                // Version-one legacy checkpoints contain only GL history.
+                // Live resources now replace that ancestry as well.
+                this.legacyCheckpoint = new Uint8Array(0);
+                const history = await this.graphicsJournal.snapshot(this.legacyCheckpoint);
+                this.preparedCheckpoint = snapshotCodec.encode({ version: 4, renderer, history,
+                    activeOwner: this.activeOwner, glSurface: this.glSurface, d3d9Surface: this.d3d9Surface,
+                    d3d9OwnerSessionKey: this.d3d9OwnerSessionKey });
+            } else this.preparedCheckpoint = await this.graphicsJournal.snapshot(this.legacyCheckpoint);
             return { entries: this.graphicsJournal.count, bytes: this.preparedCheckpoint.byteLength };
         }
 
@@ -579,7 +577,8 @@
 
         async restoreCheckpoint(checkpoint) {
             // Validate before discarding live resources. Version 1 can restore
-            // only the GL/D3D8 data that old writers actually saved.
+            // only the GL data that old writers saved; their D3D8 data belonged
+            // to the retired D8WG renderer and is refused.
             const parsed = checkpoint && checkpoint.byteLength ? this.parseCheckpoint(checkpoint) :
                 { version: 2, legacy: new Uint8Array(0), records: [] };
             await this.waitForIdle(false, true);
@@ -590,8 +589,6 @@
                 if (this.resetForStateRestore) await this.resetForStateRestore();
                 else {
                     if (this.glExecutor) this.glExecutor.resetForReplay();
-                    if (this.d3d8Executor && this.d3d8Executor.restoreState)
-                        await this.d3d8Executor.restoreState(new Uint8Array(0));
                     if (this.d3d9Executor && this.d3d9Executor.resetForReplay)
                         await this.d3d9Executor.resetForReplay();
                 }
@@ -608,10 +605,8 @@
                         this.glExecutor.onSwapBuffers();
                         this.glJournalBytes = legacy.gl.byteLength;
                     }
-                    if (this.d3d8Executor && this.d3d8Executor.restoreState)
-                        await this.d3d8Executor.restoreState(legacy.d3d8);
                 }
-                const records = parsed.version === 3 ? GraphicsJournal.records(parsed) : parsed.records;
+                const records = parsed.pages ? GraphicsJournal.records(parsed) : parsed.records;
                 for await (const record of records) {
                     if (record.barrier) await this.waitForIdle(true);
                     else {
@@ -625,6 +620,16 @@
                     // Do not accumulate an entire decompressed history during
                     // restore. Compression and disk writes keep pace with replay.
                     await this.graphicsJournal.work;
+                }
+                if (parsed.resourceState) {
+                    const saved = parsed.resourceState;
+                    await this.glExecutor.restoreSnapshot(saved.renderer);
+                    if (this.glExecutor.restorePresentedFrame) this.glExecutor.restorePresentedFrame();
+                    else this.glExecutor.presentToCanvas();
+                    this.glExecutor.flushFrame();
+                    this.activeOwner = saved.activeOwner;
+                    this.glSurface = saved.glSurface; this.d3d9Surface = saved.d3d9Surface;
+                    this.d3d9OwnerSessionKey = saved.d3d9OwnerSessionKey;
                 }
                 await this.waitForIdle(false);
                 complete = true;
@@ -664,13 +669,11 @@
         }
 
         ownerCanvas(owner) {
-            if (owner === "d3d8") return this.d3d8Canvas;
             if (owner === "d3d9") return this.d3d9Canvas;
             return this.glCanvas;
         }
 
         ownerSurface(owner) {
-            if (owner === "d3d8") return this.d3d8Surface;
             if (owner === "d3d9") return this.d3d9Surface;
             return this.glSurface;
         }
@@ -762,7 +765,7 @@
             if (this.destroyed || this.suspended) return;
             this.activeOwner = owner;
             const active = this.ownerCanvas(owner);
-            for (const canvas of [this.glCanvas, this.d3d8Canvas, this.d3d9Canvas]) {
+            for (const canvas of [this.glCanvas, this.d3d9Canvas]) {
                 if (canvas && canvas !== active)
                     this.placeLayer(canvas, 0, 0, 0, 0, false);
             }
@@ -776,7 +779,7 @@
         }
 
         hideLayers(includeSwapChains) {
-            for (const canvas of [this.glCanvas, this.d3d8Canvas, this.d3d9Canvas])
+            for (const canvas of [this.glCanvas, this.d3d9Canvas])
                 if (canvas) this.placeLayer(canvas, 0, 0, 0, 0, false);
             this.activeOwner = null;
             if (includeSwapChains) {
@@ -785,9 +788,16 @@
             }
         }
 
+        d3d9SwapChainKey(surface) {
+            return surface.sessionKey || surface.deviceHandle
+                ? JSON.stringify([surface.sessionKey || "", surface.deviceHandle || 0, surface.swapChain])
+                : surface.swapChain;
+        }
+
         placeD3D9SwapChain(surface) {
-            this.d3d9SwapChainSurfaces.set(surface.swapChain, surface);
-            const canvas = this.d3d9SwapChainCanvases.get(surface.swapChain);
+            const key = this.d3d9SwapChainKey(surface);
+            this.d3d9SwapChainSurfaces.set(key, surface);
+            const canvas = this.d3d9SwapChainCanvases.get(key);
             if (!canvas) return;
             // Placed by its own surface alone: the primary window's size,
             // clip and desktop-primary flag are not this window's
@@ -797,7 +807,8 @@
             this.d3d9Surface = saved;
         }
 
-        removeD3D9SwapChain(handle) {
+        removeD3D9SwapChain(surface) {
+            const handle = typeof surface === "object" ? this.d3d9SwapChainKey(surface) : surface;
             const canvas = this.d3d9SwapChainCanvases.get(handle);
             if (!canvas) return;
             this.d3d9SwapChainCanvases.delete(handle);
@@ -806,6 +817,7 @@
         }
     }
     global.V86GL_BRIDGE_VERSION = V86GL_BRIDGE_VERSION;
+    global.V86GLNetworkBridge = { ownerReleasedRecord };
     global.installV86GLNetworkBridge = function(emulator, canvas, options) {
         return new V86GLNetworkBridge(emulator, canvas, options);
     };

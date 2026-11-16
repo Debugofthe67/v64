@@ -1,0 +1,62 @@
+{
+  "date": "2026-11-15",
+  "scope": "Complete the missing external ISA bridge loader in the native Win98 PCI-install fixture; this does not resolve the IDE channel Code10 or Win9803 cache corruption.",
+  "before": {
+    "bridge": "PCI\\VEN_8086&DEV_7000",
+    "problem": 8,
+    "started": 0,
+    "driver": "System\\0013",
+    "DevLoader": "isapnp.vxd",
+    "nativeFileOpenError": 2,
+    "fileAbsentAt": [
+      "WINDOWS/SYSTEM/ISAPNP.VXD",
+      "WINDOWS/SYSTEM/VMM32/ISAPNP.VXD"
+    ],
+    "INF": "Installed original MACHINE2.INF ISA_DRV requires ISAPNP_Copyfiles, whose entry is isapnp.vxd. Existing DI_NOFILECOPY path installed the registry entry but omitted the external loader."
+  },
+  "change": [
+    "Extract isapnp.vxd alongside pci.vxd and pcimp.pci from the owner Windows98SE ISO CAB set; no Microsoft binaries distributed in source.",
+    "Copy only a missing system ISA loader; preserve an existing owner file. Reinstall the failed ISA node through the stock selected INF while retaining its existing driver key."
+  ],
+  "native": {
+    "run": "build/nv40-win98-pci-isa-loader-repair",
+    "memoryMiB": 256,
+    "bridgeProblem": 0,
+    "bridgeStarted": 1,
+    "nvidiaProblem": 0,
+    "nvidiaStarted": 1,
+    "systemFiles": [
+      {
+        "file": "WINDOWS/SYSTEM/ISAPNP.VXD",
+        "bytes": 21281,
+        "sha256": "3318ace4f1d81479699b7ac123cbc8bea5ba1e3454eae8d4e037b0a8e2930f37",
+        "matchesOriginalCAB": true
+      },
+      {
+        "file": "WINDOWS/SYSTEM/IOSUBSYS/ESDI_506.PDR",
+        "bytes": 24406,
+        "sha256": "38c72a50c486a40c9237816071f507feef03b50f9b33a133eaeb9154457b3c3d",
+        "matchesOriginalCAB": true
+      }
+    ],
+    "idePrimaryProblem": 10,
+    "ideSecondaryProblem": 10,
+    "NoIDEQueryStatus": 2,
+    "normalShutdown": {
+      "eip": "000fe93d",
+      "halted": 1,
+      "harnessExitCode": 0,
+      "bundle": "build/nv40-win98-pci-isa-loader-repair.state.bundle.json"
+    }
+  },
+  "validation": [
+    "Native CM status and original CAB equality checked from a coherent RAM/OS-overlay checkpoint.",
+    "Win98 probe compiles with -Wall -Wextra -Werror, suppressing only pre-existing cast-function-type, misleading-indentation and unused-function diagnostics; harness syntax passes.",
+    "Checkpoint verifier supports optional memoryMiB and rejects missing/wrong configured RAM for new manifests; old manifests remain supported, followed by an actual restored RAM-size assertion.",
+    "Optional NV_MEMORY_MB supports Win98 256/384/512 and XP1024/2048. A512MiB cold desktop checkpoint was captured before ISA repair; it did not run a benchmark and is not a memory-control success."
+  ],
+  "limits": [
+    "Parent bridge started state does not establish native protected-mode IDE channel operation. Both children still fail Code10; original ESDI_506.PDR matches its CAB exactly and IOS NoIDE is absent.",
+    "256MiB full03 still has a recorded cached-source failure despite correct source reads and physical DMA transfers."
+  ]
+}

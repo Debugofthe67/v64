@@ -20,6 +20,8 @@ import { bool_arg, start_settings } from "../../browser/query_compat.js";
 import { DEBUG_PAGE, ON_LOCALHOST, page_env, load_graphics_proxy, create_emulator, query_append } from "../emulator_bridge.js";
 import { NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
+import { IOSInstallController } from "../ios_install.js";
+import { show_ios_install } from "./ios_install.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Image} Image */
@@ -300,7 +302,7 @@ export async function open_console(root, target)
                     console.warn("The TPM's state store could not be made (" + e.message + "): the TPM's state stays in memory this time");
                 }
             }
-            if(config.display.proxy) await load_graphics_proxy();
+            if(config.display.proxy || config.ios?.gles_proxy) await load_graphics_proxy();
             // (an emulator image's GLES on the host's GPU, docs/gles-proxy-plan.md
             // E5: the WebGPU renderer's bundle; without WebGPU the guest's CPU
             // draws, this start only: a suspended machine resumes with its own)
@@ -475,10 +477,14 @@ function console_ui(layout, emulator, ctx)
 {
     const options = ctx.options;
     const tag = ctx.profile?.id || (ctx.config ? ctx.config.name.replace(/[^\w.-]+/g, "_") : "v86");
+    const ios = ctx.config?.ios;
+    const iphone = options.machine_type === "s5l8930";
     const virt = options.cpu_type === "arm64";
-    const written_back = [options.hda, options.hdb, options.fda, options.fdb, ...(options.virtio_disks || [])].some(d => d && d.disk_option === "read_write");
+    const written_back = [options.hda, options.hdb, options.fda, options.fdb, options.ios?.nand,
+        ...(options.virtio_disks || [])].some(d => d && d.disk_option === "read_write");
     let powered_off = false;
     let running = false;
+    let iphone_asleep = false;
 
     // ---- the status bar
     const stats = { started: 0, running_ms: 0, last_tick: 0, last_counter: 0, total: 0, ips: 0,
@@ -496,13 +502,15 @@ function console_ui(layout, emulator, ctx)
         status_parts.disk.textContent = stats.disk_read || stats.disk_written ? "Disk " + (stats.disk_busy ? "busy, " : "") +
             format_size(stats.disk_read) + " read, " + format_size(stats.disk_written) + " written" : "";
         status_parts.network.textContent = stats.net_in || stats.net_out ? "Network " + format_size(stats.net_in) + " in, " + format_size(stats.net_out) + " out" : "";
-        status_parts.display.textContent = stats.mode ? stats.mode + " " + stats.resolution : "";
+        status_parts.display.textContent = (stats.mode ? stats.mode + " " + stats.resolution : "") +
+            (iphone && iphone_asleep ? " · Screen asleep; press Home or Lock to wake" : "");
         status_parts.mouse.textContent = !stats.mouse_enabled ? "Mouse off" :
             stats.usb_tablet && !stats.pointer_locked ? "Mouse: USB tablet (absolute)" :
             stats.guest_mouse ? "Mouse: the guest's" + (stats.pointer_locked ? " (PS/2, locked)" : stats.absolute_mouse ? " (absolute)" : "") : "";
         if(details_open()) render_details();
     };
     ctx.set_renderer(render);
+    emulator.add_listener("ios-screen-state", state => { iphone_asleep = !state["awake"]; render(); });
     const tick = () =>
     {
         const now = Date.now();
@@ -525,15 +533,21 @@ function console_ui(layout, emulator, ctx)
     {
         running = true;
         stats.last_tick = Date.now();
+        stats.last_counter = emulator.get_instruction_counter();
         clearInterval(interval);
         interval = window.setInterval(tick, 1000);
         ctx.set_status("Running");
     });
-    emulator.add_listener("emulator-stopped", () =>
+    emulator.add_listener("emulator-stopped", async () =>
     {
+        if(running) tick();
         running = false;
-        tick();
         clearInterval(interval);
+        if(iphone && !powered_off && await emulator.power_state() === "S5")
+        {
+            await power_off(false);
+            return;
+        }
         if(!powered_off) ctx.set_status("Paused");
     });
     emulator.add_listener("ide-read-start", () => { stats.disk_busy = true; });
@@ -605,6 +619,13 @@ function console_ui(layout, emulator, ctx)
         window.addEventListener("resize", report);
         emulator.add_listener("emulator-ready", report);
     }
+    if(ios) emulator.add_listener("emulator-ready", () => {
+        orient(ios.orientation);
+        set_zoom_to_fit(true);
+    });
+
+    const ipa_installer = ios ? new IOSInstallController(emulator, { graphics: !!options.gles_backdoor,
+        storage_key: ctx.config?.id || location.href }) : null;
 
     // ---- power
     const power_off = async (ask = true) =>
@@ -612,6 +633,7 @@ function console_ui(layout, emulator, ctx)
         if(ask && !await confirm("Power off?", "The virtual machine stops as if its power were cut. What is only in its memory is lost." +
             (written_back ? " Its disks written back keep what they completed." : ""), "Power off", true)) return;
         powered_off = true;
+        ipa_installer?.dispose();
         clearInterval(interval);
         await emulator.destroy();
         ctx.release();
@@ -619,6 +641,14 @@ function console_ui(layout, emulator, ctx)
         replace(layout.notice, h("p", null, "Powered off. ", h("a", { href: location.href }, "Power on again"), " or go back to the ",
             h("a", { href: location.pathname }, "library"), "."));
         ctx.set_status("Powered off");
+    };
+    const shutdown_iphone = async () =>
+    {
+        ctx.set_status("Opening iPhone shutdown...");
+        emulator.ios_send_button("power", true);
+        try { await new Promise(resolve => window.setTimeout(resolve, 4000)); }
+        finally { emulator.ios_send_button("power", false); }
+        if(!powered_off) ctx.set_status("Slide to power off on the iPhone");
     };
     const save_and_power_off = async () =>
     {
@@ -805,12 +835,39 @@ function console_ui(layout, emulator, ctx)
 
     // ---- view
     let zoom_to_fit = false, theatre = false, scale = 1;
+    let iphone_angle = ios?.orientation || 0;
+    const iphone_stage = ios ? h("div.iphone-stage") : null;
+    if(iphone_stage)
+    {
+        layout.screen_container.replaceWith(iphone_stage);
+        iphone_stage.append(layout.screen_container);
+        layout.screen_container.classList.add("iphone-screen");
+        new ResizeObserver(() => size_iphone_stage()).observe(layout.screen_container);
+    }
+    function size_iphone_stage()
+    {
+        if(!iphone_stage) return;
+        const screen = layout.screen_container, wide = iphone_angle % 180 !== 0;
+        iphone_stage.style.width = (wide ? screen.offsetHeight : screen.offsetWidth) + "px";
+        iphone_stage.style.height = (wide ? screen.offsetWidth : screen.offsetHeight) + "px";
+    }
+    /** @param {0 | 90 | 180 | 270} angle */
+    function orient(angle)
+    {
+        iphone_angle = angle;
+        layout.screen_container.dataset.iphoneRotation = String(angle);
+        layout.screen_container.style.transform = "translate(-50%, -50%) rotate(" + angle + "deg)";
+        emulator.ios_set_orientation(angle);
+        size_iphone_stage();
+        if(zoom_to_fit) fit();
+    }
     const fit = () =>
     {
         emulator.screen_set_scale(1, 1);
         const box = layout.screen_container.getBoundingClientRect();
         const room = theatre ? { width: window.innerWidth, height: window.innerHeight } :
-            { width: layout.screen_container.parentElement.clientWidth || window.innerWidth, height: window.innerHeight - 120 };
+            { width: (iphone_stage || layout.screen_container).parentElement.clientWidth || window.innerWidth, height: window.innerHeight - 120 };
+        if(!box.width || !box.height) return;
         const n = Math.max(0.1, Math.min(room.width / box.width, room.height / box.height));
         emulator.screen_set_scale(n, n);
     };
@@ -871,6 +928,7 @@ function console_ui(layout, emulator, ctx)
     };
     layout.screen_container.addEventListener("click", e =>
     {
+        if(ios) return;
         // (a guest that follows the host's cursor needs no lock; the menu's Lock mouse is still there for games)
         if(mouse_enabled && stats.guest_mouse && !stats.absolute_mouse && !stats.usb_tablet) emulator.lock_mouse();
         if(window.getSelection()?.isCollapsed)
@@ -984,19 +1042,22 @@ function console_ui(layout, emulator, ctx)
     // (the cards of the options: the library's defaults where they name none)
     const network_card = options.net_device && options.net_device.type || (virt ? "virtio" : "ne2k");
     const sound_card = virt ? (options.virtio_sound ? "virtio" : "none") : options.audio_device || "sb16";
+    const storage_bus = iphone ? "NAND" : virt ? "virtio-blk" : options.machine_type === "q35" ? "AHCI" : "IDE";
+    let nand_usage = "Waiting for NAND counters…";
     const render_details = () =>
     {
+        const storage = h("span", null, iphone ? nand_usage : format_size(stats.disk_read) + " read, " +
+            format_size(stats.disk_written) + " written" + (stats.disk_busy ? ", busy" : ""));
         const rows = [
             ["Machine", (options.machine_type || "i440fx") + ", " + options.cpu_type + ", " + options.cpu_cores + (options.cpu_cores === 1 ? " core" : " cores")],
             ["Memory", format_size((options.memory_size || 0) + (options.extended_memory_size || 0))],
             ["Running", stats.running_ms ? format_time(stats.running_ms / 1000 | 0) : "-"],
             ["Speed", stats.running_ms ? (stats.ips / 1000).toFixed(1) + " MIPS now, " + (stats.total / 1000 / stats.running_ms).toFixed(1) + " on average" : "-"],
             ["Instructions", String(stats.total)],
-            ["Storage (" + (virt ? "virtio-blk" : options.machine_type === "q35" ? "AHCI" : "IDE") + ")", format_size(stats.disk_read) + " read, " +
-                format_size(stats.disk_written) + " written" + (stats.disk_busy ? ", busy" : "")],
+            ["Storage (" + storage_bus + ")", storage],
             ["Network", (NIC_LABELS[network_card] || network_card) + (network_card === "none" ? "" :
                 ": " + format_size(stats.net_in) + " received, " + format_size(stats.net_out) + " sent")],
-            ["Sound", (SOUND_LABELS[sound_card] || sound_card) + (options.disable_speaker ? ", muted" : "")],
+            ["Sound", iphone ? "CS42L61, PCM output unavailable" : (SOUND_LABELS[sound_card] || sound_card) + (options.disable_speaker ? ", muted" : "")],
             ["Shared folder", stats.fs_file ? format_size(stats.fs_read) + " read, " + format_size(stats.fs_written) + " written, last " + stats.fs_file : "-"],
             ["Display", stats.mode ? stats.mode + ", " + stats.resolution : "-"],
             ["Mouse", stats.usb_tablet ? "the USB tablet (absolute)" + (stats.pointer_locked ? "; locked: PS/2" : "") :
@@ -1015,6 +1076,12 @@ function console_ui(layout, emulator, ctx)
         }, () => {});
         emulator.get_diagnostics().then(diagnostics =>
         {
+            if(iphone)
+            {
+                const nand = diagnostics?.nand;
+                nand_usage = nand ? format_size(nand.bytes_read) + " read, " + format_size(nand.bytes_written) + " written" : "Counters unavailable";
+                storage.textContent = nand_usage;
+            }
             const execution = diagnostics && diagnostics.execution;
             const fallback = execution && execution.fallback;
             const text = options.cpu_cores === 1 ? "1 core" : execution && execution.mode === "parallel" ? options.cpu_cores + " cores, each in a host thread" :
@@ -1117,17 +1184,74 @@ function console_ui(layout, emulator, ctx)
     });
 
     // ---- the toolbar
+    /** @typedef {"home" | "power" | "volume-up" | "volume-down" | "mute"} IPhoneButton */
+    /** @param {IPhoneButton} key @param {string} title */
+    const iphone_button = (key, title) => {
+        let held = false;
+        const send = pressed => {
+            if(held === pressed) return;
+            held = pressed;
+            emulator.ios_send_button(key, pressed);
+        };
+        const button = h("button", { id: "iphone_" + key.replace("-", "_"), type: "button",
+            onpointerdown: event => { if(event.button === 0) { button.setPointerCapture(event.pointerId); send(true); } },
+            onpointerup: () => send(false), onpointercancel: () => send(false), onlostpointercapture: () => send(false),
+            onclick: event => { if(!event.detail) { send(true); window.setTimeout(() => send(false), 70); } },
+        }, title);
+        return button;
+    };
+    const iphone_controls = ios ? [
+        iphone_button("home", "Home"), iphone_button("power", "Lock"),
+        iphone_button("volume-up", "Volume +"), iphone_button("volume-down", "Volume −"),
+        (() => {
+            let silent = false;
+            const button = h("button#iphone_silent", { type: "button", "aria-pressed": "false", onclick: () => {
+                silent = !silent;
+                emulator.ios_send_button("mute", silent);
+                button.setAttribute("aria-pressed", String(silent));
+            } }, "Silent");
+            return button;
+        })(),
+        h("button#iphone_rotate", { type: "button", onclick: () => orient(/** @type {0 | 90 | 180 | 270} */ ((iphone_angle + 90) % 360)) }, "Rotate"),
+        h("button#iphone_install_ipa", { type: "button", onclick: () => show_ios_install(ipa_installer, ctx.name) }, "Install IPA…"),
+    ] : [];
+    if(ios)
+    {
+        /** @type {Map<string, IPhoneButton>} */
+        const held = new Map();
+        window.addEventListener("keydown", event => {
+            if(powered_off || document.querySelector("dialog[open]")) return;
+            const key = event.key === "Escape" ? "home" : event.metaKey && event.code === "KeyL" ? "power" : null;
+            if(!key) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if(!held.has(event.code)) { held.set(event.code, key); emulator.ios_send_button(key, true); }
+        }, true);
+        window.addEventListener("keyup", event => {
+            const key = held.get(event.code);
+            if(!key) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            held.delete(event.code);
+            emulator.ios_send_button(key, false);
+        }, true);
+        window.addEventListener("blur", () => {
+            for(const key of held.values()) emulator.ios_send_button(key, false);
+            held.clear();
+        });
+    }
     /** @type {Object<string, () => Array<import("./dom.js").MenuItem | "-">>} */
     const items = {
         power: () => [
-            { label: running ? "Pause" : "Run", id: "menu_run", action: () => running ? emulator.stop() : emulator.run() },
-            { label: "Reset", id: "menu_reset", disabled: !!options.initial_state, title: options.initial_state ? "Started from a saved state" : "", action: () => emulator.restart() },
-            { label: "Power off…", id: "menu_power_off", action: () => power_off() },
-            ...(ctx.config ? [{ label: "Suspend", id: "menu_suspend", action: suspend }] : []),
-            ...(written_back ? [{ label: "Save and power off", id: "menu_save_and_power_off", action: save_and_power_off }] : []),
+            { label: running ? "Pause" : "Run", id: "menu_run", disabled: ipa_installer?.active(), action: () => running ? emulator.stop() : emulator.run() },
+            { label: "Reset", id: "menu_reset", disabled: !!options.initial_state || ipa_installer?.active(), title: options.initial_state ? "Started from a saved state" : "", action: () => emulator.restart() },
+            ...(iphone ? [{ label: "Shut down iPhone…", id: "menu_iphone_shutdown", disabled: !running || ipa_installer?.active(), action: shutdown_iphone }] : []),
+            { label: iphone ? "Force power off…" : "Power off…", id: "menu_power_off", disabled: ipa_installer?.active(), action: () => power_off() },
+            ...(ctx.config ? [{ label: "Suspend", id: "menu_suspend", disabled: ipa_installer?.active(), action: suspend }] : []),
+            ...(written_back ? [{ label: "Save and power off", id: "menu_save_and_power_off", disabled: ipa_installer?.active(), action: save_and_power_off }] : []),
             "-",
-            { label: "Save the state to a file", id: "menu_save_state", action: save_state },
-            { label: "Load a state from a file…", id: "menu_load_state", action: load_state },
+            { label: "Save the state to a file", id: "menu_save_state", disabled: ipa_installer?.active(), action: save_state },
+            { label: "Load a state from a file…", id: "menu_load_state", disabled: ipa_installer?.active(), action: load_state },
         ],
         keys: () => [
             ...COMBINATIONS.map(c => ({ label: c, id: "keys_" + c.replace(/\W+/g, "_"), action: () => send_keys(c) })),
@@ -1179,14 +1303,13 @@ function console_ui(layout, emulator, ctx)
         replace(layout.toolbar,
             h("a.button", { href: location.pathname }, "Library"),
             menu_button("Power", items.power, "menu_power"),
-            menu_button("Keys", items.keys, "menu_keys"),
-            menu_button("Devices", items.devices, "menu_devices"),
+            ios ? iphone_controls : [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
             menu_button("View", items.view, "menu_view"),
-            menu_button("Input", items.input, "menu_input"),
+            ios ? null : menu_button("Input", items.input, "menu_input"),
             mute,
-            menu_button("Tools", items.tools, "menu_tools"),
+            ios ? null : menu_button("Tools", items.tools, "menu_tools"),
             h("span.toolbar-gap"),
-            drawer_button("terminal", "Terminal"),
+            !ios || ctx.config.serial.some(serial => serial.attach === "terminal") ? drawer_button("terminal", "Terminal") : null,
             kernel_console ? drawer_button("kernel", "Kernel console") : null,
             files_tab ? drawer_button("files", "Files") : null,
             drawer_button("details", "Details"),

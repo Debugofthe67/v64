@@ -1,0 +1,84 @@
+{
+  "stage": "G6 native benchmark control selection",
+  "change": [
+    "Bounded native ComboBox item inspection and index selection with the original CBN_SELCHANGE notification.",
+    "Bounded SysTreeView32 client coordinates delivered through stock absolute mouse input, preserving original checkbox hit-testing.",
+    "Native GetTickCount request identifier distinguishes successive identical diagnostic payloads without changing the clock.",
+    "Reject actions on controls whose WS_CHILD parent chain contains a disabled dialog; a child enabled bit alone is insufficient."
+  ],
+  "nativeProof": {
+    "xp05": {
+      "driver": "93.71",
+      "iqItems": 14,
+      "selectedIndices": [
+        2,
+        0
+      ],
+      "originalSavedFrame": "NV05IQ/GT1_0480.BMP"
+    },
+    "xp06": {
+      "driver": "93.71",
+      "selected": {
+        "sm2": 0,
+        "cpu": 0,
+        "hdrSm3": 0,
+        "feature": 7,
+        "batch": 6
+      },
+      "resolution": "1280x1024",
+      "antiAliasing": "None",
+      "filtering": "Optimal",
+      "method": "Original Select All followed by mouse clicks on the three completed group checkboxes and original OK."
+    }
+  },
+  "validation": [
+    "Strict no-CRT MinGW build with -Wall -Wextra -Werror",
+    "Native ComboBox list/selection round trip",
+    "Original 06 main-window counts after native tree selection"
+  ],
+  "scope": "UI test orchestration only. No graphics hooks, result edits, device state changes or clock changes. Benchmark completion and IQ comparison are separate gates.",
+  "evidence": [
+    {
+      "file": "build/nv40-xp-mark05-iq-native-combo/verify-iq-combo-0.txt",
+      "bytes": 234,
+      "sha256": "03a4c7be7c3752b528471ec1a2a471f9f30a31e37d2dc67f6e42e6da24d4444b"
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-native-combo/verify-iq-combo-1.txt",
+      "bytes": 927,
+      "sha256": "92a4fb8df32c927804ddb2b6d799b232c3e7dd1e70fa60996b3703d8c4a93907"
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-native-combo/verify-iq-combo-2.txt",
+      "bytes": 234,
+      "sha256": "03a4c7be7c3752b528471ec1a2a471f9f30a31e37d2dc67f6e42e6da24d4444b"
+    },
+    {
+      "file": "build/nv40-xp-mark05-iq-native-combo/verify-iq-combo-3.txt",
+      "bytes": 927,
+      "sha256": "66d81b467e8150f15cb5dbbe0155c31e7a44f565118120435894735cc6859f98"
+    },
+    {
+      "file": "build/nv40-xp-mark06-feature-batch-native/select-remaining13-0.txt",
+      "bytes": 232,
+      "sha256": "2e2d2aa3cb64d94180afc2a99954feb653ec6abb2b36e43259ec824e00044d3d"
+    },
+    {
+      "file": "build/nv40-xp-mark06-feature-batch-native/select-remaining13-1.txt",
+      "bytes": 239,
+      "sha256": "a4a9bd4ba5f93d3c63c3b823bb3cf3d8f799c423a52bdb7f21a6949fa83441b3"
+    },
+    {
+      "file": "build/nv40-xp-mark06-feature-batch-native/verify-remaining13-1.txt",
+      "bytes": 7650,
+      "sha256": "dbb4fae1d3574bab0a18568b0f8818aed3617b0a3dd797e858a6cf5bb10a7e6b"
+    }
+  ],
+  "modalGuardProof": {
+    "guest": "XP 93.71 / original 3DMark05",
+    "target": "Main Run control below a disabled original main window while an IQ success prompt is open.",
+    "result": "Rejected before any control message.",
+    "file": "build/nv40-xp-mark05-iq-uninterrupted-gpu/verify-modal-guard-0.txt",
+    "sha256": "6ab72e119ce33aa5c50ef7bf8baa655451f4fc34eb51275219e5966774d2a2ca"
+  }
+}

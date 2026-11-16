@@ -7,6 +7,11 @@
 
 "use strict";
 
+require("./gl_renderer_diagnostics.js");
+
+const { errorScopes } = require("./fake_error_scopes.js");
+const rules = require("./webgpu_rules.js");
+
 class FakeBuffer {
     constructor(descriptor) {
         this.descriptor = descriptor;
@@ -31,7 +36,12 @@ class FakeTexture {
         this.views = [];
     }
     createView(options) {
-        const view = { texture: this, options: options || {} };
+        if (this.descriptor.dimension === "3d" && options && options.dimension && options.dimension !== "3d")
+            throw new Error("a 3D texture requires a 3D view");
+        // (format and sample count: what a pass checks its attachments by)
+        const view = { texture: this, options: options || {},
+            format: options && options.format || this.descriptor.format,
+            sampleCount: this.descriptor.sampleCount || 1 };
         this.views.push(view);
         return view;
     }
@@ -39,8 +49,9 @@ class FakeTexture {
 }
 
 class FakeRenderPass {
-    constructor(descriptor, log) {
+    constructor(descriptor, log, device) {
         this.descriptor = descriptor;
+        this.device = device;
         this.log = log;
         this.ended = false;
         log.passes.push(this);
@@ -49,15 +60,28 @@ class FakeRenderPass {
     checkOpen() {
         if (this.ended) throw new Error("render pass is already ended");
     }
-    setPipeline(pipeline) { this.checkOpen(); this.pipeline = pipeline; this.calls.push(["pipeline", pipeline]); }
-    setBindGroup(index, group) { this.calls.push(["bindGroup", index, group]); }
+    setPipeline(pipeline) {
+        this.checkOpen();
+        this.pipeline = pipeline;
+        this.calls.push(["pipeline", pipeline]);
+        if (pipeline.invalid) this.device.rejectWith("[Invalid RenderPipeline] is invalid due to a previous error");
+        else if (pipeline.descriptor)
+            for (const problem of rules.attachmentProblems(pipeline.descriptor, this.descriptor))
+                this.device.rejectWith(problem);
+    }
+    setBindGroup(index, group, offsets) { this.calls.push(["bindGroup", index, group, ...(offsets?.length ? [offsets.slice()] : [])]); }
     setVertexBuffer(slot, buffer, offset) {
         this.calls.push(["vertexBuffer", slot, buffer, offset]);
+        (this.vertexBuffers = this.vertexBuffers || [])[slot] = { buffer, offset };
     }
     setIndexBuffer(buffer, format, offset) {
         this.calls.push(["indexBuffer", buffer, format, offset]);
+        this.indexBuffer = { buffer, format, offset };
     }
-    setViewport(...args) { this.viewport = args; }
+    setViewport(...args) {
+        this.viewport = args;
+        for (const problem of rules.viewportProblems(...args)) this.device.rejectWith(problem);
+    }
     setScissorRect(...args) { this.scissor = args; }
     setStencilReference(value) { this.stencilReference = value; }
     setBlendConstant(value) { this.blendConstant = value; }
@@ -80,13 +104,22 @@ class FakeRenderPass {
     draw(count, instances, first) {
         this.checkOpen();
         this.log.draws.push({ pass: this, count, instances, first,
-                              pipeline: this.pipeline });
+                              pipeline: this.pipeline, stencilReference: this.stencilReference,
+                              vertexBuffers: (this.vertexBuffers || []).slice() });
         this.calls.push(["draw", count]);
+    }
+    drawIndirect(buffer, offset) {
+        this.checkOpen();
+        this.log.draws.push({ pass: this, indirect: true, indirectBuffer: buffer, indirectOffset: offset,
+            pipeline: this.pipeline, stencilReference: this.stencilReference, vertexBuffers: (this.vertexBuffers || []).slice() });
+        this.calls.push(["drawIndirect", buffer, offset]);
     }
     drawIndexed(count, instances, firstIndex, baseVertex) {
         this.checkOpen();
         this.log.draws.push({ pass: this, count, instances, firstIndex,
-                              baseVertex, indexed: true, pipeline: this.pipeline });
+                              baseVertex, indexed: true, pipeline: this.pipeline, stencilReference: this.stencilReference,
+                              vertexBuffers: (this.vertexBuffers || []).slice(),
+                              indexBuffer: this.indexBuffer });
         this.calls.push(["drawIndexed", count]);
     }
     end() {
@@ -97,8 +130,10 @@ class FakeRenderPass {
 }
 
 class FakeEncoder {
-    constructor(log) { this.log = log; this.copies = []; }
+    constructor(log, device) { this.log = log; this.device = device; this.copies = []; }
+    beginComputePass() { return { setPipeline() {}, setBindGroup() {}, dispatchWorkgroups() {}, end() {} }; }
     beginRenderPass(descriptor) {
+        for (const problem of rules.passProblems(descriptor)) this.device.rejectWith(problem);
         const attachment = descriptor.depthStencilAttachment;
         if (attachment) {
             const format = attachment.view && attachment.view.texture &&
@@ -109,10 +144,23 @@ class FakeEncoder {
                      "stencilClearValue" in attachment))
                 throw new Error("stencil operations require a stencil aspect");
         }
-        return new FakeRenderPass(descriptor, this.log);
+        return new FakeRenderPass(descriptor, this.log, this.device);
     }
-    copyTextureToTexture(...args) { this.copies.push(["t2t", ...args]); }
+    clearBuffer(buffer, offset = 0, size = buffer.size - offset) { new Uint8Array(buffer.storage, offset, size).fill(0); }
+    copyTextureToTexture(...args) {
+        for (const problem of rules.textureCopyProblems(...args)) this.device.rejectWith(problem);
+        this.copies.push(["t2t", ...args]);
+    }
     copyTextureToBuffer(...args) { this.copies.push(["t2b", ...args]); }
+    copyBufferToTexture(source, destination, size) {
+        for (const problem of rules.textureCopyProblems({}, destination, size)) this.device.rejectWith(problem);
+        const format = destination.texture?.descriptor?.format || "rgba8unorm";
+        const bytes = /^bc/.test(format) ? size.width / 4 * (size.height || 1) / 4 * (format.startsWith("bc1-") ? 8 : 16) :
+            size.width * (size.height || 1) * (format.startsWith("rgba32") ? 16 : format.startsWith("rgba16") ? 8 :
+                format.startsWith("r8") || format === "stencil8" ? 1 : format === "depth16unorm" ? 2 : 4);
+        this.log.textureWrites.push({ destination, layout: source, size, byteLength: bytes * (size.depthOrArrayLayers || 1), ordered: true });
+        this.copies.push(["b2t", source, destination, size]);
+    }
     copyBufferToBuffer(...args) { this.copies.push(["b2b", ...args]); }
     resolveQuerySet(querySet, first, count, destination, offset) {
         this.log.queryResolves.push({ querySet, first, count, destination, offset });
@@ -124,6 +172,7 @@ class FakeEncoder {
 class FakeDevice {
     constructor(log) {
         this.log = log;
+        Object.assign(this, errorScopes());
         this.features = new Set(["texture-compression-bc"]);
         this.limits = {
             maxTextureDimension2D: 8192, maxTextureDimension3D: 2048,
@@ -145,6 +194,9 @@ class FakeDevice {
             writeTexture: (destination, data, layout, size) => {
                 const format = destination.texture &&
                     destination.texture.descriptor.format || "";
+                // (Chrome: "Cannot copy into the depth aspect")
+                if (/^depth(24plus|32float)/.test(format) && destination.aspect !== "stencil-only")
+                    this.rejectWith("writeTexture into the depth aspect of " + format);
                 if (/^bc\d-/.test(format)) {
                     if ((size.width & 3) || (size.height & 3))
                         throw new Error("compressed copies require whole 4x4 blocks");
@@ -180,26 +232,47 @@ class FakeDevice {
         return sampler;
     }
     createShaderModule(descriptor) {
-        const module = { code: descriptor.code };
+        const module = { code: descriptor.code, getCompilationInfo: async () => ({messages: []}) };
         this.log.modules.push(module);
         return module;
+    }
+    createBindGroupLayout(descriptor) {
+        const types = new Map();
+        for (const entry of descriptor.entries) {
+            if (entry.texture) types.set(entry.binding, "texture_" + (entry.texture.sampleType === "depth" ? "depth_" : "") + entry.texture.viewDimension.replace(/-/g, "_"));
+            else if (entry.sampler) types.set(entry.binding, entry.sampler.type === "comparison" ? "sampler_comparison" : "sampler");
+        }
+        return { descriptor, index: +(descriptor.label?.match(/group (\d+)$/)?.[1] || 0), bindings: new Set(descriptor.entries.map(entry => entry.binding)), types };
+    }
+    createPipelineLayout(descriptor) { return { descriptor, bindGroupLayouts: descriptor.bindGroupLayouts }; }
+    createComputePipeline(descriptor) {
+        return { descriptor, getBindGroupLayout: index => ({ index }) };
     }
     createRenderPipeline(descriptor) {
         const pipeline = {
             descriptor,
             getBindGroupLayout: index => {
+                if (descriptor.layout && typeof descriptor.layout === "object") return descriptor.layout.bindGroupLayouts[index];
                 const code = (descriptor.vertex && descriptor.vertex.module.code || "") +
                     "\n" + (descriptor.fragment &&
                         descriptor.fragment.module.code || "");
-                const bindings = new Set();
-                const expression = /@group\((\d+)\)\s+@binding\((\d+)\)/g;
-                for (const match of code.matchAll(expression))
-                    if (Number(match[1]) === index) bindings.add(Number(match[2]));
+                const bindings = new Set(), types = new Map();
+                const expression = /@group\((\d+)\)\s+@binding\((\d+)\)\s*var(?:<[^>]*>)?\s+\w+\s*:\s*([^;]+);/g;
+                for (const match of code.matchAll(expression)) {
+                    if (Number(match[1]) !== index) continue;
+                    bindings.add(Number(match[2]));
+                    types.set(Number(match[2]), match[3].trim());
+                }
                 if (!bindings.size)
                     throw new Error("no bind group layout at index " + index);
-                return { index, bindings };
+                return { index, bindings, types };
             },
         };
+        const problems = rules.renderPipelineProblems(descriptor, this.features);
+        if (problems.length) {
+            pipeline.invalid = true;
+            this.rejectWith(problems[0]);
+        }
         this.log.pipelines.push(pipeline);
         return pipeline;
     }
@@ -210,16 +283,20 @@ class FakeDevice {
                     throw new Error("binding " + entry.binding +
                         " is not declared by group " + descriptor.layout.index);
         }
+        if (descriptor.layout && descriptor.layout.types)
+            for (const problem of rules.bindGroupProblems(descriptor.layout.types, descriptor.entries))
+                this.rejectWith(problem);
         const group = { descriptor };
         this.log.bindGroups.push(group);
         return group;
     }
     createCommandEncoder() {
-        const encoder = new FakeEncoder(this.log);
+        const encoder = new FakeEncoder(this.log, this);
         this.log.encoders.push(encoder);
         return encoder;
     }
     createQuerySet(descriptor) {
+        for (const problem of rules.querySetProblems(descriptor)) this.rejectWith(problem);
         const set = { descriptor };
         this.log.querySets.push(set);
         return set;

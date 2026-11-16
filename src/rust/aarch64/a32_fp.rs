@@ -18,31 +18,30 @@ use crate::aarch64::cpu::*;
 use crate::aarch64::execute::{self, Flow};
 use crate::aarch64::fp::{self, Arith, Format, Fp, F32, F64};
 use crate::aarch64::memory::{self, Syndrome};
-use crate::aarch64::simd::{set_vreg, vreg};
 use crate::aarch64::state::{fpcr, fpsr};
 
 // ---- the registers
 
 /// S[n]: bits 32(n%4) of V[n/4]
 #[inline(always)]
-pub fn sreg(n: u32) -> u32 { (vreg(n >> 2) >> (32 * (n & 3))) as u32 }
+pub fn sreg(n: u32) -> u32 { unsafe { *crate::aarch64::state::v.cast::<u32>().add(n as usize) } }
 
 #[inline(always)]
 pub fn set_sreg(n: u32, value: u32) {
-    let shift = 32 * (n & 3);
-    let v = vreg(n >> 2) & !(0xFFFF_FFFFu128 << shift);
-    set_vreg(n >> 2, v | (value as u128) << shift)
+    unsafe {
+        *crate::aarch64::state::v.cast::<u32>().add(n as usize) = value;
+    }
 }
 
 /// D[n]: half n%2 of V[n/2]
 #[inline(always)]
-pub fn dreg(n: u32) -> u64 { (vreg(n >> 1) >> (64 * (n & 1))) as u64 }
+pub fn dreg(n: u32) -> u64 { unsafe { *crate::aarch64::state::v.cast::<u64>().add(n as usize) } }
 
 #[inline(always)]
 pub fn set_dreg(n: u32, value: u64) {
-    let shift = 64 * (n & 1);
-    let v = vreg(n >> 1) & !((u64::MAX as u128) << shift);
-    set_vreg(n >> 1, v | (value as u128) << shift)
+    unsafe {
+        *crate::aarch64::state::v.cast::<u64>().add(n as usize) = value;
+    }
 }
 
 /// FPSR's bits FPSCR has: NZCV, QC, the cumulative flags

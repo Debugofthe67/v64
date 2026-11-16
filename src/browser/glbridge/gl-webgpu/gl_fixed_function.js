@@ -16,7 +16,7 @@
 // are literally the same expression -- which is what GL requires for a depth
 // pre-pass drawn one way and shaded the other not to z-fight.
 //
-// See docs/opengl-webgpu-implementation-plan.zh-CN.md sections 4.5 and 10.
+// See docs/opengl-webgpu-plan.md D4.
 
 (function(global) {
     "use strict";
@@ -26,12 +26,16 @@
     const translator = (typeof require === "function" && typeof module !== "undefined") ?
         require("./gl_shader_translator.js") : global.GLShaderTranslator;
 
-    const FIXED_FUNCTION_REVISION = 2;
+    const { CacheKeys } = global.GLCacheKeys || require("./gl_cache_keys.js");
+    const signatureKeys = new CacheKeys();
+    const FIXED_FUNCTION_REVISION = 4;
 
     const MAX_TEXTURE_UNITS = stateLayout.MAX_TEXTURE_UNITS;
     const MAX_LIGHTS = stateLayout.MAX_LIGHTS;
     const ATTR = translator.COMPAT_ATTRIBUTE_LOCATIONS;
-    const POINT_CORNER_LOCATION = translator.POINT_CORNER_LOCATION;
+    // slots no conventional attribute aliases (ARB_vertex_program 2.14.3)
+    const DEPTH_OFFSET_LOCATION = 6;
+    const LINE_ATTRIBUTE_LOCATION = 1;
 
     /* ================================================================== */
     /* Signature                                                          */
@@ -64,6 +68,10 @@
      *   pointSprite: bool,
      *   flatShading: bool,
      *   colorTargets: 1..8,
+     *   backFacing: bool,     a back polygon's edges or vertices (glPolygonMode)
+     *   depthOffset: bool,    a per-vertex depth offset (POLYGON_OFFSET_LINE/POINT)
+     *   wideLine: bool,       a line's quad corner, offset in pixels (lineAttr.xy)
+     *   lineStipple: bool,    the distance along the line for the pattern (lineAttr.z)
      * }
      */
 
@@ -94,6 +102,9 @@
                 shadow: !!t.shadow,
                 format: t.format || "RGBA",
                 matrix: !!t.matrix,
+                // a LOD bias other than zero (the value is state, textureLodBias)
+                lodBias: !!t.lodBias,
+                border: normalizeBorder(t.border),
                 texGen: (t.texGen || [null, null, null, null]).slice(0, 4),
                 env: normalizeEnv(t.env),
             } : { enabled: false });
@@ -104,6 +115,15 @@
             // texture coordinates at 3+n. A fixed fragment stage paired with
             // one must consume that ABI instead of our compact internal one.
             varyingInterface: s.varyingInterface === "arb" ? "arb" : "packed",
+            desktopSampling: !!s.desktopSampling,
+            depthClamp: !!s.depthClamp,
+            pointRasterRounded: s.pointRasterRounded !== false,
+            glslInterface: s.glslInterface || null,
+            twoSidedColors: !!s.twoSidedColors,
+            textureBindingBase: s.textureBindingBase || 0,
+            // the vertex stage before an ARB fragment program, which reads
+            // every interface slot (gl_arb_program.js FSIn)
+            arbFragment: !!s.arbFragment,
             extraStateFields: Array.from(new Set(s.extraStateFields || [])).sort(),
             attributes: {
                 position: { components: (attributes.position &&
@@ -114,6 +134,8 @@
                 fogCoord: !!attributes.fogCoord,
                 texCoord,
             },
+            // GL_COLOR_SUM: the secondary colour added after texturing
+            colorSum: !!s.colorSum,
             lighting: {
                 enabled: !!lighting.enabled,
                 twoSide: !!lighting.twoSide,
@@ -135,13 +157,30 @@
             texture,
             alphaTest: s.alphaTest || "always",
             clipPlaneCount: Math.max(0, Math.min(6, s.clipPlaneCount || 0)),
+            clipPlaneMask: s.clipPlaneMask === undefined ? (1 << (s.clipPlaneCount || 0)) - 1 : s.clipPlaneMask & 63,
             pointSprite: !!s.pointSprite,
             pointCoordLowerLeft: !!s.pointCoordLowerLeft,
             polygonStipple: !!s.polygonStipple,
             logicOp: s.logicOp ? (s.logicOp >>> 0) : 0,
             flatShading: !!s.flatShading,
             colorTargets: Math.max(1, Math.min(8, s.colorTargets || 1)),
+            backFacing: !!s.backFacing,
+            depthOffset: !!s.depthOffset,
+            wideLine: !!s.wideLine,
+            lineStipple: !!s.lineStipple,
         };
+    }
+
+    /*
+     * The axes that read GL's border colour (the colour is state,
+     * textureBorderColor): "border" for CLAMP_TO_BORDER, "clamp" for GL_CLAMP
+     * filtered linearly (which blends the border in at the edge); `linear`
+     * the filter, `compare` a shadow lookup's function. null for none.
+     */
+    function normalizeBorder(b) {
+        if (!b || !(b.s || b.t || b.r)) return null;
+        return { s: b.s || null, t: b.t || null, r: b.r || null, linear: !!b.linear,
+                 compare: b.compare || null };
     }
 
     function normalizeEnv(env) {
@@ -168,8 +207,7 @@
     }
 
     function signatureKey(sig) {
-        return "ff" + FIXED_FUNCTION_REVISION + ":" +
-            JSON.stringify(normalizeSignature(sig));
+        return signatureKeys.key([FIXED_FUNCTION_REVISION, normalizeSignature(sig)]);
     }
 
     /* ================================================================== */
@@ -210,7 +248,10 @@
         }
         for (const t of sig.texture) {
             if (!t.enabled) continue;
+            if (sig.desktopSampling) fields.add("samplerState");
             if (t.matrix) fields.add("textureMatrix");
+            if (t.lodBias && !t.shadow) fields.add("textureLodBias");
+            if (t.border) fields.add("textureBorderColor");
             if (t.texGen && t.texGen.some(m => m === "OBJECT" || m === "EYE"))
                 fields.add("texGenPlanes");
             if (t.env.mode === "BLEND" ||
@@ -227,6 +268,8 @@
             fields.add("pointAttenuation");
             fields.add("viewportParams");
         }
+        if (sig.wideLine) fields.add("viewportParams");
+        if (sig.lineStipple) fields.add("rasterParams");
         if (sig.polygonStipple) fields.add("polygonStipple");
         return fields;
     }
@@ -268,7 +311,25 @@
 
         const layout = { entries, color: null, secondary: null, backColor: null,
                          backSecondary: null, fog: null, texCoord: [],
-                         clip: -1, pointCoord: -1 };
+                         clip: -1, clipExtra: -1, pointCoord: -1, lineDistance: -1 };
+
+        if (sig.glslInterface) {
+            const names = { gl_Color: "color", gl_Color__back: "backColor",
+                gl_SecondaryColor: "secondary", gl_SecondaryColor__back: "backSecondary", gl_FogFragCoord: "fog" };
+            for (const item of sig.glslInterface.entries) {
+                const entry = { ...item };
+                entries.push(entry);
+                if (entry.name === "gl_TexCoord") layout.texCoord[entry.index] = entry;
+                else if (names[entry.name]) layout[names[entry.name]] = entry;
+            }
+            layout.clip = sig.glslInterface.clip;
+            layout.clipExtra = sig.glslInterface.clipExtra ?? -1;
+            layout.pointCoord = sig.glslInterface.pointCoord;
+            layout.slotIndices = [...new Set(entries.map(e => e.slot))].sort((a, b) => a - b);
+            layout.packedSlots = layout.slotIndices.length;
+            layout.slotCount = Math.max(-1, ...layout.slotIndices, layout.clip, layout.clipExtra, layout.pointCoord) + 1;
+            return layout;
+        }
 
         if (sig.varyingInterface === "arb") {
             const fixed = (name, components, slot, extra) => {
@@ -279,7 +340,14 @@
                 return entry;
             };
             layout.color = fixed("color", 4, 0, { flat: sig.flatShading });
-            if (sig.lighting.enabled && sig.lighting.separateSpecular)
+            if (sig.twoSidedColors || sig.lighting.twoSide) {
+                layout.backColor = fixed("backColor", 4, 11, { flat: sig.flatShading });
+                layout.backSecondary = fixed("backSecondary", 3, 12, { flat: sig.flatShading });
+            }
+            if (sig.pointSprite) layout.pointCoord = 13;
+            if (sig.clipPlaneCount) layout.clip = 14;
+            if (sig.clipPlaneCount > 4) layout.clipExtra = 15;
+            if (sig.arbFragment || sig.colorSum || sig.lighting.enabled && sig.lighting.separateSpecular)
                 layout.secondary = fixed("secondary", 3, 1,
                     { flat: sig.flatShading });
             for (let i = 0; i < MAX_TEXTURE_UNITS; ++i) {
@@ -290,11 +358,11 @@
                 layout.texCoord.push(fixed("texCoord" + i,
                     textureCoordComponents(sig.texture[i]), 3 + i));
             }
-            if (sig.fog.enabled) layout.fog = fixed("fog", 1, 2);
+            if (sig.fog.enabled || sig.arbFragment) layout.fog = fixed("fog", 1, 2);
             slots.sort((a, b) => a - b);
             layout.slotIndices = slots;
             layout.packedSlots = slots.length;
-            layout.slotCount = slots.length ? slots[slots.length - 1] + 1 : 0;
+            layout.slotCount = Math.max(-1, ...slots, layout.pointCoord, layout.clip, layout.clipExtra) + 1;
             if (layout.slotCount > translator.MAX_INTER_STAGE_SLOTS)
                 throw new Error("fixed-function ARB interface needs location " +
                     (layout.slotCount - 1) + "; only " +
@@ -303,7 +371,9 @@
         }
 
         layout.color = place("color", 4, { flat: sig.flatShading });
-        if (sig.lighting.enabled && sig.lighting.separateSpecular)
+        // the secondary colour: lighting's separate specular, or with
+        // COLOR_SUM unlit the vertex's own (GL 2.1 section 3.9; review S2-11)
+        if (sig.colorSum || sig.lighting.enabled && sig.lighting.separateSpecular)
             layout.secondary = place("secondary", 3, { flat: sig.flatShading });
         if (sig.lighting.enabled && sig.lighting.twoSide) {
             layout.backColor = place("backColor", 4, { flat: sig.flatShading });
@@ -320,7 +390,9 @@
 
         let next = slots.length;
         if (sig.clipPlaneCount) layout.clip = next++;
+        if (sig.clipPlaneCount > 4) layout.clipExtra = next++;
         if (sig.pointSprite) layout.pointCoord = next++;
+        if (sig.lineStipple) layout.lineDistance = next++;
         layout.slotCount = next;
         layout.packedSlots = slots.length;
         layout.slotIndices = Array.from({ length: slots.length },
@@ -332,13 +404,30 @@
         return layout;
     }
 
+    /*
+     * The coordinates a unit's varying carries: the ones its target reads
+     * and q, which the fragment stage divides by after interpolation (GL's
+     * projective lookup; review S2-12: q was dropped). A cube map ignores q.
+     * (s, q) for 1D, (s, t, q) for 2D, (s, t, r, q) for 3D and shadows.
+     */
     function textureCoordComponents(unit) {
         if (unit.shadow) return 4;
         switch (unit.target) {
-        case "1D": return 1;
-        case "3D": return 3;
+        case "1D": return 2;
+        case "3D": return 4;
         case "Cube": return 3;
-        default: return 2;
+        default: return 3;
+        }
+    }
+
+    // The vertex stage's vec4 coordinates as the varying carries them
+    function packedTexCoord(unit, tc) {
+        if (unit.shadow) return tc;
+        switch (unit.target) {
+        case "1D": return "vec2<f32>(" + tc + ".x, " + tc + ".w)";
+        case "3D": return tc;
+        case "Cube": return tc + ".xyz";
+        default: return "vec3<f32>(" + tc + ".xy, " + tc + ".w)";
         }
     }
 
@@ -361,6 +450,7 @@
         emit("@group(1) @binding(0) var<uniform> glState : GLState;");
         emit("");
 
+        if (sig.pointSprite) emit(stateLayout.pointRasterWGSL(sig.desktopSampling, sig.depthClamp, sig.pointRasterRounded));
         emit("struct VSIn {");
         emit("    @location(" + ATTR.gl_Vertex + ") position : vec4<f32>,");
         if (sig.attributes.normal)
@@ -378,7 +468,11 @@
                 " : " + vecType(a.components) + ",");
         }
         if (sig.pointSprite)
-            emit("    @location(" + POINT_CORNER_LOCATION + ") corner : vec2<f32>,");
+            emit("    @builtin(vertex_index) cornerIndex : u32,");
+        if (sig.depthOffset)
+            emit("    @location(" + DEPTH_OFFSET_LOCATION + ") depthOffset : f32,");
+        if (sig.wideLine || sig.lineStipple)
+            emit("    @location(" + LINE_ATTRIBUTE_LOCATION + ") lineAttr : vec3<f32>,");
         emit("}");
         emit("");
 
@@ -391,8 +485,11 @@
         }
         if (layout.clip >= 0)
             emit("    @location(" + layout.clip + ") clipDist : vec4<f32>,");
+        if (layout.clipExtra >= 0) emit("    @location(" + layout.clipExtra + ") clipExtra:vec2<f32>,");
         if (layout.pointCoord >= 0)
             emit("    @location(" + layout.pointCoord + ") pointCoord : vec2<f32>,");
+        if (layout.lineDistance >= 0)
+            emit("    @location(" + layout.lineDistance + ") @interpolate(linear) lineDistance : f32,");
         emit("}");
         emit("");
 
@@ -403,18 +500,20 @@
         emit("    var clip = glState.mvp * objectPos;");
 
         const needsEye = fields.has("modelview");
-        if (needsEye) emit("    let eyePos = (glState.modelview * objectPos).xyz;");
+        if (needsEye) emit("    let eyePosition=glState.modelview*objectPos;\n    let eyePos=eyePosition.xyz/select(1.0,eyePosition.w,eyePosition.w!=0.0);");
 
         if (sig.attributes.normal && fields.has("normalMatrix")) {
             emit("    var eyeNormal = glState.normalMatrix * vin.normal;");
             if (lighting.normalMode === "normalize")
                 emit("    eyeNormal = normalize(eyeNormal);");
             else if (lighting.normalMode === "rescale")
-                // GL_RESCALE_NORMAL scales by the inverse magnitude of the
-                // modelview's third column, which is exact only for a uniform
-                // scale -- the condition the extension documents.
+                // GL 2.1 section 2.11.3: the factor is one over the length of
+                // the inverse modelview's third row, which is the normal
+                // matrix's third column (review S2-2: the modelview's was
+                // used, off by the square of the scale). Exact for a uniform
+                // scale, the condition the extension documents.
                 emit("    eyeNormal = eyeNormal * inverseSqrt(max(dot(" +
-                    "glState.modelview[2].xyz, glState.modelview[2].xyz), 1e-8));");
+                    "glState.normalMatrix[2], glState.normalMatrix[2]), 1e-8));");
         } else if (lighting.enabled) {
             emit("    var eyeNormal = vec3<f32>(0.0, 0.0, 1.0);");
         }
@@ -425,38 +524,38 @@
         if (sig.fog.enabled && layout.fog) {
             const coord = sig.fog.coordSource === "coord" ?
                 (sig.attributes.fogCoord ? "vin.fogCoord" : "0.0") :
-                (needsEye ? "abs(eyePos.z)" : "abs(clip.z)");
+                (needsEye ? "abs(eyePosition.z)" : "abs(clip.z)");
             emit("    let fogCoord = " + coord + ";");
             emit("    out.v" + layout.fog.slot + "." +
                 SWIZZLE[layout.fog.offset] + " = fogCoord;");
         }
 
         if (sig.pointSprite) {
-            emit("    let ptDist = " + (needsEye ? "length(eyePos)" : "1.0") + ";");
+            emit("    let ptDist = " + (needsEye ? "length(eyePosition.xyz)" : "1.0") + ";");
             emit("    let ptAtten = inverseSqrt(max(glState.pointAttenuation.x + " +
                 "glState.pointAttenuation.y * ptDist + " +
                 "glState.pointAttenuation.z * ptDist * ptDist, 1e-8));");
             emit("    let ptSize = clamp(glState.pointParams.x * ptAtten, " +
                 "glState.pointParams.y, glState.pointParams.z);");
-            emit("    clip.x = clip.x + vin.corner.x * ptSize * clip.w / " +
-                "glState.viewportParams.z;");
-            emit("    clip.y = clip.y + vin.corner.y * ptSize * clip.w / " +
-                "glState.viewportParams.w;");
-            emit("    out.pointCoord = vec2<f32>(vin.corner.x * 0.5 + 0.5, " +
+            emit("    let corner=gl_point_corner(vin.cornerIndex);");
+            emit("    clip=gl_point_position(clip,ptSize,corner,glState.viewportParams);");
+            emit("    out.pointCoord = vec2<f32>(corner.x * 0.5 + 0.5, " +
                 (sig.pointCoordLowerLeft ?
-                    "vin.corner.y * 0.5 + 0.5);" :
-                    "0.5 - vin.corner.y * 0.5);"));
+                    "corner.y * 0.5 + 0.5);" :
+                    "0.5 - corner.y * 0.5);"));
         }
 
+        if (sig.wideLine) {
+            // a wide line's quad: the corner's offset from the line, in pixels
+            emit("    clip.x = clip.x + vin.lineAttr.x * 2.0 * clip.w / glState.viewportParams.z;");
+            emit("    clip.y = clip.y + vin.lineAttr.y * 2.0 * clip.w / glState.viewportParams.w;");
+        }
+        if (sig.lineStipple) emit("    out.lineDistance = vin.lineAttr.z;");
+
         if (sig.clipPlaneCount) {
-            const parts = [];
-            for (let i = 0; i < 4; ++i) {
-                if (i < sig.clipPlaneCount && needsEye)
-                    parts.push("dot(vec4<f32>(eyePos, 1.0), glState.clipPlanes[" +
-                        i + "])");
-                else parts.push("1.0");
-            }
-            emit("    out.clipDist = vec4<f32>(" + parts.join(", ") + ");");
+            const distance = i => needsEye && (sig.clipPlaneMask & 1 << i) ? "dot(eyePosition, glState.clipPlanes[" + i + "])" : "1.0";
+            emit("    out.clipDist = vec4<f32>(" + Array.from({ length: 4 }, (_, i) => distance(i)).join(", ") + ");");
+            if (sig.clipPlaneCount > 4) emit("    out.clipExtra=vec2<f32>(" + [4, 5].map(distance).join(",") + ");");
         }
 
         // GL clip space is z in [-w, w] and its framebuffer origin is at the
@@ -464,6 +563,9 @@
         // once, in clip space -- is what lets viewport, scissor, readback and
         // render-to-texture skip a conversion each (plan 4.3).
         emit("    clip.z = (clip.z + clip.w) * 0.5;");
+        // glPolygonOffset for a polygon drawn as lines or points, in units of
+        // the depth range (WebGPU's depth bias is for triangles only)
+        if (sig.depthOffset) emit("    clip.z = clip.z + vin.depthOffset * clip.w;");
         emit("    clip.y = -clip.y;");
         emit("    out.position = clip;");
         emit("    return out;");
@@ -479,12 +581,16 @@
         const lighting = sig.lighting;
         const primary = sig.attributes.color ? "vin.color" : "vec4<f32>(1.0)";
 
+        // Vertex colours are clamped to [0, 1] before they are interpolated
+        // (GL 2.1 section 2.14.6; review S2-17)
         if (!lighting.enabled) {
-            writeVarying(emit, layout.color, primary, 4);
+            writeVarying(emit, layout.color, "saturate(" + primary + ")", 4);
+            writeVarying(emit, layout.backColor, "saturate(" + primary + ")", 4);
             if (layout.secondary) {
                 const s = sig.attributes.secondaryColor ?
-                    "vin.secondary.xyz" : "vec3<f32>(0.0)";
+                    "saturate(vin.secondary.xyz)" : "vec3<f32>(0.0)";
                 writeVarying(emit, layout.secondary, s, 3);
+                writeVarying(emit, layout.backSecondary, s, 3);
             }
             return;
         }
@@ -492,6 +598,10 @@
         emit("    let vertexColor = " + primary + ";");
         emitLightingFace(emit, sig, layout, false);
         if (lighting.twoSide) emitLightingFace(emit, sig, layout, true);
+        else {
+            writeVarying(emit, layout.backColor, readVarying(layout.color, "out"), 4);
+            if (layout.secondary) writeVarying(emit, layout.backSecondary, readVarying(layout.secondary, "out"), layout.secondary.components);
+        }
     }
 
     /*
@@ -553,7 +663,7 @@
             const l = "glState.lights[" + i + "]";
             emit("    {");
             if (light.positional) {
-                emit("        let toLight = " + l + ".position.xyz - eyePos;");
+                emit("        let toLight = " + l + ".position.xyz / " + l + ".position.w - eyePos;");
                 emit("        let dist = length(toLight);");
                 emit("        let VP = toLight / max(dist, 1e-8);");
                 emit("        var atten = 1.0 / max(" + l +
@@ -592,9 +702,11 @@
             emit("    }");
         }
 
-        const alpha = track("diffuse") + ".a";
+        const alpha = "saturate(" + track("diffuse") + ".a)";
         const target = back ? layout.backColor : layout.color;
         const specTarget = back ? layout.backSecondary : layout.secondary;
+        // (lit without a separate specular, the secondary colour is zero)
+        if (specTarget && !lighting.separateSpecular) writeVarying(emit, specTarget, "vec3<f32>(0.0)", 3);
         if (lighting.separateSpecular && specTarget) {
             writeVarying(emit, target, "vec4<f32>(clamp(" + prefix +
                 "Color, vec3<f32>(0.0), vec3<f32>(1.0)), " + alpha + ")", 4);
@@ -615,7 +727,7 @@
         const tmp = "_v" + entry.slot + "_" + entry.offset;
         emit("    let " + tmp + " = " + expr + ";");
         for (let i = 0; i < entry.components; ++i) {
-            const src = entry.components === 1 && components === 1 ?
+            const src = i >= components ? "1.0" : entry.components === 1 && components === 1 ?
                 tmp : tmp + "." + SWIZZLE[i];
             emit("    out.v" + entry.slot + "." + SWIZZLE[entry.offset + i] +
                 " = " + src + ";");
@@ -682,7 +794,7 @@
                         // dots it with the eye position directly -- the same
                         // thing desktop GL does when the plane is specified.
                         emit("    tc" + i + "." + SWIZZLE[c] +
-                            " = dot(vec4<f32>(eyePos, 1.0), glState.texGenPlanes[" +
+                            " = dot(eyePosition, glState.texGenPlanes[" +
                             (i * 8 + 4 + c) + "]);");
                         break;
                     case "SPHERE":
@@ -722,10 +834,7 @@
             if (unit.matrix)
                 emit("    tc" + i + " = glState.textureMatrix[" + i + "] * tc" + i + ";");
 
-            const components = entry.components;
-            const expr = components === 4 ? "tc" + i :
-                "tc" + i + "." + swz(0, components);
-            writeVarying(emit, entry, expr, components);
+            writeVarying(emit, entry, sig.glslInterface ? "tc" + i : packedTexCoord(unit, "tc" + i), entry.components);
         }
     }
 
@@ -744,7 +853,7 @@
         emit("@group(1) @binding(0) var<uniform> glState : GLState;");
         emit("");
 
-        let binding = 0;
+        let binding = sig.textureBindingBase;
         const bindings = [];
         for (let i = 0; i < MAX_TEXTURE_UNITS; ++i) {
             const unit = sig.texture[i];
@@ -763,7 +872,7 @@
 
         emit("struct FSIn {");
         emit("    @builtin(position) position : vec4<f32>,");
-        if (sig.lighting.enabled && sig.lighting.twoSide)
+        if ((sig.twoSidedColors || sig.lighting.enabled && sig.lighting.twoSide) && !sig.backFacing)
             emit("    @builtin(front_facing) frontFacing : bool,");
         for (const i of layout.slotIndices) {
             const flat = layout.entries.some(e => e.slot === i && e.flat);
@@ -772,8 +881,11 @@
         }
         if (layout.clip >= 0)
             emit("    @location(" + layout.clip + ") clipDist : vec4<f32>,");
+        if (layout.clipExtra >= 0) emit("    @location(" + layout.clipExtra + ") clipExtra:vec2<f32>,");
         if (layout.pointCoord >= 0)
             emit("    @location(" + layout.pointCoord + ") pointCoord : vec2<f32>,");
+        if (layout.lineDistance >= 0)
+            emit("    @location(" + layout.lineDistance + ") @interpolate(linear) lineDistance : f32,");
         emit("}");
         emit("");
 
@@ -783,16 +895,33 @@
         emit("}");
         emit("");
 
+        if (sig.desktopSampling) {
+            const types = new Map();
+            for (const unit of sig.texture) if (unit.enabled) {
+                const dim = unit.target === "Cube" ? "Cube" : unit.target === "3D" ? "3D" : "2D";
+                types.set("gl_fixed_sample_" + dim + (unit.shadow ? "_shadow" : ""), { dim, shadow: unit.shadow });
+            }
+            for (const [name, type] of types) emit(stateLayout.textureSamplingWGSL(name, type.dim, type.shadow, "fragment"));
+        }
         emit("@fragment");
         emit("fn fs_main(fin : FSIn) -> FSOut {");
         if (layout.clip >= 0)
             emit("    if (any(fin.clipDist < vec4<f32>(0.0))) { discard; }");
+        if (layout.clipExtra >= 0) emit("    if(any(fin.clipExtra<vec2<f32>(0.0))){discard;}");
         if (sig.polygonStipple) emitPolygonStippleTest(emit, "fin.position");
+        if (sig.lineStipple) {
+            // GL 2.1 section 3.4.3: bit floor(s / factor) mod 16 of the pattern
+            emit("    let stippleBit = u32(floor(fin.lineDistance / glState.rasterParams.z)) % 16u;");
+            emit("    if (((u32(glState.rasterParams.y) >> stippleBit) & 1u) == 0u) { discard; }");
+        }
 
         const colorRead = readVarying(layout.color);
-        if (sig.lighting.enabled && sig.lighting.twoSide && layout.backColor)
+        // a polygon's lines and points are not faces to WebGPU: the executor
+        // says which side they came from
+        const facing = sig.backFacing ? "false" : "fin.frontFacing";
+        if ((sig.twoSidedColors || sig.lighting.enabled && sig.lighting.twoSide) && layout.backColor)
             emit("    let primary = select(" + readVarying(layout.backColor) +
-                ", " + colorRead + ", fin.frontFacing);");
+                ", " + colorRead + ", " + facing + ");");
         else
             emit("    let primary = " + colorRead + ";");
         emit("    var frag = primary;");
@@ -803,21 +932,21 @@
         for (let i = 0; i < MAX_TEXTURE_UNITS; ++i) {
             const unit = sig.texture[i];
             if (!unit.enabled) continue;
-            emit("    let tex" + i + " = " +
-                sampleExpression(i, unit, layout.texCoord[i], sig) + ";");
+            const sample = sampleExpression(i, unit, layout.texCoord[i], sig);
+            emit("    let tex" + i + " = " + (sig.desktopSampling ? sample : borderedSample(i, unit, sample,
+                textureCoordinates(unit, layout.texCoord[i], sig))) + ";");
         }
 
         for (let i = 0; i < MAX_TEXTURE_UNITS; ++i) {
             const unit = sig.texture[i];
-            if (!unit.enabled) continue;
+            if (!unit.enabled || readsDisabledUnit(sig, unit)) continue;
             emitTextureEnv(emit, sig, i, unit);
         }
 
         if (layout.secondary) {
-            const secondary = (sig.lighting.twoSide && layout.backSecondary) ?
-                "select(" + readVarying(layout.backSecondary) + ", " +
-                    readVarying(layout.secondary) + ", fin.frontFacing)" :
-                readVarying(layout.secondary);
+            const rgb = entry => readVarying({ ...entry, components: 3 });
+            const secondary = ((sig.twoSidedColors || sig.lighting.twoSide) && layout.backSecondary) ?
+                "select(" + rgb(layout.backSecondary) + ", " + rgb(layout.secondary) + ", " + facing + ")" : rgb(layout.secondary);
             emit("    frag = vec4<f32>(clamp(frag.rgb + " + secondary +
                 ", vec3<f32>(0.0), vec3<f32>(1.0)), frag.a);");
         }
@@ -858,11 +987,11 @@
         return L.join("\n") + "\n";
     }
 
-    function readVarying(entry) {
+    function readVarying(entry, input = "fin") {
         if (!entry) return "vec4<f32>(1.0)";
         if (entry.offset === 0 && entry.components === 4)
-            return "fin.v" + entry.slot;
-        return "fin.v" + entry.slot + "." + swz(entry.offset, entry.components);
+            return input + ".v" + entry.slot;
+        return input + ".v" + entry.slot + "." + swz(entry.offset, entry.components);
     }
 
     function emitPolygonStippleTest(emit, position) {
@@ -925,16 +1054,81 @@
         }
     }
 
-    function sampleExpression(i, unit, entry, sig) {
+    /*
+     * GL's border colour (review D-03): WebGPU has no border addressing, so
+     * the sampler clamps to the edge and the colour is blended in by the
+     * fraction of the filter's footprint outside the texture, one factor an
+     * axis. For a bilinear footprint with at most one texel outside per axis
+     * that is exact: mix(border, edge sample, a_s * a_t). Measured on the
+     * view's first level, so the band of a minified mipmap is approximate.
+     */
+    function borderedSample(i, unit, sample, coordinates) {
+        const border = unit.border;
+        if (!border || unit.target === "Cube") return sample;
+        const size = unit.target === "1D" ? "vec3<f32>(f32(textureDimensions(t" + i + ")), 1.0, 1.0)" :
+            unit.target === "3D" ? "vec3<f32>(textureDimensions(t" + i + "))" :
+            "vec3<f32>(vec2<f32>(textureDimensions(t" + i + ")), 1.0)";
+        const factors = [];
+        ["s", "t", "r"].forEach((axis, k) => {
+            const mode = border[axis];
+            if (!mode) return;
+            const c = "(" + coordinates + ")." + "xyz"[k], n = "(" + size + ")." + "xyz"[k];
+            const u = mode === "clamp" ? "clamp(" + c + ", 0.0, 1.0) * " + n : c + " * " + n;
+            factors.push(border.linear ?
+                "clamp(min(" + u + " + 0.5, " + n + " - " + u + " + 0.5), 0.0, 1.0)" :
+                "select(0.0, 1.0, " + u + " >= 0.0 && " + u + " < " + n + ")");
+        });
+        let color = "glState.textureBorderColor[" + i + "]";
+        if (unit.shadow) {
+            // the border's depth goes through the same comparison as a texel
+            const ref = "(" + coordinates + ").z";
+            color = "vec4<f32>(" + compareExpression(border.compare, ref, color + ".x") + ")";
+        }
+        return "mix(" + color + ", " + sample + ", " + factors.join(" * ") + ")";
+    }
+
+    // A depth comparison by name (the alpha test's names)
+    function compareExpression(func, ref, depth) {
+        const op = { less: "<", lequal: "<=", greater: ">", gequal: ">=", equal: "==", notequal: "!=" }[func];
+        if (func === "always") return "1.0";
+        if (!op) return "0.0";
+        return "select(0.0, 1.0, " + ref + " " + op + " " + depth + ")";
+    }
+
+    // The coordinates a lookup samples at, after the projective divide
+    function textureCoordinates(unit, entry, sig) {
+        const coord = textureCoordinate(unit, entry, sig);
+        return "(" + coord + ").xyz / max((" + coord + ").w, 1e-8)";
+    }
+
+    // (s, t, r, q) from what the varying carries (packedTexCoord)
+    function textureCoordinate(unit, entry, sig) {
         const pointCoord = sig.pointSprite && unit.env.coordReplace;
-        const coord = pointCoord ?
-            "vec4<f32>(fin.pointCoord, 0.0, 1.0)" : readVarying(entry);
-        const components = pointCoord ? 4 : (entry ? entry.components : 4);
-        const q = components >= 4 ? "(" + coord + ").w" : "1.0";
-        const xy = components >= 2 ? "(" + coord + ").xy" :
-            "vec2<f32>((" + coord + ").x, 0.0)";
-        const xyz = components >= 3 ? "(" + coord + ").xyz" :
-            "vec3<f32>(" + xy + ", 0.0)";
+        const v = pointCoord || !entry ? null : readVarying(entry);
+        if (pointCoord) return "vec4<f32>(fin.pointCoord, 0.0, 1.0)";
+        if (!entry) return "vec4<f32>(0.0, 0.0, 0.0, 1.0)";
+        if (unit.shadow || unit.target === "3D" || sig.glslInterface) return v;
+        if (unit.target === "1D") return "vec4<f32>((" + v + ").x, 0.0, 0.0, (" + v + ").y)";
+        if (unit.target === "Cube") return "vec4<f32>(" + v + ", 1.0)";
+        return "vec4<f32>((" + v + ").xy, 0.0, (" + v + ").z)";
+    }
+
+    function sampleExpression(i, unit, entry, sig) {
+        const coord = textureCoordinate(unit, entry, sig);
+        const q = "(" + coord + ").w";
+        const xy = "(" + coord + ").xy";
+        const xyz = "(" + coord + ").xyz";
+        if (sig.desktopSampling) {
+            const dim = unit.target === "Cube" ? "Cube" : unit.target === "3D" ? "3D" : "2D",
+                name = "gl_fixed_sample_" + dim + (unit.shadow ? "_shadow" : ""),
+                uv = dim === "Cube" ? xyz : dim === "3D" ? xyz + " / " + q : unit.target === "1D" ?
+                    "vec2<f32>((" + coord + ").x / " + q + ", 0.5)" : unit.target === "RECT" ?
+                    "(" + xy + " / " + q + " / vec2<f32>(textureDimensions(t" + i + ")))" : xy + " / " + q,
+                binding = sig.textureBindingBase / 2 + sig.texture.slice(0, i).filter(unit => unit.enabled).length,
+                call = name + "(t" + i + ", s" + i + ", " + uv + ", " + binding + "u, 0.0, 0.0, false" +
+                    (unit.shadow ? ", (" + coord + ").z / " + q : "") + ")";
+            return unit.shadow ? "vec4<f32>(" + call + ")" : call;
+        }
         if (unit.shadow) {
             // A shadow lookup's reference is the third coordinate after the
             // projective divide, which is what GL's GL_COMPARE_R_TO_TEXTURE
@@ -943,18 +1137,22 @@
                 xy + " / max(" + q + ", 1e-8), " + xyz +
                 ".z / max(" + q + ", 1e-8)))";
         }
+        // GL_TEXTURE_LOD_BIAS (the texture's and the unit's, as state)
+        const sample = (coordinates) => unit.lodBias ?
+            "textureSampleBias(t" + i + ", s" + i + ", " + coordinates + ", glState.textureLodBias[" + (i >> 2) + "]." +
+                "xyzw"[i & 3] + ")" :
+            "textureSample(t" + i + ", s" + i + ", " + coordinates + ")";
         switch (unit.target) {
         case "1D":
-            return "textureSample(t" + i + ", s" + i + ", vec2<f32>((" +
-                coord + ").x / max(" + q + ", 1e-8), 0.5))";
+            return sample("vec2<f32>((" + coord + ").x / max(" + q + ", 1e-8), 0.5)");
         case "3D":
-            return "textureSample(t" + i + ", s" + i + ", " + xyz +
-                " / max(" + q + ", 1e-8))";
+            return sample(xyz + " / max(" + q + ", 1e-8)");
         case "Cube":
-            return "textureSample(t" + i + ", s" + i + ", " + xyz + ")";
+            return sample(xyz);
+        case "RECT":
+            return sample("(" + xy + " / " + q + " / vec2<f32>(textureDimensions(t" + i + ")))");
         default:
-            return "textureSample(t" + i + ", s" + i + ", " + xy +
-                " / max(" + q + ", 1e-8))";
+            return sample(xy + " / max(" + q + ", 1e-8)");
         }
     }
 
@@ -1038,6 +1236,23 @@
         default:
             throw new Error("unknown texture environment mode " + env.mode);
         }
+    }
+
+    /*
+     * ARB_texture_env_crossbar: a unit whose combiner reads the texture of a
+     * unit that is disabled is as though its blending were disabled -- it
+     * passes the previous colour on (review S1-2g: the WGSL named a texture
+     * that was never declared). Only the sources its functions use count.
+     */
+    function readsDisabledUnit(sig, unit) {
+        const env = unit.env;
+        if (env.mode !== "COMBINE") return false;
+        const used = fn => fn === "REPLACE" ? 1 : fn === "INTERPOLATE" ? 3 : 2;
+        const sources = [...env.srcRGB.slice(0, used(env.combineRGB)), ...env.srcAlpha.slice(0, used(env.combineAlpha))];
+        return sources.some(source => {
+            const crossbar = /^TEXTURE(\d)$/.exec(source);
+            return crossbar && !sig.texture[+crossbar[1]].enabled;
+        });
     }
 
     function combineSource(source, unitIndex) {
@@ -1186,12 +1401,15 @@
                               location: ATTR.gl_MultiTexCoord0 + i,
                               components: a.components });
         }
-        if (sig.pointSprite)
-            attributes.push({ name: "corner", location: POINT_CORNER_LOCATION,
-                              components: 2 });
+        if (sig.depthOffset)
+            attributes.push({ name: "depthOffset", location: DEPTH_OFFSET_LOCATION,
+                              components: 1 });
+        if (sig.wideLine || sig.lineStipple)
+            attributes.push({ name: "lineAttr", location: LINE_ATTRIBUTE_LOCATION,
+                              components: 3 });
 
         const textures = [];
-        let binding = 0;
+        let binding = sig.textureBindingBase;
         for (let i = 0; i < MAX_TEXTURE_UNITS; ++i) {
             if (!sig.texture[i].enabled) continue;
             textures.push({
@@ -1203,7 +1421,7 @@
 
         return {
             signature: sig,
-            key: "ff" + FIXED_FUNCTION_REVISION + ":" + JSON.stringify(sig),
+            key: signatureKeys.key([FIXED_FUNCTION_REVISION, sig]),
             wgslVertex: generateVertex(sig, layout, fields),
             wgslFragment: generateFragment(sig, layout, fields),
             stateFields: [...fields],
@@ -1216,11 +1434,51 @@
         };
     }
 
+    // Link the application's one programmable stage against a compatibility
+    // interface, then generate the other stage with the same varying and GL
+    // state layouts. The interface shaders never replace application source
+    // or participate in CPU reflection.
+    function linkGLSL(vertex, fragment, signature, options) {
+        const programmable = vertex || fragment;
+        const sig = { ...signature, extraStateFields: [...new Set([
+            ...(signature.extraStateFields || []), ...programmable.usage.stateFields])],
+        textureBindingBase: vertex ? programmable.usage.samplers.reduce((n, s) => n + 2 * Math.max(1, s.arraySize), 0) : 0 };
+        let fixed = generate(sig);
+        let source;
+        if (vertex) {
+            const inputs = ["gl_Color"];
+            if (sig.colorSum || sig.lighting.enabled && sig.lighting.separateSpecular) inputs.push("gl_SecondaryColor");
+            if (sig.fog.enabled) inputs.push("vec4(gl_FogFragCoord)");
+            for (let i = 0; i < MAX_TEXTURE_UNITS; ++i) if (sig.texture[i].enabled) inputs.push("gl_TexCoord[" + i + "]");
+            source = "void main(){gl_FragColor=" + inputs.join("+") + ";}";
+        } else {
+            const outputs = ["gl_Position=ftransform()", "gl_ClipVertex=gl_ModelViewMatrix*gl_Vertex", "gl_FrontColor=gl_Color", "gl_BackColor=gl_Color",
+                "gl_FrontSecondaryColor=gl_SecondaryColor", "gl_BackSecondaryColor=gl_SecondaryColor", "gl_FogFragCoord=gl_FogCoord"];
+            const count = fragment.usage.texCoordDynamic ? MAX_TEXTURE_UNITS : fragment.usage.texCoordMax + 1;
+            for (let i = 0; i < count; ++i) outputs.push("gl_TexCoord[" + i + "]=gl_MultiTexCoord" + i);
+            source = "void main(){" + outputs.join(";") + ";}";
+        }
+        const placeholder = translator.compileShader(source, vertex ? "fragment" : "vertex");
+        const link = translator.linkProgram(vertex || placeholder, fragment || placeholder, {
+            ...options, forceStateFields: fixed.stateFields, keepCompatInputs: true,
+            variant: { ...options?.variant, twoSided: vertex ? !!sig.twoSidedColors : true },
+        });
+        if (!link.ok) return link;
+        sig.glslInterface = link.varyingLayout;
+        sig.extraStateFields = link.reflection.stateFields;
+        fixed = generate(sig);
+        if (vertex) link.wgslFragment = fixed.wgslFragment;
+        else link.wgslVertex = fixed.wgslVertex;
+        link.fixedTextures = vertex ? fixed.textures : [];
+        link.fixedKey = fixed.key;
+        return link;
+    }
+
     const api = {
         FIXED_FUNCTION_REVISION,
-        generate, signatureKey, normalizeSignature, stateFieldsFor,
+        generate, linkGLSL, signatureKey, normalizeSignature, stateFieldsFor,
         allocateVaryings,
-        MAX_TEXTURE_UNITS, MAX_LIGHTS,
+        MAX_TEXTURE_UNITS, MAX_LIGHTS, DEPTH_OFFSET_LOCATION, LINE_ATTRIBUTE_LOCATION,
     };
     global.GLFixedFunction = api;
     if (typeof module !== "undefined" && module.exports) module.exports = api;
