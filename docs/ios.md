@@ -100,6 +100,12 @@ Developer builds verify the bundled original helper assets with
 For reproducible local test applications, `make ios-install-fixtures` builds
 `build/ios-install-fixtures/V86InstallTest.ipa` (UIKit and a saved tap counter)
 and `V86GLES2Test.ipa` (the same counter plus a GLES 2.0 triangle).
+`V86GLES565Test.ipa` requests an RGB565 EAGL drawable, checks framebuffer
+completeness, and draws using a reflected shader uniform. Both GLES
+fixtures check active uniform/attribute queries, including truncated names
+and omitted outputs. RGB565 drawables use the compositor's BGRA8888
+backing and report that actual storage; 16-bit color quantization is not
+emulated.
 `V86NetworkTest.ipa` opens a real Safari HTTP navigation.
 `V86VolumeTest.ipa` displays the native `AVSystemController` ringtone and
 active-category volume. A test-owned `v86.test.volume` backdoor service can
@@ -118,6 +124,17 @@ Build an update with
 `V86_FIXTURE_VERSION=2 sh tools/ios/guest/build-apps.sh build/ios-install-fixtures-v2`.
 The [IPA implementation plan](ios-ipa-install-plan.md) records the acceptance
 results and the real console UI test procedure.
+
+Owner-firmware acceptance on iPhone 4 / iOS 6.1.3 verified Angry Birds 5.1.0
+(minimum iOS 6.0, unencrypted ARMv7): installation through the console,
+offline menu and level selection, tutorial dismissal, slingshot input,
+bird flight, collision and a nonzero score. Its RGB565 request previously
+left a zero-sized renderbuffer; missing native `glGetActiveUniform` and
+`glGetActiveAttrib` callbacks also prevented scene parameters from reaching
+the renderer. Both paths are now bridged. The first uncached launch in
+this test hit iOS's launch watchdog; a second launch reached the game.
+This acceptance does not establish a frame-rate target or eliminate that
+startup performance limitation.
 
 ## Networking
 

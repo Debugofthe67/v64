@@ -90,6 +90,27 @@ static void shader_text(struct context *ctx, unsigned name, int size, int *lengt
     object_text(ctx, name, size, length, out, gles2_glGetShaderSource);
 }
 
+static void active_variable(struct context *ctx, unsigned program, unsigned index, int capacity,
+    int *length, int *size, unsigned *type, char *name, unsigned opcode)
+{
+    if(capacity < 0 || (capacity && !name)) { draw_error(ctx, 0x501); return; }
+    if((unsigned)capacity > N90_MAX_PAYLOAD - 12) { draw_error(ctx, 0x505); return; }
+    unsigned nl = length ? 4 : 0, ns = size ? 4 : 0, nt = type ? 4 : 0;
+    if(!SEND(ctx->driver.connection, opcode, program, index, capacity, nl, ns, nt, capacity) ||
+        !gles_read(ctx->driver.connection, length, nl) || !gles_read(ctx->driver.connection, size, ns) ||
+        !gles_read(ctx->driver.connection, type, nt) || !gles_read(ctx->driver.connection, name, capacity)) ctx->driver.ok = 0;
+}
+static void active_uniform(struct context *ctx, unsigned program, unsigned index, int capacity,
+    int *length, int *size, unsigned *type, char *name)
+{
+    active_variable(ctx, program, index, capacity, length, size, type, name, gles2_glGetActiveUniform);
+}
+static void active_attribute(struct context *ctx, unsigned program, unsigned index, int capacity,
+    int *length, int *size, unsigned *type, char *name)
+{
+    active_variable(ctx, program, index, capacity, length, size, type, name, gles2_glGetActiveAttrib);
+}
+
 static void install_query_functions(driver_word *table)
 {
     table[N90_glGetRenderbufferParameteriv - 5] = (driver_word)renderbuffer_query;
@@ -101,4 +122,6 @@ static void install_query_functions(driver_word *table)
     table[N90_glGetShaderInfoLog - 5] = (driver_word)shader_log;
     table[N90_glGetProgramInfoLog - 5] = (driver_word)program_log;
     table[N90_glGetShaderSource - 5] = (driver_word)shader_text;
+    table[N90_glGetActiveUniform - 5] = (driver_word)active_uniform;
+    table[N90_glGetActiveAttrib - 5] = (driver_word)active_attribute;
 }

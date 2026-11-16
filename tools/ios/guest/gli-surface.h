@@ -228,7 +228,10 @@ static int bind_view(struct context *ctx, struct native_window *win, unsigned re
     if(!win) { replace_binding(ctx->group, 0x8d41, name, 0); return 1; }
     static const struct window_callbacks callbacks = { 0, window_ready, window_release_surface, window_fence };
     WINDOW_TRACE(2);
-    if(format != 0x8058 || !win->open || !win->surface || !win->close || !win->post) return 0;
+    // The browser compositor stores native drawables as BGRA8888. Permit
+    // EAGL's RGB565 preference with that higher-precision backing too;
+    // rejecting it leaves real games with a zero-sized renderbuffer.
+    if((format != 0x8058 && format != 0x8d62) || !win->open || !win->surface || !win->close || !win->post) return 0;
     WINDOW_TRACE(3);
     if(win->open(win, 0x42475241, &callbacks) != 1) return 0;
     WINDOW_TRACE(4);

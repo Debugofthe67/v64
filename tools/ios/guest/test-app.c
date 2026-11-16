@@ -42,6 +42,10 @@ static void volume_poll(void *self,void *cmd)
 }
 #endif
 #ifdef V86_GLES_TEST
+extern unsigned glCheckFramebufferStatus(unsigned);
+#ifdef V86_RGB565_TEST
+extern CFStringRef const kEAGLDrawablePropertyColorFormat, kEAGLColorFormatRGB565;
+#endif
 static void *gl_view;
 static void draw(void *);
 static void draw_frame(void *self,void *cmd){(void)self;(void)cmd;if(gl_view)draw(gl_view);}
@@ -73,6 +77,10 @@ extern void glBindFramebuffer(unsigned,unsigned), glFramebufferRenderbuffer(unsi
 extern void glGetRenderbufferParameteriv(unsigned,unsigned,int *);
 extern void glViewport(int,int,int,int), glClearColor(float,float,float,float), glClear(unsigned);
 extern unsigned glCreateShader(unsigned), glCreateProgram(void), glGetError(void);
+extern void glGetActiveUniform(unsigned,unsigned,int,int *,int *,unsigned *,char *);
+extern void glGetActiveAttrib(unsigned,unsigned,int,int *,int *,unsigned *,char *);
+extern int glGetUniformLocation(unsigned,const char *);
+extern void glUniform4fv(int,int,const float *);
 extern void glShaderSource(unsigned,int,const char **,const int *), glCompileShader(unsigned), glAttachShader(unsigned,unsigned);
 extern void glBindAttribLocation(unsigned,unsigned,const char *), glLinkProgram(unsigned), glUseProgram(unsigned);
 extern void glVertexAttribPointer(unsigned,int,unsigned,unsigned char,int,const void *), glEnableVertexAttribArray(unsigned), glDrawArrays(unsigned,int,int);
@@ -87,21 +95,51 @@ static void draw(void *view)
     glGenRenderbuffers(1,&rb);glBindRenderbuffer(0x8D41,rb);
     glGenFramebuffers(1,&fb);glBindFramebuffer(0x8D40,fb);glFramebufferRenderbuffer(0x8D40,0x8CE0,0x8D41,rb);
     const char *vs="attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}";
-    const char *fs="precision mediump float;void main(){gl_FragColor=vec4(1.,0.5,0.,1.);}";
+    const char *fs="precision mediump float;uniform vec4 tint;void main(){gl_FragColor=tint;}";
     unsigned v=glCreateShader(0x8B31),f=glCreateShader(0x8B30);p=glCreateProgram();
     glShaderSource(v,1,&vs,0);glCompileShader(v);glShaderSource(f,1,&fs,0);glCompileShader(f);
     glAttachShader(p,v);glAttachShader(p,f);glBindAttribLocation(p,0,"p");glLinkProgram(p);glUseProgram(p);
+    char uniform[32]={0};int length=-1,size=-1;unsigned type=0;
+    glGetActiveUniform(p,0,sizeof(uniform),&length,&size,&type,uniform);
+    if(length!=4 || size!=1 || type!=0x8b52 || strcmp(uniform,"tint") || glGetError())
+    {
+        CFStringRef text=string("Uniform reflection unavailable");send1(label,"setText:",(void *)text);CFRelease(text);return;
+    }
+    glGetActiveUniform(p,0,3,&length,0,0,uniform);
+    if(length!=2 || strcmp(uniform,"ti"))
+    {
+        CFStringRef text=string("Uniform truncation failed");send1(label,"setText:",(void *)text);CFRelease(text);return;
+    }
+    glGetActiveUniform(p,0,0,&length,0,0,0);
+    if(length!=0 || glGetError())
+    {
+        CFStringRef text=string("Uniform empty query failed");send1(label,"setText:",(void *)text);CFRelease(text);return;
+    }
+    glGetActiveAttrib(p,0,sizeof(uniform),&length,&size,&type,uniform);
+    if(length!=1 || size!=1 || type!=0x8b50 || strcmp(uniform,"p") || glGetError())
+    {
+        CFStringRef text=string("Attribute reflection unavailable");send1(label,"setText:",(void *)text);CFRelease(text);return;
+    }
+    const float tint[]={1,0.5f,0,1};glUniform4fv(glGetUniformLocation(p,"tint"),1,tint);
     }
     send1(objc_getClass("EAGLContext"),"setCurrentContext:",context);
     glBindRenderbuffer(0x8D41,rb);
     signed char storage=((signed char (*)(void *,void *,unsigned,void *))objc_msgSend)(context,sel_registerName("renderbufferStorage:fromDrawable:"),0x8D41,send0(view,"layer"));
-    if(!storage){syslog(5,"V86 GLES2 fixture drawable unavailable glError=%u",glGetError());return;}
+    if(!storage){syslog(5,"V86 GLES2 fixture drawable unavailable glError=%u",glGetError());
+#ifdef V86_RGB565_TEST
+        CFStringRef text=string("RGB565 drawable unavailable");send1(label,"setText:",(void *)text);CFRelease(text);
+#endif
+        return;}
     glBindFramebuffer(0x8D40,fb);glUseProgram(p);
     glGetRenderbufferParameteriv(0x8D41,0x8D42,&width);glGetRenderbufferParameteriv(0x8D41,0x8D43,&height);
     glViewport(0,0,width,height);glClearColor(0.1f,count&1?0.55f:0.25f,count&1?0.2f:0.5f,1);glClear(0x4000);
     static const float vertices[]={-0.8f,-0.8f,0.8f,-0.8f,0.f,0.8f};
     glVertexAttribPointer(0,2,0x1406,0,0,vertices);glEnableVertexAttribArray(0);glDrawArrays(4,0,3);
     send1(context,"presentRenderbuffer:",(void *)0x8D41);
+#ifdef V86_RGB565_TEST
+    char report[128];snprintf(report,sizeof(report),"RGB565 request: %dx%d\nFBO 0x%x, error 0x%x",width,height,glCheckFramebufferStatus(0x8D40),glGetError());
+    CFStringRef text=string(report);send1(label,"setText:",(void *)text);CFRelease(text);
+#endif
     syslog(5,"V86 GLES2 fixture %dx%d glError=%u",width,height,glGetError());
 }
 #endif
@@ -136,6 +174,12 @@ static Boolean launched(void *self, void *cmd, void *app, void *options)
     extern void *object_getClass(void *);
     class_addMethod(object_getClass(cls),sel_registerName("layerClass"),(void (*)(void))layer_class,"#@:");objc_registerClassPair(cls);
     gl_view=send0(send0(cls,"alloc"),"init");frame(gl_view,(Rect){0,160,320,300});send1(view,"addSubview:",gl_view);
+#ifdef V86_RGB565_TEST
+    CFMutableDictionaryRef properties=CFDictionaryCreateMutable(0,0,kCFTypeDictionaryKeyCallBacks,kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(properties,kEAGLDrawablePropertyColorFormat,kEAGLColorFormatRGB565);
+    send1(send0(gl_view,"layer"),"setDrawableProperties:",(void *)properties);CFRelease(properties);
+    frame(label,(Rect){20,25,280,70});send1(label,"setNumberOfLines:",(void *)2);frame(button,(Rect){20,105,280,45});
+#endif
     // Let UIKit commit the window before acquiring its native drawable.
     ((void (*)(void *,void *,void *,void *,double))objc_msgSend)(self,sel_registerName("performSelector:withObject:afterDelay:"),sel_registerName("drawFrame"),0,0.25);
 #endif
