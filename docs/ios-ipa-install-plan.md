@@ -424,3 +424,8 @@ BROWSER_FOCUS=1 TEST_ARTIFACT_DIR=build/ios/ipa-acceptance/acceptance TIMEOUT_MS
 
 尚需独立验证原生 ES1 测试应用及 PvZ 的实际可游玩场景。底层仍存在 `docs/gpu-deviations.md` 中记录的
 点大小、宽线、逻辑运算等渲染差异；核心入口均可路由不表示 Khronos 一致性认证，也不表示这些差异已解决。
+
+原生 `V86GLES1Test.ipa` 已通过 UI 安装和运行：EAGL API1、16.16 矩阵栈、带边界哨兵的光照查询、
+交错 short 顶点/UV、非零 first、顶点及索引 VBO 混用客户端颜色、向量 DrawTex、原生 glReadPixels
+逐像素检查均通过，页面显示红/蓝/青三个区域与 `ES1 PASS`。新增 `fixed_queries.mjs` 区分枚举与数值的
+定点查询转换，并检查纹理定点形式及删除缓冲后的固定功能数组绑定。

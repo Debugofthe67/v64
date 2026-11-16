@@ -257,7 +257,7 @@ function put(out, values, as, kind)
         {
             case "b": out.data[i] = v ? 1 : 0; break;
             case "f": out.view.setFloat32(4 * i, kind === "b" ? (v ? 1 : 0) : v, true); break;
-            case "x": out.view.setInt32(4 * i, Math.round(v * 65536), true); break;
+            case "x": out.view.setInt32(4 * i, kind === "e" ? v : Math.max(-0x80000000, Math.min(0x7FFFFFFF, Math.round(v * 65536))), true); break;
             default:
                 if(kind === "n") out.view.setInt32(4 * i, Math.round(Math.max(-1, Math.min(1, v)) * 0x7FFFFFFF), true);
                 else out.view.setInt32(4 * i, kind === "f" ? Math.round(v) : v | 0, true);
@@ -277,6 +277,9 @@ function put_text(out, text)
 
 /** The state glGet answers that is a float, a color or depth (normalized) or a boolean; the rest are integers */
 const STATE_KIND = new Map([
+    ...[0x0B45,0x0B46,0x0B74,0x0B92,0x0B94,0x0B95,0x0B96,0x0BE0,0x0BE1,
+        0x80C8,0x80C9,0x80CA,0x80CB,0x8009,0x883D,0x84E0,0x86A3,0x8B9A,0x8B9B,
+        0x0C50,0x0C51,0x0C52,0x0C53,0x0C54,0x8192].map(pname => [pname, "e"]),
     [0x0B70, "n"], [0x0B21, "f"], [0x8038, "f"], [0x2A00, "f"], [0x80AA, "f"], [0x0C22, "n"], [0x0B73, "n"], [0x8005, "n"],
     [0x846D, "f"], [0x846E, "f"], [0x0B12, "f"], [0x0B22, "f"],
     [0x0C23, "b"], [0x0B72, "b"], [0x80AB, "b"], [0x8DFA, "b"],
@@ -1138,13 +1141,15 @@ const HANDLERS = {
     },
     "glTexParameterf": (shadow, c, [target, pname, param]) => tex_parameter(c, target, pname, [param]),
     "glTexParameteri": (shadow, c, [target, pname, param]) => tex_parameter(c, target, pname, [param]),
-    "glTexParameterx": (shadow, c, [target, pname, param]) => tex_parameter(c, target, pname, [param]),
+    "glTexParameterx": (shadow, c, [target, pname, param]) => tex_parameter(c, target, pname, [pname === GL.TEXTURE_MAX_ANISOTROPY_EXT ? param / 65536 : param]),
     "glTexParameterfv": (shadow, c, [target, pname, params]) => tex_parameter(c, target, pname, f32s(params)),
     "glTexParameteriv": (shadow, c, [target, pname, params]) => tex_parameter(c, target, pname, i32s(params)),
-    "glTexParameterxv": (shadow, c, [target, pname, params]) => tex_parameter(c, target, pname, i32s(params)),
+    "glTexParameterxv": (shadow, c, [target, pname, params]) => tex_parameter(c, target, pname,
+        i32s(params).map(v => pname === GL.TEXTURE_MAX_ANISOTROPY_EXT || pname === GL.TEXTURE_CROP_RECT_OES ? v / 65536 : v)),
     "glGetTexParameteriv": (shadow, c, [target, pname, params]) => get_tex_parameter(shadow, c, target, pname, params, "i"),
     "glGetTexParameterfv": (shadow, c, [target, pname, params]) => get_tex_parameter(shadow, c, target, pname, params, "f"),
-    "glGetTexParameterxv": (shadow, c, [target, pname, params]) => get_tex_parameter(shadow, c, target, pname, params, "i"),
+    "glGetTexParameterxv": (shadow, c, [target, pname, params]) => get_tex_parameter(shadow, c, target, pname, params,
+        pname === GL.TEXTURE_MAX_ANISOTROPY_EXT || pname === GL.TEXTURE_CROP_RECT_OES ? "x" : "i"),
     // EGL images (OES_EGL_image): the image's color buffer is the texture's level 0
     "glEGLImageTargetTexture2DOES": (shadow, c, [target, image]) =>
     {
@@ -1186,6 +1191,9 @@ const HANDLERS = {
             if(c.array_buffer === name) c.array_buffer = 0;
             if(c.element_array_buffer === name) c.element_array_buffer = 0;
             for(const a of c.attribs) if(a.buffer === name) a.buffer = 0;
+            if(c.api === 1)
+                for(const a of [c.ff.arrays.vertex,c.ff.arrays.normal,c.ff.arrays.color,c.ff.arrays.point_size,...c.ff.arrays.texcoord])
+                    if(a.buffer === name) a.buffer = 0;
         }
     },
     "glIsBuffer": (shadow, c, [name]) => { query(shadow); return c.group.buffers.has(name) ? 1 : 0; },
@@ -1731,7 +1739,7 @@ function tex_parameter(c, target, pname, params)
             return undefined;
         case GL.TEXTURE_CROP_RECT_OES:
             if(c.api !== 1) return fail(c, GL.INVALID_ENUM);
-            texture.crop = params.slice(0, 4);
+            texture.crop = params.slice(0, 4).map(Math.round);
             return undefined;
     }
     return fail(c, GL.INVALID_ENUM);

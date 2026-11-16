@@ -85,6 +85,9 @@ extern void glShaderSource(unsigned,int,const char **,const int *), glCompileSha
 extern void glBindAttribLocation(unsigned,unsigned,const char *), glLinkProgram(unsigned), glUseProgram(unsigned);
 extern void glVertexAttribPointer(unsigned,int,unsigned,unsigned char,int,const void *), glEnableVertexAttribArray(unsigned), glDrawArrays(unsigned,int,int);
 static void *layer_class(void *self, void *cmd) { (void)self;(void)cmd;return objc_getClass("CAEAGLLayer"); }
+#ifdef V86_GLES1_TEST
+#include "test-gles1.h"
+#else
 static void draw(void *view)
 {
     static void *context;static unsigned rb,fb,p;int width=320,height=300;
@@ -142,6 +145,7 @@ static void draw(void *view)
 #endif
     syslog(5,"V86 GLES2 fixture %dx%d glError=%u",width,height,glGetError());
 }
+#endif
 #endif
 static Boolean launched(void *self, void *cmd, void *app, void *options)
 {
