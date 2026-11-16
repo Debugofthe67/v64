@@ -1283,11 +1283,12 @@ GLESExecutor.prototype.attribute_values = function(c, a, low, vertices, componen
     let source, base, stride;
     if(a.data)
     {
-        // ES1 PointerData retains the application's stride and starts at
-        // element zero. ES2's encoder packs each attribute tightly.
+        // Both encoders pack PointerData tightly; the original stride is
+        // retained as query metadata. Native iOS uploads from element zero;
+        // Android rebases its draw to zero after packing the requested range.
         source = a.data;
-        stride = c.api === 1 ? a.stride || element : element;
-        base = low * stride;
+        stride = element;
+        base = low * element;
     }
     else
     {

@@ -16,6 +16,8 @@ assert.equal((await get(0xba6,16))[12],32768);
 const matrixBits=i32s((await gl("glGetIntegerv",0x898d,64)).outs[0]);
 assert.equal(matrixBits[0],0x3f800000);assert.equal(matrixBits[12],0x3f000000);
 await gl("glGetFloatv",0x898d,64);assert.equal((await gl("glGetError")).ret,0x500);
+await gl("glVertexPointerData",2,0x1406,16,new Uint8Array(24),24);
+assert.deepEqual(i32s((await gl("glGetIntegerv",0x807c,4)).outs[0]),[16],"packed PointerData preserves original stride metadata");
 await gl("glBindTexture",0xde1,1);
 await gl("glTexParameterx",0xde1,0x84fe,229376);
 assert.deepEqual(f32s((await gl("glGetTexParameterfv",0xde1,0x84fe,4)).outs[0]),[3.5]);

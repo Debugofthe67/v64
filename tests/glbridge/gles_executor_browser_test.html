@@ -420,12 +420,15 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         gl1("glDrawArrays", 4, 0, 6);
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 6, 2), [0, 255, 0, 255]) && near(pixel(window, W, 1, 1), [255, 128, 0, 255]), "a texture modulated by a color array, translated");
-        // Native ES1 keeps interleaved bytes and the original stride. Skip
-        // the sentinel vertex with both first and a nonzero index range.
+        // Native ES1 packs interleaved attributes while retaining stride
+        // metadata. Skip a sentinel with first and a nonzero index range.
         const interleaved = floats([99,99,99,99, 0,0,0.5,0.5, W/2,0,0.5,0.5, W/2,W,0.5,0.5,
             0,0,0.5,0.5, W/2,W,0.5,0.5, 0,W,0.5,0.5]);
-        gl1("glVertexPointerData", 2, 0x1406, 16, interleaved, interleaved.length);
-        gl1("glTexCoordPointerData", 0, 2, 0x1406, 16, interleaved.subarray(8), interleaved.length-8);
+        const interleavedValues=new Float32Array(interleaved.buffer);
+        const packedPosition=floats(Array.from({length:7},(_,i)=>[interleavedValues[i*4],interleavedValues[i*4+1]]).flat());
+        const packedUV=floats(Array.from({length:7},(_,i)=>[interleavedValues[i*4+2],interleavedValues[i*4+3]]).flat());
+        gl1("glVertexPointerData", 2, 0x1406, 16, packedPosition, packedPosition.length);
+        gl1("glTexCoordPointerData", 0, 2, 0x1406, 16, packedUV, packedUV.length);
         gl1("glDisableClientState", 0x8076);
         gl1("glColor4f", 0, 0, 1, 1);
         gl1("glDrawArrays", 4, 1, 6);
@@ -507,6 +510,23 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         gl1("glCopyTexImage2D",0xde1,0,0x1908,0,0,4,4,0);
         gl1("glDrawTexiOES",0,0,0,1,1);window=await read_pixels(0,0,W,W);
         check(near(pixel(window,W,0,0),[0,0,255,255]),"ES1 base framebuffer copy regenerates sampled mips");
+
+        // Multiple fixed-function units and an independent COMBINE stage.
+        gl1("glBindTexture",0xde1,85);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        gl1("glActiveTexture",0x84c1);gl1("glBindTexture",0xde1,88);
+        gl1("glTexParameteri",0xde1,0x2800,0x2600);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        gl1("glTexImage2D",0xde1,0,0x1908,1,1,0,0x1908,0x1401,new Uint8Array([128,255,255,255]));
+        gl1("glTexEnvi",0x2300,0x2200,0x2100);gl1("glEnable",0xde1);
+        gl1("glDrawTexiOES",0,0,0,8,8);window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[128,0,0,255])&&near(pixel(window,W,2,0),[0,255,0,255]),"ES1 texture unit 1 modulates unit 0 independently");
+        gl1("glTexImage2D",0xde1,0,0x1908,1,1,0,0x1908,0x1401,new Uint8Array([255,255,255,128]));
+        gl1("glTexEnvi",0x2300,0x2200,0x8570);gl1("glTexEnvi",0x2300,0x8571,0x8575);
+        gl1("glTexEnvi",0x2300,0x8580,0x8578);gl1("glTexEnvi",0x2300,0x8581,0x8576);gl1("glTexEnvi",0x2300,0x8582,0x1702);
+        gl1("glTexEnvi",0x2300,0x8572,0x1e01);gl1("glTexEnvi",0x2300,0x8588,0x8578);
+        gl1("glTexEnvfv",0x2300,0x2201,floats([0,0,1,1]));
+        gl1("glDrawTexiOES",0,0,0,8,8);window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[128,0,127,255]),"ES1 COMBINE interpolates previous and constant colors with texture alpha");
+        gl1("glDisable",0xde1);gl1("glActiveTexture",0x84c0);
 
         // ---- ES1 logic operations, including primitive ordering
         gl1("glDisable",0xde1);

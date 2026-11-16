@@ -43,7 +43,7 @@ for(const [i, [name, args, count, output]] of vectorCases.entries())
     body.push(`{ ${type} v[]={91,${values.map(v => output ? 0 : v)},92}; ${name}(${[...args, "v+1"].join(",")});`,
         `if(v[0]!=91 || v[${count + 1}]!=92${output ? values.map((v, n) => " || v[" + (n + 1) + "]!=" + v).join("") : ""})return ${i + 1}; }`);
 }
-for(const name of ["glVertexPointer", "glColorPointer", "glTexCoordPointer", "glClientActiveTexture", "glEnableClientState", "glDisableClientState", "glDrawArrays", "glDrawElements", "glGetPointerv"])
+for(const name of ["glVertexPointer", "glColorPointer", "glTexCoordPointer", "glClientActiveTexture", "glEnableClientState", "glDisableClientState", "glDrawArrays", "glDrawElements", "glGetPointerv", "glGetIntegerv"])
     names.add(name);
 packet("gles1", "glVertexPointerData", [2, 0x1406, 20, new Uint8Array(), 0]);
 packet("gles1", "glColorPointerData", [4, 0x1401, 0, new Uint8Array(), 0]);
@@ -52,10 +52,12 @@ packet("gles1", "glTexCoordPointerData", [1, 2, 0x1406, 0, new Uint8Array(), 0])
 for(const cap of [0x8074, 0x8076, 0x8078]) packet("gles1", "glEnableClientState", [cap]);
 const vertices = new Float32Array(Array.from({ length: 12 }, (_, i) => i));vertices[5] = 99;
 const color = Uint8Array.from({ length: 12 }, (_, i) => 40 + i), uv = new Float32Array([0, 0, 1, 0, 0, 1]);
-packet("gles1", "glVertexPointerData", [2, 0x1406, 20, new Uint8Array(vertices.buffer), vertices.byteLength]);
+const packedVertices=new Float32Array([vertices[0],vertices[1],vertices[5],vertices[6],vertices[10],vertices[11]]);
+packet("gles1", "glVertexPointerData", [2, 0x1406, 20, new Uint8Array(packedVertices.buffer), packedVertices.byteLength]);
 packet("gles1", "glColorPointerData", [4, 0x1401, 0, color, color.length]);
 packet("gles1", "glTexCoordPointerData", [1, 2, 0x1406, 0, new Uint8Array(uv.buffer), uv.byteLength]);
 packet("gles2", "glDrawArrays", [4, 0, 3]);
+packet("gles2", "glGetIntegerv", [0x807c,4],new Int32Array([20]));
 packet("gles1", "glVertexPointerOffset", [2, 0x1406, 20, 64]);
 for(const cap of [0x8076, 0x8078]) packet("gles1", "glDisableClientState", [cap]);
 packet("gles2", "glDrawArrays", [4, 0, 3]);
@@ -72,6 +74,7 @@ glVertexPointer(2,0x1406,20,vertices);glColorPointer(4,0x1401,0,color);
 glClientActiveTexture(0x84c1);glTexCoordPointer(2,0x1406,0,uv);
 glEnableClientState(0x8074);glEnableClientState(0x8076);glEnableClientState(0x8078);
 vertices[5]=99;glDrawArrays(4,0,3);
+int stride=0;glGetIntegerv(0x807c,&stride);if(stride!=20)return 55;
 void *ptr=0;glGetPointerv(0x8092,&ptr);if(ptr!=uv)return 50;
 buffer_binding=7;glVertexPointer(2,0x1406,20,(void *)64);
 glDisableClientState(0x8076);glDisableClientState(0x8078);glDrawArrays(4,0,3);
@@ -115,10 +118,11 @@ ${declarations.join("\n")}
 extern void glVertexPointer(int,unsigned,int,const void *),glColorPointer(int,unsigned,int,const void *),glTexCoordPointer(int,unsigned,int,const void *);
 extern void glClientActiveTexture(unsigned),glEnableClientState(unsigned),glDisableClientState(unsigned),glDrawArrays(unsigned,int,int),glGetPointerv(unsigned,void **);
 extern void glDrawElements(unsigned,int,unsigned,const void *);
+extern void glGetIntegerv(unsigned,int *);
 static driver_word tls[64],table[N90_GL_TABLE_WORDS];
 int main(void) {struct context ctx={.driver={27,1},.api=1,.texture_limit=4};driver_word p=(driver_word)tls;
 __asm__ volatile("mcr p15,0,%0,c13,c0,3\\n\\tisb"::"r"(p):"memory");tls[30]=(driver_word)table;table[4]=(driver_word)&ctx;
-install_fixed_functions(table+5);install_draw_functions(table+5);
+install_query_functions(table+5);install_fixed_functions(table+5);install_draw_functions(table+5);
 ${body.join("\n")}
 char extensions[]="GL_OES_EGL_image GL_OES_EGL_image_external GL_OES_draw_texture ANDROID_EMU_gles_max_version_3_1 GL_OES_point_sprite ";
 native_extensions(extensions);if(strcmp(extensions,"GL_OES_draw_texture GL_OES_point_sprite"))return 61;

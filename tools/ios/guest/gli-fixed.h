@@ -1,6 +1,8 @@
 // ES 1.1 uses the same native GLI dispatch ABI as ES 2, with a host
 // fixed-function context. Client pointers remain guest addresses; upload
 // their live bytes at draw time and transport VBO offsets as offsets.
+// PointerData keeps stride as query metadata but packs each element,
+// matching emugl's client-array encoder (including Android's ES1 path).
 static void native_extensions(char *text)
 {
     // iOS has no EGLImage handle API. Keep host-only EGL/Android tokens
@@ -54,15 +56,18 @@ static int fixed_array_packet(struct context *ctx,unsigned slot,unsigned vertice
     if(slot < 2 || slot >= 4) fields[count++] = a->size;
     fields[count++] = a->type; fields[count++] = a->stride;
     unsigned element = a->size * component_bytes(a->type), stride = a->stride ? (unsigned)a->stride : element;
-    unsigned length = 0, last;
-    if(vertices && (!a->data || __builtin_mul_overflow(vertices - 1, stride, &length) ||
-        __builtin_add_overflow(length, element, &length) || length > N90_MAX_PAYLOAD ||
-        __builtin_add_overflow((unsigned)(usize)a->data, length - 1, &last)))
+    unsigned length = 0, span, last;
+    if(vertices && (!a->data || __builtin_mul_overflow(vertices, element, &length) || length > N90_MAX_PAYLOAD ||
+        __builtin_mul_overflow(vertices - 1, stride, &span) || __builtin_add_overflow(span, element - 1, &last) ||
+        __builtin_add_overflow((unsigned)(usize)a->data, last, &last)))
     { draw_error(ctx,a->data ? 0x505 : 0x502); return 0; }
     const unsigned head = (count + 3) * 4, bytes = head + length + 4;
     unsigned *p = draw_packet(ctx,ops[index],bytes); if(!p) return 0;
     memcpy(p+2,fields,count*4);p[count+2]=length;
-    if(length)memcpy((unsigned char *)p+head,a->data,length);
+    if(length) {
+        if(stride == element)memcpy((unsigned char *)p+head,a->data,length);
+        else for(unsigned i=0;i<vertices;i++)memcpy((unsigned char *)p+head+i*element,(const unsigned char *)a->data+i*stride,element);
+    }
     memcpy((unsigned char *)p+head+length,&length,4);
     send_draw_packet(ctx,p,bytes);return ctx->driver.ok;
 }

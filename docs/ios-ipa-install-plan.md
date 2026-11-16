@@ -22,7 +22,7 @@
 
 ### 首版支持范围
 
-- 用户本地提供的未加密 IPA，包含可在 Cortex-A8 上执行的 ARMv7 切片。
+- 用户本地提供的未加密 IPA，包含可在 Cortex-A8 上执行的 ARMv7 或 ARMv6 切片。
 - 应用及必需的附带代码最低系统版本不高于 iOS 6.1.3，依赖的系统框架在该固件上存在。
 - 主程序、资源、附带动态库的安装；安装时需要的临时空间检查、进度、错误报告和中断恢复。
 - 先验证自行编译的 ad-hoc 签名应用，再扩展到需要本地重新签名的未加密 IPA。
@@ -68,7 +68,7 @@
 ```text
 iPhone 控制台：Install IPA…
     ↓
-浏览器准备 Worker：检查 IPA → 选择 ARMv7 → 图形适配 → 重签名 → 生成清单
+浏览器准备 Worker：检查 IPA → ARMv7 优先 / ARMv6 回退 → 图形适配 → 重签名 → 生成清单
     ↓
 V86 公共安装 API → ARM 后门中的独立安装服务
     ↓
@@ -101,7 +101,7 @@ MobileInstallationInstall → installd → 应用容器与系统注册
 
 ### 对话框流程
 
-1. **Choose IPA**：说明当前支持 ARMv7、iOS 6.1.3 兼容、未加密应用。
+1. **Choose IPA**：说明当前支持 ARMv7 / ARMv6、iOS 6.1.3 兼容、未加密应用。
 2. **Checking IPA…**：读取文件，显示名称、Bundle ID、版本、最低 iOS、选中的架构和包大小。
    图标仅在可正确解码时预览，否则使用占位图标，不阻塞安装。
 3. **Ready to install**：显示目标虚机。新应用按钮为 **Install**；相同 Bundle ID 为 **Update**，
@@ -202,7 +202,7 @@ CPU Worker 面板测试、iPhone 导入向导测试及带本地原版 installd �
 
 1. 验证 ZIP 完整性，要求一个明确的 `Payload/<name>.app` 主应用。
 2. 读取 XML / binary `Info.plist`，检查 Bundle ID、可执行文件、版本、设备类型及系统版本要求。
-3. 检查主程序及必需附带 Mach-O；从 Fat 文件中选择兼容 ARMv7 切片，并核对实际依赖和最低版本。
+3. 检查主程序及必需附带 Mach-O；从 Fat 文件中优先选择 ARMv7、其次选择 ARMv6 切片，并核对实际依赖和最低版本。
 4. 检查 `LC_ENCRYPTION_INFO`：缺少加密命令或 `cryptid == 0` 才进入后续准备；这只是包检查，
    不能把标记改为 0 当作解密。
 5. 检查路径、重复条目、符号链接目标和资源上限；包不能借解压覆盖应用目录以外的文件。
@@ -410,7 +410,7 @@ BROWSER_FOCUS=1 TEST_ARTIFACT_DIR=build/ios/ipa-acceptance/acceptance TIMEOUT_MS
 应用内符号链接仍严格检查。用户原始 PvZ 1.0（build 524）已通过 UI 原生安装，主可执行文件保留 ARMv6。
 
 图形桥接按 EAGLContext 的 API 创建 ES1/ES2 宿主上下文。ES1 补齐矩阵、光照、材质、纹理环境、雾、
-裁剪平面、定点/浮点向量查询与客户端数组入口。客户端数组在绘制时读取，保留交错 stride；VBO 参数
+裁剪平面、定点/浮点向量查询与客户端数组入口。客户端数组在绘制时读取并打包，保留原始 stride 查询值；VBO 参数
 作为偏移传递。索引 VBO 与客户端数组混用时，宿主从已上传的索引缓冲查询最大索引以限定复制范围。
 原生扩展串过滤 iOS 无法提供的 EGLImage/Android 接口；不声明矩阵调色板。
 
@@ -422,8 +422,8 @@ BROWSER_FOCUS=1 TEST_ARTIFACT_DIR=build/ios/ipa-acceptance/acceptance TIMEOUT_MS
 - `make gles-tests` 及 `gles_executor_browser_test.html`：影子状态、索引缓冲边界、快照，以及真实 WebGPU
   像素检查；包括 ES1 交错顶点/UV、非零 first 和非零索引 VBO 偏移。
 
-尚需独立验证原生 ES1 测试应用及 PvZ 的实际可游玩场景。底层仍存在 `docs/gpu-deviations.md` 中记录的
-点大小、宽线、逻辑运算等渲染差异；核心入口均可路由不表示 Khronos 一致性认证，也不表示这些差异已解决。
+原生 ES1 测试应用与 PvZ 可游玩场景的结果见下文。`docs/gpu-deviations.md` 继续记录硬件和渲染精度
+差异；完整入口路由和定向行为测试不等同于 Khronos 一致性认证。
 
 原生 `V86GLES1Test.ipa` 已通过 UI 安装和运行：EAGL API1、16.16 矩阵栈、带边界哨兵的光照查询、
 交错 short 顶点/UV、非零 first、顶点及索引 VBO 混用客户端颜色、向量 DrawTex、原生 glReadPixels
@@ -453,3 +453,7 @@ ES1 `COLOR_LOGIC_OP` 使用目标附件副本执行全部 16 种逐位运算，�
 
 Flat shading 将独立三角形、strip、fan 和线的末顶点作为 provoking vertex，三角形保持绕序。
 DrawTex 保留片段阶段的雾（距离为零），忽略几何裁剪、剔除和光照；GPU 用组合状态验证这些规则。
+
+客户端数组遵循 [emugl 编码器的打包规则](https://github.com/google/gfxstream/blob/main/guest/GLESv1_enc/GLEncoder.cpp)：
+传输原始 stride 元数据，但逐元素紧密打包数据。iOS 原生端处理交错源布局，渲染器与 Android 继续使用同一
+数据约定。查询仍返回原始 stride；独立 ARM 包测试及 GPU 测试同时检查此约定，并覆盖多纹理单元与 COMBINE。
