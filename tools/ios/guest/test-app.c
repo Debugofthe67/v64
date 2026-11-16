@@ -7,7 +7,45 @@ typedef struct { float x, y, w, h; } Rect;
 extern int UIApplicationMain(int, char **, void *, void *);
 static void *label, *defaults, *counter_key;
 static long count;
+#ifdef V86_VOLUME_TEST
+static int volume_call(unsigned op,const void *data,unsigned length,unsigned connection)
+{
+    register unsigned r0 __asm__("r0")=0x86640000|op;
+    register const void *r1 __asm__("r1")=data;
+    register unsigned r2 __asm__("r2")=length,r3 __asm__("r3")=connection;
+    __asm__ volatile(".word 0xe7f866f4":"+r"(r0):"r"(r1),"r"(r2),"r"(r3):"memory");return (int)r0;
+}
+static void volume_poll(void *self,void *cmd)
+{
+    (void)cmd;
+    dlopen("/System/Library/PrivateFrameworks/Celestial.framework/Celestial",2);
+    void *controller=send0(objc_getClass("AVSystemController"),"sharedAVSystemController");
+    float ring=-1,active=-1;void *category=0;char name[96]="",text[256];
+    CFStringRef ringtone=string("Ringtone");
+    signed char ok=((signed char (*)(void *,void *,float *,void *))objc_msgSend)(controller,
+        sel_registerName("getVolume:forCategory:"),&ring,(void *)ringtone);
+    signed char active_ok=((signed char (*)(void *,void *,float *,void **))objc_msgSend)(controller,
+        sel_registerName("getActiveCategoryVolume:andName:"),&active,&category);
+    if(category)CFStringGetCString(category,name,sizeof(name),0x08000100);
+    snprintf(text,sizeof(text),"Ring: %.4f (%d)\nActive: %.4f (%d)\n%s",(double)ring,ok,(double)active,active_ok,name);
+    CFStringRef value=string(text);send1(label,"setText:",(void *)value);CFRelease(value);CFRelease(ringtone);
+    // A test-owned service records values independently of screen rendering.
+    // Production CPUs do not register this diagnostic service.
+    static int connection=-1;
+    if(connection<1)connection=volume_call(1,"v86.test.volume",15,0);
+    if(connection>0){
+        int n=snprintf(text,sizeof(text),"{\"ring\":%.6f,\"active\":%.6f}",(double)ring,(double)active);
+        if(n>0 && n<(int)sizeof(text) && volume_call(2,text,n,connection)!=n)connection=-1;
+    }
+    ((void (*)(void *,void *,void *,void *,double))objc_msgSend)(self,
+        sel_registerName("performSelector:withObject:afterDelay:"),sel_registerName("pollVolume"),0,0.5);
+}
+#endif
 #ifdef V86_GLES_TEST
+extern unsigned glCheckFramebufferStatus(unsigned);
+#ifdef V86_RGB565_TEST
+extern CFStringRef const kEAGLDrawablePropertyColorFormat, kEAGLColorFormatRGB565;
+#endif
 static void *gl_view;
 static void draw(void *);
 static void draw_frame(void *self,void *cmd){(void)self;(void)cmd;if(gl_view)draw(gl_view);}
@@ -21,6 +59,11 @@ static void update(void)
 static void tap(void *self, void *cmd, void *sender)
 {
     (void)self; (void)cmd; (void)sender; count++;
+#ifdef V86_NETWORK_TEST
+    CFStringRef address=string("http://example.com/");
+    void *url=send1(objc_getClass("NSURL"),"URLWithString:",(void *)address);
+    send1(send0(objc_getClass("UIApplication"),"sharedApplication"),"openURL:",url);CFRelease(address);
+#endif
     ((void (*)(void *,void *,long,void *))objc_msgSend)(defaults,sel_registerName("setInteger:forKey:"),count,counter_key);
     send0(defaults,"synchronize"); update();
     syslog(5,"V86 fixture v%d saved count=%ld",V86_FIXTURE_VERSION,count);
@@ -34,6 +77,10 @@ extern void glBindFramebuffer(unsigned,unsigned), glFramebufferRenderbuffer(unsi
 extern void glGetRenderbufferParameteriv(unsigned,unsigned,int *);
 extern void glViewport(int,int,int,int), glClearColor(float,float,float,float), glClear(unsigned);
 extern unsigned glCreateShader(unsigned), glCreateProgram(void), glGetError(void);
+extern void glGetActiveUniform(unsigned,unsigned,int,int *,int *,unsigned *,char *);
+extern void glGetActiveAttrib(unsigned,unsigned,int,int *,int *,unsigned *,char *);
+extern int glGetUniformLocation(unsigned,const char *);
+extern void glUniform4fv(int,int,const float *);
 extern void glShaderSource(unsigned,int,const char **,const int *), glCompileShader(unsigned), glAttachShader(unsigned,unsigned);
 extern void glBindAttribLocation(unsigned,unsigned,const char *), glLinkProgram(unsigned), glUseProgram(unsigned);
 extern void glVertexAttribPointer(unsigned,int,unsigned,unsigned char,int,const void *), glEnableVertexAttribArray(unsigned), glDrawArrays(unsigned,int,int);
@@ -48,21 +95,51 @@ static void draw(void *view)
     glGenRenderbuffers(1,&rb);glBindRenderbuffer(0x8D41,rb);
     glGenFramebuffers(1,&fb);glBindFramebuffer(0x8D40,fb);glFramebufferRenderbuffer(0x8D40,0x8CE0,0x8D41,rb);
     const char *vs="attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}";
-    const char *fs="precision mediump float;void main(){gl_FragColor=vec4(1.,0.5,0.,1.);}";
+    const char *fs="precision mediump float;uniform vec4 tint;void main(){gl_FragColor=tint;}";
     unsigned v=glCreateShader(0x8B31),f=glCreateShader(0x8B30);p=glCreateProgram();
     glShaderSource(v,1,&vs,0);glCompileShader(v);glShaderSource(f,1,&fs,0);glCompileShader(f);
     glAttachShader(p,v);glAttachShader(p,f);glBindAttribLocation(p,0,"p");glLinkProgram(p);glUseProgram(p);
+    char uniform[32]={0};int length=-1,size=-1;unsigned type=0;
+    glGetActiveUniform(p,0,sizeof(uniform),&length,&size,&type,uniform);
+    if(length!=4 || size!=1 || type!=0x8b52 || strcmp(uniform,"tint") || glGetError())
+    {
+        CFStringRef text=string("Uniform reflection unavailable");send1(label,"setText:",(void *)text);CFRelease(text);return;
+    }
+    glGetActiveUniform(p,0,3,&length,0,0,uniform);
+    if(length!=2 || strcmp(uniform,"ti"))
+    {
+        CFStringRef text=string("Uniform truncation failed");send1(label,"setText:",(void *)text);CFRelease(text);return;
+    }
+    glGetActiveUniform(p,0,0,&length,0,0,0);
+    if(length!=0 || glGetError())
+    {
+        CFStringRef text=string("Uniform empty query failed");send1(label,"setText:",(void *)text);CFRelease(text);return;
+    }
+    glGetActiveAttrib(p,0,sizeof(uniform),&length,&size,&type,uniform);
+    if(length!=1 || size!=1 || type!=0x8b50 || strcmp(uniform,"p") || glGetError())
+    {
+        CFStringRef text=string("Attribute reflection unavailable");send1(label,"setText:",(void *)text);CFRelease(text);return;
+    }
+    const float tint[]={1,0.5f,0,1};glUniform4fv(glGetUniformLocation(p,"tint"),1,tint);
     }
     send1(objc_getClass("EAGLContext"),"setCurrentContext:",context);
     glBindRenderbuffer(0x8D41,rb);
     signed char storage=((signed char (*)(void *,void *,unsigned,void *))objc_msgSend)(context,sel_registerName("renderbufferStorage:fromDrawable:"),0x8D41,send0(view,"layer"));
-    if(!storage){syslog(5,"V86 GLES2 fixture drawable unavailable glError=%u",glGetError());return;}
+    if(!storage){syslog(5,"V86 GLES2 fixture drawable unavailable glError=%u",glGetError());
+#ifdef V86_RGB565_TEST
+        CFStringRef text=string("RGB565 drawable unavailable");send1(label,"setText:",(void *)text);CFRelease(text);
+#endif
+        return;}
     glBindFramebuffer(0x8D40,fb);glUseProgram(p);
     glGetRenderbufferParameteriv(0x8D41,0x8D42,&width);glGetRenderbufferParameteriv(0x8D41,0x8D43,&height);
     glViewport(0,0,width,height);glClearColor(0.1f,count&1?0.55f:0.25f,count&1?0.2f:0.5f,1);glClear(0x4000);
     static const float vertices[]={-0.8f,-0.8f,0.8f,-0.8f,0.f,0.8f};
     glVertexAttribPointer(0,2,0x1406,0,0,vertices);glEnableVertexAttribArray(0);glDrawArrays(4,0,3);
     send1(context,"presentRenderbuffer:",(void *)0x8D41);
+#ifdef V86_RGB565_TEST
+    char report[128];snprintf(report,sizeof(report),"RGB565 request: %dx%d\nFBO 0x%x, error 0x%x",width,height,glCheckFramebufferStatus(0x8D40),glGetError());
+    CFStringRef text=string(report);send1(label,"setText:",(void *)text);CFRelease(text);
+#endif
     syslog(5,"V86 GLES2 fixture %dx%d glError=%u",width,height,glGetError());
 }
 #endif
@@ -77,16 +154,32 @@ static Boolean launched(void *self, void *cmd, void *app, void *options)
     defaults=send0(objc_getClass("NSUserDefaults"),"standardUserDefaults");counter_key=(void *)string("v86.counter");
     count=(long)send1(defaults,"integerForKey:",counter_key);update();
     void *button=send1(objc_getClass("UIButton"),"buttonWithType:",(void *)1);frame(button,(Rect){20,95,280,50});
-    CFStringRef title=string("Tap and save");
+    CFStringRef title=string(
+#ifdef V86_NETWORK_TEST
+        "Open Safari network test"
+#else
+        "Tap and save"
+#endif
+    );
     ((void (*)(void *,void *,void *,unsigned))objc_msgSend)(button,sel_registerName("setTitle:forState:"),(void *)title,0);CFRelease(title);
     ((void (*)(void *,void *,void *,void *,unsigned))objc_msgSend)(button,sel_registerName("addTarget:action:forControlEvents:"),self,sel_registerName("tap:"),64);
     send1(view,"addSubview:",button);send1(window,"setRootViewController:",controller);send0(window,"makeKeyAndVisible");
+#ifdef V86_VOLUME_TEST
+    frame(label,(Rect){20,35,280,150});send1(label,"setNumberOfLines:",(void *)3);
+    send1(button,"setHidden:",(void *)1);volume_poll(self,0);
+#endif
 #ifdef V86_GLES_TEST
     void *cls=objc_allocateClassPair(objc_getClass("UIView"),"V86GLView",0);
     // Class methods live on the metaclass, obtained through object_getClass's ABI.
     extern void *object_getClass(void *);
     class_addMethod(object_getClass(cls),sel_registerName("layerClass"),(void (*)(void))layer_class,"#@:");objc_registerClassPair(cls);
     gl_view=send0(send0(cls,"alloc"),"init");frame(gl_view,(Rect){0,160,320,300});send1(view,"addSubview:",gl_view);
+#ifdef V86_RGB565_TEST
+    CFMutableDictionaryRef properties=CFDictionaryCreateMutable(0,0,kCFTypeDictionaryKeyCallBacks,kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(properties,kEAGLDrawablePropertyColorFormat,kEAGLColorFormatRGB565);
+    send1(send0(gl_view,"layer"),"setDrawableProperties:",(void *)properties);CFRelease(properties);
+    frame(label,(Rect){20,25,280,70});send1(label,"setNumberOfLines:",(void *)2);frame(button,(Rect){20,105,280,45});
+#endif
     // Let UIKit commit the window before acquiring its native drawable.
     ((void (*)(void *,void *,void *,void *,double))objc_msgSend)(self,sel_registerName("performSelector:withObject:afterDelay:"),sel_registerName("drawFrame"),0,0.25);
 #endif
@@ -97,6 +190,9 @@ int main(int argc,char **argv)
     void *pool=objc_autoreleasePoolPush();void *cls=objc_allocateClassPair(objc_getClass("NSObject"),"V86TestDelegate",0);
     class_addMethod(cls,sel_registerName("application:didFinishLaunchingWithOptions:"),(void (*)(void))launched,"c@:@@");
     class_addMethod(cls,sel_registerName("tap:"),(void (*)(void))tap,"v@:@");objc_registerClassPair(cls);
+#ifdef V86_VOLUME_TEST
+    class_addMethod(cls,sel_registerName("pollVolume"),(void (*)(void))volume_poll,"v@:");
+#endif
 #ifdef V86_GLES_TEST
     class_addMethod(cls,sel_registerName("drawFrame"),(void (*)(void))draw_frame,"v@:");
 #endif

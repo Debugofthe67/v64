@@ -193,6 +193,7 @@ static int send_client_attribs(struct context *ctx, unsigned vertices)
 static void draw_arrays(struct context *ctx, unsigned mode, int first, int count)
 {
     if(first < 0 || count < 0) { draw_error(ctx, 0x501); return; }
+    if(count && !refresh_textures(ctx)) return;
     if(!count || send_client_attribs(ctx, (unsigned)first + (unsigned)count))
     {
         ctx->driver.ok &= SEND(ctx->driver.connection, gles2_glDrawArrays, mode, first, count);
@@ -203,6 +204,7 @@ static void draw_arrays(struct context *ctx, unsigned mode, int first, int count
 static void draw_elements(struct context *ctx, unsigned mode, int count, unsigned type, const void *indices)
 {
     if(count < 0) { draw_error(ctx, 0x501); return; }
+    if(count && !refresh_textures(ctx)) return;
     unsigned width = type == 0x1401 ? 1 : type == 0x1403 ? 2 : type == 0x1405 ? 4 : 0;
     if(!width) { draw_error(ctx, 0x500); return; }
     int buffer = 0;

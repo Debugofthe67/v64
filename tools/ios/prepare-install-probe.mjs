@@ -6,7 +6,7 @@ import { open_volume } from "./hfs_edit.mjs";
 import { install_system_file, install_system_directory, rewrite_daemon } from "../../src/ios/system_volume.js";
 import { graphics_kernel, link_guest_gles, patch_guest_code, GUEST_GL_LIBRARY, DISPLAY_DAEMONS, SYSTEM_GL_APPLICATIONS, LOCKDOWN_DAEMON } from "../../src/ios/guest_load.js";
 import { macho_parse } from "../../src/apple/macho.js";
-import { systembag, offline_setup_file } from "../../src/ios/provision.js";
+import { systembag, offline_setup_file, offline_radio_file } from "../../src/ios/provision.js";
 import { write_hfsx_data } from "../../src/ios/hfsx_data.js";
 import { write_bootstrap_pages } from "../../src/ios/nand_layout.js";
 import { data_capacity, write_volumes } from "../../src/ios/nand_volumes.js";
@@ -128,6 +128,7 @@ try
             return [{ path: "/v86/install-trust.bin", bytes, dir_mode: 0o755, mode: 0o644 }];
         })(),
         offline_setup_file(),
+        offline_radio_file(),
     ]);
     fs.ftruncateSync(nandFD, NAND_BYTES);
     const slot = new Uint8Array(NAND_SLOT), put = (bus, ce, row, raw) => {

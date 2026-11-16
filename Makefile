@@ -181,7 +181,7 @@ CORE_FILES=cjs.js const.js io.js machine_clock.js machine_options.js main.js lib
 	   bus.js log.js cpu.js \
 	   elf.js kernel.js extended_memory.js \
 	   parallel/relocate.js parallel/control.js parallel/machine.js \
-	   ios/crypto.js ios/lzss.js ios/nand_boot.js ios/sparse_nand.js ios/guest_load.js ios/install_trust.js ios/install_protocol.js ios/install_service.js ios/runtime_trust.js ios/install_api.js apple/amc.js apple/amc_codec.js apple/audio_decode.js apple/audio.js apple/boot.js apple/n90_compat.js apple/bootlogo.js apple/cdma.js apple/uid.js apple/clcd.js apple/dart.js apple/devicetree.js apple/h2fmi.js apple/i2c.js apple/iop.js apple/macho.js apple/multitouch.js apple/nand.js apple/nand_geometry.js apple/s5l8930.js apple/sensors.js apple/spi.js apple/timer.js apple/uart.js apple/vic.js \
+	   ios/crypto.js ios/lzss.js ios/nand_boot.js ios/sparse_nand.js ios/guest_load.js ios/install_trust.js ios/install_protocol.js ios/install_service.js ios/network.js ios/runtime_trust.js ios/install_api.js apple/amc.js apple/amc_codec.js apple/audio_decode.js apple/audio.js apple/boot.js apple/n90_compat.js apple/bootlogo.js apple/cdma.js apple/uid.js apple/clcd.js apple/dart.js apple/devicetree.js apple/h2fmi.js apple/i2c.js apple/iop.js apple/macho.js apple/multitouch.js apple/nand.js apple/nand_geometry.js apple/s5l8930.js apple/sensors.js apple/spi.js apple/timer.js apple/uart.js apple/vic.js \
 	   arm/state_layout.js arm/cpu.js arm/backdoor_a32.js virt/platform.js virt/io.js virt/pl011.js virt/pl031.js virt/inflate.js virt/dtb.js virt/ranchu.js virt/goldfish.js virt/loader.js \
 	   android/bytes.js android/gpt.js android/avb.js android/bootimg.js android/bootconfig.js android/devices.js android/boot.js android/bootloader.js android/partition_buffer.js android/cpio.js android/ramdisk_overlay.js \
 	   image/sha256.js image/source.js image/overlay.js image/disk_image.js image/qcow2.js image/vhd.js image/vdi.js image/vmdk.js image/vhdx.js image/ova.js image/factory.js image/export.js image/qcow2_export.js
@@ -844,6 +844,7 @@ devices-test: build/v86-debug.wasm
 	./tests/devices/fetch_network.js
 	USE_VIRTIO=1 ./tests/devices/fetch_network.js
 	./tests/devices/fetch_network_post.js
+	node --test tests/devices/dns_doh.mjs
 	./tests/devices/wisp_network.js
 	./tests/devices/virtio_balloon.js
 	./tests/devices/virtio_devices.js
@@ -2140,6 +2141,8 @@ sse-fault-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v8
 # make themselves (made-up keys, no Apple files)
 .PHONY: ios-tests ios-pvrtc-tests ios-amc-tests
 ios-tests:
+	node tests/ios/guest-texture.mjs
+	node --test tests/ios/network.mjs
 	node --test tests/ios/graphics-assets.mjs
 	node --test tests/ios/ipa.mjs
 	node --test tests/ios/ipa-prepare.mjs

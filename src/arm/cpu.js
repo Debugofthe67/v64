@@ -32,6 +32,7 @@ import { PL031 } from "../virt/pl031.js";
 import { GoldfishFb, GoldfishEvents, GoldfishBattery, GoldfishAudio, GoldfishPipe } from "../virt/goldfish.js";
 import { BackdoorA32, BACKDOOR_NOT_HANDLED } from "./backdoor_a32.js";
 import { IOSInstallService } from "../ios/install_service.js";
+import { IOSNetwork } from "../ios/network.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -53,7 +54,7 @@ import { ParallelMachine } from "../parallel/machine.js";
 import { COMMAND_RELOAD, COMMAND_RESET } from "../parallel/control.js";
 
 /** The devices in a snapshot's state[4], in this order */
-const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe", ...N90_DEVICE_ORDER];
+const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe", ...N90_DEVICE_ORDER, "ios_network"];
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
 const STATE_MAX_SINGLE_BUFFER = 0x7FFFFFFF;
@@ -496,9 +497,12 @@ A64CPU.prototype.init_gles_backdoor = function(settings, display, present)
     if(this.machine_type === "s5l8930" && settings.ios_install_boot)
         this.devices.ios_install = new IOSInstallService(this.device_bus, settings.ios_install_boot);
     const install = this.devices.ios_install;
-    if(gles || install)
+    if(this.machine_type === "s5l8930" && settings.ios_network)
+        this.devices.ios_network = new IOSNetwork(this.device_bus);
+    const network = this.devices.ios_network;
+    if(gles || install || network)
         this.devices.backdoor = new BackdoorA32(this, (name, wake, ...saved) =>
-            install?.service(name) || gles?.device["service"](name, wake, ...saved) || null);
+            install?.service(name) || network?.service(name) || gles?.device["service"](name, wake, ...saved) || null);
 };
 
 A64CPU.prototype.load_boot_files = function()
@@ -780,7 +784,7 @@ A64CPU.prototype.state_block_of = function(core)
 A64CPU.prototype.run_hardware_timers = function(acpi, now)
 {
     const display = this.devices.display ? this.devices.display.timer(now) : 100;
-    if(this.devices.apple_timer) return Math.min(display, this.devices.apple_timer.timer(),
+    if(this.devices.apple_timer) return Math.min(display, this.devices.apple_timer.timer(), this.devices.apple_gpio.timer(now),
         this.devices.apple_accelerometer?.timer(now) ?? 100, this.devices.apple_gyroscope?.timer(now) ?? 100,
         this.devices.apple_compass?.timer(now) ?? 100, this.devices.apple_light_sensor?.timer(now) ?? 100);
     const sound = this.virtio_sound ? this.virtio_sound.timer(now) : 100;
@@ -1441,6 +1445,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
     });
     return {
         "host_time": performance.now(),
+        "ios_network": this.devices.ios_network?.status() || null,
         "clock": Object.assign({ "mode": this.clock.mode, "rate": this.clock.rate,
             "now_ms": this.clock.now(), "paused": this.clock.paused }, this.clock.get_diagnostics()),
         "cpu_type": this.cpu_type,

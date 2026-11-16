@@ -114,6 +114,10 @@ function ios_panel(ctx)
     const orientation = /** @type {HTMLSelectElement} */ (h("select", null, [0, 90, 180, 270].map((angle, i) =>
         h("option", { value: String(angle), selected: angle === ios.orientation }, ["Portrait", "Landscape right", "Portrait upside down", "Landscape left"][i]))));
     orientation.onchange = () => ctx.set("ios.orientation", Number(orientation.value));
+    const network = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: ios.network }));
+    network.onchange = () => ctx.set("ios.network", network.checked);
+    const relay = /** @type {HTMLInputElement} */ (h("input", { type: "text", value: ios.network_relay }));
+    relay.onchange = () => ctx.set("ios.network_relay", relay.value.trim());
     return [
         h("p", null, "iPhone 4 (GSM) · iOS 6.1.3 (10B329)"),
         h("label.check", null, verbose, " Show verbose boot messages"),
@@ -121,6 +125,9 @@ function ios_panel(ctx)
         h("label.check", null, gles, " Use WebGPU for iPhone graphics"),
         h("p.note", null, "An image prepared with the graphics adapter can show the iOS interface. With WebGPU off, use the serial terminal for diagnostics."),
         h("label.field", null, h("span", null, "Initial orientation"), orientation),
+        h("label.check", null, network, " Connect to the Internet through a virtual IP tunnel"),
+        h("label.field", null, h("span", null, "Network relay"), relay),
+        h("p.note", null, "Internet traffic passes through this Wisp relay. The virtual tunnel uses iOS networking; it does not emulate a cellular modem or Wi-Fi. Requires an iPhone imported with the networking helper."),
     ];
 }
 

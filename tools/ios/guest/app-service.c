@@ -205,6 +205,7 @@ int app_service(void)
     int fd=open(ROOT "install-token",0);if(fd<0)return 5;int got=read(fd,token,32);close(fd);if(got!=32)return 5;
     mkdir("/private/var/mobile/Media/PublicStaging",0755);mkdir(STAGING,0700);chown(STAGING,501,501);chmod(STAGING,0700);
     app_native_start_diagnostics();
+    app_network_start();
     if(!app_native_load())return 3;
     while(!app_native_ready())usleep(1000000);
     restore();

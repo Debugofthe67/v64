@@ -100,10 +100,102 @@ Developer builds verify the bundled original helper assets with
 For reproducible local test applications, `make ios-install-fixtures` builds
 `build/ios-install-fixtures/V86InstallTest.ipa` (UIKit and a saved tap counter)
 and `V86GLES2Test.ipa` (the same counter plus a GLES 2.0 triangle).
+`V86GLES565Test.ipa` requests an RGB565 EAGL drawable, checks framebuffer
+completeness, and draws using a reflected shader uniform. Both GLES
+fixtures check active uniform/attribute queries, including truncated names
+and omitted outputs. RGB565 drawables use the compositor's BGRA8888
+backing and report that actual storage; 16-bit color quantization is not
+emulated.
+`V86NetworkTest.ipa` opens a real Safari HTTP navigation.
+`V86VolumeTest.ipa` displays the native `AVSystemController` ringtone and
+active-category volume. A test-owned `v86.test.volume` backdoor service can
+record these values independently of screen rendering; production CPUs
+do not register that service. This distinguishes lost button edges from
+stale on-screen text or HUD frames.
+For a volume regression, start at `0.5000`, press Volume − four times and
+check both the native readings and the screen show `0.4375`, `0.3750`,
+`0.3125`, `0.2500`; four Volume + presses should restore `0.5000`.
+Six clicks spaced 120 ms apart also verified `0.5000 → 0.1250 → 0.5000`.
+The graphics adapter checks CPU-backed IOSurface seeds before drawing,
+so reused texture names follow UIKit's updated pixels. Unchanged seeds
+skip uploads. An existing NAND keeps its embedded native adapter; import
+a new iPhone to use an updated adapter while retaining the old VM's data.
+The same seed refresh fixes the lock screen's alternating stale highlight
+frames. A 40-frame capture over seven seconds verified repeated left-to-right
+highlight sweeps: one cycle's bright-pixel centroid moved approximately
+`20 → 73 → 143 → 191 → 253` across a 280-pixel text crop, followed by the
+normal dim interval. To repeat, wake the lock screen, capture the slider
+text without touching it for six to seven seconds, and check multiple
+consecutive sweeps. Wake the display again before further input tests;
+screenshots can retain the last frame after the guest display sleeps.
 Build an update with
 `V86_FIXTURE_VERSION=2 sh tools/ios/guest/build-apps.sh build/ios-install-fixtures-v2`.
 The [IPA implementation plan](ios-ipa-install-plan.md) records the acceptance
 results and the real console UI test procedure.
+
+Owner-firmware acceptance on iPhone 4 / iOS 6.1.3 verified Angry Birds 5.1.0
+(minimum iOS 6.0, unencrypted ARMv7): installation through the console,
+offline menu and level selection, tutorial dismissal, slingshot input,
+bird flight, collision and a nonzero score. Its RGB565 request previously
+left a zero-sized renderbuffer; missing native `glGetActiveUniform` and
+`glGetActiveAttrib` callbacks also prevented scene parameters from reaching
+the renderer. Both paths are now bridged. The first uncached launch in
+this test hit iOS's launch watchdog; a second launch reached the game.
+This acceptance does not establish a frame-rate target or eliminate that
+startup performance limitation.
+
+Settings' grouped background uses an Apple texture upload path. The native
+adapter translates the [Apple RGBA/BGRA format pair](https://registry.khronos.org/OpenGL/extensions/APPLE/APPLE_texture_format_BGRA8888.txt)
+to the host's EXT format, handles [unpack row bytes](https://registry.khronos.org/OpenGL/extensions/APPLE/APPLE_row_bytes.txt)
+before transport, and retains the [client-storage preference](https://registry.khronos.org/OpenGL/extensions/APPLE/APPLE_client_storage.txt)
+locally while copying uploads. These states belong to each context and can
+be queried as integers, floats or booleans. Previously those parameters
+raised GL errors and left the striped background black, obscuring the
+Vibrate and other group headings. `node tests/ios/guest-texture.mjs`
+compiles the production upload/query headers with a host C compiler and
+checks channel order, padded source rows, alignment override, state reset,
+context isolation and bounds. It is included in `make ios-tests`.
+Native cold-boot acceptance verified the striped Settings → Sounds
+background and readable Vibrate headings, both switches changing from
+ON to OFF and back, and correct rendering after scrolling. No refused
+GL calls or GL errors remained in that run.
+
+## Networking
+
+New iPhones offer an Internet connection through a virtual IP tunnel. The
+native helper opens iOS 6's `utun` interface and configures IPv4, a default
+route and DNS; packets use the browser's existing Wisp backend. Configure
+the relay in the VM's iPhone settings. The default is
+`wisps://wisp.mercurywork.shop/v86/`; Internet traffic passes through that
+server. Turn the virtual network off to keep the VM offline. The `fetch`
+backend is also available for HTTP endpoints that permit CORS.
+
+This does not emulate a cellular modem or a Wi-Fi access point. Imported
+phones seed the native airplane-mode preference independently of the IP
+tunnel. Guest applications use
+their normal sockets and resolver, including Safari. Old iOS TLS, trust
+stores and WebKit still limit which modern HTTPS sites can be displayed.
+
+The networking helper is included in newly imported NAND images. An older
+VM's on-disk helper does not acquire new code when the website is updated;
+keep that VM and its data, and import a new iPhone to use this helper.
+Changing the relay or disabling networking takes effect at the next power-on.
+The tunnel reconnects after restoring a memory snapshot; existing TCP
+sessions may need to be reloaded. DNS uses the existing DoH backend, with
+Google as a fallback when the default Cloudflare endpoint fails. An
+explicitly configured DoH server is used without a fallback provider.
+
+For owner-firmware acceptance, build the helper with
+`V86_NETWORK_PROBE=1 sh tools/ios/guest/build-apps.sh build/ios-network-probe`,
+prepare a disposable NAND using that directory, and run
+`node tests/ios/network-native.mjs <probe-directory>`. The test requires
+native DNS resolution and an HTTP 200 response from `example.com`.
+Release helpers are built without `V86_NETWORK_PROBE`.
+
+The iOS 6 Safari UI was also verified loading `http://example.com/` through
+this tunnel on 2026-11-16. Since there is no associated Wi-Fi or cellular
+radio, Safari can initially show its native airplane-mode data warning;
+dismiss it with OK to continue using the tunnel.
 
 ## Local tools and checks
 

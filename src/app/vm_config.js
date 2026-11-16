@@ -10,6 +10,7 @@ import { CPU_PROFILES, MACHINE_CPU_PROFILES, ARM_MACHINE_TYPES, CPU_TYPES, FIRMW
 import { ANDROID_DEVICES as ANDROID_DEVICE_MODELS } from "../android/bootloader.js";
 import { DEFAULT_GLES_VERSION, GLES_VERSIONS } from "../android/devices.js";
 import { N90_RESTORE } from "../ios/catalog.js";
+import { IOS_NETWORK_RELAY } from "../ios/network.js";
 import { DISK_OPTIONS, DISK_ERRORS, check_disk_options } from "../disk_options.js";
 import { DEFAULT_FORM, DEFAULT_MEMORY_SIZE, MAX_MEMORY_SIZE, MAX_HEAP_MEMORY_SIZE, MAX_ARRAY_BUFFER_SIZE_MB, DEFAULT_VGA_MEMORY_SIZE,
     DEFAULT_MTU, apply_form, settings_to_options } from "../browser/vm_options.js";
@@ -154,10 +155,10 @@ export const ANDROID_DISPLAYS = ["device", "window"];
 /** the GLES version an emulator image announces on the host's GPU (docs/gles3-plan.md) */
 export const ANDROID_GLES_VERSIONS = Object.keys(GLES_VERSIONS);
 /** @typedef {{model: string, build: string, nand: Image | null, boot_args: string, verbose: boolean,
- *     gles_proxy: boolean, orientation: 0 | 90 | 180 | 270}} IOS */
+ *     gles_proxy: boolean, orientation: 0 | 90 | 180 | 270, network: boolean, network_relay: string}} IOS */
 /** @type {IOS} */
 const IOS_DEFAULTS = { model: N90_RESTORE.model, build: N90_RESTORE.build, nand: null,
-    boot_args: "", verbose: true, gles_proxy: true, orientation: 0 };
+    boot_args: "", verbose: true, gles_proxy: true, orientation: 0, network: false, network_relay: IOS_NETWORK_RELAY };
 /** an android section's defaults
  * @type {Android} */
 export const ANDROID_DEFAULTS = { device: "cf_arm64_only_phone", gpu_mode: "swiftshader", vendor_ramdisk: "release", debug_ramdisk: null, selinux: "enforcing",
@@ -229,7 +230,7 @@ export function new_ios_config(name, nand, gles_proxy)
     Object.assign(c.display, { adapter: "none", vram_mb: null, proxy: false });
     c.network = [];
     c.sound.device = "none";
-    c.ios = { ...IOS_DEFAULTS, nand, gles_proxy };
+    c.ios = { ...IOS_DEFAULTS, nand, gles_proxy, network: true };
     return c;
 }
 
@@ -438,6 +439,9 @@ export function validate_config(config)
                 problem("ios.boot_args", "Use a single line of up to 160 characters");
             bool(ios.verbose, "ios.verbose");
             bool(ios.gles_proxy, "ios.gles_proxy");
+            bool(ios.network, "ios.network");
+            if(typeof ios.network_relay !== "string" || !/^(wisps?:\/\/[^\s]+|fetch)$/.test(ios.network_relay))
+                problem("ios.network_relay", "Use a wisp:// or wisps:// relay URL, or fetch for HTTP with CORS");
             if(![0, 90, 180, 270].includes(ios.orientation)) problem("ios.orientation", "Choose portrait or a right-angle rotation");
         }
         if(cpu.type !== "arm32" || cpu.cores !== 1 || cpu.parallel || cpu.profile !== "cortex-a8" || config.memory.mb !== 512)
@@ -899,7 +903,8 @@ export function config_to_options(config, env)
             cpu_worker_url: "build/cpu-worker.js" + env.query_append,
             wasm_path: "build/" + (env.debug ? "v86-arm64-debug.wasm" : "v86-arm64.wasm") + env.query_append,
             screen: { container: env.screen_container }, graphics_adapter: "none", net_device: { type: "none" },
-            gles_backdoor: ios.gles_proxy, ios: { nand_boot: true, nand: { ...nand, disk_option: "read_write" }, boot_args },
+            network_relay_url: ios.network ? ios.network_relay : undefined,
+            gles_backdoor: ios.gles_proxy, ios: { nand_boot: true, nand: { ...nand, disk_option: "read_write" }, boot_args, network: ios.network },
             initial_state: image(config.initial_state), disable_speaker: false, autostart: true,
         };
     }

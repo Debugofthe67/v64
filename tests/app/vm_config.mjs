@@ -485,6 +485,24 @@ test("config_to_options: the backends, arm64, a file not chosen yet", () =>
     assert.throws(() => config_to_options(f, Object.assign({}, ENV, { file: () => undefined })), /c\.img needs to be chosen again/);
 });
 
+test("iPhone virtual networking keeps old configurations offline and validates its relay", () =>
+{
+    const c = new_ios_config("Network iPhone", { kind: "browser", path: "v86/disks/network.img", size: N90_RESTORE.nand_bytes }, true);
+    assert.deepEqual(validate_config(c), []);
+    const options = config_to_options(c, ENV);
+    assert.equal(options.ios.network, true);
+    assert.equal(options.net_device.type, "none", "the IP tunnel does not add an unsupported hardware NIC");
+    assert.match(options.network_relay_url, /^wisps:\/\//);
+    delete c.ios.network; delete c.ios.network_relay;
+    const legacy = with_defaults(c);
+    assert.equal(legacy.ios.network, false);
+    assert.equal(config_to_options(legacy, ENV).network_relay_url, undefined);
+    legacy.ios.network = true; legacy.ios.network_relay = "javascript:bad";
+    assert.ok(validate_config(legacy).some(p => p.path === "ios.network_relay"));
+    legacy.ios.network_relay = "fetch";
+    assert.deepEqual(validate_config(legacy), []);
+});
+
 test("iPhone 4 enables the ARM32 JIT by default and honors an explicit opt-out", () =>
 {
     const c = new_ios_config("iPhone 4", { kind: "browser", path: "v86/disks/iphone.img", size: N90_RESTORE.nand_bytes }, true);
