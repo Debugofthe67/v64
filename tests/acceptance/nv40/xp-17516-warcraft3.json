@@ -1,0 +1,104 @@
+{
+  "date": "2026-11-17",
+  "game": "Warcraft III: The Frozen Throne 1.27.0.52240",
+  "image": "retro-gaming-site/game/warcraft3.img",
+  "configuration": {
+    "driver": "175.16",
+    "ramMiB": 1024,
+    "vramMiB": 256,
+    "machine": "i440FX/IDE",
+    "acpi": false,
+    "cores": 1,
+    "renderer": "Chrome WebGPU through native NV40; no guest API proxy"
+  },
+  "test": {
+    "map": "Booty Bay",
+    "mode": "Single Player / Custom Game vs Computer (Normal)",
+    "profile": "nv40, created only in the disposable overlay",
+    "checks": [
+      "Animated textured main menu",
+      "Loaded playable Orc starting position: terrain, trees, gold mine, Great Hall and five Peons",
+      "F8 selects an idle Peon and shows portrait, health and commands",
+      "M plus normal mouse input moves the selected Peon to new terrain coordinates",
+      "Alt+F4 and original Exit confirmation return to XP desktop",
+      "Original shutdown.exe reaches safe-to-power-off screen and halted CPU"
+    ],
+    "screenshots": [
+      {
+        "file": "build/nv40-xp-17516-dxdiag-live/capture-0298.png",
+        "sha256": "8dab866ac33935f5910fae83b5254ebb06f6bc09b38acf76a772c943ef278674"
+      },
+      {
+        "file": "build/nv40-xp-17516-dxdiag-live/capture-0322.png",
+        "sha256": "b505dfb1b2ad791b07e178e2d268b26154816024bf20c74c6ad871b1b0259ce8"
+      }
+    ]
+  },
+  "gpuCumulativeForDxDiagAndGame": {
+    "batches": 24037,
+    "draws": 191234,
+    "bytes": 5676543264,
+    "readbacks": 29945,
+    "failures": 0,
+    "uploads": 6669,
+    "uploadBytes": 3490718292,
+    "resourceHits": 537827,
+    "resourceMisses": 266,
+    "resourceEvictions": 0,
+    "coldUploadBytes": 52794968,
+    "resourceBytes": 58264808,
+    "peakResourceBytes": 58264808,
+    "nativeBCUploads": 0,
+    "nativeBCUploadBytes": 0
+  },
+  "pgraphFaults": [],
+  "pfifoDiagnostics": {
+    "retainedCount": 64,
+    "kinds": [
+      "cache"
+    ],
+    "flags": [
+      256
+    ],
+    "note": "0x100 software-engine cache traps retained, not silently counted as zero hardware faults"
+  },
+  "normalShutdown": {
+    "command": "stock XP shutdown.exe -s -t 0",
+    "eip": 2154770504,
+    "halted": 1,
+    "display": null,
+    "draws": 191234,
+    "failures": 0
+  },
+  "coldOverlayPair": {
+    "kind": "cold-boot-only disk overlay pair; no RAM checkpoint",
+    "guest": "xp",
+    "memoryMiB": 1024,
+    "vramMiB": 256,
+    "osImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/windowsxp/windowsxp_multidisk_C_4G.img",
+    "gameImage": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/warcraft3.img",
+    "osOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-17516-dxdiag-live/native-iq-normal-shutdown-os-overlay.bin",
+      "bytes": 99708780,
+      "sha256": "d24cc1c97e9accb4c2fb45c2cc9f799a61b094fb58b0edf50335bc7e24af2453"
+    },
+    "gameOverlay": {
+      "file": "/Users/renruisi/Desktop/Code/v86/build/nv40-xp-17516-dxdiag-live/native-iq-normal-shutdown-game-overlay.bin",
+      "bytes": 78466,
+      "sha256": "3f9f799b6f99be1ecdd1168f294df15bdb4b3953a0542eb3f3753e551758cd16"
+    },
+    "normalShutdown": {
+      "command": "stock XP shutdown.exe -s -t 0",
+      "eip": 2154770504,
+      "halted": 1,
+      "display": null,
+      "draws": 191234,
+      "failures": 0
+    }
+  },
+  "originalImagesUnchanged": true,
+  "limitations": [
+    "Functional rendering and input test, not a complete campaign, benchmark score or FPS measurement.",
+    "The initial loadfile launch reached the main menu; the accepted match was selected through the original Single Player UI."
+  ]
+}
