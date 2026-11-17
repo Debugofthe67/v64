@@ -198,3 +198,24 @@ host time 或未定义指令，画面中没有失败菜单或息屏。起止图�
 
 该采样运行带探针与 V8 Profiler，仅用于归因，不计入 FPS 优化成绩。原始资料为本地
 `desktop-trace-2-{trace.json,cpu.cpuprofile,main.cpuprofile}`；诊断页面完整运行、场景检查通过。
+
+## 图形 UDF helper 候选复核后撤回
+
+尝试让精确匹配的 A32/T32 用户态图形 UDF 直接进入 page helper，省去再次取指和解码。
+保留 PL0、调用 magic、IT 条件、真实空读 yield，并在调用后退出当前 activation，防止回复
+写入代码页后继续执行旧代码。真实 MMU-on ARM/Thumb 差分、自修改代码、设备缺失及
+非 SIMD 构建、iOS 回归和 AArch32 page/fuzz 通过。早期 MMU 命令指向不存在的
+`jit_mmu.mjs`，不能计为已通过的检查；候选最终未保留，也未据此声称通过该检查。
+
+固定同一 528,555,214 字节 SpringBoard 检查点和 NAND 配对，正常 rate 1、40 次预热及
+20 次计量拖动，只切换 Wasm，进行了两组独立 A/B/B/A：
+
+| 可见 LCD FPS | 对照前 | helper 1 | helper 2 | 对照后 | 均值变化 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 既有运行 `desktop-helper-*` | 25.184 | 25.540 | 26.773 | 23.817 | +6.8% |
+| 继续复核 `desktop-helper-confirm-*` | 26.358 | 25.830 | 25.851 | 24.550 | +1.5% |
+
+复核中候选低于前对照、高于后对照，未确认稳定收益，撤回运行时和候选测试。
+所有窗口保持屏幕唤醒，无 undefined、discarded host time；起止场景为同一正常桌面。
+继续使用 GPU 条带读回缓存和 LCD SIMD 转换。候选补丁、测试及原始结果只保存在
+本地 `build/ios/ios6-2d/helper-rejected*` 和上述运行目录，未提交来宾数据。
