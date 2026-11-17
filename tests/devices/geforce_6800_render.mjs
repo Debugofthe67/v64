@@ -651,6 +651,8 @@ try
             .forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
         assert.deepEqual(await gammaDraw(),[255,0,0,255],"1D rectangle coordinates normalise X while ignoring the unused height");
         method(0x1A08,0x30303);
+        method(0xB60,0x11);method(0xB64,0x11);
+        assert.deepEqual(await gammaDraw(),[255,0,0,255],"legal unused TEX8/9 controls do not disturb TEX0 pixels");
         method(0x1FCC,0x55);
         for(let channel=8;channel<10;channel++)
         {
@@ -659,6 +661,16 @@ try
             [1<<24|(4+channel)<<13|15<<9|128|1,7<<18|0x1C801,0,0]
                 .forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
             assert.deepEqual(await gammaDraw(.125,.75),[0,191,32,255],"TEX"+channel+" routes the selected raw TBUF register through the semantic link");
+            const draws=engine.backend.stats.draws;
+            method(0xB40+channel*4,0x11);
+            method(0x1808,6);
+            for(const word of new Uint32Array(Float32Array.of(0,0,.125,.75,0,16,.125,.75,16,0,.125,.75).buffer))method(0x1818,word);
+            graph.method(0,0,0x2000,0x1808,0);await engine.backend.wait();
+            assert.equal(device.registers.get(0x400720),0,"active unknown control faults before GPU submission");
+            assert.deepEqual([...vram.subarray(0x10000,0x10004)],[0,191,32,255],"refused extended control leaves completed color intact");
+            assert.equal(engine.backend.stats.draws,draws,"an active unknown TEX"+channel+" control submits no draw, including a translation-cache hit");
+            assert.match(graph.faults.at(-1).reason,/active extended texture coordinate control/);
+            device.registers.set(0x400720,1);method(0xB40+channel*4,0);
         }
         method(0x1FF4,1<<14);
         [23<<24|4<<13|15<<9|128|1,7<<18|0x1C801,0x1C800,0x1C800].forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));

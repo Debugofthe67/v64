@@ -160,11 +160,14 @@ assert.equal(ramin.getUint32(0x5F04,true),0xDD000000,"a slot reused for another 
 device.registers.set(0x400720,1);
 for(let at=0xB40;at<=0xB64;at+=4)
 {
-    graph.method(3,5,0x5C00,at,0);
-    assert.equal(device.registers.get(0x400720),1,"all ten disabled texture-coordinate controls are accepted");
-    assert.equal(graph.bindings.get("3:5").methods.get(at),0);
+    for(const value of [0,0x11,0x111,0])
+    {
+        graph.method(3,5,0x5C00,at,value);
+        assert.equal(device.registers.get(0x400720),1,"all ten legal texture-coordinate state words are retained");
+        assert.equal(graph.bindings.get("3:5").methods.get(at),value);
+    }
 }
-for(const [at,value,reason] of [[0xB60,2,/invalid texture coordinate/],[0xB64,1,/extended texture coordinate/]])
+for(const [at,value,reason] of [[0xB60,2,/invalid texture coordinate/],[0xB64,0x1000,/invalid texture coordinate/]])
 {
     graph.method(3,5,0x5C00,at,value);
     assert.equal(device.registers.get(0x400720),0);assert.match(graph.faults.at(-1).reason,reason);
@@ -181,6 +184,23 @@ method(0,0x4400,0x184,0x430);method(0,0x4400,0x8E4,0x9001);
 const shaders=graph.engine3d.shaders(graph.object(0,0x4400));
 assert.equal(shaders.vertex.bytecode[0],0xFFFE0300);assert.equal(shaders.fragment.bytecode[0],0xFFFF0300);
 assert.deepEqual([...shaders.fragment.constant_values[0]],[0x3F800000,0,0,0x3F800000]);
+const controlObject=graph.object(0,0x4400),savedControlProgram=vram.slice(0x9000,0x9020);
+method(0,0x4400,0xB60,0x11);method(0,0x4400,0xB64,0x11);
+assert.equal(graph.engine3d.shaders(controlObject).fragment.bytecode,shaders.fragment.bytecode,
+    "unused extended controls preserve an already translated constant-color program");
+for(let unit=8;unit<10;unit++)
+{
+    [1<<24|(4+unit)<<13|15<<9|128|1,7<<18|0x1C801,0,0]
+        .forEach((value,index)=>new DataView(vram.buffer).setUint32(0x9000+index*4,value,true));
+    method(0,0x4400,0xB40+unit*4,0);
+    const enabled=graph.engine3d.shaders(controlObject);
+    assert(enabled.fragment.inputs.some(([index])=>index===unit+4),"the lowered program reads TEX"+unit);
+    method(0,0x4400,0xB40+unit*4,0x11);
+    assert.throws(()=>graph.engine3d.shaders(controlObject),/active extended texture coordinate control/,
+        "control changes must be checked even when this program's translation is cached");
+    method(0,0x4400,0xB40+unit*4,0);
+}
+vram.set(savedControlProgram,0x9000);
 const shaderObject=graph.object(0,0x4400),shaderEngine=graph.engine3d;
 assert(shaderEngine.program(shaderObject).state.some(([at])=>at===0x8E4),"diagnostic programs retain native method state");
 shaderObject.methods[Symbol.iterator]=()=>{throw Error("draw path enumerated all native methods");};

@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-17",
+  "trigger": "Original GTA SA using native XP 175.16 writes 0x11 to methods 0xB60/0xB64. The previous method handler rejects these legal state writes before determining whether TEX8/9 is used.",
+  "primaryHardwareSource": {
+    "url": "https://github.com/envytools/envytools/blob/f102b82381f3f11cee113d16374c87091db039d9/hwtest/pgraph_class_kelvin.cc#L9080-L9107",
+    "facts": "MthdCurieXfTxcUnkb40 accepts only mask 0x111 and preserves three per-coordinate control bits; Curie exposes ten entries at 0xB40."
+  },
+  "observedProgram": {
+    "file": "build/nv40-xp-17516-gtasa/texcoord-fault-program.json",
+    "sha256": "460330987a53e83e89baddeb7b70fdabfbd9f88807330b15a0d66add08645e9a",
+    "fragmentInputs": [
+      4,
+      1
+    ],
+    "relative": false,
+    "tex89OutputRoutesEnabled": false,
+    "preFixTrace": "build/nv40-xp-17516-gtasa/pre-texcoord-fix-trace.json",
+    "preFixTraceSHA256": "344ce8ccc3095c7604991e30d25c60ed199228e94be37b4f816930a0fd0d0047"
+  },
+  "implementation": "Retain all legal TEX8/9 state words. After fragment lowering, refuse nonzero extended controls only if the lowered shader declares that coordinate input. Relative input declarations conservatively include all ten coordinates. Run this check on translation-cache hits as well. Reserved state bits still fault immediately.",
+  "validation": [
+    "All ten state words retain 0, 0x11 and 0x111; reserved bits rejected",
+    "Cached constant-color shader remains unchanged by unused extended controls",
+    "Translated TEX8/TEX9 reads reject nonzero controls, including cached translations",
+    "Real WebGPU: unused 0x11 TEX8/9 controls preserve TEX0 pixel [255,0,0,255]",
+    "Real WebGPU: zero-control TEX8/TEX9 routing gives [0,191,32,255]",
+    "Real WebGPU: active 0x11 faults before any submitted draw and leaves completed color unchanged",
+    "Full real WebGPU NV40 render suite passes; Closure build passes; graph/state/texture/FIFO/2D tests pass"
+  ],
+  "logs": [
+    {
+      "file": "build/nv40-175-texcoord-graph-test.log",
+      "sha256": "c6aec485b53c53ece999006a90a06b1b0039996116d15108aad4a54bd205edcd"
+    },
+    {
+      "file": "build/nv40-175-texcoord-render-test.log",
+      "sha256": "22897543f5914fffc623ba01f5b67f6b1e7fa050e7b8d13b7346ade243901c63"
+    },
+    {
+      "file": "build/nv40-175-texcoord-webgpu-test.log",
+      "sha256": "c30128567c4be0eb68b21e2bc23e941ac009d1ebc3342bc719cc5caab73740c5"
+    },
+    {
+      "file": "build/nv40-175-texcoord-build.log",
+      "sha256": "a1cbc53268c232a546829da6b3c3600b98425da28635217ba3cf462e19dd3716"
+    },
+    {
+      "file": "build/nv40-175-texcoord-geforce_6800_state.js.log",
+      "sha256": "3b46c030f7cbdd9d353ab75ba47c23365445405c52fa541ce758ffc113f38667"
+    },
+    {
+      "file": "build/nv40-175-texcoord-geforce_6800_texture.js.log",
+      "sha256": "6da9616864e5de8b15b9a91bda7a577306e6e28e241ee1ceeb3a29f4ea91e1bd"
+    },
+    {
+      "file": "build/nv40-175-texcoord-geforce_6800_fifo.js.log",
+      "sha256": "ee3a945b6ec642f0da4dfccee5632271a713cb0d686f45f258374e066423b8f3"
+    },
+    {
+      "file": "build/nv40-175-texcoord-geforce_6800_2d.js.log",
+      "sha256": "8b2e02a9384ebc736572a499539835c50bd18cb208f78d62104692438286f346"
+    }
+  ],
+  "sources": [
+    {
+      "file": "src/graphics_adapters/geforce_6800/nv40_3d.js",
+      "sha256": "ef2e44fa722b23c01c992ab735959a8e13bb31cbbc3566ea69769451c8bd1f06"
+    },
+    {
+      "file": "tests/devices/geforce_6800_graph.js",
+      "sha256": "9cff581c8151c2c4e58f5b48b2b741f0e73a40edc38d935d27728441ee108202"
+    },
+    {
+      "file": "tests/devices/geforce_6800_render.mjs",
+      "sha256": "b079706ec02dc72b3801efe77858125a821142a4d48a623184b132de1e459640"
+    }
+  ],
+  "compiledPlugin": {
+    "file": "build/v86-geforce-6800.js",
+    "sha256": "509ba9bf42380ad8317711002199e3c4c6720fdd9bc8f135e435de8bd6f5873d"
+  },
+  "limits": "This implements valid unused-state handling, not unknown nonzero control semantics for active TEX8/9. Original GTA SA cold acceptance is a separate follow-up."
+}
