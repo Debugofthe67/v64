@@ -215,9 +215,13 @@ pub fn a32_iop_slice(budget: u32, irq: bool, fiq: bool) -> bool {
     while executed < budget {
         let flow = if boundary && unsafe { pages::ENABLED } {
             match pages::run(budget - executed) {
-                Ran::Native { retired, flow } => {
-                    executed += retired.max(1);
-                    unsafe { IOP_NATIVE += retired as u64 };
+                Ran::Native {
+                    executed: attempts,
+                    native,
+                    flow,
+                } => {
+                    executed += attempts.max(1);
+                    unsafe { IOP_NATIVE += native as u64 };
                     boundary = true;
                     flow
                 },
@@ -497,8 +501,8 @@ fn run_core(budget: u32) -> u32 {
             let activation =
                 if crate::parallel::active() { (budget - i).min(ACTIVATION) } else { budget - i };
             match pages::run(activation) {
-                Ran::Native { retired, flow } => {
-                    i += retired.max(1);
+                Ran::Native { executed, flow, .. } => {
+                    i += executed.max(1);
                     boundary = true;
                     flow
                 },

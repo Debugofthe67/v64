@@ -3,9 +3,11 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { V86 } from "../../src/main.js";
+import { set_jit_switches } from "../../src/jit_switches.js";
 const directory = process.argv[2];
 if(!directory) throw Error("usage: cache-clean.mjs owner-provided-10B329-directory");
 const emulator = new V86({ machine_type: "s5l8930", graphics_adapter: "none", autostart: false, log_level: 0,
+    ir_sync_publication: true,
     wasm_path: path.resolve(process.env.A64_WASM || "build/v86-arm64.wasm"), jit_switches: { a64_page: 1, a64_page_hot: 1 },
     ios: { kernelcache: { url: path.resolve(directory, "kernelcache.n90.macho") },
         devicetree: { url: path.resolve(directory, "DeviceTree.n90ap.bin") } } });
@@ -37,8 +39,8 @@ try
         const data = new DataView(cpu.mem8.buffer, cpu.mem8.byteOffset + cpu.ram_offset(base + 4096, 4), 4);
         assert.equal(data.getUint32(0, true), 0xA80F01D3, name + " preserves flags, GE, masks and mode");
         assert.ok(after.retired > before.retired, name + " actually runs compiled code");
-        if(native) assert.equal(cpu.wm.exports.core_statistics_get(1, 0) - retired, 4096,
-            name + " counts each instruction once in the fully native quantum");
+        assert.equal(cpu.wm.exports.core_statistics_get(1, 0) - retired, 4096,
+            name + " counts each instruction once across native and interpreted execution");
         if(native) assert.equal(after.steps, before.steps, name + " needs no interpreter step");
         else assert.ok(after.steps > before.steps, name + " retains its original CP15 path");
         const undefineds = cpu.undefined_instructions();
@@ -60,6 +62,31 @@ try
     const data = new DataView(cpu.mem8.buffer, cpu.mem8.byteOffset + cpu.ram_offset(base + 4096, 8), 8);
     assert.equal(data.getUint32(0, true) & 31, 16, "UND captures the original user mode");
     assert.equal(data.getUint32(4, true), 1, "user-mode DCCSW reaches the real undefined vector");
-    console.log("PASS: ARM/Thumb DCCSW preserves CPSR without steps; neighboring CP15 and real user-mode traps retain their original paths");
+
+    // Both exception vectors wait. The LDREX helper succeeds; the next
+    // instruction either faults in a step or retries a native load mid-block.
+    for(const [opcode, name] of [[0xE7F000F0, "undefined step"], [0xE5901001, "unaligned load"]])
+    {
+        const program = new Uint32Array(16).fill(0xE320F003);
+        program[0] = branch(0, 32);
+        program.set([0xE3A00A01, 0xE1901F9F, opcode, 0xE3A04001, 0xE3A05002], 8);
+        cpu.write_blob_physical(new Uint8Array(program.buffer), base);
+        const once = () => {
+            iop.write(0x100, 1);
+            const before = cpu.wm.exports.core_statistics_get(1, 0);
+            assert.equal(iop.run(), false);
+            return cpu.wm.exports.core_statistics_get(1, 0) - before;
+        };
+        set_jit_switches(cpu.wm.exports, cpu.wasm_memory, { a64_page: 0 });
+        assert.equal(once(), 4, name + ": branch, MOV, LDREX and vector WFI retire");
+        set_jit_switches(cpu.wm.exports, cpu.wasm_memory, { a64_page: 1 });
+        for(let n = 0; n < 60; n++) { once(); await new Promise(resolve => setImmediate(resolve)); }
+        const before = cpu.page_tier_stats();
+        assert.equal(once(), 4, name + " and the unexecuted block suffix do not retire");
+        const after = cpu.page_tier_stats();
+        assert.ok(after.retired > before.retired && after.helpers > before.helpers, "tested the compiled helper");
+        if(name === "unaligned load") assert.ok(after.retries > before.retries, "tested a real native retry");
+    }
+    console.log("PASS: ARM/Thumb cache operations preserve CPSR; native, stepped, helper and fault paths count retirements exactly once");
 }
 finally { await emulator.destroy(); }

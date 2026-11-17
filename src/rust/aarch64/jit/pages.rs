@@ -712,10 +712,11 @@ pub fn pages_gain_code(pages: &HashSet<Page>) {
 /// What `run` did: nothing (the interpreter goes on), or an activation
 pub enum Ran {
     None,
-    /// `retired` instructions; `flow`: what a single step that ended it
-    /// asks of the run loop (a wait, a stop, a yield), else Flow::Next
+    /// `executed` charges the slice for all attempts, including interpreter
+    /// faults. `native` counts completed templates (including their helpers).
     Native {
-        retired: u32,
+        executed: u32,
+        native: u32,
         flow: Flow,
     },
 }
@@ -808,8 +809,8 @@ pub fn run(budget: u32) -> Ran {
                 r.functions[index].last_used = r.clock;
                 let ran = execute(slot, budget, pc);
                 if key & ((1 << MODE_SHIFT) - 1) >= bus::EXTENDED_CODE_KEY {
-                    if let Ran::Native { retired, .. } = ran {
-                        unsafe { crate::aarch64::extended::RETIRED[1] += retired as u64 };
+                    if let Ran::Native { native, .. } = ran {
+                        unsafe { crate::aarch64::extended::RETIRED[1] += native as u64 };
                     }
                 }
                 return ran;
@@ -910,38 +911,38 @@ fn execute(slot: u32, budget: u32, pc: u64) -> Ran {
     }
     let r = rt();
     r.stats[ACTIVATIONS] += 1;
+    let steps_before = r.stats[STEPS];
     a32_trace(3, pc as u32, slot);
-    let native = unsafe {
+    let last = unsafe {
         call_indirect1_ret(
             (slot + crate::aarch64::root::WASM_TABLE_OFFSET) as i32,
             budget.min(MAX_BUDGET) as u16,
         )
     } as u32;
     let chained = unsafe { *a64_page_chain };
-    let retired = native.wrapping_add(chained);
+    let mut executed = last + chained;
     let r = rt();
-    r.stats[RETIRED] += retired as u64;
+    // Generated functions charge one budget slot for every interpreter step,
+    // including faults. interpret_one accounts for its own actual retirements.
+    let mut native = executed - (r.stats[STEPS] - steps_before) as u32;
     if chained != 0 {
         r.stats[CHAINED] += 1;
     }
-    crate::core_stats::add_pending(retired, 0);
     r.x.last_key = u32::MAX;
-    let mut retired = retired;
     let mut flow = unsafe { (*(&raw mut STEP_FLOW)).take() }.unwrap_or(Flow::Next);
     match unsafe { *a64_page_exit } {
         EXIT_RETRY if unsafe { (*(&raw const HELPER_DONE)).is_some() } => {
             let (next, f) = unsafe { (*(&raw mut HELPER_DONE)).take() }.unwrap();
             cpu::set_pc(next);
-            retired += 1;
+            executed += 1;
+            native += 1;
             flow = f;
         },
         EXIT_RETRY => {
             // (the instruction at the PC: a template refused it before any of its effects)
             r.stats[RETRIES] += 1;
             let f = interpret_page_retry();
-            if !matches!(f, Flow::Set | Flow::Retry) {
-                retired += 1;
-            }
+            executed += 1;
             if matches!(f, Flow::Wait(_) | Flow::Off | Flow::Yield | Flow::Retry) {
                 flow = f;
             }
@@ -949,13 +950,19 @@ fn execute(slot: u32, budget: u32, pc: u64) -> Ran {
         EXIT_UNKNOWN => r.stats[UNKNOWN] += 1,
         _ => {},
     }
+    rt().stats[RETIRED] += native as u64;
+    crate::core_stats::add_pending(native, 0);
     release_dead(rt());
     a32_trace(
         4,
         cpu::get_pc() as u32,
-        unsafe { *a64_page_exit } | retired << 8,
+        unsafe { *a64_page_exit } | executed << 8,
     );
-    Ran::Native { retired, flow }
+    Ran::Native {
+        executed,
+        native,
+        flow,
+    }
 }
 
 // ---- compiling
@@ -1589,12 +1596,8 @@ pub fn a64_page_helper(word: u32, pc: u64) -> u32 {
     let inst = execute::decode_cached(word);
     note_step(HELPED, execute::step_key(&inst), word);
     match execute::execute(&inst, pc) {
-        Ok(Flow::Next) => {
-            crate::core_stats::add_pending(1, 0);
-            0
-        },
+        Ok(Flow::Next) => 0,
         Ok(flow @ (Flow::Yield | Flow::Wait(_) | Flow::Off)) => {
-            crate::core_stats::add_pending(1, 0);
             unsafe { HELPER_DONE = Some((pc.wrapping_add(4), flow)) };
             1
         },
@@ -1689,7 +1692,6 @@ pub fn a32_page_helper(word: u32, pc: u64, length: u32) -> u32 {
     }
     match crate::aarch64::a32::execute_fetched(word, length, pc as u32, thumb) {
         Ok(flow @ (Flow::Next | Flow::Yield | Flow::Wait(_) | Flow::Off)) => {
-            crate::core_stats::add_pending(1, 0);
             if thumb {
                 crate::aarch64::t32::it_advance();
             }
