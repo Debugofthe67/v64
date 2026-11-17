@@ -55,6 +55,24 @@ add("SSE full base and address32 override", "mov r10,HIGH+0x510000\nmovdqu [r10]
 add("SSE full FS base", "mov ecx,0xC0000100\nmov eax,0x510000\nmov edx,0xFFFF8000\nwrmsr\nmovdqu [fs:0],xmm9\nmovdqu xmm8,[fs:0]\nxor eax,eax\nxor edx,edx\nwrmsr");
 add("CLFLUSH coherent cache line", "clflush [0x510000]");
 for(const rounding of [0,1,2,3]) for(const value of [[0,0x3FF80000,0,0],[0,0xBFF80000,0,0],[0xFFFFFFFF,0x43DFFFFF,0,0]]) add(`x87 integer rounding ${rounding} ${value[1]}`,`mov word [0x510820],${0x37F | rounding << 10}\nfldcw [0x510820]\nfld qword [rel .a]\nfistp qword [0x510310]\nmovq xmm8,[0x510310]\nfnstsw ax`,value);
+// Binary80 subnormals must reach FXAM in their original format. FSIN must
+// preserve all ten bytes on a range refusal, including at both endpoints.
+for(const [name, words] of [
+    ["positive denormal", [1, 0, 0, 0]],
+    ["negative denormal", [1, 0, 0x8000, 0]],
+    ["minimum normal", [0, 0x80000000, 1, 0]],
+])
+{
+    add("x87 FXAM " + name, "fld tword [rel .a]\nfxam\nfnstsw ax", words);
+}
+for(const [name, words] of [
+    ["+2^63", [0, 0x80000000, 0x403E, 0]],
+    ["-2^63", [0, 0x80000000, 0xC03E, 0]],
+    ["above range", [1, 0x80000000, 0x403F, 0]],
+])
+{
+    add("x87 FSIN " + name, "fld tword [rel .a]\nfsin\nfnstsw ax\nfstp tword [0x510310]\nmovq xmm8,[0x510310]\npinsrw xmm8,[0x510318],4", words);
+}
 add("x87 FNCLEX preserves condition flags", "fld1\nfldz\nfcom st1\nfnclex\nfnstsw ax");
 for(const [kind,cw,load] of [["divide zero",0x37B,"fldz\nfld1"],["invalid",0x37E,"fldz\nfldz"]]) add("x87 deferred #MF "+kind,`lea rax,[rel .resume]\nmov [0x500010],rax\nmov word [0x510820],${cw}\nfldcw [0x510820]\n${load}\nfdiv st0,st1\nfwait\n.resume:\nmov eax,0\nfnstsw ax\nfnclex`);
 
@@ -198,6 +216,10 @@ for(const [name,encoding] of [["MOVDQ2Q memory","0xF2,0x0F,0xD6,0x00"],["MOVQ2DQ
 // postconditions separately; do not change execution to match oracle gaps.
 add("first SSE NaN payload wins", "addps xmm8,xmm9", [0x7FC12345,0x7F812345,0x7FC12345,0x7F812345], [0x7FC54321,0x7FC54321,0x7F854321,0x7F854321]);
 const specification = new Map([
+    // Intel SDM FSIN: the interval is open at both ends. QEMU 10.2 TCG
+    // computes a sine for the endpoints. ST(0) and its sign must survive.
+    ["x87 FSIN +2^63", {vector:0,mxcsr:0x1F80,fsin_c2:1}],
+    ["x87 FSIN -2^63", {vector:0,mxcsr:0x1F80,fsin_c2:1}],
     ["unmasked SIMD invalid destination suppression", {vector:19,mxcsr:0x1F01,unchanged:true}],
     ["unmasked SIMD divzero destination suppression", {vector:19,mxcsr:0x1D84,unchanged:true}],
     ["invalid MXCSR high bits", {vector:13,mxcsr:0x1F80,unchanged:true}],
@@ -420,6 +442,7 @@ if(!process.env.X64_ORACLE_ONLY)
             const value = Buffer.alloc(spec.registers ? 64 : 16);
             (spec.registers || spec.result || selected[n].a).forEach((v,i)=>value.writeUInt32LE(v,i*4));
             assert.deepEqual(a.subarray(0,value.length),value,selected[n].name+(spec.registers ? " registers" : " destination commit"));
+            if(spec.fsin_c2 !== undefined) assert.equal(a.readUInt16LE(72) >> 10 & 1,spec.fsin_c2,selected[n].name+" C2");
             if(spec.zero_xmm9) assert.deepEqual(a.subarray(16,32),Buffer.alloc(16),selected[n].name+" data pointer");
             if(spec.error_code !== undefined) assert.equal(a.readUInt32LE(88),spec.error_code,selected[n].name+" error code");
             if(spec.cr2 !== undefined) assert.equal(a.readBigUInt64LE(96),BigInt(spec.cr2),selected[n].name+" CR2");

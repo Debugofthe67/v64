@@ -169,6 +169,15 @@ try {
         const body=[...prefix(0x27F|rc<<10),0xD9,0xFC,...snapshot];
         await compare(body,`FRNDINT value=${value},rc=${rc}`);
     }
+    // FSIN must leave the cached finite operand intact when |ST(0)| >= 2^63.
+    for(const value of [2 ** 63, -(2 ** 63), 2 ** 64]) {
+        d.setFloat64(16,value,true);
+        const {a} = await compare([...prefix(0x27F),0xD9,0xFE, // FSIN
+            0xDD,0x3D,...u32(OUT+8),0xDD,0x1D,...u32(OUT)], "FSIN range " + value);
+        const result = new DataView(a.bytes.buffer);
+        assert.equal(result.getFloat64(0,true),value,"FSIN operand");
+        assert.ok(result.getUint16(8,true) & 0x400,"FSIN C2");
+    }
     d.setFloat64(16,2,true);
     // Generate a quiet NaN inside the cache, then use every unordered compare.
     for(const cmp of [[0xDD,0xE1],[0xDD,0xE9],[0xDA,0xE9],[0xDB,0xE9],[0xDF,0xE9]]) {

@@ -959,26 +959,24 @@ pub unsafe fn fpu_fucompp() {
 }
 
 pub unsafe fn fpu_fxam() {
-    let x = fpu_get_st0();
-    *fpu_status_word &= !FPU_RESULT_FLAGS;
-    *fpu_status_word |= (x.sign() as u16) << 9;
-    if 0 != *fpu_stack_empty >> *fpu_stack_ptr & 1 {
-        *fpu_status_word |= FPU_C3 | FPU_C0
-    }
-    else if x.is_nan() {
-        *fpu_status_word |= FPU_C0
-    }
-    else if x == F80::ZERO {
-        *fpu_status_word |= FPU_C3
-    }
-    else if !x.is_finite() {
-        *fpu_status_word |= FPU_C2 | FPU_C0
+    let slot = *fpu_stack_ptr as u32;
+    fpu_sync_slot(slot);
+    let x = *fpu_st.add(slot as usize);
+    let class = if *fpu_stack_empty & (1 << slot) != 0 {
+        FPU_C3 | FPU_C0
     }
     else {
-        *fpu_status_word |= FPU_C2
-    }
-    // TODO:
-    // Unsupported, Denormal
+        // Classify the raw extended encoding without raising an FP exception.
+        match (x.sign_exponent & 0x7FFF, x.mantissa) {
+            (0, 0) => FPU_C3,                                   // zero
+            (0, _) => FPU_C3 | FPU_C2,                          // denormal
+            (_, m) if m >> 63 == 0 => 0,                        // unsupported encoding
+            (0x7FFF, 0x8000_0000_0000_0000) => FPU_C2 | FPU_C0, // infinity
+            (0x7FFF, _) => FPU_C0,                              // NaN
+            _ => FPU_C2,                                        // normal
+        }
+    };
+    *fpu_status_word = (*fpu_status_word & !FPU_RESULT_FLAGS) | class | ((x.sign() as u16) << 9);
 }
 
 #[no_mangle]
@@ -1124,18 +1122,23 @@ pub unsafe fn fpu_fscale() {
 
 pub unsafe fn fpu_fsin() {
     if let Some(x) = cached_value(0).filter(|v| v.is_finite()) {
+        if x.abs() >= (1u64 << 63) as f64 {
+            *fpu_status_word |= FPU_C2;
+            return;
+        }
         write_cached(0, x.sin());
-        *fpu_status_word &= !FPU_C2;
-        return;
     }
-    let st0 = fpu_get_st0();
-    //if pow(-2.0, 63.0) < st0 && st0 < pow(2.0, 63.0) {
-    fpu_write_st(*fpu_stack_ptr as i32, st0.sin());
+    else {
+        let st0 = fpu_get_st0();
+        // Compare the extended exponent before conversion to f64. The last
+        // in-range extended value already rounds to 2^63 in binary64.
+        if (63..0x4000).contains(&st0.exponent()) && st0.mantissa >> 63 != 0 {
+            *fpu_status_word |= FPU_C2;
+            return;
+        }
+        fpu_write_st(*fpu_stack_ptr as i32, st0.sin());
+    }
     *fpu_status_word &= !FPU_C2;
-    //}
-    //else {
-    //    *fpu_status_word |= FPU_C2;
-    //}
 }
 
 pub unsafe fn fpu_fcos() {
