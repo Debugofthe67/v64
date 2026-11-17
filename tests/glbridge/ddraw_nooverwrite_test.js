@@ -20,14 +20,29 @@ for (let round=0;round<128;round++){
  function u(destination,at,count,value,no){const before=e.frame?.ops.slice()||[];e.stageBufferUpload(destination,at,new Uint8Array(count).fill(value),no);const op=e.frame.ops.find(op=>!before.includes(op));assert(op);opdata.set(op,new Uint8Array(count).fill(value));written.push(op);return op;}
  u(buffer,0,64,1,false);const a=draw("a",buffer,0,16);u(other,0,64,7,false);u(buffer,16,16,2,false);const b=draw("b",buffer,16,16);const at=(round*7)%60&~3,count=4;const c=u(buffer,at,count,3,true),ops=e.frame.ops;
  for (const old of written.slice(0,-1)) if (old.destination===buffer&&old.destinationOffset<at+count&&at<old.destinationOffset+old.size)must(ops.indexOf(old)<ops.indexOf(c),"overlapping writes stay before new NOOVERWRITE");
- if (at<16||at>=32)must(ops.indexOf(c)<ops.indexOf(a),"unrelated buffer/range updates do not synchronise NOOVERWRITE");
+ must(ops.indexOf(c)>ops.indexOf(a),"a synchronised upload ends the prior buffer-use epoch even for disjoint ranges");
  must(ops.includes(a)&&ops.includes(b)&&ops.length===6,"draw identities and other-buffer uploads retained");
  // Independent byte-copy interpreter checks final contents and promised
  // disjoint draw ranges, including earlier normal uploads sharing a word.
  const memory=new Uint8Array(64),otherMemory=new Uint8Array(64),seen={};for (const op of ops){if (op.kind==="buffer-upload")(op.destination===buffer?memory:otherMemory).set(opdata.get(op),op.destinationOffset);else seen[op.name]=memory.slice(op.at,op.at+op.count);}
- const final=new Uint8Array(64).fill(1);final.fill(2,16,32);final.fill(3,at,at+count);must(Buffer.from(memory).equals(Buffer.from(final)),"latest overlapping write remains final");must(otherMemory.every(v=>v===7),"other buffer identity unaffected");if (at>=16)must(seen.a.every(v=>v===1),"legal nonoverlap update preserves earlier draw");if (at<16||at>=32)must(seen.b.every(v=>v===2),"legal nonoverlap update preserves later draw");
+ const final=new Uint8Array(64).fill(1);final.fill(2,16,32);final.fill(3,at,at+count);must(Buffer.from(memory).equals(Buffer.from(final)),"latest overlapping write remains final");must(otherMemory.every(v=>v===7),"other buffer identity unaffected");must(seen.a.every(v=>v===1),"the earlier draw retains its original generation's data");if (at<16||at>=32)must(seen.b.every(v=>v===2),"legal nonoverlap update preserves later draw");
+}
+// Appends within the same epoch can still overtake draws and disjoint
+// NOOVERWRITE uploads. A different buffer does not end this buffer's epoch.
+for (const [previousAt, nextAt] of [[16,32],[4,0],[0,4]]) {
+ reset();const buffer={size:64},other={size:64};
+ const initial=upload(buffer,0,new Uint8Array(64).fill(1),false);
+ const a=draw("same-epoch",buffer,48,16);
+ upload(other,0,new Uint8Array(64).fill(7),false);
+ const previous=upload(buffer,previousAt,[2,2,2,2],true);
+ const next=upload(buffer,nextAt,[3,3,3,3],true);
+ const ops=e.frame.ops;
+ must(ops.indexOf(initial)<ops.indexOf(next),"initialisation remains before appended bytes");
+ must(ops.indexOf(next)<ops.indexOf(previous),"disjoint and adjacent NOOVERWRITE uploads can pass each other");
+ must(ops.indexOf(next)<ops.indexOf(a),"another buffer does not synchronise pending reads");
+ must(previous.noOverwrite&&next.noOverwrite&&!initial.noOverwrite,"upload records retain their lock semantics");
 }
 reset();const resource={gpuBuffer:{size:16},stripIndexBuffer:{size:32},byteCount:16,shadow:new Uint8Array(16)};e.applyBufferUpdate(resource,0,new Uint8Array(16).fill(1),0,16,0);const a=draw("strip",resource.stripIndexBuffer,0,32);e.applyBufferUpdate(resource,2,new Uint8Array([5,0]),0,2,0x1000);const ops=e.frame.ops;must(ops.indexOf(a)===4,"strip mirror and native buffer both updated before pending draw");must(resource.shadow[0]===1&&resource.shadow[1]===1&&resource.shadow[2]===5&&resource.shadow[3]===0&&resource.shadow[4]===1,"unaligned update preserves adjacent bytes");reset();
-console.log("PASS NOOVERWRITE recorded ordering "+checks+" checks; actual resource updates, normal/discard/combined flags, overlapping write barriers, aligned borders, buffer identity, strip mirrors and legal disjoint draw equivalence");
+console.log("PASS NOOVERWRITE recorded ordering "+checks+" checks; normal/discard epoch barriers, same-epoch asynchronous updates, aligned borders, buffer identity, strip mirrors and disjoint draw equivalence");
 
 })().catch(e=>{console.error(e);process.exitCode=1;});

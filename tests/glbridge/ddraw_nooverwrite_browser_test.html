@@ -27,13 +27,49 @@ async function read(){let reply;const id=++request;await gpu.submit(P.encodeBatc
 try{
  gpu=new D3D9WebGPUExecutor(document.querySelector('canvas'),{strict:true,useShaderWorker:false});await gpu.initialize();
  const elements=new Uint8Array([...P.encode('VertexElement',{stream:0,offset:0,type:3,usage:9}),...P.encode('VertexElement',{stream:0,offset:16,type:4,usage:10})]),prefix=P.encode('SetFVF',{device_handle:1,fvf:0x44,element_count:2}),fvf=new Uint8Array(prefix.length+elements.length);fvf.set(prefix);fvf.set(elements,prefix.length);
- await send([cmd('CREATE_DEVICE',{device_handle:1,width:8,height:8}),cmd('CREATE_TEXTURE_2D',{device_handle:1,resource_handle:2,width:8,height:8,level_count:1,format:21,usage:1}),cmd('SET_RENDER_TARGET',{device_handle:1,color_texture_handle:2}),cmd('SET_DEPTH_STENCIL_SURFACE_LEVEL',{device_handle:1,depth_texture_handle:0}),cmd('CREATE_BUFFER',{device_handle:1,resource_handle:20,resource_kind:1,byte_count:80}),{opcode:P.OP.SET_FVF,payload:fvf},cmd('SET_STREAM_SOURCE',{device_handle:1,buffer_handle:20,stride:20}),cmd('SET_VIEWPORT',{device_handle:1,width:8,height:8,max_z:1}),rs(7,0),rs(22,1),rs(137,0),rs(27,0),ts(1,2),ts(2,0),ts(4,2),ts(5,0)]);
+ await send([cmd('CREATE_DEVICE',{device_handle:1,width:8,height:8}),cmd('CREATE_TEXTURE_2D',{device_handle:1,resource_handle:2,width:8,height:8,level_count:1,format:21,usage:1}),cmd('SET_RENDER_TARGET',{device_handle:1,color_texture_handle:2}),cmd('SET_DEPTH_STENCIL_SURFACE_LEVEL',{device_handle:1,depth_texture_handle:0}),cmd('CREATE_BUFFER',{device_handle:1,resource_handle:20,resource_kind:1,byte_count:160}),{opcode:P.OP.SET_FVF,payload:fvf},cmd('SET_STREAM_SOURCE',{device_handle:1,buffer_handle:20,stride:20}),cmd('SET_VIEWPORT',{device_handle:1,width:8,height:8,max_z:1}),rs(7,0),rs(22,1),rs(137,0),rs(27,0),ts(1,2),ts(2,0),ts(4,2),ts(5,0)]);
  for(const flags of[0,0x2000,0x1000,0x3000]){
   await send([cmd('CLEAR',{device_handle:1,clear_flags:1,color:0xff0000ff,depth:1}),upload(0xff00ff00,0x2000),cmd('DRAW_PRIMITIVE',{device_handle:1,primitive_type:5,primitive_count:2}),upload(0xffffff00,flags)]);
   const bytes=await read(),wanted=flags&0x1000?[0,255,255,255]:[0,255,0,255];let compared=0,maxError=0;for(let y=2;y<6;y++)for(let x=2;x<6;x++){const actual=[...bytes.subarray((y*8+x)*4,(y*8+x)*4+4)];maxError=Math.max(maxError,...actual.map((n,i)=>Math.abs(n-wanted[i])));compared++;}observations.push({flags,compared,maxError,wanted});check(maxError===0,'Map flags '+flags.toString(16)+' yielded unexpected draw pixels '+maxError);
  }
+ // A partial synchronising map starts a new use of the entire buffer. A
+ // later disjoint append must not change a draw from before that map.
+ const rangeUpload=(handle,offset,data,flags)=>cmd('UPDATE_BUFFER',{resource_handle:handle,destination_offset:offset,byte_count:data.length,lock_flags:flags},[{field:'data_offset',data}]);
+ const half=(color,x)=>{const bytes=vertices(color),v=new DataView(bytes.buffer);for(let i=0;i<4;i++)v.setFloat32(i*20,x+v.getFloat32(i*20,true)/2,true);return bytes;};
+ const clear=()=>cmd('CLEAR',{device_handle:1,clear_flags:1,color:0xff101010,depth:1});
+ const draw=start=>cmd('DRAW_PRIMITIVE',{device_handle:1,primitive_type:5,start_vertex:start,primitive_count:2});
+ async function verifyHalves(kind,flags,format){
+  const bytes=await read();let compared=0,maxError=0;
+  for(let y=2;y<6;y++)for(const x of[1,2,5,6]){
+   const wanted=x<4?[0,255,0,255]:[255,0,0,255],at=(y*8+x)*4;
+   maxError=Math.max(maxError,...wanted.map((v,i)=>Math.abs(bytes[at+i]-v)));compared++;
+  }
+  observations.push({kind,flags,format,compared,maxError});
+  check(maxError===0,kind+' synchronising map crossed by disjoint append, flags '+flags.toString(16)+' format '+format+': '+maxError);
+ }
+ for(const flags of[0,0x2000]){
+  const initial=new Uint8Array(160);initial.set(half(0xffff0000,4));initial.set(half(0xff00ff00,0),80);
+  await send([clear(),rangeUpload(20,0,initial,0x2000),draw(4),
+   rangeUpload(20,0,half(0xffff0000,4),flags),draw(0),
+   rangeUpload(20,80,half(0xff0000ff,4),0x1000),draw(4)]);
+  await verifyHalves('vertex',flags,0);
+ }
+ for(const format of[101,102]){
+  const handle=format===101?22:23,Type=format===101?Uint16Array:Uint32Array;
+  const indices=values=>new Uint8Array(new Type(values).buffer),tail=4*Type.BYTES_PER_ELEMENT;
+  await send([cmd('CREATE_BUFFER',{device_handle:1,resource_handle:handle,resource_kind:2,byte_count:tail*2,fvf:format}),cmd('SET_INDICES',{device_handle:1,buffer_handle:handle})]);
+  const indexed=start=>cmd('DRAW_INDEXED_PRIMITIVE',{device_handle:1,primitive_type:5,vertex_count:8,start_index:start,primitive_count:2});
+  for(const flags of[0,0x2000]){
+   const initial=new Uint8Array(160);initial.set(half(0xff00ff00,0));initial.set(half(0xff0000ff,4),80);
+   await send([clear(),rangeUpload(20,0,initial,0x2000),
+    rangeUpload(handle,0,indices([4,5,6,7,0,1,2,3]),0x2000),indexed(4),
+    rangeUpload(handle,0,indices([4,5,6,7]),flags),indexed(0),
+    rangeUpload(handle,tail,indices([4,5,6,7]),0x1000),indexed(4)]);
+   await verifyHalves('index',flags,format);
+  }
+ }
  await gpu.endOwnerSessions(88);await gpu.checkpointIdle();check(!browserErrors.length&&!gpu.hostErrors.length&&!gpu.gpuErrors.errors.length&&!gpu.stats.commandsFailed&&!gpu.stats.droppedDraws,'GPU/host errors');check(!gpu.devices.size&&!gpu.resources.size&&gpu.sessionStates.size===0,'Owner resources retained');
- await fetch('/__test_file?name=ddraw-nooverwrite.json',{method:'POST',body:JSON.stringify({observations,browserErrors,stats:gpu.stats,hostErrors:gpu.hostErrors,gpuErrors:gpu.gpuErrors.errors},null,2)});document.querySelector('#result').textContent='PASS NOOVERWRITE: four flag combinations,64 exact GPU pixels, ordered ordinary/discard draws and unsynchronised pending draws';
+ await fetch('/__test_file?name=ddraw-nooverwrite.json',{method:'POST',body:JSON.stringify({observations,browserErrors,stats:gpu.stats,hostErrors:gpu.hostErrors,gpuErrors:gpu.gpuErrors.errors},null,2)});document.querySelector('#result').textContent='PASS NOOVERWRITE: four flag combinations and six disjoint epoch regressions,160 exact GPU pixels; VB,16/32-bit IB and strip mirrors preserve synchronising maps and asynchronous same-epoch draws';
 }catch(e){await fetch('/__test_file?name=ddraw-nooverwrite.json',{method:'POST',body:JSON.stringify({failed:true,error:String(e.stack),observations,browserErrors,stats:gpu&&gpu.stats,hostErrors:gpu&&gpu.hostErrors,gpuErrors:gpu&&gpu.gpuErrors.errors},null,2)});document.querySelector('#result').textContent='FAIL '+e.stack;}
 })();
 </script>

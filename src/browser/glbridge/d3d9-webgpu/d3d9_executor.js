@@ -1817,6 +1817,7 @@ fn d9_ps_main() -> @location(0) vec4<f32> {
         stageBufferUpload(buffer, offset, source, noOverwrite = false) {
             const frame = this.uploadFrame(source.byteLength);
             const op = this.uploads.buffer(buffer, offset, source);
+            op.noOverwrite = noOverwrite;
             if (noOverwrite) frame.recordNoOverwriteUpload(op);
             else frame.record(op);
         }
