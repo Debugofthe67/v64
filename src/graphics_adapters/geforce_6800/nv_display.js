@@ -19,6 +19,8 @@ export class NVDisplay
         this.raster_pending = false;
         this.key = "";
         this.pixels = null;
+        /** @type {?Uint32Array} */
+        this.overlay_keys = null;
         this.gamma = new Uint8Array(768);
         const edid = make_edid(1280, 1024, 0x40);
         edid[20] = 0x08; // analog RGB, separate sync
@@ -230,6 +232,7 @@ export class NVDisplay
         this.raster_pending=true;this.vga.retrace_pending=true;
         this.front = this.reg(0x600800) & 0x0FFFFFFC;
         this.device.registers.set(0x600100, this.reg(0x600100) | 1);
+        this.device.video?.on_vblank();
         this.device.update_irq();
     }
 
@@ -261,6 +264,8 @@ export class NVDisplay
             this.hub.set_size_graphical(width, height, width, height, bytes * 8);
         }
         const src = this.device.vram(), out = this.pixels.data;
+        const keyed=!!(this.device.video?.active?.[11]&0x100000);
+        if(keyed&&this.overlay_keys?.length!==width*height)this.overlay_keys=new Uint32Array(width*height);
         for(let y = 0; y < height; y++) for(let x = 0; x < width; x++)
         {
             const s = this.front + y * pitch + x * bytes, d = (y * width + x) * 4;
@@ -273,10 +278,12 @@ export class NVDisplay
                 color = (r * 255 / 31 << 16) | (g * 255 / (rgb565 ? 63 : 31) << 8) | b * 255 / 31;
             }
             else color = src[s + 2] << 16 | src[s + 1] << 8 | src[s];
+            if(keyed)this.overlay_keys[y*width+x]=color&0xFFFFFF;
             out[d] = bytes === 1 ? color >>> 16 : this.gamma[(color >>> 16 & 255) * 3];
             out[d + 1] = bytes === 1 ? color >>> 8 : this.gamma[(color >>> 8 & 255) * 3 + 1];
             out[d + 2] = bytes === 1 ? color : this.gamma[(color & 255) * 3 + 2]; out[d + 3] = 255;
         }
+        this.device.video?.render(out,src,width,height,keyed?this.overlay_keys:null);
         this.cursor(out, src, width, height);
         this.hub.update_buffer([{ pixels: this.pixels, screen_x: 0, screen_y: 0,
             buffer_x: 0, buffer_y: 0, buffer_width: width, buffer_height: height }]);

@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-17",
+  "scope": "PVIDEO implementation and native startup-video synchronization. Full GTA gameplay acceptance is a separate step.",
+  "trigger": "Original GTA SA with XP 175.16 reached 1207 startup-video draws, then the original nv4_disp watchdog reported 0xEA while waiting for its video notification at record offset 0x20.",
+  "ownerConfiguration": "i440FX, IDE, ACPI off, one core, 2048 MiB requested RAM, 256 MiB VRAM; driver installation already restarted; no proxy DLLs copied by the owner.",
+  "sources": [
+    "https://github.com/envytools/envytools/blob/master/rnndb/display/nv10_pvideo.xml",
+    "https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/nouveau/dispnv04/overlay.c",
+    "https://github.com/xemu-project/xemu/blob/master/hw/xbox/nv2a/nv2a_regs.h"
+  ],
+  "nativeProtocolEvidence": {
+    "miniportSHA256": "5242982754402bb7f1d05a467ef98cfa62bc14ac901e975477f8332000ad1d57",
+    "description": "Undocumented counter semantics are inferred from this provided driver's real register traffic and disassembly, rather than claimed as exhaustive hardware documentation.",
+    "localDisassemblyVA": {
+      "interruptHandler": "0x1B4CC6: acknowledge PVIDEO INTR bit 8, sample 8B08 counter/completion fields",
+      "offsetSubmission": "0x1B54A0: test 8B08 bit 24 before writing 8B10/8B14; 0x1B56DF: arm the 12-bit target through 8B0C bit 16",
+      "displayCounterSample": "0x1B5A7E and 0x1B5DE7: read 8B04 bits 16..27 when selecting an offset target"
+    },
+    "beforeCapture": "build/nv40-xp-17516-gtasa-prewait/paused-fast-wait.json",
+    "beforeCaptureSHA256": "82fc142255fc270c9112b174232fee817d2aa7ff7b8bc0d02d0e2c0ed19bf8e9"
+  },
+  "implementation": [
+    "Latch validated packed-video descriptors at retrace; route legacy buffer interrupts in bits 0/4 and scheduled-offset completion in bit 8 through PMC bit 16.",
+    "Advance 12-bit display/scheduler retrace samples; honor future and late wrapping targets, expose the pending-slot busy bit, and preserve active/pending work in snapshot version 10.",
+    "Composite packed YUV with clipping and primary-plane color key before gamma. Reject unsupported planar or invalid VRAM extents without fabricated DMA completion.",
+    "Leave notification writes, watchdog behavior, guest clocks, game code and driver code to the unmodified guest."
+  ],
+  "validation": [
+    "Packed YUV black/white pixel checks in both byte orders; clipping, keying and pre-gamma matching.",
+    "Doorbell-to-retrace ordering, independent interrupt bits, checked invalid transfers, counter/consumer wrap, late/future deadlines, busy-slot preservation and state migration.",
+    "Real PCI/MMIO PMC routing and W1C; byte-written target doorbell; actual VM snapshot round trip.",
+    "NV40 graph, FIFO, state, texture, 2D and checkpoint units; real Chrome WebGPU rendering regression.",
+    "Original 175.16 resumed its own notification processing and rendered GTA Main Menu, New Game menu and the airport opening scene. Scene loading separately exposed DirectX vertex-format 0x41/0x21 decode gaps, so this fixture does not claim complete GTA gameplay."
+  ],
+  "nativeMenu": {
+    "file": "build/nv40-xp-17516-gtasa-pvideo-final/native-main-menu.png",
+    "sha256": "4138d2d65bc0c294fb242d92122aaa1da4ef96c53058ab8e6ed13a9018ba6598",
+    "gpuDrawsAtVerifiedProgress": 6174,
+    "gpuFailures": 0,
+    "pgraphFaults": [],
+    "software": "build/nv40-xp-17516-gtasa-pvideo-final/startup-software.json"
+  },
+  "limits": "Nearest overlay scaling; planar video, full undocumented PVIDEO behavior and cycle-accurate timing remain unvalidated. Restored-state causality runs are not substitutes for final cold-boot gameplay acceptance."
+}

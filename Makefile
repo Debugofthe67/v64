@@ -285,6 +285,7 @@ build/v86-geforce-6800.js: $(CLOSURE) src/*.js src/graphics_adapters/*.js src/gr
 		--js src/graphics_adapters/vmware_svga/d9wg_constants.js --js src/graphics_adapters/vmware_svga/svga3d_d9wg.js \
 		--js src/graphics_adapters/geforce_6800/nv_trace.js --js src/graphics_adapters/geforce_6800/nv_ddc.js \
 		--js src/graphics_adapters/geforce_6800/nv_display.js \
+		--js src/graphics_adapters/geforce_6800/nv_video.js \
 		--js src/graphics_adapters/geforce_6800/nv_dma.js \
 		--js src/graphics_adapters/geforce_6800/nv_fifo.js \
 		--js src/graphics_adapters/geforce_6800/nv40_program.js \
@@ -815,6 +816,7 @@ devices-test: build/v86-debug.wasm
 	node tests/devices/geforce_ide_watch.mjs
 	node tests/devices/geforce_6800_fifo.js
 	node tests/devices/geforce_6800_graph.js
+	node tests/devices/geforce_6800_video.js
 	node tests/devices/geforce_6800_state.js
 	node tests/devices/geforce_6800_vertex_span.mjs
 	node tests/devices/geforce_6800_texture.js

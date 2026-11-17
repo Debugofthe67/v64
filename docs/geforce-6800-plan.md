@@ -79,7 +79,9 @@ NV_GPU_RENDERER=chrome node tests/devices/geforce_6800_render.mjs
 这不是周期精确NV40或物理显卡分数等价；NVIDIA驱动暴露的硬件能力可能大于已经验证的组合。
 
 - A1：i440BX/AGP/GART，仅在官方驱动必须依赖AGP时触发；本次PCI验收未触发。
-- V1：PVIDEO/YUV覆盖层；P1：3D扫描输出免回读合成。
+- V1 的 packed YUYV/UYVY、颜色键和原生 PVIDEO 通知路径已在 175.16 后续修复中接通，
+  见 [PVIDEO fixture](../tests/acceptance/nv40/pvideo-native-counter.json)；planar/精确滤波仍待验证。
+- P1：3D扫描输出免回读合成。
 - O1：用所有者OpenGL游戏验收ICD；W1：Vista/7 WDDM。
 
 以上仍为独立可选阶段，不计入本次G0–G7。

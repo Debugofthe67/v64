@@ -9,6 +9,7 @@ import { NVDMA } from "./nv_dma.js";
 import { NVFIFO } from "./nv_fifo.js";
 import { NVGraph } from "./nv_graph.js";
 import { NVRMA } from "./nv_rma.js";
+import { NVVideo } from "./nv_video.js";
 
 const MMIO_SIZE = 16 << 20;
 const RAMIN_SIZE = 1 << 20;
@@ -30,6 +31,7 @@ const timer_pair = value => [Number(value & 0xFFFFFFFFn), Number(value >> 32n)];
 /** @param {!Array<number>} pair @return {bigint} */
 const timer_from_pair = pair => BigInt(pair[0]) | BigInt(pair[1]) << 32n;
 const IRQ_BLOCKS = [[0x001100, 0x001140, 28], [0x002100, 0x002140, 8],
+    [0x008100, 0x008140, 16],
     [0x009100, 0x009140, 20], [0x400100, 0x40013C, 12],
     [0x600100, 0x600140, 24], [0x602100, 0x602140, 25]];
 
@@ -47,6 +49,7 @@ export class NVDevice
         this.trace = new NVTrace();
         this.vga = new VGAScreen(machine, this.vram_size, { pci: false, display_source: false });
         this.registers = new Map();
+        this.video = new NVVideo(this);
         this.display = new NVDisplay(this);
         this.rma = new NVRMA(this);
         this.dma = new NVDMA(this);
@@ -107,6 +110,7 @@ export class NVDevice
     reset()
     {
         this.registers.clear();
+        this.video.reset();
         this.fifo.reset();
         this.graph.reset();
         this.rma.reset();
@@ -292,10 +296,12 @@ export class NVDevice
         const graph_value = this.graph.read(offset);
         const rma_value = this.rma.read(offset);
         const display_value = this.display.read(offset, mask);
+        const video_value = this.video.read(offset);
         if(fifo_value !== null) value = fifo_value;
         else if(graph_value !== null) value = graph_value;
         else if(rma_value !== null) value = rma_value;
         else if(display_value !== null) value = display_value;
+        else if(video_value !== null) value = video_value;
         else if(offset >= 0x1800 && offset < 0x1900)
         {
             const config = this.machine.pci_config(), i = offset - 0x1800;
@@ -324,7 +330,7 @@ export class NVDevice
     {
         return [0, 0x100, 0x140, 0x200, 0x1218, 0x322C, 0x3230, 0x3234, 0x3238, 0x323C, 0x3304,
             0x9200, 0x9210, 0x9400, 0x9410, 0x9420, 0x100200, 0x100204, 0x10020C, 0x100320, 0x101000].includes(offset) ||
-            this.fifo.implemented(offset) || this.graph.implemented(offset) || this.display.implemented(offset) || this.rma.implemented(offset) ||
+            this.fifo.implemented(offset) || this.graph.implemented(offset) || this.display.implemented(offset) || this.video.implemented(offset) || this.rma.implemented(offset) ||
             offset >= 0x1800 && offset < 0x1900 || IRQ_BLOCKS.some(([status, enable]) => offset === status || offset === enable);
     }
 
@@ -408,6 +414,7 @@ export class NVDevice
             }
         }
         this.graph.written(offset, value & mask);
+        this.video.written(offset, value & mask);
         this.update_irq();
         if([0x2100, 0x2500, 0x2504, 0x3200, 0x3220, 0x3240, 0x3250, 0x3270].includes(offset)) this.fifo.run();
     }
@@ -461,14 +468,14 @@ export class NVDevice
 
     get_state()
     {
-        return [9, this.vram_size, this.vga.get_state(), Array.from(this.registers),
+        return [10, this.vram_size, this.vga.get_state(), Array.from(this.registers),
             timer_pair(this.time()), this.alarm_remaining, timer_pair(this.alarm_sample), this.display.get_state(),
-            this.fifo.get_state(), this.graph.get_state(), this.rma.get_state()];
+            this.fifo.get_state(), this.graph.get_state(), this.rma.get_state(),this.video.get_state()];
     }
 
     set_state(state)
     {
-        if(state[0] < 1 || state[0] > 9) throw new Error("geforce_6800: unsupported state version " + state[0]);
+        if(state[0] < 1 || state[0] > 10) throw new Error("geforce_6800: unsupported state version " + state[0]);
         if(state[1] !== this.vram_size) throw new Error("geforce_6800: snapshot vram_size mismatch");
         this.vga.set_state(state[2]);
         this.registers = new Map(state[3]);
@@ -488,6 +495,7 @@ export class NVDevice
         else this.graph.reset();
         if(state[0] >= 7) this.rma.set_state(state[10]);
         else this.rma.reset();
+        this.video.set_state(state[0]>=10?state[11]:null);
         this.update_memory_decode();
         this.update_irq();
     }

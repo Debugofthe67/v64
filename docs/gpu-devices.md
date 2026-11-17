@@ -267,6 +267,15 @@ textures, cube/volume textures, MRT, queries, depth comparison and blending.
 Native Direct3D and the driver's 3D-assisted DirectDraw paths require a
 WebGPU renderer. Legacy VGA and CPU GDI do not require one.
 
+PVIDEO composites packed YUYV/UYVY video over the primary picture before the
+cursor. Its buffer doorbells, retrace counter samples, scheduled offset slot
+and PMC interrupt source run independently of PGRAPH. Original XP 175.16
+requires that path when leaving GTA SA's startup video; completing a draw
+alone cannot satisfy its video counter notification. The miniport services
+the interrupt and writes the notification in guest memory. The
+[PVIDEO fixture](../tests/acceptance/nv40/pvideo-native-counter.json) records
+the protocol and its current validation scope.
+
 VRAM remains the snapshot authority. Pending GPU work is completed and read
 back before saving; host resources and translation caches are recreated on
 restore. Driver installation ../tests/acceptance use overlays and cold reboots;

@@ -248,6 +248,37 @@ try
     write(fb + 0x10000, 0x7FFF); write(mmio + 0x680300, 0); write(mmio + 0x600810, 1);
     nv.display.render(); assert.deepEqual([...nv.display.pixels.data.subarray(0, 4)], [238,221,204,255], "legacy cursor XOR pixel");
     write(mmio + 0x600810, 0); crtc(0x31, 0);
+    // PVIDEO completion is a real PMC interrupt. The original display driver
+    // owns any notifier DMA after servicing it; scanout only consumes a buffer.
+    write(fb+0x5000,0x80EB8010);
+    for(const [at,value] of [[0x8900,0],[0x8908,0xFFFF],[0x8910,0x1000],[0x8918,0x1000],
+        [0x8920,0x5000],[0x8928,0x10002],[0x8930,0],[0x8938,1<<20],[0x8940,1<<20],
+        [0x8948,0],[0x8950,0x10002],[0x8958,0x10004],[0x8140,1],[0x8704,0]])write(mmio+at,value);
+    write(mmio+0x140,1);write(mmio+0x8700,1);
+    assert.equal(read(mmio+0x8700),1);assert.equal(read(mmio+0x100)&0x10000,0);
+    const videoState=await vm.save_state();
+    nv.display.on_vblank();nv.display.render();
+    assert.equal(read(mmio+0x8700),0);assert.equal(read(mmio+0x8100),1);
+    assert.equal(read(mmio+0x100)&0x10000,0x10000,"PVIDEO buffer completion reaches PMC bit 16");
+    assert.deepEqual([...nv.display.pixels.data.subarray(0,8)],[0,0,0,255,255,255,255,255]);
+    write(mmio+0x8100,1);assert.equal(read(mmio+0x8100),0);
+    assert.equal(read(mmio+0x100)&0x10000,0,"PVIDEO W1C clears only its interrupt source");
+    await vm.restore_state(videoState);assert.equal(read(mmio+0x8700),1,"pending PVIDEO buffer survives a real VM snapshot");
+    nv.display.on_vblank();assert.equal(read(mmio+0x8100),1);
+    write(mmio+0x8100,1);write(mmio+0x8140,0);write(mmio+0x8704,1);nv.display.on_vblank();
+    nv.display.render();assert.equal(nv.display.pixels.data[0],0x11,"stopped overlay restores the underlying scanout");
+    const videoCounter=read(mmio+0x8B04)>>>16&4095;
+    write(mmio+0x8704,0);write(mmio+0x8140,0x100);write(mmio+0x8B08,0x10000000);
+    write(mmio+0x8B10,0x5000);write(mmio+0x8B0C,(videoCounter+2)&4095);
+    cpu.write8(mmio+0x8B0E,1);
+    assert.equal(nv.video.commands[0][0],(videoCounter+2)&4095,"byte-written doorbell retains the low counter target");
+    nv.display.on_vblank();assert.equal(read(mmio+0x8100),0,"future offset does not notify early");
+    nv.display.on_vblank();assert.equal(read(mmio+0x8100),0x100);
+    assert.equal(read(mmio+0x100)&0x10000,0x10000);assert.equal(nv.video.commands.length,0);
+    assert.equal(read(mmio+0x8B04)>>>16&4095,(videoCounter+2)&4095);
+    write(mmio+0x8100,0x100);write(mmio+0x8140,0);write(mmio+0x8B08,0);
+    write(mmio+0x8704,1);nv.display.on_vblank();
+    console.log("PASS: PVIDEO pixels, vblank completion, PMC routing, W1C and real snapshot");
     crtc(0,95); crtc(6,11); crtc(7,0x20);
     write(mmio + 0x680508,40 << 8 | 9); write(mmio + 0x680578,0);
     const period = nv.display.vblank_period();
