@@ -251,7 +251,7 @@ export async function run_geforce_guest(win98)
         ...(process.env.NV_ROM ? { vga_bios: { url: path.resolve(process.env.NV_ROM) } } : {}),
         // NV_FDA is a data/tools floppy. Its template boot sector must not
         // take precedence over the installed guest during a cold boot.
-        hda: disk, hdb: tools, boot_order: process.env.NV_FDA ? 0x132 : 0x213, memory_size: memory_mb << 20,
+        hda: disk, hdb: tools, boot_order: process.env.NV_FDA ? 0x132 : 0x213, memory_size: memory_mb * 1048576,
         ...(win98 || process.env.NV_CDROM ? { cdrom: { url: process.env.NV_CDROM || process.env.NV_WIN98_ISO || path.join(site_directory(root), "windows98/windows98se.iso"), async: true }, boot_order: 0x132 } : {}),
         screen_adapter: sink, acpi: false, net_device: { type: "none" }, disable_speaker: true,
         autostart: !process.env.NV_STATE_LOAD && !game, log_level: 0 });
@@ -323,7 +323,7 @@ export async function run_geforce_guest(win98)
         {
             await vm.restore_state(state_bytes);
             state_bytes=null;
-            assert.equal(vm.v86.cpu.memory_size[0],memory_mb<<20,"restored native guest memory size mismatch");
+            assert.equal(vm.v86.cpu.memory_size[0],memory_mb*1048576,"restored native guest memory size mismatch");
             if(process.env.NV_PROBE_REPLACE) replace_probe(tools.bytes, probe);
             if(process.env.NV_DISABLE_JIT) vm.v86.cpu.configure_jit_backend({disable_jit:true});
             await vm.run();
@@ -856,6 +856,7 @@ export async function run_geforce_guest(win98)
             };
         }
 
+        const initial_reset_count=cpu.last_reset?.count||0;
         for(; elapsed() < seconds && !error && !cancelled;)
         {
             await delay(capture_interval?Math.min(1000,Math.max(100,capture_interval*1000)):1000);
@@ -926,7 +927,14 @@ export async function run_geforce_guest(win98)
                 save_png(sink, out, "dos");
             if(!reboot_seen && result_text().includes("REBOOT_REQUEST"))
             {
-                reboot_seen = true; launches = 0; next_launch = elapsed() + 100;
+                // ExitWindowsEx can fail (notably without SeShutdownPrivilege).
+                // A request in NV.TXT is not evidence of a new Windows boot.
+                if(result_text().includes("REBOOT_FAILED")) throw new Error("guest reboot request failed");
+                if((cpu.last_reset?.count||0)>initial_reset_count && ["8042","cf9"].includes(cpu.last_reset.reason))
+                {
+                    reboot_seen = true; launches = 0; next_launch = elapsed() + 100;
+                    fs.writeFileSync(path.join(out,"reboot-observed.json"),JSON.stringify(cpu.last_reset,null,2)+"\n");
+                }
             }
             if(fs.existsSync(control_file))
             {
@@ -1024,8 +1032,8 @@ export async function run_geforce_guest(win98)
         }
         await vm.stop();
         ide_read_watch?.close();if(ide_read_fd!==null)fs.closeSync(ide_read_fd);
-        if(process.env.NV_FDA)fs.writeFileSync(path.join(out,"fda-final.img"),vm.get_disk_fda());
-        if(process.env.NV_STATE_SAVE && !checkpoint)
+        if(process.env.NV_FDA && vm.v86.cpu.devices.fdc)fs.writeFileSync(path.join(out,"fda-final.img"),vm.get_disk_fda());
+        if(nv && process.env.NV_STATE_SAVE && !checkpoint)
             await save_bundle(process.env.NV_STATE_SAVE,process.env.NV_OVERLAY_SAVE,process.env.NV_GAME_OVERLAY_SAVE);
         if(nv)
         {
@@ -1036,8 +1044,11 @@ export async function run_geforce_guest(win98)
         }
         // Periodic captures may be disabled for profiling. Refresh from the
         // stopped guest's authoritative VRAM after any pending GPU readback.
-        vm.v86.cpu.devices.display.request_frame(true);
-        save_png(sink, out, "final");
+        if(vm.v86.cpu.devices.display)
+        {
+            vm.v86.cpu.devices.display.request_frame(true);
+            save_png(sink, out, "final");
+        }
         fs.writeFileSync(path.join(out, "screen.txt"), sink.text.join("\n"));
         for(const name of new Set(["MACHINE.INF", "NVDOS.TXT", "DXDIAG.TXT", "DDXP.TXT", "NVLAUNCH.TXT",
             ...(process.env.NV_TOOLS_ARTIFACTS||"").split(";").filter(Boolean)]))
@@ -1081,6 +1092,6 @@ export async function run_geforce_guest(win98)
         reason: disk_pause ? disk_pause.checkpoint ? "host disk reserve reached; resume the matching checkpoint" : "host disk reserve reached; insufficient room for a new checkpoint" : initialized ? "native device started; rendering acceptance is recorded separately" : text ? "driver install/initialization did not complete" : "guest probe did not start" };
     fs.writeFileSync(path.join(out, "result.json"), JSON.stringify(result, null, 2) + "\n");
     console.log(JSON.stringify(result, null, 2));
-    if(!initialized || disk_pause) process.exitCode = 1;
+    if(!initialized || disk_pause || error) process.exitCode = 1;
     return result;
 }

@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-17",
+  "scope": "Test harness correctness; not an explanation of the owner's already-completed driver restart.",
+  "changes": [
+    "Enable SeShutdownPrivilege before XP ExitWindowsEx; report failures and remove a false boot marker if the shutdown request fails.",
+    "Host relaunch waits for an actual 8042/CF9 reset after the initial boot, not only REBOOT_REQUEST text.",
+    "Use multiplication for 2048 MiB; signed <<20 produced a negative memory_size. Restore checks use the same unsigned byte size.",
+    "Do not mask initialization failures by exporting absent floppy/display devices, and return failure when a caught error exists."
+  ],
+  "validation": {
+    "configuration": {
+      "ramMiB": 2048,
+      "vramMiB": 256,
+      "machine": "i440FX/IDE",
+      "acpi": false,
+      "cores": 1,
+      "driver": "175.16"
+    },
+    "reset": {
+      "reason": "8042",
+      "count": 1,
+      "rip": "0x806f5699",
+      "mode": "protected32",
+      "cs": "0x8",
+      "cpl": 0,
+      "cr3": "0x39000",
+      "cr2": "0xf776f000",
+      "active_core": 0,
+      "gdtr": [
+        "0x8003f000",
+        1023
+      ],
+      "idtr": [
+        "0x8003f400",
+        2047
+      ],
+      "x64_faults": []
+    },
+    "preReboot": {
+      "file": "build/nv40-xp-17516-kartrider-2g/probe-pre-reboot.txt",
+      "sha256": "360f5110c0ce52eed5469a2e54b9b070440e68857c20c302ed001205f3b2bca0"
+    },
+    "postReboot": {
+      "file": "build/nv40-xp-17516-kartrider-2g/probe-post-reboot.txt",
+      "sha256": "9f944153309a5889d20beed868302ab28eef267efbf392afb14aa4574439c2a9",
+      "checks": [
+        "PnP problem=0, nv started, version 6.14.11.7516",
+        "579 modes; 1024x768x32 selected",
+        "GDI_TEST failures=0",
+        "DDRAW_TEST failures=0",
+        "D3D9_TEST failures=0",
+        "RGB565 and texture readbacks correct",
+        "END without another reboot request"
+      ]
+    },
+    "builds": [
+      "node --check tests/devices/geforce_guest.mjs",
+      "XP and Win98 C probe builds with -Wall -Wextra -Werror and existing cast-function-type, unused-function, Win98 misleading-indentation warnings excluded"
+    ]
+  },
+  "sources": [
+    {
+      "file": "tests/devices/geforce_guest.mjs",
+      "sha256": "682dd107f7c296f0bfb029789bbce2839aa2b3d64ef96540e848121f1e57ec44"
+    },
+    {
+      "file": "tests/devices/geforce_probe.c",
+      "sha256": "f6f6ab14604edf4efd1b105e408638d6272609589591e500e61bb67dd41b9faf"
+    }
+  ]
+}

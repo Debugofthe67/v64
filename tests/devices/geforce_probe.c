@@ -624,10 +624,40 @@ void WINAPI entry(void)
 #ifdef NV_REBOOT
     if(!rebooted)
     {
+#ifndef NV_WIN98
+        HANDLE token;
+        TOKEN_PRIVILEGES privilege;
+        BOOL allowed=OpenProcessToken(GetCurrentProcess(),TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY,&token);
+        if(allowed)
+        {
+            privilege.PrivilegeCount=1;
+            allowed=LookupPrivilegeValueA(0,SE_SHUTDOWN_NAME,&privilege.Privileges[0].Luid);
+            privilege.Privileges[0].Attributes=SE_PRIVILEGE_ENABLED;
+            if(allowed)
+            {
+                SetLastError(ERROR_SUCCESS);
+                allowed=AdjustTokenPrivileges(token,FALSE,&privilege,0,0,0) && GetLastError()==ERROR_SUCCESS;
+            }
+            CloseHandle(token);
+        }
+        if(!allowed)
+        {
+            put("REBOOT_FAILED privilege error=");number(GetLastError());line();ExitProcess(1);
+        }
+#endif
         HANDLE marker=CreateFileA(bootmark,GENERIC_WRITE,0,0,CREATE_ALWAYS,0,0);
-        if(marker!=INVALID_HANDLE_VALUE){FlushFileBuffers(marker);CloseHandle(marker);}
+        if(marker==INVALID_HANDLE_VALUE)
+        {
+            put("REBOOT_FAILED marker error=");number(GetLastError());line();ExitProcess(1);
+        }
+        FlushFileBuffers(marker);CloseHandle(marker);
         put("REBOOT_REQUEST");line();
-        ExitWindowsEx(EWX_REBOOT|EWX_FORCE,0);ExitProcess(0);
+        if(!ExitWindowsEx(EWX_REBOOT|EWX_FORCE,0))
+        {
+            DWORD error=GetLastError();DeleteFileA(bootmark);
+            put("REBOOT_FAILED shutdown error=");number(error);line();ExitProcess(1);
+        }
+        ExitProcess(0);
     }
 #endif
     put("END");line();ExitProcess(0);
