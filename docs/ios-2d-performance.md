@@ -378,3 +378,27 @@ seed 6024 随机程序、iOS、原生 counter/status、类型检查与 app 构�
 继续独立测量 DCCSW 路径，保持原 GPR 策略；不能以减少组件单步次数替代实际 FPS。
 所有窗口 normal rate 1、亮屏、无 undefined/discarded host time。
 组合补丁和原始记录保存在本地 `gpr-cache-clean-rejected.patch` 与上述目录。
+
+## 保留：Cortex-A8 PL1 DCCSW 原生空操作
+
+保留原 GPR 策略，仅把 Cortex-A8 PL1 的精确 DCCSW 编成已有的 NOP 模板。
+解释器对该操作本来就保持内存一致并返回 Next；不扩大到其他 CP15 写、PL0 或 Rt=PC。
+ARM/Thumb 和假条件保持 CPSR，原先每个 4,096 指令时间片的 1,024 次单步降到 0；
+完全原生的三种情况仍准确退休 4,096 条。相邻 DCCMVAC 保留原路径；真实 PL0 程序
+仍进入 UND 向量、保存用户模式 SPSR 并正常异常返回。主核心与非 SIMD 核心均通过。
+
+仅切换 Wasm，固定原 CPU worker、GLES 和 WebGPU；每轮重新克隆同一 RAM/NAND：
+
+| 可见 LCD FPS | 对照前 | 候选 1 | 候选 2 | 对照后 |
+| --- | ---: | ---: | ---: | ---: |
+| 桌面 `desktop-cache-clean-*` | 24.990 | 26.984 | 26.643 | 26.644 |
+| PvZ `pvz-cache-clean-*` | 24.299 | 24.749 | 27.099 | 26.499 |
+
+追加反向桌面为候选 25.268 / 对照 23.460。三轮桌面合并约 +5.1%，两轮 PvZ 约 +2.1%。
+一对桌面几乎持平，宿主负载有波动，不宣称精确稳定提升或 60 FPS。所有窗口 normal rate 1、
+亮屏、无 undefined/discarded host time，场景已核对。完整 page、fallback、随机程序、iOS、
+counter/status 和 app 检查通过。独立复现：`node tests/ios/cache-clean.mjs build/ios/10B329`。
+
+额外预算断言发现旧相邻单步路径会重复统计诊断用 retired 数，未在本步骤修改该旧记账；
+它不作为 FPS 分子或分母。FPS 始终来自 CLCD 的实际变化与宿主活动窗口。
+原始结果和冻结组件哈希保存在本地 `cache-clean-accepted-summary.json`。

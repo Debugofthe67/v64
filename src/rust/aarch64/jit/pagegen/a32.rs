@@ -2613,6 +2613,17 @@ pub(super) fn discover(
             if let Some(mask) = interrupt_mask(word, length, thumb) {
                 kind = Some(mask);
             }
+            // Cortex-A8's DCCSW is already a coherent no-op in cp15().
+            // Only this exact PL1 maintenance form can avoid the step;
+            // other coprocessor writes keep their context/exception path.
+            else if crate::aarch64::cpu::cortex_a8()
+                && length == 4
+                && word >> 28 < 15
+                && word >> 12 & 15 != 15
+                && word & 0x0FFF_0FFF == 0x0E07_0F5A
+            {
+                kind = Some(Kind::Nop);
+            }
         }
         // (an instruction of an IT block whose instructions are all native)
         if let Some(&itstate) = native_it.borrow().get(&o) {
