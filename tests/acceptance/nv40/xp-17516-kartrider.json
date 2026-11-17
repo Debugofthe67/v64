@@ -1,0 +1,106 @@
+{
+  "date": "2026-11-17",
+  "game": "KartRider 2009 Special Edition; original Launcher.exe, KartRider PV:872 (by LAON)",
+  "image": "retro-gaming-site/game/kartrider.img",
+  "configuration": {
+    "driver": "175.16",
+    "machine": "i440FX/IDE",
+    "acpi": false,
+    "cores": 1,
+    "ramMiB": 2048,
+    "vramMiB": 256,
+    "renderer": "Chrome WebGPU through native NV40, API proxy disabled"
+  },
+  "launch": "cmd /c cd /d \"E:\\Kart 2009 Special Edition\" && Launcher.exe",
+  "originalUISequence": [
+    "R: Run KartRider in original launcher",
+    "Original launcher Login...OK",
+    "Client animated city and full Chinese main menu",
+    "Menu -> 计时赛, as directed by the owner",
+    "Selected original 龙行华夏龙之遗迹 L1 time-attack track; original Start button",
+    "Original race start, Up throttle held, Right steering held, normal key release",
+    "Vehicle moved from the starting line, HUD showed acceleration and car turned toward track curb",
+    "Alt+F4 closed the client; original launcher Exit then normal XP shutdown"
+  ],
+  "input": "Normal PS/2 mouse and keyboard input; one bounded 1800 ms mouse press also used in menu navigation. No game, driver, clocks or result patches.",
+  "visuals": [
+    {
+      "file": "build/nv40-xp-17516-kartrider-2g/timeattack-setup.png",
+      "sha256": "b21a9e49432321772a4322a45ca451b45cfbbbaffab17e17ff2a1a73d57c650b"
+    },
+    {
+      "file": "build/nv40-xp-17516-kartrider-2g/race-before-input.png",
+      "sha256": "9cb1518c101809e15a01b7e6226d99ee7f03ced634925a38fb554c26aa395cb5"
+    },
+    {
+      "file": "build/nv40-xp-17516-kartrider-2g/race-throttle.png",
+      "sha256": "d4d851831b069bafc9151272d579960aa57132d71062c711887ebce2bbec78f9"
+    },
+    {
+      "file": "build/nv40-xp-17516-kartrider-2g/race-turn-held.png",
+      "sha256": "478109e4bc44a8199bc1257ee088fdaff410f06edafb960946d55900a3b2181f"
+    },
+    {
+      "file": "build/nv40-xp-17516-kartrider-2g/client-desktop-return.png",
+      "sha256": "71405b1317332e0e721f9770995f1c67e2df0083119678ff6d10de5738ad0a39"
+    },
+    {
+      "file": "build/nv40-xp-17516-kartrider-2g/normal-shutdown.png",
+      "sha256": "f98dc3a08b2c22263dde39dfcbbf740011acb922f7814fae1957d803b26618f2"
+    }
+  ],
+  "renderedColorSurface": {
+    "file": "build/nv40-xp-17516-kartrider-2g/kart-backbuffer.bmp",
+    "sha256": "c465a5c13b9bc5d45ace7c28249ced9dc865fa2218beae100afdc006939fcb89",
+    "note": "Read-only BGRA VRAM capture of a rendered city frame; actual client screenshots also show the presentation."
+  },
+  "gpuCumulativeIncludingProbes": {
+    "batches": 22300,
+    "draws": 119369,
+    "bytes": 5435340856,
+    "readbacks": 44385,
+    "failures": 0,
+    "uploads": 7233,
+    "uploadBytes": 4347367160,
+    "resourceHits": 352589,
+    "resourceMisses": 356,
+    "resourceEvictions": 0,
+    "coldUploadBytes": 102312100,
+    "resourceBytes": 105171588,
+    "peakResourceBytes": 105171588,
+    "nativeBCUploads": 623,
+    "nativeBCUploadBytes": 1719680
+  },
+  "pgraphFaults": [],
+  "pfifoRetained": {
+    "count": 64,
+    "kinds": [
+      "cache"
+    ],
+    "flags": [
+      256
+    ]
+  },
+  "normalShutdown": {
+    "eip": "0x806f3048",
+    "halted": 1,
+    "nativeDisplay": null
+  },
+  "coldOverlays": [
+    {
+      "file": "build/nv40-xp-17516-kartrider-2g/final-os-overlay.bin",
+      "bytes": 105828540,
+      "sha256": "99ab6d9a86ddf8c7d62c71d7071d97db5c84269ad3df76784476423a7eb88da5"
+    },
+    {
+      "file": "build/nv40-xp-17516-kartrider-2g/final-game-overlay.bin",
+      "bytes": 28414,
+      "sha256": "df8553d77890b706ba27481030b9309043d570bf887c8522e21d0d559122b0d8"
+    }
+  ],
+  "originalImagesUnchanged": true,
+  "limits": [
+    "Functional menu, actual time-attack race, acceleration and steering validation; not a completed timed lap or an FPS/score measurement.",
+    "The initial white client window was loading; subsequent original 3D content and UI were verified."
+  ]
+}
