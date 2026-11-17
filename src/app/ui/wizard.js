@@ -35,7 +35,7 @@ const SOURCES = [
     ["disk", "A hard disk image with the system installed"],
     ["direct", "A kernel and initrd (and the system's CD as a read-only disk)"],
     ["android", "An Android image package (.zip)"],
-    ["ios", IOS_NAME + " (.ipsw)"],
+    ["ios", "iOS (.ipsw)"],
     ["later", "Install the system later"],
 ];
 
@@ -273,7 +273,7 @@ export function open_wizard(options)
                     render();
                     /** @type {HTMLInputElement | null} */ (element.querySelector("input[name=source]:checked"))?.focus();
                 } }),
-                " " + text, value === "ios" ? h("span.badge", null, "Experimental") : null));
+                " " + text));
             const pickers = [];
             if(state.source === "cdrom" || state.source === "floppy" || state.source === "disk")
             {
