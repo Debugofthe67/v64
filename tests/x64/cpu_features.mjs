@@ -2,7 +2,7 @@
 // The CPU features of docs/simd-xsave-plan.md (src/cpu_features.js, setting
 // cpu_features): CPUID reports exactly the requested features (not given:
 // every released one for x86_64, the owner's decision of 2026-10-17, none for
-// x86; [] none), a preset names a set, cpuid_level leaves out what it cannot report together with what
+// x86), a preset names a set, cpuid_level leaves out what it cannot report together with what
 // requires it, and an unknown feature, one the profile cannot have or one
 // without its requirements fails. Every milestone is released (M1
 // x86-64-v2, M2 XSAVE, M3 AVX, M4 x86-64-v3, M5 the XSAVE family): no feature
@@ -61,7 +61,6 @@ const XSAVE_FAMILY = ["XSAVE", "XSAVEOPT", "XSAVEC", "XGETBV1", "XSAVES"];
 for(const [options, expected, level] of [
     [{}, []],
     [{cpu_type: "x86_64"}, [...V3, ...XSAVE_FAMILY.slice(1)]],
-    [{cpu_type: "x86_64", cpu_features: []}, []],
     [{cpu_type: "x86_64", cpu_features: "x86-64-v1"}, []],
     [{cpu_type: "x86_64", cpu_features: "x86-64-v2"}, V2],
     [{cpu_features: [...V2, "BMI1", "BMI2", "MOVBE"], cpu_features_unreleased: true}, [...V2, "BMI1", "BMI2", "MOVBE"]],
@@ -99,6 +98,8 @@ for(const [options, expected, level] of [
 }
 
 for(const [options, message] of [
+    [{cpu_type: "x86", cpu_features: []}, /empty extension list.*omit cpu_features/],
+    [{cpu_type: "x86_64", cpu_features: []}, /empty extension list.*x86-64-v1/],
     [{cpu_features: "x86-64-v1"}, /x86-64-v1 needs cpu_type/],
     [{cpu_type: "x86_64", cpu_features: "x86-64-v3", cpuid_level: 7}, /cpuid_level is too low/],
     [{cpu_features: ["LZCNT"]}, /LZCNT needs cpu_type: "x86_64"/],
@@ -132,14 +133,15 @@ for(const [options, message] of [
         });
         return emulator;
     };
-    const baseline = await machine({cpu_features: []});
-    const state = await baseline.save_state();
-    await baseline.destroy();
+    const custom = await machine({cpu_features: ["SSSE3"]});
+    const mask = custom.v86.cpu.cpu_features;
+    const state = await custom.save_state();
+    await custom.destroy();
     const defaulted = await machine({});
-    assert.notEqual(defaulted.v86.cpu.cpu_features, 0, "x86_64's default features");
+    assert.notEqual(defaulted.v86.cpu.cpu_features, mask, "x86_64's default features");
     await defaulted.restore_state(state);
-    assert.equal(defaulted.v86.cpu.cpu_features, 0, "the restored machine has the snapshot's features");
-    assert.equal(defaulted.v86.cpu.wm.exports["get_cpu_features"](), 0, "and so has the core");
+    assert.equal(defaulted.v86.cpu.cpu_features, mask, "the restored machine has the snapshot's features");
+    assert.equal(defaulted.v86.cpu.wm.exports["get_cpu_features"](), mask, "and so has the core");
     const strict = await machine({cpu_features: "x86-64-v1"});
     await assert.rejects(strict.restore_state(state), /this one has x86-64-v1/);
     const v1_state = await strict.save_state();
@@ -151,10 +153,10 @@ for(const [options, message] of [
     const cpuid = defaulted.v86.cpu.wm.exports["cpuid_query"];
     assert.equal(cpuid(1, 0, 2) & (1 | 1 << 13 | 1 << 23), 0, "restored v1 CPUID");
     await defaulted.restore_state(state);
-    assert.ok(cpuid(1, 0, 2) & 1, "restored historical CPU has SSE3");
+    assert.ok(cpuid(1, 0, 2) & 1 << 9, "restored custom CPU has SSSE3");
     await defaulted.destroy();
     const chosen = await machine({cpu_features: "x86-64-v3"});
-    await assert.rejects(chosen.restore_state(state), /The snapshot is from a machine with the CPU features none/);
+    await assert.rejects(chosen.restore_state(state), /The snapshot is from a machine with the CPU features SSSE3 \(cpu_features\)/);
     await chosen.destroy();
     console.log("PASS a snapshot's CPU features: taken by a machine with the default, refused by one with cpu_features");
 }

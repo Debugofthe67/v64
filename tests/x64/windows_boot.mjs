@@ -49,9 +49,8 @@
 // (WIN_LAUNCHER_ADMIN=1: elevated, through UAC once, so they are too).
 // WIN_NO_PROBE=1: no qualification probe (its Run dialog takes the focus from
 // full-screen programs), and no signing in again unless a password box shows.
-// WIN_CPU_FEATURES=<features>: cpu_features (cpu_type x86_64; "default": its
-// default, every feature; "none": none), e.g. the
-// x86-64-v3 set; the probes then check the YMM state (X64_WIN_AVX, see
+// WIN_CPU_FEATURES selects an x86_64 preset such as x86-64-v3, comma-separated
+// extensions or "default" for all released features. The probes then check the YMM state (X64_WIN_AVX, see
 // windows_probe.c); WIN_PROBE_SNAPSHOT=1: the machine saved and restored in
 // place once each probe's AVX part has started.
 // "savestate <file>": the machine saved to <file>.state, with what the guest
@@ -118,14 +117,9 @@ import {CPU_FEATURES, CPU_FEATURE_PRESETS} from "../../src/cpu_features.js";
 import {site_directory} from "../lib/site.mjs";
 import {tcp_endpoint} from "../devices/tcp_endpoint.mjs";
 import {STATE_OFFSETS} from "../../src/state_layout.js";
-// WIN_CPU_FEATURES: feature names, comma separated, or a preset ("x86-64-v3")
-// (default: cpu_type x86_64 without cpu_features, every released feature;
-// none: x86_64 with none)
-const win_cpu_features_default = process.env.WIN_CPU_FEATURES === "default";
-const win_cpu_features = win_cpu_features_default ?
-    Object.keys(CPU_FEATURES).filter(name => CPU_FEATURES[name]["released"] && CPU_FEATURES[name]["profiles"].includes("x86_64")) :
-    process.env.WIN_CPU_FEATURES === "none" ? [] : process.env.WIN_CPU_FEATURES ?
-        CPU_FEATURE_PRESETS[process.env.WIN_CPU_FEATURES] || process.env.WIN_CPU_FEATURES.split(",") : null;
+const feature_request = process.env.WIN_CPU_FEATURES;
+const win_cpu_features = !feature_request || feature_request === "default" ? undefined :
+    Object.hasOwn(CPU_FEATURE_PRESETS, feature_request) ? feature_request : feature_request.split(",");
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 // (the default: retro-gaming-site next to the main checkout, also from a worktree)
@@ -285,7 +279,7 @@ const vm = new V86({
     // the browser does by default
     disable_jit: !jit, experimental_smp_jit: jit, ir_sync_publication: !+process.env.WIN_ASYNC_PUBLICATION,
     ...(process.env.X64_IR_TIER0 === "0" ? {ir_tier0: false} : {}),
-    ...(win_cpu_features ? {cpu_type: "x86_64", ...(win_cpu_features_default ? {} : {cpu_features: win_cpu_features})} : {}),
+    ...(feature_request ? {cpu_type: "x86_64", cpu_features: win_cpu_features} : {}),
     // WIN_PARALLEL=1: the application processors run in vCPU workers
     // (WIN_PARALLEL_WASM: another build of it)
     ...(+process.env.WIN_PARALLEL ? {parallel: true, wasm_path: process.env.WIN_PARALLEL_WASM || root + "build/v86-parallel.wasm"} : {}),
@@ -1549,7 +1543,9 @@ try
         if(arch === 64) assert.ok(BigInt("0x" + r.high_block) >> 32n > 0n, "x64 top-down allocation above 4 GiB");
         // the YMM state (docs/simd-xsave-plan.md 11.3): 8 rounds of 3 steps
         // (one migrates, one faults) on 2N threads; x64 GetThreadContext
-        const features = win_cpu_features || [];
+        const features = feature_request === "default" ?
+            Object.keys(CPU_FEATURES).filter(name => CPU_FEATURES[name]["released"] && CPU_FEATURES[name]["profiles"].includes("x86_64")) :
+            typeof win_cpu_features === "string" ? CPU_FEATURE_PRESETS[win_cpu_features] : win_cpu_features || [];
         assert.ok(r.avx, `probe ${arch}: AVX line`);
         if(features.includes("AVX"))
         {

@@ -10,6 +10,7 @@ import {setImmediate as set_immediate} from "node:timers";
 import {fileURLToPath} from "node:url";
 import {prepare_glibc, check_glibc, qemu_cpu, GLIBC_COMMAND} from "./linux_glibc.mjs";
 import {prepare as prepare_alpine} from "../lib/alpine_image.mjs";
+import {CPU_FEATURE_PRESETS} from "../../src/cpu_features.js";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const directory = root + "build/x64-linux/";
 // X64_LINUX_FLAVOR: "virt" (default, the virt kernel) or "lts" (the standard
@@ -26,10 +27,12 @@ const hash = bytes => create_hash("sha256").update(bytes).digest("hex");
 // delivered as a ustar image on the IDE disk and unpacked by the guest shell.
 // Concurrent configurations get separate probe builds and result files.
 const cores = Number(process.env.X64_CORES || 1);
-// X64_CPU_FEATURES: CPU features of docs/simd-xsave-plan.md, comma-separated
-// (e.g. XSAVE); X64_LINUX_GLIBC=1: also the glibc acceptance of plan 11.3
+// X64_CPU_FEATURES: a named preset (default x86-64-v1) or comma-separated
+// extensions (e.g. XSAVE); X64_LINUX_GLIBC=1: also the glibc acceptance of plan 11.3
 // (tests/x64/linux_glibc.mjs), against a QEMU run with the same features
-const features = process.env.X64_CPU_FEATURES ? process.env.X64_CPU_FEATURES.split(",") : [];
+const request = process.env.X64_CPU_FEATURES || "x86-64-v1";
+const preset = Object.hasOwn(CPU_FEATURE_PRESETS, request);
+const features = preset ? CPU_FEATURE_PRESETS[request] : request.split(",");
 const glibc_test = !!+process.env.X64_LINUX_GLIBC;
 const tag_for = backend => `${backend}-${cores}c${process.env.X64_HIGH_MEMORY ? "-high" : ""}${flavor === "virt" ? "" : "-" + flavor}` +
     (features.length ? "-" + create_hash("sha256").update(features.join(",")).digest("hex").slice(0, 8) : "") + (glibc_test ? "-glibc" : "") +
@@ -124,8 +127,7 @@ function check_probes(text, net)
 }
 if(+process.env.X64_LINUX_QEMU)
 {
-    // (with features: QEMU's CPU gets them, v86's vendor and model)
-    const qemu_model = features.length || glibc_test ? qemu_cpu(features) : "qemu64,phys-bits=36,-pdpe1gb";
+    const qemu_model = qemu_cpu(features, request === "x86-64-v1");
     const child = spawn("qemu-system-x86_64", ["-machine", `pc,accel=tcg${high_memory ? `,max-ram-below-4g=${(512 << 20) - high_memory}` : ""}`, "-cpu", qemu_model, "-m", "512M",
         "-display", "none", "-monitor", "none", "-serial", "stdio", "-no-reboot", "-no-shutdown",
         "-kernel", directory + kernel_file, "-initrd", directory + initrd_file, "-cdrom", directory + name, "-append", cmdline,
@@ -190,8 +192,7 @@ const emulator = new V86({
     disable_jit: !jit, experimental_smp_jit: jit, ir_sync_publication: true, log_level: 0, net_device: {type: "virtio"},
     // (the x64 profile, as set_x64_test_capabilities below; LZCNT needs it)
     cpu_type: "x86_64",
-    // (exactly X64_CPU_FEATURES, none without it: x86_64's default has every feature, the reference's qemu64 none)
-    cpu_features: features, ...(features.length ? {cpu_features_unreleased: true} : {}),
+    cpu_features: preset ? request : features, cpu_features_unreleased: true,
     ...(process.env.X64_IR_TIER0 === "0" ? {ir_tier0: false} : {}),
     // X64_PARALLEL=1: the application processors run in vCPU workers
     ...(+process.env.X64_PARALLEL ? {parallel: true, wasm_path: root + "build/v86-parallel.wasm"} : {}),

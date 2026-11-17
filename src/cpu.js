@@ -1057,8 +1057,8 @@ const X86_64_DEFAULT_FEATURES = Object.keys(CPU_FEATURES).filter(name =>
 
 /**
  * The feature set (src/rust/cpu/features.rs) of the setting cpu_features: an
- * array of the names of src/cpu_features.js, or the name of a preset; not
- * given, every released feature for x86_64 and none for x86 ([]: none). A
+ * explicit nonempty list of extension names or a named preset. Omitting it
+ * selects every released feature for x86_64 and no extensions for x86. A
  * feature that cpuid_level cannot report is left out, with the features that
  * require it (docs/simd-xsave-plan.md 6.1); an unknown feature, one the CPU
  * profile cannot have or one without its requirements is an error.
@@ -1083,6 +1083,12 @@ export function resolve_cpu_features(requested, x86_64, cpuid_level)
     if(!Array.isArray(names))
     {
         throw new Error("cpu_features: unknown preset " + JSON.stringify(requested));
+    }
+    if(names.length === 0)
+    {
+        throw new Error("cpu_features: empty extension list. " + (x86_64 ?
+            'select "x86-64-v1" for the baseline or omit cpu_features for the default CPU' :
+            "omit cpu_features for the default 32-bit CPU"));
     }
     const profile = x86_64 ? "x86_64" : "x86";
     for(const name of names)

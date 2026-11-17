@@ -122,13 +122,13 @@ for(const count of [1, 2])
             assert.equal(cpu.mxcsr[0], 0x1F80, "reset: MXCSR");
         }
 
-        // A machine explicitly configured without extensions refuses the snapshot, and
+        // A machine explicitly configured with XSAVE alone refuses the snapshot, and
         // this one a snapshot from before features were recorded
-        const plain = await machine(count, []);
+        const plain = await machine(count, ["XSAVE"]);
         try
         {
             const target = plain.v86.cpu, before = target.get_machine_core_state();
-            await assert.rejects(plain.restore_state(saved), /CPU features SSSE3 SSE4.1 SSE4.2 XSAVE AVX .*this one has none/);
+            await assert.rejects(plain.restore_state(saved), /CPU features SSSE3 SSE4.1 SSE4.2 XSAVE AVX .*this one has XSAVE$/);
             assert.deepEqual(target.get_machine_core_state(), before, "nothing restored");
         }
         finally { await plain.destroy(); }

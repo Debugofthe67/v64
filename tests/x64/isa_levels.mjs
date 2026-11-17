@@ -119,19 +119,19 @@ dq idt64
 bits 64
 `, protected_body));
 
-for(const [features, level] of [["x86-64-v1", 1], ["x86-64-v2", 2], ["x86-64-v3", 3], [[], 1]])
+for(const [features, level] of [["x86-64-v1", 1], ["x86-64-v2", 2], ["x86-64-v3", 3], [undefined, 3]])
 {
+    const profile = features ?? "default";
     for(const jit of [false, true])
     {
         const bytes = await actual(directory, {length: 5 + cases.length, options: {cpu_type: "x86_64",
             cpu_features: features, disable_jit: !jit, experimental_smp_jit: jit, ir_sync_publication: true}});
         for(const [i, test] of cases.entries())
         {
-            const historical = Array.isArray(features) && test.level === 2 && !/^(pshufb|pminud|crc32)/.test(test.op);
-            assert.equal(bytes[4 + i], +(test.level > level && !historical),
-                `${JSON.stringify(features)}, JIT=${jit}, ${test.mode}: ${test.op}`);
+            assert.equal(bytes[4 + i], +(test.level > level),
+                `${profile}, JIT=${jit}, ${test.mode}: ${test.op}`);
         }
         assert.equal(bytes.at(-1), level === 3 ? 31 : 0, "LZCNT or its BSR fallback");
-        console.log(`PASS ${JSON.stringify(features)}, JIT=${jit}: ${cases.length} instruction checks`);
+        console.log(`PASS ${profile}, JIT=${jit}: ${cases.length} instruction checks`);
     }
 }

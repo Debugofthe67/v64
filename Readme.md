@@ -30,7 +30,8 @@ on WebGPU. Join its [Discord](https://discord.gg/re5CY3MbfW).
     memory with `extended_memory_size`.
   - `"x86_64"` reports SSSE3, SSE4.1, SSE4.2, AVX, AVX2, FMA, F16C, BMI1,
     BMI2, LZCNT, MOVBE and XSAVE, XSAVEOPT, XSAVEC, XSAVES by default;
-    `cpu_features` chooses others (for example `"x86-64-v2"`, or `[]` for none).
+    `cpu_features` selects a named level (for example `"x86-64-v1"` for the
+    64-bit baseline) or a nonempty list of extensions.
   - The x87 FPU computes with Berkeley SoftFloat (exact 80-bit results), or,
     with `x87_fast_math` (the default), adds, subtracts, multiplies and divides
     in native 64-bit floats; trigonometric and log functions use 64-bit floats.
