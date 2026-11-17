@@ -321,9 +321,12 @@ export async function run_geforce_guest(win98)
         }
         if(process.env.NV_STATE_LOAD)
         {
+            // The CPU reserves one MMIO block below 2 GiB. Compare with the
+            // initialized machine's normalized RAM size, not the UI request.
+            const expected_memory_size=vm.v86.cpu.memory_size[0];
             await vm.restore_state(state_bytes);
             state_bytes=null;
-            assert.equal(vm.v86.cpu.memory_size[0],memory_mb*1048576,"restored native guest memory size mismatch");
+            assert.equal(vm.v86.cpu.memory_size[0],expected_memory_size,"restored native guest memory size mismatch");
             if(process.env.NV_PROBE_REPLACE) replace_probe(tools.bytes, probe);
             if(process.env.NV_DISABLE_JIT) vm.v86.cpu.configure_jit_backend({disable_jit:true});
             await vm.run();
