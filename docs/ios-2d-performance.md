@@ -272,3 +272,24 @@ page-tier native retirement 从 11.806 亿降到 8.212 亿，AP 自身 retiremen
 该差值不是精确的 IOP 指令数，未编译指令与 AP 执行变化也会影响它。
 所有窗口 normal rate 1、亮屏、无 undefined/discarded host time；起止桌面已核对。
 本地保留 `deadline-rejected.patch`、测试及原始记录，产品继续使用原调度。
+
+## Thumb IT 调用：桌面复核仍未确认收益
+
+根据 AP 条件块回退采样，重新评估之前在 Infinity Blade 上未保留的最后 IT 槽 B/BL/BX/BLX
+模板，仅允许合法最后槽和正确条件，保留 LR、跨 ISA、假条件及前置加载故障的 ITSTATE。
+MMU-on QEMU 的 `qitcall` 32 个出口、完整 30 组 page、fallback 八组以及 seed 6017 的
+40×100×32 随机程序均通过。最初未开 MMU 的 QEMU 命令不适用于含零地址故障的该组测试；
+改用 `A64_MMU=1 A64_JIT=1 A64_JIT_HOT=1` 后通过，未修改原有 oracle。
+
+仍从相同检查点重新克隆每轮 RAM/NAND，固定全部其他组件：
+
+| 可见 LCD FPS | 对照前 | 候选 1 | 候选 2 | 对照后 |
+| --- | ---: | ---: | ---: | ---: |
+| 桌面 `desktop-it-call-*` | 27.351 | 27.739 | 27.217 | 26.691 |
+| PvZ 实战 `pvz-it-call-*` | 28.548 | 29.649 | 29.245 | 29.449 |
+
+首组桌面均值 +1.7%，追加反向复测却为候选 26.633 / 对照 27.268（-2.3%）。
+三轮桌面每组均值合并仅约 +0.3%，无法确认可重复改善，因此撤回候选；PvZ 的约 +1.5%
+也不足以抵消桌面复核不一致。保留原调度、原 IT 模板及已有两项图形优化。
+所有窗口 normal rate 1、亮屏、无 undefined/discarded host time；桌面与实际战斗图片已核对。
+原始记录、候选 Wasm 及 `desktop-it-call-rejected.patch` 仅保存在本地。
