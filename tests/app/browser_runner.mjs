@@ -18,7 +18,7 @@
 // BROWSER_PROFILE keeps a caller-owned disposable profile; BROWSER_PORT
 // preserves its origin for checkpoint benchmarks. BROWSER_WASM overrides
 // only build/v86-arm64.wasm, without replacing another test's build.
-// BROWSER_CPU_WORKER and BROWSER_WEBGPU_BUNDLE select saved JS controls for
+// BROWSER_CPU_WORKER, BROWSER_GLES_PLUGIN and BROWSER_WEBGPU_BUNDLE select saved JS controls for
 // performance comparisons without overwriting shared build outputs.
 // BROWSER_PROCESS_METRICS=1 adds this Chrome's cumulative per-process CPU
 // seconds to /__host_metrics (requires BROWSER_DEBUG_PORT). Sample outside
@@ -267,6 +267,7 @@ const server = http.createServer(async (req, res) =>
     }
     const override = address.pathname === "/build/v86-arm64.wasm" ? process.env.BROWSER_WASM :
         address.pathname === "/build/cpu-worker.js" ? process.env.BROWSER_CPU_WORKER :
+        address.pathname === "/build/v86-gles.js" ? process.env.BROWSER_GLES_PLUGIN :
         address.pathname === "/build/glbridge/libv86-webgpu.js" ? process.env.BROWSER_WEBGPU_BUNDLE : null;
     const file = override ? path.resolve(override) : path.resolve(root, "." + decodeURIComponent(address.pathname));
     if(!file.startsWith(root)) { res.writeHead(403).end(); return; }
