@@ -3325,11 +3325,11 @@ impl Emitter<'_> {
             self.load_value(size as u32, signed, true);
             self.s(super::T1);
             if rt == 15 {
-                // a return: to this instruction set (else the interpreter's)
+                // Validate before writeback; valid targets may change ISA.
                 self.g(super::T1);
                 self.b.wrap_i64_to_i32();
                 self.si(C0);
-                self.same_set(offset);
+                self.load_target(offset);
                 if writeback {
                     self.set_r32(rn, A2);
                 }
@@ -3408,15 +3408,14 @@ impl Emitter<'_> {
         self.si(super::HH);
         let pc = load && list & 0x8000 != 0;
         if pc {
-            // a return: its target (the highest word) first, to this
-            // instruction set (else the interpreter's, before any effect)
+            // Check the highest word before any register/writeback effect.
             self.gi(super::HH);
             self.c32(4 * (n - 1));
             self.b.add_i32();
             self.load_value(2, false, true);
             self.b.wrap_i64_to_i32();
             self.si(C0);
-            self.same_set(offset);
+            self.load_target(offset);
         }
         let mut at = 0;
         for r in (0..15u8).filter(|r| list & 1 << r != 0) {
@@ -3457,24 +3456,34 @@ impl Emitter<'_> {
         }
     }
 
-    /// Retry the instruction at `offset` when the target in C0 is another
-    /// instruction set's (T32: bit 0 set; A32: bits 1:0 clear)
-    fn same_set(&mut self, offset: u16) {
-        let thumb = self.env.isa == Isa::T32;
+    /// Leave invalid ARM alignment to the interpreter before any effects.
+    fn load_target(&mut self, offset: u16) {
         self.gi(C0);
-        self.c32(if thumb { 1 } else { 3 });
+        self.c32(3);
         self.b.and_i32();
-        self.c32(thumb as i32);
-        self.b.ne_i32();
+        self.c32(2);
+        self.b.eq_i32();
         self.retry_if(offset);
     }
-    /// PC := C0 (bit 0 clear), dispatched
+    /// LoadWritePC: select the ISA and its chaining table as BX does.
     fn jump_c0(&mut self) {
+        let thumb = self.env.isa == Isa::T32;
         self.gi(C0);
         self.c32(!1);
         self.b.and_i32();
         self.b.extend_unsigned_i32_to_i64();
         self.s(super::PC);
+        self.gi(C0);
+        self.c32(1);
+        self.b.and_i32();
+        if thumb {
+            self.b.eqz_i32();
+        }
+        self.b.if_void();
+        self.c32(if thumb { 0 } else { crate::aarch64::cpu::PSTATE_T as i32 });
+        self.exchange_state();
+        self.b.br(self.f().leave);
+        self.b.block_end();
         self.b.br(self.f().dispatch);
     }
 
