@@ -79,18 +79,23 @@ pub fn a64_video_convert_bgra() -> u32 {
         let mut any = 0u32;
         #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
         {
-            use core::arch::wasm32::{i32x4_extract_lane, i32x4_splat, i8x16_shuffle, v128_load, v128_or, v128_store};
+            use core::arch::wasm32::{
+                i32x4_extract_lane, i32x4_splat, i8x16_shuffle, v128_load, v128_or, v128_store,
+            };
             let mut seen = i32x4_splat(0);
             let alpha = i32x4_splat(0xFF000000u32 as i32);
             while at + 4 <= source.len() {
                 let p = v128_load(source.as_ptr().add(at).cast());
                 seen = v128_or(seen, p);
-                let rgba = i8x16_shuffle::<2,1,0,3,6,5,4,7,10,9,8,11,14,13,12,15>(p, p);
+                let rgba =
+                    i8x16_shuffle::<2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15>(p, p);
                 v128_store(source.as_mut_ptr().add(at).cast(), v128_or(rgba, alpha));
                 at += 4;
             }
-            any |= (i32x4_extract_lane::<0>(seen) | i32x4_extract_lane::<1>(seen) |
-                i32x4_extract_lane::<2>(seen) | i32x4_extract_lane::<3>(seen)) as u32;
+            any |= (i32x4_extract_lane::<0>(seen)
+                | i32x4_extract_lane::<1>(seen)
+                | i32x4_extract_lane::<2>(seen)
+                | i32x4_extract_lane::<3>(seen)) as u32;
         }
         while at < source.len() {
             let p = source[at];

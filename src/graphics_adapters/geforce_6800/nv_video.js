@@ -26,16 +26,16 @@ export class NVVideo
     }
     read(at)
     {
-        if(at===0x8700)return (this.pending[0]?1:0)|(this.pending[1]?16:0);
-        if(at===0x8B04)return ((this.reg(at)&0xF000FFFF)|this.counter<<16)>>>0;
-        if(at===0x8B08)return ((this.reg(at)&~0x010F0FFF)|this.counter|this.consumer<<16|
+        if(at===0x8700) return (this.pending[0]?1:0)|(this.pending[1]?16:0);
+        if(at===0x8B04) return ((this.reg(at)&0xF000FFFF)|this.counter<<16)>>>0;
+        if(at===0x8B08) return ((this.reg(at)&~0x010F0FFF)|this.counter|this.consumer<<16|
             (this.commands.length?0x01000000:0))>>>0;
         return null;
     }
     capture(index) {return PARAMS.map(at=>this.reg(at+index*4)).concat(this.reg(0x8B00));}
     written(at,value)
     {
-        if(at===0x8700)for(let i=0;i<2;i++)if(value&1<<(i*4))this.pending[i]=this.capture(i);
+        if(at===0x8700) for(let i=0;i<2;i++) if(value&1<<(i*4)) this.pending[i]=this.capture(i);
         // NV30's overlay scheduler adds a 12-bit retrace counter and a
         // pending offset slot. 175.16 feeds it from its own sixteen-entry
         // software queue, polls 8B08[24] before submitting another offset,
@@ -53,7 +53,7 @@ export class NVVideo
         const [base,limit,luma,chroma,offset,input,origin,ds,dt,point,size,format,key]=job;
         const width=input&65535,height=input>>>16,pitch=format&65535;
         const outw=size&65535,outh=size>>>16,extent=pitch*(height-1)+width*2;
-        if(format&1 || format&~0x0111FFFF)throw new RangeError("NV PVIDEO unsupported format");
+        if(format&1 || format&~0x0111FFFF) throw new RangeError("NV PVIDEO unsupported format");
         if(!width||!height||width&1||width>8192||height>8192||!outw||!outh||outw>8192||outh>8192||
             pitch<width*2||!ds||!dt||offset+extent>limit+1||base+offset+extent>this.device.vram_size)
             throw new RangeError("NV PVIDEO invalid surface bounds");
@@ -77,11 +77,11 @@ export class NVVideo
                 try {this.plan(command[2]);}
                 catch(error)
                 {
-                    if(!(error instanceof RangeError))throw error;
-                    if(this.faults.at(-1)!==error.message)this.faults.push(error.message);
+                    if(!(error instanceof RangeError)) throw error;
+                    if(this.faults.at(-1)!==error.message) this.faults.push(error.message);
                     return;
                 }
-                if(!(this.reg(0x8704)&1))this.active=command[2];
+                if(!(this.reg(0x8704)&1)) this.active=command[2];
                 this.commands.shift();this.consumer=this.consumer+1&15;
                 this.device.registers.set(0x8100,this.reg(0x8100)|0x100);
                 this.device.update_irq();
@@ -89,13 +89,13 @@ export class NVVideo
         }
         if(this.reg(0x8704)&1) {this.active=null;this.pending=[null,null];return;}
         const next=this.pending[this.last^1]?this.last^1:this.last;
-        const job=this.pending[next];if(!job)return;
+        const job=this.pending[next];if(!job) return;
         try {this.plan(job);}
         catch(error)
         {
-            if(!(error instanceof RangeError))throw error;
-            if(this.faults.at(-1)!==error.message)this.faults.push(error.message);
-            if(this.faults.length>16)this.faults.shift();
+            if(!(error instanceof RangeError)) throw error;
+            if(this.faults.at(-1)!==error.message) this.faults.push(error.message);
+            if(this.faults.length>16) this.faults.shift();
             return;
         }
         this.active=job;this.last=next;this.pending[next]=null;
@@ -119,14 +119,14 @@ export class NVVideo
     }
     render(out,vram,width,height,keys=null)
     {
-        if(!this.active)return;
+        if(!this.active) return;
         const p=this.plan(this.active);
         for(let y=Math.max(0,p.y);y<Math.min(height,p.y+p.outh);y++)
             for(let x=Math.max(0,p.x);x<Math.min(width,p.x+p.outw);x++)
         {
             const at=(y*width+x)*4;
             const key=keys?keys[y*width+x]:(out[at]<<16|out[at+1]<<8|out[at+2]);
-            if(p.format&0x100000 && key!==(p.key&0xFFFFFF))continue;
+            if(p.format&0x100000 && key!==(p.key&0xFFFFFF)) continue;
             const sx=p.sx+(x-p.x)*p.ds/1048576,sy=p.sy+(y-p.y)*p.dt/1048576;
             const color=this.pixel(p,vram,Math.floor(sx),Math.floor(sy));
             out[at]=color[0];out[at+1]=color[1];out[at+2]=color[2];out[at+3]=255;

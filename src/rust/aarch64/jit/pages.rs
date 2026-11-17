@@ -1616,9 +1616,7 @@ static mut HELPER_WORDS: [(u32, u32); HELPER_WORDS_SIZE] = [(0, 0); HELPER_WORDS
 static mut A32_STEPPED_WORDS: [(u32, u32); HELPER_WORDS_SIZE] = [(0, 0); HELPER_WORDS_SIZE];
 static mut A32_RETRIED_WORDS: [(u32, u32); HELPER_WORDS_SIZE] = [(0, 0); HELPER_WORDS_SIZE];
 #[inline(always)]
-fn note_helper_word(word: u32) {
-    note_instruction_word(&raw mut HELPER_WORDS, word);
-}
+fn note_helper_word(word: u32) { note_instruction_word(&raw mut HELPER_WORDS, word); }
 #[inline(always)]
 fn note_instruction_word(table: *mut [(u32, u32); HELPER_WORDS_SIZE], word: u32) {
     let table = unsafe { &mut *crate::parallel::machine(table) };
@@ -1654,7 +1652,12 @@ pub fn a32_stepped_word(i: u32, count: bool) -> f64 {
     let e = unsafe {
         (*crate::parallel::machine(&raw mut A32_STEPPED_WORDS))[i as usize % HELPER_WORDS_SIZE]
     };
-    if count { e.1 as f64 } else { e.0 as f64 }
+    if count {
+        e.1 as f64
+    }
+    else {
+        e.0 as f64
+    }
 }
 
 /// Exact AP AArch32 words retried after a native activation refused them.
@@ -1663,7 +1666,12 @@ pub fn a32_retried_word(i: u32, count: bool) -> f64 {
     let e = unsafe {
         (*crate::parallel::machine(&raw mut A32_RETRIED_WORDS))[i as usize % HELPER_WORDS_SIZE]
     };
-    if count { e.1 as f64 } else { e.0 as f64 }
+    if count {
+        e.1 as f64
+    }
+    else {
+        e.0 as f64
+    }
 }
 
 #[no_mangle]

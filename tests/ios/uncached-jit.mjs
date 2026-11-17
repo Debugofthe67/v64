@@ -78,7 +78,7 @@ assert.equal(result.status,"ok",result.text);assert.equal(probes,2);
 assert.ok(result.page_tier.compiled>0,"real page functions executed");
 if(cpu_ref.wm.exports.a32_retried_word){
  const word=cpu_ref.wm.exports.a32_retried_word;let seen=false;
- for(let i=0;i<4096;i++)if(word(i,false)===0xE5902000&&word(i,true)>0)seen=true;
+ for(let i=0;i<4096;i++) if(word(i,false)===0xE5902000&&word(i,true)>0)seen=true;
  assert.ok(seen,"AP retries report the actual faulting LDR, separately from page steps");
 }
 console.log("PASS: compiled uncached DRAM, widths 1/2/4/8/16, no Device cache entries, alignment/RO faults, MMIO/hole/code/reservation exclusion");

@@ -265,7 +265,7 @@ export class NVDisplay
         }
         const src = this.device.vram(), out = this.pixels.data;
         const keyed=!!(this.device.video?.active?.[11]&0x100000);
-        if(keyed&&this.overlay_keys?.length!==width*height)this.overlay_keys=new Uint32Array(width*height);
+        if(keyed&&this.overlay_keys?.length!==width*height) this.overlay_keys=new Uint32Array(width*height);
         for(let y = 0; y < height; y++) for(let x = 0; x < width; x++)
         {
             const s = this.front + y * pitch + x * bytes, d = (y * width + x) * 4;
@@ -278,7 +278,7 @@ export class NVDisplay
                 color = (r * 255 / 31 << 16) | (g * 255 / (rgb565 ? 63 : 31) << 8) | b * 255 / 31;
             }
             else color = src[s + 2] << 16 | src[s + 1] << 8 | src[s];
-            if(keyed)this.overlay_keys[y*width+x]=color&0xFFFFFF;
+            if(keyed) this.overlay_keys[y*width+x]=color&0xFFFFFF;
             out[d] = bytes === 1 ? color >>> 16 : this.gamma[(color >>> 16 & 255) * 3];
             out[d + 1] = bytes === 1 ? color >>> 8 : this.gamma[(color >>> 8 & 255) * 3 + 1];
             out[d + 2] = bytes === 1 ? color : this.gamma[(color & 255) * 3 + 2]; out[d + 3] = 255;
