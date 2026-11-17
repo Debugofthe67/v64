@@ -1,0 +1,205 @@
+{
+  "date": "2026-11-17",
+  "status": "PASS",
+  "scope": "Original GTA SA image, native XP 175.16 cold-boot functional rendering, player input, original quit flow and normal XP shutdown. Not a performance or full-game completion claim.",
+  "image": "retro-gaming-site/game/gtasa.img",
+  "configuration": {
+    "driver": "6.14.11.7516 (ForceWare 175.16)",
+    "machine": "i440FX/IDE",
+    "acpi": false,
+    "cores": 1,
+    "requestedRamMiB": 2048,
+    "normalizedRamBytes": 2147352576,
+    "vramMiB": 256,
+    "renderer": "Chrome WebGPU through native NV40; guest API proxy disabled",
+    "boot": "Cold boot of healthy post-install/restart OS overlay; fresh game overlay. No RAM restore, main-loop hooks, clock changes or guest code patches.",
+    "skipDriverInstallationInProbe": true
+  },
+  "ownerConfirmation": {
+    "driverAlreadyRestarted": true,
+    "copiedProxyDLLs": false
+  },
+  "preflight": {
+    "id": 17518,
+    "mode": 0,
+    "gdiFailures": 0,
+    "ddrawFailures": 0,
+    "d3d9Failures": 0,
+    "checks": [
+      "Native D3D9 HAL, RGB565 render/system-memory readback, four texture format readbacks"
+    ],
+    "artifact": {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/NV.TXT",
+      "bytes": 2326,
+      "sha256": "a732f8710c3d25efab4602babe2168f636932dcc30cfe45335f7cd9b6819e68e"
+    }
+  },
+  "nativeRuntime": {
+    "image": "/Users/renruisi/Desktop/Code/retro-gaming-site/game/gtasa.img",
+    "original": {
+      "exe": "403eb9ec0be348615697363033c1166bba8220a720d71a87576a6b2737a9b765",
+      "dll": "d06c32846187a9a4b532ee5f7a778352a232e9d8373894ece7d7e2fe794282f5"
+    },
+    "after": {
+      "exe": "403eb9ec0be348615697363033c1166bba8220a720d71a87576a6b2737a9b765",
+      "dll": null,
+      "renamed": "d06c32846187a9a4b532ee5f7a778352a232e9d8373894ece7d7e2fe794282f5"
+    },
+    "nativeRuntime": "Pre-existing application-local proxy renamed in the test COW only; original EXE and proxy bytes unchanged."
+  },
+  "uiSequence": [
+    "Original startup video through PVIDEO; original Main Menu -> Start Game -> New Game",
+    "Airport opening: CJ skin, clothing, animation, textured building and subtitles",
+    "Normal Space input skips the two opening cutscene segments",
+    "Jefferson starting alley: CJ, bicycle, trees, building textures, minimap, HUD, tutorial and animated blue objective marker",
+    "The image tutorial specifies arrow keys. Up moves Carl closer to the bicycle; Right changes facing and lateral position. D also produced a jump during the initial input check. Canonical screenshots record actual input results.",
+    "Escape -> Pause Menu -> Quit Game -> original confirmation Yes",
+    "Returned to XP desktop, then stock shutdown.exe -s -t 0 -> safe-to-turn-off screen"
+  ],
+  "input": "Ordinary PS/2 keyboard input with make/break events and longer holds under slow emulation; no synthesized game state or results. Earlier short holds could miss the game polling interval.",
+  "visuals": [
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-main-menu.png",
+      "bytes": 120591,
+      "sha256": "4138d2d65bc0c294fb242d92122aaa1da4ef96c53058ab8e6ed13a9018ba6598"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-airport-character.png",
+      "bytes": 434387,
+      "sha256": "d07aeb02b99d243939096eb1a906ff410196c9aa8671fcc472098e46c2d36e7c"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-play-before-input.png",
+      "bytes": 279976,
+      "sha256": "140a84ae08289c8f2dc5118b7f625ebb02e422894c20d23c9853a471ddce8bc1"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-play-d-key-jump.png",
+      "bytes": 590779,
+      "sha256": "4f906f40c0a364fd666adccc1e0f6f6f27e2760531788948910eb3c570d24428"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-play-arrow-forward.png",
+      "bytes": 573803,
+      "sha256": "54716a98daeb1190d8f75d4258f66a4ccf3b3b674a26b306a267d43de045e19e"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-play-arrow-right.png",
+      "bytes": 565901,
+      "sha256": "df0ba04534f779ee39ca6d61fc98408ed667c25e07768dff2d0795524b0a34f9"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-pause-menu.png",
+      "bytes": 126222,
+      "sha256": "f5e85d2d0f714b0c56b79f85e7cca2579534f516af2df66ab7b145246289301b"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-quit-menu.png",
+      "bytes": 126306,
+      "sha256": "2fd8576c65729e19e4c5d907414a2d83a9413d3e38150dd3e2c7ae7cd9223094"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-quit-confirmation.png",
+      "bytes": 147837,
+      "sha256": "3220ac96726dfc37a26695ebe4191e7bb5f32d354ea0d08493ace5f623d41bee"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-desktop-return.png",
+      "bytes": 1196722,
+      "sha256": "d8cfe9e8b3264e673f95877a3dc60fbc100640d8027aba9f2164494e05a596b7"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/normal-shutdown.png",
+      "bytes": 6346,
+      "sha256": "f98dc3a08b2c22263dde39dfcbbf740011acb922f7814fae1957d803b26618f2"
+    }
+  ],
+  "gpuCumulativeIncludingProbe": {
+    "batches": 11220,
+    "draws": 109102,
+    "bytes": 4113017280,
+    "readbacks": 16254,
+    "failures": 0,
+    "uploads": 2141,
+    "uploadBytes": 793608104,
+    "resourceHits": 277792,
+    "resourceMisses": 698,
+    "resourceEvictions": 186,
+    "coldUploadBytes": 24517896,
+    "resourceBytes": 19684144,
+    "peakResourceBytes": 24342624,
+    "nativeBCUploads": 830,
+    "nativeBCUploadBytes": 9421032
+  },
+  "pgraphFaults": [],
+  "videoFaults": [],
+  "pfifoDiagnostics": {
+    "retainedCount": 64,
+    "kinds": [
+      "cache"
+    ],
+    "flags": [
+      256
+    ],
+    "note": "Retained 0x100 software-engine cache traps; not reported as zero PFIFO diagnostics."
+  },
+  "normalShutdown": {
+    "command": "C:\\WINDOWS\\system32\\shutdown.exe -s -t 0",
+    "eip": 2154770504,
+    "halted": 1,
+    "display": null
+  },
+  "originalHostImagesUnchanged": {
+    "os": true,
+    "game": true,
+    "method": "O_RDONLY original backing with disposable COW overlays; harness checks original size and mtime; game EXE and renamed proxy contents separately hash-verified."
+  },
+  "artifacts": [
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/startup-software.json",
+      "bytes": 764,
+      "sha256": "cd1415053034903af9815f3176affcfa184a69ed7ddd645bb781244ee7c36368"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/native-runtime-files.json",
+      "bytes": 582,
+      "sha256": "413c67c2970792b71d73a944acd27610e93be186436b72e9a1e5f12839f14fa4"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/gameplay-status.json",
+      "bytes": 1170,
+      "sha256": "c163064928cba80db26b25da71d1c77f6504722abca0ad61e9b462f2dcabd63c"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/exit-status.json",
+      "bytes": 1172,
+      "sha256": "43759b4c097a86e727e0761863b5aed573182624067100ae3091619558f3eabf"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/normal-shutdown-status.json",
+      "bytes": 20378,
+      "sha256": "e7a2aa07fbd7e92d668afdd78daf467f1c61350ff90ef2247dd930fb831d6f07"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/trace.json",
+      "bytes": 513889,
+      "sha256": "69eef87bd3f4330b2577477741dbfde8e18bb6bbea02971cba926abcfc66adee"
+    },
+    {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/result.json",
+      "bytes": 3105,
+      "sha256": "54dd72aedfbadc880f16b23494cadd036293b2d6e824b5c97da83ec6c221b2d4"
+    }
+  ],
+  "fixes": [
+    "58d593573 native browser renderer loading",
+    "fa5e087c7 unused TEX8/9 controls",
+    "706fe5aac native PVIDEO counter/interrupt notification",
+    "4618c57d9 alternate DirectX SHORT2N/SHORT4N declarations"
+  ],
+  "limits": [
+    "GTA SA remains slow. No FPS, benchmark score, timed mission or full-game completion claim.",
+    "The pre-existing application-local D3D9 proxy is only renamed in the test overlay. Native users of this image must retain a backup and move that identified proxy aside; Windows System32 DirectX DLLs are untouched.",
+    "Earlier restored or faulting diagnostic runs are excluded from this cold-boot acceptance."
+  ]
+}
