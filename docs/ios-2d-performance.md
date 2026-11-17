@@ -362,3 +362,19 @@ QEMU IT 调用、seed 6023 随机程序、iOS 与原生 IOP 状态回归通过�
 组合，验证去掉内核单步/同步往返后的实际效果。
 所有窗口 normal rate 1、亮屏、无 undefined/discarded host time，实战图片已核对。
 本地保留 `el0-gpr-rejected.patch` 及原始记录。
+
+## 全局 locals 与原生 DCCSW 组合撤回
+
+在全局 locals 上叠加精确 Cortex-A8 PL1 DCCSW 原生空操作。ARM/Thumb、假条件、
+相邻 CP15 保留原路径及真实用户态 UND 向量检查均通过；主/fallback、完整 page、
+seed 6024 随机程序、iOS、原生 counter/status、类型检查与 app 构建通过。
+
+| 可见 LCD FPS | 对照前 | 组合 1 | 组合 2 | 对照后 |
+| --- | ---: | ---: | ---: | ---: |
+| `desktop-gpr-clean-*` | 26.077 | 26.541 | 25.516 | 27.562 |
+| `pvz-gpr-clean-*` | 28.548 | 24.648 | 25.948 | 27.698 |
+
+桌面均值约 -2.9%、PvZ 约 -10.0%，没有达到保留门槛，撤回全局 locals。
+继续独立测量 DCCSW 路径，保持原 GPR 策略；不能以减少组件单步次数替代实际 FPS。
+所有窗口 normal rate 1、亮屏、无 undefined/discarded host time。
+组合补丁和原始记录保存在本地 `gpr-cache-clean-rejected.patch` 与上述目录。
