@@ -413,3 +413,20 @@ counter/status 和 app 检查通过。独立复现：`node tests/ios/cache-clean
 `0xe59cf000`（LDR PC,[R12]）3,991,779 次，POP 479,848 次，其他 LDR 各 424,483 次。
 因此下一项检查内存返回的 ISA 切换。计数是调用频率，不是独占耗时；诊断运行不用于 FPS。
 此轮 AP 约 10.32 秒、IOP 7.31 秒；AP 等待仅约 0.39 秒。
+
+## 内存返回切换候选撤回
+
+按真实重试热点实现 LDR/POP/LDM 的 ISA 切换，失效目标仍在所有效果之前重试。
+新增 25 个 QEMU 用例、32 个 IT 用例、完整 page、fallback、seed 6024 随机程序及 iOS 回归通过。
+测试额外断言热后重试少于 100 次，避免仅靠回退通过。
+
+| 可见 LCD FPS | 对照前 | 候选 1 | 候选 2 | 对照后 |
+| --- | ---: | ---: | ---: | ---: |
+| 桌面 `desktop-load-interwork-*` | 26.072 | 25.867 | 26.463 | 25.562 |
+| PvZ `pvz-load-interwork-*` | 24.799 | 26.448 | 23.948 | 24.048 |
+
+桌面活动窗口重试由约 481/502 万次降到 85/86 万次，但 FPS 合并仅 +1.35%，
+PvZ 约 +3.17%，各有一对下降。没有稳定 FPS 证据，撤回运行时和定向测试，
+保留补丁 `load-interwork-rejected.patch`、`load-interwork-rejected.a32.S` 与原始结果。
+所有窗口正常 rate=1、亮屏、无新增 undefined 或 discarded host ms。下一项单独验证
+正常时钟下的 IOP 时间片，确定 7.31 秒 IOP 成本是否能降低。
