@@ -180,3 +180,21 @@ host time 或未定义指令，画面中没有失败菜单或息屏。起止图�
 
 保留桌面与新实战的配对种子，删除已关闭的工作副本、旧开局种子及临时解包的游戏可执行文件。
 本轮没有创建原始 NAND/HFS 临时 `.img`；原始测试 profile 和 Downloads 中的 IPA 未作删除。
+
+## 桌面继续分析：传输调用与线程时序
+
+新增只用于诊断的 `desktop-profile-worker.js`、GLES 插件探针及构建/采集工具。探针在 JS/Wasm
+调用边界计时，不切换寄存器组，不改来宾时钟、IOP 预算或设备响应；环形事件记录上限 131,072。
+正常构建不加载这些入口。先用 `tools/ios/build-desktop-profile.mjs` 构建，在独立 runner 上指定
+`BROWSER_CPU_WORKER=build/ios-desktop-profile-worker.js` 和
+`BROWSER_GLES_PLUGIN=build/ios-desktop-profile-gles.js`，随后运行
+`tools/ios/capture-desktop-profile.mjs build/ios/<prefix> [debug-port]`。
+
+同一桌面检查点、40 次拖动预热后的 20.26 s 诊断窗口中，AP Wasm 调用累计 10.19 s，IOP 7.64 s；
+这些包含时间与帧请求/宿主排队有重叠，不可相加作为完整独占分解。观察到约 166,544 次机器调度、
+226,082 次 GLES 非读传输调用和 47,269 次空读重试。保留下来的末尾 2.26 s 时间线有 220 个完整
+配对 GPU 请求，等待中位数 0.282 ms、95 分位 6.380 ms。下一步验证频繁 UDF 图形传输入口的
+解释器往返是否可减少；IOP 的采样权重本身仍不足以证明限帧原因。
+
+该采样运行带探针与 V8 Profiler，仅用于归因，不计入 FPS 优化成绩。原始资料为本地
+`desktop-trace-2-{trace.json,cpu.cpuprofile,main.cpuprofile}`；诊断页面完整运行、场景检查通过。
