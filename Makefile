@@ -64,6 +64,7 @@ ci-tests: rust-test test-glbridge app-check platform-contract-tests ios-tests gl
 	./tests/api/sb16-state.js
 	./tests/api/sb16-dma.js
 	./tests/devices/disk_error.mjs
+	node tests/devices/geforce_6800_bc_upload.mjs
 	./tests/devices/default_cards.js
 	TEST_RELEASE_BUILD=1 ./tests/devices/default_cards.js
 	./tests/devices/e1000.js
