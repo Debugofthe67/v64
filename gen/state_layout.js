@@ -333,7 +333,7 @@ export const STATICS = {
         CODE_BUDGET_MB: "machine", LIVE_BYTES: "machine",
         // (diagnostics: the steps, context changes and helpers by instruction class and system register, every core's;
         // AArch32's helper calls by word, and the a64_page_aarch32_trace switch and its event ring)
-        STEP_COUNTS: "debug", STEP_WORDS: "debug", SYSREG_COUNTS: "debug", SYS_COUNTS: "debug", HELPER_WORDS: "debug",
+        STEP_COUNTS: "debug", STEP_WORDS: "debug", SYSREG_COUNTS: "debug", SYS_COUNTS: "debug", HELPER_WORDS: "debug", A32_STEPPED_WORDS: "debug",
         A32_TRACE: "machine", TRACE: "debug", TRACE_AT: "debug",
         // (a helper that was done but asked the run loop for something: from the call to the function's exit)
         HELPER_DONE: "scratch",

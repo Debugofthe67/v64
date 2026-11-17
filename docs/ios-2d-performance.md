@@ -293,3 +293,15 @@ MMU-on QEMU 的 `qitcall` 32 个出口、完整 30 组 page、fallback 八组以
 也不足以抵消桌面复核不一致。保留原调度、原 IT 模板及已有两项图形优化。
 所有窗口 normal rate 1、亮屏、无 undefined/discarded host time；桌面与实际战斗图片已核对。
 原始记录、候选 Wasm 及 `desktop-it-call-rejected.patch` 仅保存在本地。
+
+## AArch32 单步的精确指令字诊断
+
+此前 `steps.stepped` 按指令类别累计，却只保存该类别最后出现的 word，不能据此认定某一个
+word 的频率。新增有界的 `steps.a32_stepped_words`，仅在 `a64_step_stats=1` 时维护，
+普通 UI 的开关 0 不更新直方图。取指/调试异常未成功读取指令时，排除遗留的 LAST_STEPPED，
+并恢复旧诊断值以保留原类别统计的行为；不更改架构状态、异常或总执行量。
+
+新增 0→1→0 各 64 次实际单步回归，检查每次 PC 正确前进和精确计数；随后故意取指失败，
+确认不会重复计算前一条指令。主核心及非 SIMD 核心通过，原 helper 开关回归仍通过。
+新静态表归类为 debug，状态布局检查、iOS 回归、类型检查与 app 构建通过。
+只在独立诊断 worker 打开，采样结束恢复原开关；相关采样不计入 FPS。
