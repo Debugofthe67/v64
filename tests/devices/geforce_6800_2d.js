@@ -176,8 +176,8 @@ assert.deepEqual([...vram.subarray(672,678)],[31,0,224,7,0,248],"INDEX point sta
 view.setUint16(0x1100,0x07E0,true);call(indexed,0x3EC,0);call(indexed,0x3F4,2<<16);
 call(indexed,0x400,0x00038001);
 assert.deepEqual([...vram.subarray(704,710)],[0,248,224,7,31,0],"INDEX_FORMAT zero uploads I8 and can read LUT entries above fifteen");
-call(resumed,0x304,2<<16);call(resumed,0x400,0x07E0F800);
-assert.deepEqual(resumed.stream,[0,0,248,224,7],"IFC point restarts upload using the configured image size");
+vram.fill(0,704,710);call(resumed,0x304,2<<16);call(resumed,0x400,0x07E0F800);
+assert.deepEqual([...vram.subarray(704,710)],[0,248,224,7,0,0],"IFC point restarts upload using the configured image size");
 target.methods.set(0x300,10);target.methods.set(0x30C,800);
 const sifc = object(0x5C00,0x3066,[[0x198,0x500],[0x300,1],[0x304,2<<16|2],[0x308,0x200000],[0x30C,0x100000],
     [0x310,0],[0x314,2<<16|4],[0x2FC,3]]);
@@ -272,3 +272,36 @@ packedRestored.stream=[0,1,2,3,4];packedRestored.methods.set(0x40000,4);vram.fil
 call(packedRestored,0x400,0x08070605);
 assert.equal(view.getUint16(3008,true),5*0x1111);assert.equal(view.getUint16(3034,true),8*0x1111,"old partial-row snapshots resume at their committed pixel");
 console.log("PASS: packed I4/I8 cross-row INDEX words, crop, snapshot continuation, final padding and atomic faults");
+
+const wideWidth = 1920, pitch = wideWidth * 4, base = 0x10000;
+dma(0xB000, 0x303D, pitch - 1, base | 3);
+object(0xB100, 0x3062, [[0x188, 0xB00], [0x300, 10], [0x304, pitch << 16]]);
+const wide = object(0xB200, 0x308A, [[0x19C, 0xB10], [0x300, 4], [0x308, 1 << 16 | wideWidth]]);
+call(wide, 0x30C, 1 << 16 | wideWidth);
+for(let x = 0; x < wideWidth; x++)
+{
+    const pixel = 0xDEAD0000 + x;
+    call(wide, 0x400, pixel);
+    assert.equal(view.getUint32(base + x * 4, true), pixel, "each DWORD is immediately visible");
+    assert.equal(wide.stream.length, 1, "completed IFC pixels must not accumulate in the row buffer");
+}
+assert.throws(() => call(wide, 0x400, 0), /excess/);
+
+// Older snapshots can contain both previously drawn pixels and buffered bytes.
+for(const committed of [0, 4])
+{
+    const legacy = graph.object(0, 0xB200);
+    call(legacy, 0x30C, 1 << 16 | 3);
+    legacy.stream = [0, 4, 3, 2, 1, 8, 7, 6, 5];
+    if(committed) legacy.methods.set(0x40000, committed);
+    view.setUint32(base, 0xFFBBCCDD, true);
+    view.setUint32(base + 4, 0, true);
+    graph.set_state(graph.get_state());
+    const restored = graph.object(0, 0xB200);
+    call(restored, 0x400, 0xAABBCCDD);
+    assert.equal(view.getUint32(base, true), committed ? 0xFFBBCCDD : 0x01020304);
+    assert.equal(view.getUint32(base + 4, true), 0x05060708, "pending snapshot pixels retire in order");
+    assert.equal(view.getUint32(base + 8, true), 0xAABBCCDD);
+    assert.deepEqual(restored.stream, [1]);
+}
+console.log("PASS: constant-size IFC row state, immediate wide uploads and legacy snapshot continuation");
