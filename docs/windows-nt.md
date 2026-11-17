@@ -215,6 +215,14 @@ Move only identified proxy DLLs aside, retaining a backup; do not remove the
 Microsoft DLLs from `Windows\System32`. The owner's GTA San Andreas image
 contains such an application-local D3D9 proxy.
 
+The VM manager and debug page load the host WebGPU renderer automatically for
+GeForce 6800 GT, independently of the graphics proxy checkbox. Earlier page
+startup code omitted this load when the proxy was disabled: the NVIDIA desktop
+could work while DirectX tests and games had no host renderer. After updating,
+shut down XP, reload the page and power it on again. The
+[browser regression](../tests/acceptance/nv40/native-renderer-startup.json) covers
+saved machines, URL starts, CPU Workers and the debug page.
+
 Before a long benchmark run, select **(None)** in Display Properties →
 Screen Saver and **Never** for monitor power-off in Power Options. The original
 XP screen saver interrupted a native 3DMark05 run with `D3DERR_DEVICELOST`;

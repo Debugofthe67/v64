@@ -1,0 +1,74 @@
+{
+  "date": "2026-11-17",
+  "problem": "With graphics_proxy disabled, both browser startup paths omitted the shared renderer bundle. create_adapter_renderer returned null, leaving native NV40 without a host 3D renderer while VGA/GDI and driver installation could still work. Native guest harnesses supplied their renderer explicitly and did not exercise this missing page load.",
+  "ownerConfiguration": {
+    "machine": "i440FX/IDE",
+    "acpi": false,
+    "cores": 1,
+    "restartedAfter17516Install": true
+  },
+  "fix": "Load the renderer bundle for native GeForce before constructing V86, independently of the guest API proxy option. Missing WebGPU/bundle produces a native 3D notice and preserves 2D boot.",
+  "sources": [
+    {
+      "file": "src/app/ui/console.js",
+      "sha256": "77a4db9c7b635190486f1a2152108b2e93fec83c4a0fabce09268e4fd7e96a0a"
+    },
+    {
+      "file": "src/browser/main.js",
+      "sha256": "68d03d617f1e6d872eee01a5103f2180d78eac3d44c1b790f03fd1b32a3a834c"
+    },
+    {
+      "file": "tests/app/nv40_renderer_test.html",
+      "sha256": "532f6e9ce7f32167e4c24639378abfb05a30a7fc43d95af4df8fbe28c5943be0"
+    }
+  ],
+  "regression": {
+    "before": "The saved-VM page test failed on the previous app bundle because V86SVGARenderer was absent.",
+    "after": [
+      "Saved VM, CPU in page",
+      "Saved VM, CPU Worker and renderer channel",
+      "URL/query startup, CPU Worker",
+      "Legacy debug page, CPU in page"
+    ],
+    "assertions": [
+      "Renderer bundle loaded in the actual iframe page",
+      "Actual V86 host renderer created with WebGPU",
+      "No guest API proxy device plugins enabled",
+      "Worker renderer channel present, or native device host state present on page"
+    ],
+    "logs": [
+      {
+        "file": "build/nv40-browser-renderer-before.log",
+        "sha256": "ca2aa8b64017c1fa1d2634923996a53dd1989d10c889e0cff733bb986996c92d",
+        "result": "FAIL Error: native NV40 did not load its renderer bundle"
+      },
+      {
+        "file": "build/nv40-browser-renderer-after-page.log",
+        "sha256": "94f00b4eb21420ad9eb05ba8df4e5a37bdf94b9c4eb943ff84b5fed372c4cb4e",
+        "result": "PASS native NV40 loads its WebGPU renderer without the API proxy (page, saved VM)"
+      },
+      {
+        "file": "build/nv40-browser-renderer-after-worker.log",
+        "sha256": "91165f59c8f898d906a4e4625795d5650813acb52d0ff8381b13ebe648c1f519",
+        "result": "PASS native NV40 loads its WebGPU renderer without the API proxy (Worker, saved VM)"
+      },
+      {
+        "file": "build/nv40-browser-renderer-after-query.log",
+        "sha256": "4cdbc2713809ec700d3f16a478c902cf55aa5a3fd155dee8ce4909cc3315f662",
+        "result": "PASS native NV40 loads its WebGPU renderer without the API proxy (Worker, query)"
+      },
+      {
+        "file": "build/nv40-browser-renderer-after-legacy.log",
+        "sha256": "35a9f8e9af3cdf9eabfa0ff572214b01f01dd504bc5e784ca18d1519ae0447ce",
+        "result": "PASS native NV40 loads its WebGPU renderer without the API proxy (page, legacy)"
+      }
+    ]
+  },
+  "checks": [
+    "make app-check passed",
+    "make build/v86_app.js passed",
+    "Original XP 175.16 DxDiag four tests successful; see xp-17516-dxdiag.json",
+    "Warcraft III gameplay, movement and normal shutdown; see xp-17516-warcraft3.json"
+  ],
+  "scope": "Browser loading regression plus separately recorded original native driver/game rendering. No NVIDIA driver, guest test result or timer patches."
+}

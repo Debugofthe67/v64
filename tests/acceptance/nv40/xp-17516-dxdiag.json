@@ -101,8 +101,15 @@
     "validation": "Both default and exact-process builds passed -Wall -Wextra -Werror. Original visible Next Page and test confirmation controls were exercised; normal keyboard input drove fullscreen tests."
   },
   "limitations": [
-    "Does not establish the owner's exact failing VM configuration; clarification was requested while testing continued.",
+    "The owner confirmed the same chipset, IDE, ACPI-off, single-core setup and a completed driver-install restart; failure is not attributed to a missing owner reboot.",
     "An installation-session PnP started flag does not establish a completed reboot or accelerated driver load.",
     "PFIFO cache flags 0x100 are retained in diagnostics; no blanket zero-hardware-fault claim is made."
-  ]
+  ],
+  "ownerConfiguration": {
+    "machine": "i440FX/IDE",
+    "acpi": false,
+    "cores": 1,
+    "restartedAfter17516": true,
+    "source": "owner confirmed during follow-up testing"
+  }
 }

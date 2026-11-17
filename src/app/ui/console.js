@@ -343,6 +343,17 @@ export async function open_console(root, target)
             options = settings_to_options(result.start.settings,
                 Object.assign({ cpu_worker: result.start.cpu_worker }, page_env(layout.screen_container, result.graphics_proxy, on_proxy_error)));
         }
+        // NV40's native driver also uses this bundle's WebGPU renderer. Loading
+        // it must not depend on enabling the separate guest API proxy device.
+        if(options.graphics_adapter === "geforce_6800")
+        {
+            try { await load_graphics_proxy(); }
+            catch(error)
+            {
+                replace(layout.notice, h("p.error", null,
+                    "GeForce 6800 GT 3D is unavailable; the 2D display remains available. " + error.message));
+            }
+        }
     }
     catch(e)
     {

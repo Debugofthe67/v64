@@ -689,6 +689,17 @@ async function start_emulation(profile, query_args)
         { location_args: new URLSearchParams(window.location.search), origin: location.origin, debug: DEBUG, graphics_proxy });
     const settings = start.settings;
 
+    // The native NVIDIA driver needs the renderer bundle even with the
+    // independent guest API proxy disabled. Keep VGA/GDI usable without it.
+    if(settings.graphics_adapter === "geforce_6800" && !graphics_proxy)
+    {
+        try { await load_graphics_proxy(); }
+        catch(error)
+        {
+            set_graphics_proxy_status("GeForce 6800 GT 3D is unavailable; the 2D display remains available. " + error.message);
+        }
+    }
+
     if(profile)
     {
         if(profile.state)
