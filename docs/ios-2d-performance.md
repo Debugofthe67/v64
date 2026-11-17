@@ -430,3 +430,21 @@ PvZ 约 +3.17%，各有一对下降。没有稳定 FPS 证据，撤回运行时�
 保留补丁 `load-interwork-rejected.patch`、`load-interwork-rejected.a32.S` 与原始结果。
 所有窗口正常 rate=1、亮屏、无新增 undefined 或 discarded host ms。下一项单独验证
 正常时钟下的 IOP 时间片，确定 7.31 秒 IOP 成本是否能降低。
+
+## 保留：正常时钟 IOP 1,024 指令时间片
+
+AP 每个时间片仍给可运行 IOP 一次机会，正常时钟改用 1,024 条，确定模式保留 4,096。
+正在等待真实宿主 NAND I/O 时仍用 32 条并让出，不延迟 IRQ/FIQ 或重置，不跳过固件。
+同一 Wasm、GLES、WebGPU，两个 worker 仅时间片常量不同；每轮重新克隆同一检查点。
+
+| 可见 LCD FPS | 对照前 | 候选 1 | 候选 2 | 对照后 |
+| --- | ---: | ---: | ---: | ---: |
+| 桌面 `desktop-iop-quantum-*` | 24.298 | 25.727 | 26.307 | 25.443 |
+| PvZ `pvz-iop-quantum-*` | 23.448 | 25.699 | 24.998 | 23.649 |
+
+按总帧数/总活动时间合并：桌面 24.871→26.017（+4.6%），PvZ 23.549→25.349（+7.6%）。
+两场景的两对都更快，保留。没有达到 60 FPS，也不把不同批次收益直接相乘。
+正常 rate=1、亮屏、无新增 undefined 或 discarded host ms，桌面和实战截图正常。
+完整 iOS、时间片/中断/宿主 I/O、原始 10B329 NAND 分区/LegacyFTL、counter/status、
+类型检查及构建通过。NAND 用例在 finally 删除自建临时 img。
+原始结果与精确 worker/Wasm 哈希见本地 `iop-quantum-summary.json`。

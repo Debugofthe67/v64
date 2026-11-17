@@ -699,7 +699,9 @@ A64CPU.prototype.run_machine_core = function()
     try
     {
         const iop = this.devices.apple_iop;
-        const iop_busy = iop?.run();
+        // A runnable IOP gets a turn every AP slice. Shorter normal-clock
+        // turns keep its timer polling from dominating the application core.
+        const iop_busy = iop?.run(this.clock.mode === "normal" ? 1024 : 4096);
         this.devices.apple_amc?.poll();
         this.devices.apple_i2s0?.poll();
         this.devices.apple_i2s1?.poll();

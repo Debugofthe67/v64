@@ -456,6 +456,26 @@ assert.equal(iop.run(), false);
 hostOps.clear();
 assert.equal(iop.run(), true, "the IOP remains runnable after exhausting its budget");
 assert.deepEqual(budgets, [4096, 32, 4096]);
+iop.run(1024);
+assert.equal(budgets.at(-1), 1024);
+hostOps.set(0, {});
+assert.equal(iop.run(1024), false);
+assert.equal(iop.run(1024), false);
+assert.equal(budgets.at(-1), 32, "host I/O polling still shortens the next turn");
+hostOps.clear();
+assert.equal(iop.run(1024), true);
+const { A64CPU } = await import("../../src/arm/cpu.js");
+for(const [mode, expected] of [["normal", 1024], ["deterministic", 4096]])
+{
+    let quantum;
+    const machine = { booted: true, clock: { mode, now: () => 0 },
+        devices: { apple_iop: { run(n) { quantum = n; return true; } } },
+        wm: { exports: { a64_run_slice: () => 100, a64_take_reset_request: () => false } },
+        run_hardware_timers: () => 100 };
+    assert.equal(A64CPU.prototype.run_machine_core.call(machine), 0);
+    assert.equal(quantum, expected);
+    assert.equal(machine.in_cpu, false);
+}
 let iop_wakes = 0;
 pollingCPU.stop_idling = () => iop_wakes++;
 iop.vic.signal(true, false);
