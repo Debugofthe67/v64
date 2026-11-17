@@ -882,6 +882,37 @@ assert.ok(programmed.subarray(1536).every(b => b === 255));
 finishProgram();
 console.log("PASS: PIO boot-page programming, individual FIFO sectors and snapshot during a sector");
 
+for(const remaining of [0, 1, 2, 3])
+{
+    flashPort.reset();
+    flashPort.write(0x100C, 1);
+    flashPort.write(0x1018, 0x02030000 + 8192 - remaining);
+    flashPort.write(0x101C, 1);
+    flashPort.write(0x1014, 0x80);
+    flashPort.write(0x1010, 9);
+    flashPort.write(4, 5);
+    if(remaining === 1)
+    {
+        const pending = flashPort.get_state(), overrun = pending.slice();
+        overrun[11] = -3;
+        flashPort.set_state(overrun);
+        flashPort.write(0x1014, 0x1000);
+        flashPort.write(0x1010, 2);
+        flashPort.write(0x1014, 0x70);
+        assert.equal(flashPort.read(0x1024), 0xC1, "a legacy overrun cannot commit damaged spare bytes");
+        flashPort.set_state(pending);
+    }
+    if(remaining) flashPort.write(0x14, 0x44332211);
+    assert.equal(flashPort.read(0x1C) & 0x18, 0, "tail exhausts the FIFO");
+    assert.equal(flashPort.read(0xC) & 2, 2, "tail signals completion");
+    programmed = null;
+    flashPort.write(0x1014, 0x1000);
+    flashPort.write(0x1010, 2);
+    assert.deepEqual([...programmed.subarray(8192 - remaining, 8192)], [0x11, 0x22, 0x33].slice(0, remaining));
+    assert.ok(programmed.subarray(8192).every(b => b === 255), "PIO leaves spare intact");
+    finishProgram();
+}
+
 // The guest AES driver first configures both channels without START and
 // then reads each control register back to set START. Both AP IRQs fire.
 const aesPorts = new Map(), aesIrqs = [];
