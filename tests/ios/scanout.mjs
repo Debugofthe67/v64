@@ -10,15 +10,28 @@ try
 {
     await new Promise((resolve, reject) => { emulator.add_listener("emulator-loaded", resolve);emulator.add_listener("emulator-error", reject); });
     const cpu = emulator.v86.cpu, ex = cpu.wm.exports;
+    if(ex.a64_video_convert_bgra)
+        for(let n=1;n<=9;n++)
+        {
+            const pointer=ex.a64_video_prepare(n),memory=cpu.wasm_memory.buffer,source=new Uint32Array(memory,pointer,n);
+            const input=Array.from({length:n},(_,i)=>[0x00112233,0xff000000,0x80123456,0x00ffffff][i%4]>>>0);
+            source.set(input);ex.a64_video_changed();
+            assert.equal(ex.a64_video_convert_bgra(),input.reduce((a,b)=>a|b,0)&0xffffff,"source RGB OR for SIMD tail "+n);
+            assert.equal(cpu.wasm_memory.buffer,memory,"conversion must not allocate or detach staging");
+            assert.deepEqual(Array.from(source),input.map(p=>(0xff000000|(p&255)<<16|p&0xff00|p>>>16&255)>>>0),"pixel lanes/tail "+n);
+            source.set(input);assert.equal(ex.a64_video_changed(),0,"the comparison shadow remains BGRA");
+        }
     const bytes = N90_VIDEO.stride * N90_VIDEO.height, words = bytes / 4, base = 0x40010000;
     const offset = cpu.ram_offset(base, bytes), data = () => new Uint32Array(cpu.mem8.buffer, cpu.mem8.byteOffset + offset, words);
-    let comparisons = 0;
-    const make = native => {
+    let comparisons = 0, conversions = 0;
+    if(process.env.A64_SCANOUT_REQUIRE_CONVERT)assert.equal(typeof ex.a64_video_convert_bgra,"function");
+    const make = (native,convert=true) => {
         const fake = { mem8: cpu.mem8, ram_offset: cpu.ram_offset.bind(cpu),
             write_blob_physical: cpu.write_blob_physical.bind(cpu), io: { register_mmio() {} },
             wasm_memory: cpu.wasm_memory,
             wm: native ? { exports: { a64_video_prepare: ex.a64_video_prepare,
-                a64_video_changed() { comparisons++;return ex.a64_video_changed(); } } } : undefined };
+                a64_video_changed() { comparisons++;return ex.a64_video_changed(); },
+                ...convert&&ex.a64_video_convert_bgra?{a64_video_convert_bgra(){conversions++;return ex.a64_video_convert_bgra();}}:{} } } : undefined };
         const panel = new AppleCLCD(fake, { add_source() {},set_mode() {},set_size_graphical() {},update_buffer() {} }, { set_line() {} });
         panel.regs[0x4044 >>> 2] = base;
         return panel;
@@ -67,6 +80,10 @@ try
     fast.cpu.parallel = true;render(1200, "parallel cores use the original JS path");assert.equal(comparisons, before);
     fast.cpu.parallel = false;
     assert.ok(comparisons >= 20, "the real comparison API was exercised");
+    if(ex.a64_video_convert_bgra)assert.ok(conversions>0,"native pixel conversion was exercised");
+    const legacy=make(true,false);legacy.regs[0x4044>>>2]=base;legacy.render(1300);
+    reference.regs[0x4044>>>2]=base;reference.invalidate();reference.render(1300);
+    assert.deepEqual(legacy.rgba,reference.rgba,"old Wasm cores without conversion keep the original JS path");
     if(process.env.A64_SCANOUT_BENCH)
     {
         data().fill(0x00123456);
@@ -86,6 +103,13 @@ try
             results.push(pair);
         }
         console.log(JSON.stringify({ unchanged_scans: 600, milliseconds: results }));
+        const changing=(panel,count)=>{const start=performance.now();for(let i=0;i<count;i++){data()[i%words]^=0x010101;panel.render();} return performance.now()-start;};
+        const updates=[];
+        for(let round=0;round<3;round++){
+            const pair={};for(const [name,panel] of round%2?[["wasm",fast],["staging_js",legacy]]:[["staging_js",legacy],["wasm",fast]])pair[name]=changing(panel,300);
+            updates.push(pair);
+        }
+        console.log(JSON.stringify({ changed_frames:300,milliseconds:updates }));
     }
     console.log("PASS: native scanout matches JS for pixel changes, DART, backlight, restore, memory growth and parallel fallback");
 }

@@ -305,6 +305,20 @@ export class AppleCLCD
         }
         let changed = this.dirty, any = 0;
         const packed = this.backlight === 2047 && this.rgba32;
+        if(staging && packed && exports["a64_video_convert_bgra"])
+        {
+            // Keep the JS fallback's BGRA comparison state before staging is
+            // recolored in place. Both native calls use preallocated memory.
+            this.shown.set(words);
+            this.blank = !exports["a64_video_convert_bgra"]();
+            this.rgba.set(staging);
+            this.next_blank_scan = now + 100;
+            this.dirty = false;
+            this.performance.scans++;
+            this.performance.scan_ms += performance.now() - started;
+            this.update_display();
+            return;
+        }
         for(let i = 0; i < words.length; i++)
         {
             const p = words[i];

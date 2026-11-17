@@ -67,3 +67,26 @@ PvZ 的应用发布 FPS 分别为 25.697 / 26.348 / 25.198 / 27.850；可见更�
 控制 WebGPU bundle SHA-256 为 `06476b82d6bdcc5934776b8af61a3a215fd9a7b0783559aac4409208bdc1ca7e`，
 缓存版本为 `4236eabbb7746540dca8e6ad4c1dacbe779806890751624de08794615403abd6`。
 GLES 单元、198 项 ES1/ES2 GPU、107 项 ES3 GPU及跨进程 IOSurface/快照像素回归通过。
+
+## LCD 完整亮度的 Wasm SIMD 像素转换
+
+变化帧原来在 JS 中逐像素比较并交换红蓝通道。现在复用预分配的 Wasm staging，四像素一组转换为
+不透明 RGBA；比较 shadow 保持原始 BGRA，来宾 RAM 不修改。部分亮度、并行核心及旧 Wasm 保留
+原路径。转换本身不分配内存，避免使 JS 持有的 Wasm 视图失效。
+
+真实 Wasm 组件测试中，300 个变化帧的旧 staging + JS 路径为 314–320 ms，新路径为 112–118 ms。
+同一 GPU 缓存版本、成对检查点的 A/B/B/A 结果如下：
+
+| 场景，可见 LCD FPS | 控制前 | SIMD 1 | SIMD 2 | 控制后 |
+| --- | ---: | ---: | ---: | ---: |
+| 桌面，同上拖动协议 | 26.332 | 27.074 | 27.106 | 26.800 |
+| PvZ 1-2 开局，同上协议 | 28.699 | 29.295 | 28.848 | 28.745 |
+
+本步骤均值提升约桌面 +2.0%、PvZ +1.2%。桌面计量窗口的 CLCD 扫描累计耗时从 920–930 ms
+降至 399–406 ms；整机收益远小于组件收益，说明转换只占整个执行链的一部分。
+全部窗口 normal rate 1，无 discarded host time 或未定义指令，起止图片已核对。
+原始结果为 `*-simd-*`。SIMD CPU worker SHA-256 为
+`aa569c75d4764e373c50730d0dc0c97d86e8c0545714e157b8e9880a280f6bad`，Wasm 为
+`77bb5ddf33dacc2b143b53d41e6b72bef105d385425fb38b9ddccecfb49e6e53`。
+SIMD 与非 SIMD Wasm 均通过逐字节像素、alpha、尾部、背光、DART、内存增长、快照和并行回退测试；
+`make ios-tests`、`make app-check app` 通过。
