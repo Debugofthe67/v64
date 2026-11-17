@@ -17,7 +17,7 @@ use super::{Block, CompileEnv, Emitter, End, Isa, A0, A1, A2, C0, C1, NZCV, PAGE
 use crate::aarch64::state;
 use crate::pagegen::frame::PageEmitter;
 use crate::wasmgen::wasm_builder::{Signature, WasmLocalV128, WasmType};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// An AArch32 instruction of a page function
 #[derive(Clone, Copy)]
@@ -2596,11 +2596,19 @@ pub(super) fn discover(
         }
         Some((first << 16 | half(o + 2), 4))
     };
-    // the instructions IT blocks cover (helpers or steps only), but those of
-    // native IT blocks (their conditions)
-    let mut covered: BTreeSet<u16> = BTreeSet::new();
-    let native_it: std::cell::RefCell<BTreeMap<u16, u8>> = Default::default();
-    let decode = |o: u16, covered: &mut BTreeSet<u16>| -> (Option<Inst32>, u16) {
+    // All instruction addresses in this page are halfword aligned. Keep
+    // both discovery passes' state in one table indexed by the halfword.
+    #[derive(Clone, Copy, Default)]
+    struct Slot {
+        start: bool,
+        decoded: bool,
+        /// A preceding IT instruction covers this halfword.
+        covered: bool,
+        /// Nonzero ITSTATE when all slots of that IT block compile natively.
+        native_it: u8,
+    }
+    let mut slots = [Slot::default(); PAGE as usize / 2];
+    let decode = |o: u16, slots: &mut [Slot]| -> (Option<Inst32>, u16) {
         let Some((word, length)) = fetch(o)
         else {
             return (None, 2);
@@ -2626,7 +2634,12 @@ pub(super) fn discover(
             }
         }
         // (an instruction of an IT block whose instructions are all native)
-        if let Some(&itstate) = native_it.borrow().get(&o) {
+        let Slot {
+            covered,
+            native_it: itstate,
+            ..
+        } = slots[o as usize / 2];
+        if itstate != 0 {
             return (
                 t32_native_it(word, length, itstate).map(|kind| Inst32 {
                     word,
@@ -2638,15 +2651,12 @@ pub(super) fn discover(
             );
         }
         // (Q6.2: returns, which the interpreter steps otherwise)
-        if kind.is_none()
-            && !covered.contains(&o)
-            && unsafe { crate::aarch64::jit::pages::AARCH32_DEBUG } < 2
-        {
+        if kind.is_none() && !covered && unsafe { crate::aarch64::jit::pages::AARCH32_DEBUG } < 2 {
             kind = if thumb { t32_return(word, length) } else { a32_return(word) };
         }
         // (Q6.2: the forms with native templates, of those a helper call would
         // run; Q6.3: VFP's and Advanced SIMD's loads and stores)
-        if matches!(kind, Some(Kind::Helper)) && !covered.contains(&o) {
+        if matches!(kind, Some(Kind::Helper)) && !covered {
             let native =
                 if thumb { t32_native(word, length) } else { a32_native(word) }.or_else(|| {
                     (length == 4)
@@ -2680,7 +2690,7 @@ pub(super) fn discover(
                 }
             }
         }
-        if matches!(kind, Some(Kind::Helper)) && !covered.contains(&o) && length == 4 {
+        if matches!(kind, Some(Kind::Helper)) && !covered && length == 4 {
             // Exclude every core-register transfer (bit 4), every memory
             // form and every system coprocessor. The remaining data forms
             // use only FP/vector state, including exact conversions and
@@ -2696,7 +2706,7 @@ pub(super) fn discover(
                 kind = Some(Kind::FpHelper);
             }
         }
-        if matches!(kind, Some(Kind::Helper)) && !covered.contains(&o) && length == 4 {
+        if matches!(kind, Some(Kind::Helper)) && !covered && length == 4 {
             if let Some(mask) = synchronization_gprs(word, thumb) {
                 kind = Some(Kind::RegisterHelper { mask });
             }
@@ -2709,7 +2719,7 @@ pub(super) fn discover(
         if debug == 2 && !helper || debug == 3 && helper {
             kind = None;
         }
-        if covered.contains(&o) && !matches!(kind, Some(Kind::Helper) | None) {
+        if covered && !matches!(kind, Some(Kind::Helper) | None) {
             kind = None;
         }
         if thumb && length == 2 && word & 0xFF00 == 0xBF00 && word & 15 != 0 {
@@ -2721,7 +2731,7 @@ pub(super) fn discover(
                 if at as u64 >= PAGE {
                     break;
                 }
-                covered.insert(at);
+                slots[at as usize / 2].covered = true;
                 let instruction = fetch(at);
                 block.push((at, instruction, it as u8));
                 it = if it & 7 == 0 { 0 } else { it & 0xE0 | it << 1 & 0x1F };
@@ -2736,7 +2746,7 @@ pub(super) fn discover(
                 });
             if native && matches!(kind, Some(Kind::Helper)) {
                 for &(at, _, cond) in &block {
-                    native_it.borrow_mut().insert(at, cond);
+                    slots[at as usize / 2].native_it = cond;
                 }
                 kind = Some(Kind::It);
             }
@@ -2751,42 +2761,43 @@ pub(super) fn discover(
             length as u16,
         )
     };
-    let mut starts: BTreeSet<u16> = entries
-        .iter()
-        .copied()
-        .filter(|&o| o % align == 0)
-        .collect();
-    let mut queue: Vec<u16> = starts.iter().copied().collect();
-    let mut decoded: BTreeSet<u16> = BTreeSet::new();
-    let add = |o: u64, starts: &mut BTreeSet<u16>, queue: &mut Vec<u16>| {
-        if o < PAGE && o % align as u64 == 0 && starts.insert(o as u16) {
+    let mut queue = Vec::new();
+    let add = |o: u64, slots: &mut [Slot], queue: &mut Vec<u16>| {
+        if o < PAGE && o % align as u64 == 0 && !slots[o as usize / 2].start {
+            slots[o as usize / 2].start = true;
             queue.push(o as u16);
         }
     };
+    for &entry in entries {
+        add(entry as u64, &mut slots, &mut queue);
+    }
+    queue.sort_unstable();
     while let Some(start) = queue.pop() {
         let mut o = start;
         loop {
-            if !decoded.insert(o) {
+            let slot = &mut slots[o as usize / 2];
+            if slot.decoded {
                 break;
             }
-            let (inst, length) = decode(o, &mut covered);
+            slot.decoded = true;
+            let (inst, length) = decode(o, &mut slots);
             let Some(inst) = inst
             else {
                 // (a step continues at the PC it leaves: usually the next instruction)
-                add(o as u64 + length as u64, &mut starts, &mut queue);
+                add(o as u64 + length as u64, &mut slots, &mut queue);
                 break;
             };
             if let Some((targets, falls)) = control(&inst, o) {
                 for t in targets {
-                    add(t, &mut starts, &mut queue);
+                    add(t, &mut slots, &mut queue);
                 }
                 if falls {
-                    add(o as u64 + length as u64, &mut starts, &mut queue);
+                    add(o as u64 + length as u64, &mut slots, &mut queue);
                 }
                 break;
             }
             o += length;
-            if o as u64 >= PAGE || starts.contains(&o) {
+            if o as u64 >= PAGE || slots[o as usize / 2].start {
                 break;
             }
         }
@@ -2796,14 +2807,20 @@ pub(super) fn discover(
     // Such a start is the target of something that is not code (a literal
     // pool's "branch" after a call that does not return) or a stepped PC
     // inside the block; the interpreter runs those)
-    starts.retain(|o| !native_it.borrow().contains_key(o));
+    for slot in &mut slots {
+        slot.start &= slot.native_it == 0;
+    }
     let mut blocks = Vec::new();
     let mut index = BTreeMap::new();
-    for &start in &starts {
+    for halfword in 0..slots.len() {
+        if !slots[halfword].start {
+            continue;
+        }
+        let start = (halfword * 2) as u16;
         let mut insts = Vec::new();
         let mut o = start;
         let end = loop {
-            let (inst, length) = decode(o, &mut covered);
+            let (inst, length) = decode(o, &mut slots);
             let Some(inst) = inst
             else {
                 break End::StepAt(o);
@@ -2816,7 +2833,7 @@ pub(super) fn discover(
             if o as u64 >= PAGE {
                 break End::Next(PAGE as u16);
             }
-            if starts.contains(&o) {
+            if slots[o as usize / 2].start {
                 break End::Next(o);
             }
         };
