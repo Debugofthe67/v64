@@ -1,4 +1,4 @@
-//! Derived scanout buffers: compare complete 32-bit frames before the JS
+//! Derived scanout buffers: compare visible XRGB channels before the JS
 //! panel recolors pixels. They are not guest RAM or snapshot state. Only
 //! the machine/device thread uses them, with guest cores stopped.
 static mut SOURCE: Vec<u32> = Vec::new();
@@ -20,23 +20,25 @@ pub fn a64_video_prepare(words: u32) -> u32 {
     }
 }
 
-fn same(a: &[u32], b: &[u32]) -> bool {
+fn same_rgb(a: &[u32], b: &[u32]) -> bool {
     let mut at = 0;
     #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
     unsafe {
-        use core::arch::wasm32::{i32x4_ne, v128_any_true, v128_load};
+        use core::arch::wasm32::{i32x4_splat, v128_and, v128_any_true, v128_load, v128_xor};
+        let rgb = i32x4_splat(0x00FFFFFF);
         while at + 4 <= a.len() {
-            if v128_any_true(i32x4_ne(
+            let difference = v128_xor(
                 v128_load(a.as_ptr().add(at).cast()),
                 v128_load(b.as_ptr().add(at).cast()),
-            )) {
+            );
+            if v128_any_true(v128_and(difference, rgb)) {
                 return false;
             }
             at += 4;
         }
     }
     while at < a.len() {
-        if a[at] != b[at] {
+        if (a[at] ^ b[at]) & 0x00FFFFFF != 0 {
             return false;
         }
         at += 1;
@@ -44,10 +46,10 @@ fn same(a: &[u32], b: &[u32]) -> bool {
     true
 }
 
-/// Compare every bit, including alpha. On a change copy the full source
+/// Compare visible RGB. On a change copy the full source
 /// to the shadow, before converting the staging pixels for presentation.
 #[no_mangle]
-pub fn a64_video_changed() -> u32 {
+pub fn a64_video_rgb_changed() -> u32 {
     if crate::parallel::active() {
         return 1;
     }
@@ -57,13 +59,17 @@ pub fn a64_video_changed() -> u32 {
         if source.is_empty() || source.len() != shadow.len() {
             return 1;
         }
-        if same(source, shadow) {
+        if same_rgb(source, shadow) {
             return 0;
         }
         shadow.copy_from_slice(source);
         1
     }
 }
+
+/// Entry point used by older panel workers.
+#[no_mangle]
+pub fn a64_video_changed() -> u32 { a64_video_rgb_changed() }
 
 /// Full-backlight BGRA -> opaque RGBA, in the already allocated staging
 /// buffer. The comparison shadow remains BGRA. No allocations or guest stores.
