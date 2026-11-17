@@ -177,10 +177,33 @@ pub fn a32_iop_reset() {
     a32_iop_select(false);
 }
 
+fn iop_wakes(kind: u32, irq: bool, fiq: bool) -> bool {
+    use crate::aarch64::gic::{SIGNAL_FIQ, SIGNAL_IRQ};
+    let signal = (irq as u8) * SIGNAL_IRQ | (fiq as u8) * SIGNAL_FIQ;
+    wakes(1, kind, signal)
+}
+
+/// The AP or a device may wake the IOP between its slice and host idle.
+#[no_mangle]
+pub fn a32_iop_wake_pending(irq: bool, fiq: bool) -> bool {
+    let kind = unsafe { *field(1, waiting) };
+    if kind == 0 {
+        irq || fiq
+    }
+    else {
+        iop_wakes(kind, irq, fiq)
+    }
+}
+
 #[no_mangle]
 pub fn a32_iop_slice(budget: u32, irq: bool, fiq: bool) -> bool {
     use crate::aarch64::jit::pages::{self, Ran};
+    let kind = unsafe { *field(1, waiting) };
+    if kind != 0 && !iop_wakes(kind, irq, fiq) {
+        return false;
+    }
     a32_iop_select(true);
+    end_wait();
     if fiq && cpu::get_pstate() & cpu::PSTATE_F == 0 {
         crate::aarch64::a32_system::take_interrupt(true);
     }
@@ -188,7 +211,6 @@ pub fn a32_iop_slice(budget: u32, irq: bool, fiq: bool) -> bool {
         crate::aarch64::a32_system::take_interrupt(false);
     }
     let mut executed = 0;
-    let mut iop_waited = false;
     let mut boundary = true;
     while executed < budget {
         let flow = if boundary && unsafe { pages::ENABLED } {
@@ -215,13 +237,21 @@ pub fn a32_iop_slice(budget: u32, irq: bool, fiq: bool) -> bool {
         if matches!(flow, Flow::Jump(_) | Flow::Set) {
             boundary = true;
         }
-        if matches!(flow, Flow::Off | Flow::Wait(_)) {
-            iop_waited = true;
-            break;
+        match flow {
+            Flow::Wait(kind) => {
+                unsafe { *waiting = kind };
+                break;
+            },
+            Flow::Off => {
+                unsafe { *waiting = 3 };
+                break;
+            },
+            _ => {},
         }
     }
+    let busy = unsafe { *waiting == 0 } && executed >= budget;
     a32_iop_select(false);
-    !iop_waited && executed >= budget
+    busy
 }
 
 static mut IOP_NATIVE: u64 = 0;
@@ -246,9 +276,10 @@ pub fn event_to(core: usize) {
 pub fn send_event() {
     unsafe {
         *event_register = 1;
-        let others = ((1u32 << core_count()) - 1) & !(1 << current_core());
+        let count = if cpu::cortex_a8() { 2 } else { core_count() };
+        let others = ((1u32 << count) - 1) & !(1 << current_core());
         crate::parallel::word_or(events(), others);
-        for core in 0..core_count() {
+        for core in 0..count {
             if others & 1 << core != 0 {
                 crate::parallel::kick(core);
             }
@@ -347,8 +378,7 @@ fn take_interrupt() -> bool {
 
 /// Whether core `core`, waiting, wakes: WFI on any pending interrupt (masked
 /// or not), WFE on an event or an interrupt the PE does not mask
-fn wakes(core: usize, kind: u32) -> bool {
-    let signal = crate::aarch64::gic::signal(core);
+fn wakes(core: usize, kind: u32, signal: u8) -> bool {
     match kind {
         1 => signal != 0,
         2 => {
@@ -374,7 +404,7 @@ fn runnable(core: usize) -> bool {
         psci::ON_PENDING => true,
         psci::ON => {
             let kind = unsafe { *field(core, waiting) };
-            kind == 0 || kind != 3 && wakes(core, kind)
+            kind == 0 || kind != 3 && wakes(core, kind, crate::aarch64::gic::signal(core))
         },
         _ => false,
     }
@@ -391,6 +421,12 @@ fn prepare(core: usize) {
             psci::set_power(core, psci::ON);
             return;
         }
+    }
+    end_wait();
+}
+
+fn end_wait() {
+    unsafe {
         let kind = *waiting;
         if kind != 0 {
             *waiting = 0;
@@ -484,7 +520,11 @@ fn run_core(budget: u32) -> u32 {
                 boundary = true;
                 // (a wait that is already over goes on; WFE consumes the event)
                 take_events();
-                if wakes(current_core(), kind) {
+                if wakes(
+                    current_core(),
+                    kind,
+                    crate::aarch64::gic::signal(current_core()),
+                ) {
                     if kind == 2 {
                         unsafe { *event_register = 0 };
                     }

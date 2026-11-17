@@ -713,7 +713,7 @@ A64CPU.prototype.run_machine_core = function()
         // The application core can be in WFI while the ARM7 still handles
         // its flash request. Sleeping for the AP's timer then throttles
         // an independent runnable processor (and every NAND transaction).
-        return iop_busy || iop?.running && (iop.irq || iop.fiq) ? 0 : next;
+        return iop_busy || iop?.wake_pending() ? 0 : next;
     }
     finally
     {
