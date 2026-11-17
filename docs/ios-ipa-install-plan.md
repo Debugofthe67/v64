@@ -476,3 +476,24 @@ mip 并缩小采样；从新建测试 NAND 通过 UI 安装运行，原生像素
 107 项检查。安装器 UI 和 iPhone 创建向导定向测试通过；这不代表全部第三方应用或 Khronos 测试集通过。
 本轮临时原始 NAND、packed NAND、HFS 副本与被替代的独立浏览器测试盘已删除，保留最终验收虚机和
 本地截图/日志，不删除此前已有的用户虚机、固件和检查点。
+
+## 10. Asphalt 4 的签名元数据空间
+
+2026-11-17：用户原始 `Asphalt 4 1.3.8.ipa`（SHA-256
+`1ca7617496871cfd359ffae95730b59154a4b6e28577a143b9754a072e48cad3`）在准备阶段报
+`insufficient Mach-O header padding for the signed Info.plist`。加入图形库后，加载命令末端为
+3280，首个代码 section 偏移为 4096，头部剩余 816 字节；原始 Info.plist 有 1075 字节。
+
+准备器继续在头部加入 section 描述，必要时把 plist 原始字节放入 `__TEXT` 段尾未使用的零填充。
+选择位置时排除所有已声明 section、其他段和链接器表，检查文件/映射边界及实际零字节；仍无空间时明确拒绝。
+本样本使用文件偏移 1017536，原有 24 个 section 的地址、偏移和内容保持一致。新增 TEXT section 后，
+同步调整后续 section 的 nlist 和本地重定位序号；外部符号索引、scattered 重定位和 ARM pair 数据保持原语义。
+
+9 项签名/准备定向测试、`make ios-tests`、`make app-check`、构建与 lint 通过。原样本的 2324 个
+符号解析结果保持一致，签名 Info 特殊槽与 bundle 的 plist 一致，客体 C 签名检查器验证最终 CDHash。
+从原始 IPA 通过真实 UI 完成准备、传输、iOS 原生安装与安装后查询，确认
+`com.gameloft.ASPHALT4` 版本 `1.3.8` 已安装。原生 Open application 启动后跳过开场视频，
+完成音效选择并显示游戏标题与 `TOUCH SCREEN TO CONTINUE`；此轮未验证赛车实机场景或帧率。
+启动诊断中 EL0/EL1 未定义指令为零，GLES unknown/malformed/failed/errors 均为空。
+修复位于网页端 IPA 准备器，更新网页并刷新后重新选择
+原始 IPA 即可使用；无需为这一修复重新导入固件。复用已有独立验收盘，未创建新的 NAND/HFS 临时镜像。
