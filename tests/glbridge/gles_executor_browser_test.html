@@ -259,12 +259,52 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
                 return v === bytes[row * 16 + (i % 16 & ~3) + [2, 1, 0, 3][i & 3]];
             }), "native BGRA readback subrectangle, reversed rows=" + flip);
         }
+        for(const flip of [0,1])
+        {
+            const reads=executor.stats.readbacks,ids=[];
+            for(let y=0;y<4;y++)
+            {
+                const id=request++;ids.push(id);record(GLES.IOSURFACE_READ,50,y,1,flip,id);
+                // Both one submission and successive native round trips.
+                if(flip===0)await run();
+            }
+            if(flip===1)await run();
+            check(executor.stats.readbacks-reads===1,"contiguous native strips use one GPU readback, flip="+flip);
+            check(ids.every((id,y)=>answers.get(id)?.every((v,i)=>v===bytes[y*16+(i&~3)+[2,1,0,3][i&3]])),
+                "cached native strips preserve BGRA bytes and per-strip row direction, flip="+flip);
+        }
+        {
+            const ids=[request++,request++],reads=executor.stats.readbacks;
+            for(let strip=0;strip<2;strip++){record(GLES.IOSURFACE_READ,50,strip*2,2,1,ids[strip]);await run();}
+            check(executor.stats.readbacks-reads===1&&ids.every((id,strip)=>answers.get(id)?.every((v,i)=>{
+                const y=strip*2+1-(i/16|0);return v===bytes[y*16+(i%16&~3)+[2,1,0,3][i&3]];
+            })),"cached two-row strips reverse within each strip, not across the publication");
+        }
+        {
+            const first=request++,last=request++,reads=executor.stats.readbacks;
+            record(GLES.IOSURFACE_READ,50,0,2,0,first);await run();
+            const changed=new Uint8Array(bytes.length).fill(81);
+            writer.command(GLES.COLOR_BUFFER_UPDATE,[50,0,0,4,4,0x1908,0x1401,changed.length],changed);
+            record(GLES.IOSURFACE_READ,50,2,2,0,last);await run();
+            check(answers.get(last)?.every(v=>v===81),"a write between native strips invalidates the cached publication");
+            check(executor.stats.readbacks-reads===2,"changed native publication reads the GPU again");
+            writer.command(GLES.COLOR_BUFFER_UPDATE,[50,0,0,4,4,0x1908,0x1401,bytes.length],bytes);await run();
+        }
+        {
+            const reads=executor.stats.readbacks;
+            for(const [y,flip] of [[0,0],[2,0],[3,1]])
+            { record(GLES.IOSURFACE_READ,50,y,1,flip,request++);await run(); }
+            check(executor.stats.readbacks-reads===3,"noncontiguous rows and changed flip do not reuse a cached publication");
+        }
         {
             const id = request++;
             record(GLES.IOSURFACE_READ, 50, 3, 2, 0, id);
             await run();
             check(answers.get(id) === null, "native readback rejects a rectangle outside its surface");
         }
+        // Restore the shared fixture's CPU row order after complete flipped
+        // native publications; later EGL-image tests start in memory order.
+        writer.command(GLES.COLOR_BUFFER_UPDATE,[50,0,0,4,4,0x1908,0x1401,bytes.length],bytes);
         record(GLES.IMAGE_CREATE, 60, 0, 0x3140, 50);
         const ext_text = "#extension GL_OES_EGL_image_external : require\nprecision mediump float; uniform samplerExternalOES tex; varying vec2 v_uv; " +
             "void main() { gl_FragColor = texture2D(tex, v_uv); }";

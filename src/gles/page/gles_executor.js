@@ -133,7 +133,9 @@ GLESExecutor.prototype.reset = function()
     this.blit = null;
     /** the frame to show, a read of it in flight */
     this.posted = 0;
-    this.stats = { batches: 0, records: 0, draws: 0, refused: 0, pipelines: 0, uploads: 0, posts: 0, errors: [] };
+    this.stats = { batches: 0, records: 0, draws: 0, refused: 0, pipelines: 0, uploads: 0, posts: 0,
+        readbacks: 0, readback_bytes: 0, errors: [] };
+    this.native_read = null;
     this.pass = null;
     this.pass_target = null;
 };
@@ -216,6 +218,9 @@ GLESExecutor.prototype.submit = async function(bytes, sink)
 /** @param {!Object} record */
 GLESExecutor.prototype.run = function(record)
 {
+    // Only uninterrupted, contiguous strips share a publication. Any other
+    // record can change a texture or its aliases, including another context.
+    if(record.name !== "IOSURFACE_READ") this.native_read = null;
     switch(record.name)
     {
         case "COMMAND": return this.command(record);
@@ -317,11 +322,43 @@ GLESExecutor.prototype.run = function(record)
         {
             const cb = this.rc.color_buffers.get(record.color_buffer);
             if(!cb || record.flip > 1 || !record.height || record.y > cb.height || record.height > cb.height - record.y)
+            {
+                this.native_read = null;
                 return this.answer_failed(record.request);
+            }
             // The native publication's last strip establishes its memory
             // row order. A window renderbuffer retains GL rows; a compositor
             // sampling this IOSurface must see the same rows as its CPU bytes.
             if(record.y + record.height === cb.height) cb.native_flip = !!record.flip;
+            let cached = this.native_read;
+            const answer = sink => {
+                const row = record.flip ? cb.height - record.y - record.height : record.y;
+                this.answer(sink, record.request, cached.bytes.subarray(row * cb.width * 4, (row + record.height) * cb.width * 4));
+            };
+            if(cached && cached.texture === cb.texture && cached.handle === record.color_buffer &&
+                cached.flip === record.flip && record.y === cached.next_y)
+            {
+                cached.next_y += record.height;
+                if(cached.next_y === cb.height) this.native_read = null;
+                // A batch can contain several strips. The first read's map
+                // finishes before these ordered responses consume its bytes.
+                this.reads.push({ buffer: null, done: (_, sink) => answer(sink) });
+                return;
+            }
+            this.native_read = null;
+            if(record.y === 0 && record.height < cb.height && cb.width * cb.height * 4 <= 16 * 1024 * 1024)
+            {
+                cached = this.native_read = { texture: cb.texture, handle: record.color_buffer, flip: record.flip,
+                    next_y: record.height, bytes: null };
+                return this.read_texture(cb.texture, 0, 0, cb.width, cb.height, !!record.flip, (rgba, sink) => {
+                    for(let i = 0; i < rgba.length; i += 4)
+                    {
+                        const r = rgba[i]; rgba[i] = rgba[i + 2]; rgba[i + 2] = r;
+                    }
+                    cached.bytes = rgba;
+                    answer(sink);
+                });
+            }
             return this.read_texture(cb.texture, 0, record.y, cb.width, record.height, !!record.flip,
                 (rgba, sink) =>
                 {
@@ -1677,6 +1714,8 @@ GLESExecutor.prototype.read_texture = function(texture, x, y, width, height, fli
 {
     this.end_pass();
     const stride = Math.ceil(width * texel / 256) * 256;
+    this.stats.readbacks++;
+    this.stats.readback_bytes += stride * height;
     const buffer = this.device.createBuffer({ size: stride * height, usage: B.COPY_DST | B.MAP_READ });
     this.encoder.copyTextureToBuffer({ texture, mipLevel: mip, origin: [x, y, layer] }, { buffer, bytesPerRow: stride, rowsPerImage: height }, [width, height, 1]);
     this.reads.push({ buffer, stride, width, height, flip, done, texel });
