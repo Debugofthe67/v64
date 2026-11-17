@@ -1,0 +1,155 @@
+{
+  "date": "2026-11-17",
+  "branch": "ios6",
+  "scope": "Owner-reported XP ForceWare 175.16 native rendering failures and requested Warcraft III, KartRider and GTA SA functional validation",
+  "ownerConfiguration": {
+    "machine": "i440FX/IDE",
+    "acpi": false,
+    "cores": 1,
+    "driverRestartedAfterInstall": true,
+    "ownerCopiedProxyDLLs": false,
+    "kartSinglePlayerPath": "\u83dc\u5355 -> \u8ba1\u65f6\u8d5b"
+  },
+  "completedFixes": [
+    {
+      "commit": "58d593573",
+      "change": "Load native WebGPU renderer independently of API proxy in saved VM, query/Worker and debug-page startup"
+    },
+    {
+      "commit": "fa5e087c7",
+      "change": "Retain valid unused TEX8/9 controls, guard actual unsupported extended input use at draw time"
+    },
+    {
+      "commit": "706fe5aac",
+      "change": "PVIDEO overlay counter, pending slot, YUV composition and PMC interrupt protocol; original miniport completes its own notifications"
+    },
+    {
+      "commit": "4618c57d9",
+      "change": "Decode native DirectX SHORT2N/SHORT4N declarations through checked SNORM16 conversion"
+    }
+  ],
+  "validationCommits": {
+    "dxdiag": "1c75f338a",
+    "warcraft3": "4cf089f3d",
+    "kartrider": "3960faa12",
+    "gtasa": "da8d50c6e"
+  },
+  "harnessFixes": [
+    "1feaa7684 actual reboot observation/privilege and unsigned 2048 MiB sizing",
+    "bd86ae43e normalized RAM-size validation for matching checkpoints"
+  ],
+  "acceptance": {
+    "dxdiag": "Original DirectDraw and Direct3D7/8/9 report success",
+    "warcraft3": "Original Orc custom game, Peon selection/movement, normal exit and XP shutdown",
+    "kartrider": "Original launcher, Chinese time-attack UI, actual track, throttle and right steering, normal exit and XP shutdown; no full timed lap claim",
+    "gtasa": "Final cold boot with native preflight, startup video, New Game, animated/textured CJ and world, arrow-key movement, original quit confirmation, desktop return and normal XP shutdown; 109102 draws, GPU failures 0, PGRAPH/video faults empty"
+  },
+  "fixtures": [
+    {
+      "file": "tests/acceptance/nv40/xp-17516-dxdiag.json",
+      "bytes": 4597,
+      "sha256": "fde376c061ab75b0b134e6b675a126a2d026fb7f32ba2fc667f4dc84bdd36321"
+    },
+    {
+      "file": "tests/acceptance/nv40/xp-17516-warcraft3.json",
+      "bytes": 3570,
+      "sha256": "109c6ebb0c47a4b46848fb54209e3cc4c458a12f5d5630b37ab8bcb2da57c75a"
+    },
+    {
+      "file": "tests/acceptance/nv40/xp-17516-kartrider.json",
+      "bytes": 3926,
+      "sha256": "e8cae557a331968bdfb616f773c02a6ff31461ac748726ea507c726a138b2cb9"
+    },
+    {
+      "file": "tests/acceptance/nv40/xp-17516-gtasa.json",
+      "bytes": 8322,
+      "sha256": "afd696a8a56acf57fa57a3e2107347b4a712386f4ed483e443c3937ea7c4accc"
+    },
+    {
+      "file": "tests/acceptance/nv40/native-renderer-startup.json",
+      "bytes": 3478,
+      "sha256": "232e87f07070dd2bd52af27c4b5c4802aa3320415099923cd10901818ed6880a"
+    },
+    {
+      "file": "tests/acceptance/nv40/pvideo-native-counter.json",
+      "bytes": 3703,
+      "sha256": "07723f20f1ae270739d9e435a00d234cc2759fceaccf319441463644f1c9c64d"
+    },
+    {
+      "file": "tests/acceptance/nv40/directx-short-normalized.json",
+      "bytes": 2433,
+      "sha256": "4e31b20fc3b83c71a751066d0919ef36d11885142936c6c831bf8990b2a8b762"
+    },
+    {
+      "file": "tests/acceptance/nv40/tex89-unused-controls.json",
+      "bytes": 4051,
+      "sha256": "3ad19d1faef329211a930bca2fa193b87d6b3f4a88c22af999ff1a9ab1d9c783"
+    },
+    {
+      "file": "tests/acceptance/nv40/native-reboot-and-2g.json",
+      "bytes": 2456,
+      "sha256": "0518a9c46fcf0a26ccbbfd25f80647f26c209e16c4fbd8985589afeea603b17d"
+    },
+    {
+      "file": "tests/acceptance/nv40/native-restore-2g.json",
+      "bytes": 949,
+      "sha256": "caf1c4c57b128bdd239f2412cda19579d2fd6131e223e1f73b888c23865d81bc"
+    }
+  ],
+  "integrityReview": {
+    "checkedReferences": 50,
+    "matchedRetainedReferences": 48,
+    "historicalRebuiltOutputs": [
+      {
+        "file": "build/libv86.mjs",
+        "historicalDxDiagBuildSHA256": "0b3a102ef2a1a14d7993cec09994d4fc18cc744179fe78f7551b1f8f413f1547",
+        "currentSHA256": "1ebde9140120dbd76459a90317f0258c7da2d4a1fd21774e1e8b2f930142fde6",
+        "reason": "Shared build output was rebuilt during later native GPU/guest fixes. Historical fixture hash is intentionally preserved; current GTA startup manifest matches the final software."
+      },
+      {
+        "file": "build/v86-geforce-6800.js",
+        "historicalDxDiagBuildSHA256": "1394da304b893d4146ae033a8427c127abaf7592f61dc48ce59134b280c8f053",
+        "currentSHA256": "1807c5f24afa1633011783fcdd6865749dd4009dfc8f301bda3cd0d62e3a2a75",
+        "reason": "Shared build output was rebuilt during later native GPU/guest fixes. Historical fixture hash is intentionally preserved; current GTA startup manifest matches the final software."
+      }
+    ],
+    "report": {
+      "file": "build/nv40-175-final-artifact-integrity.json",
+      "bytes": 9877,
+      "sha256": "9a493c1984c3a8991e24ba674d02de92025ec06cb0d7ca2ccdb771e3b73baf0c"
+    },
+    "finalGtaSoftwareManifest": {
+      "file": "build/nv40-xp-17516-gtasa-native-final2/startup-software.json",
+      "bytes": 764,
+      "sha256": "cd1415053034903af9815f3176affcfa184a69ed7ddd645bb781244ee7c36368"
+    },
+    "finalGtaSoftwareAllCurrentlyMatch": true
+  },
+  "diskCare": {
+    "reserveGiB": 8,
+    "closedRamArchives": 2,
+    "closedOverlayArchives": 18,
+    "deletedUnusedTemporaryImages": 9,
+    "archiveChecks": "Every decoded SHA-256 matched the raw input before raw deletion; logical checkpoint paths remain loadable through archive fallback",
+    "retained": "build/nv40-original03-runtime.img, healthy OS source overlay, final game overlays and canonical screenshot/report evidence",
+    "reports": [
+      {
+        "file": "build/nv40-175-checkpoint-archive-verification.json",
+        "bytes": 773,
+        "sha256": "e17deb293b2ee0327da4fe72a84cbdbfb06198186573c941c7016e80a0f2818c"
+      },
+      {
+        "file": "build/nv40-175-closed-diagnostic-cleanup.json",
+        "bytes": 7903,
+        "sha256": "ecaa474450b3d8ae67f802274d3bfaba66cc49f633e45d2d67ce21468d02d714"
+      }
+    ]
+  },
+  "userAction": "Update builds, shut down XP, reload the page, cold boot. For native GTA on the provided image, back up/rename only its identified application-local D3D9.DLL proxy; leave System32 DirectX untouched.",
+  "limits": [
+    "GTA SA remains slow; these functional checks establish neither target FPS nor full game completion.",
+    "Native 175.16 game coverage does not extend historical 93.71 benchmark/performance claims.",
+    "PVIDEO planar video, exact filtering and cycle-accurate timing remain unvalidated, as recorded in the device deviations.",
+    "No driver/game/result/watchdog/clock patches or forced notifier completion. Original host images were read-only."
+  ]
+}

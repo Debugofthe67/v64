@@ -223,6 +223,19 @@ shut down XP, reload the page and power it on again. The
 [browser regression](../tests/acceptance/nv40/native-renderer-startup.json) covers
 saved machines, URL starts, CPU Workers and the debug page.
 
+Native 175.16 gameplay has also been checked with the provided
+[Warcraft III](../tests/acceptance/nv40/xp-17516-warcraft3.json),
+[KartRider](../tests/acceptance/nv40/xp-17516-kartrider.json) and
+[GTA San Andreas](../tests/acceptance/nv40/xp-17516-gtasa.json) images, using
+256 MiB VRAM and 1024 or 2048 MiB system RAM. KartRider's original launcher
+leads to Menu → 计时赛 for single-player testing. GTA uses its original
+startup video and New Game path; characters, forward/right input, the quit
+confirmation and desktop return were verified. GTA remains slow; these are
+rendering and interaction checks, not frame-rate acceptance. Original host
+images are read-only and game/OS writes stay in disposable overlays. The
+owner confirmed they had not copied proxy DLLs; the application-local proxy
+in the provided GTA image predates these tests.
+
 Before a long benchmark run, select **(None)** in Display Properties →
 Screen Saver and **Never** for monitor power-off in Power Options. The original
 XP screen saver interrupted a native 3DMark05 run with `D3DERR_DEVICELOST`;

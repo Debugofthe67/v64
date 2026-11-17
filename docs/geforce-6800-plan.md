@@ -2,6 +2,11 @@
 
 状态：G0–G7 的本次实施与验收已完成，保留下述已记录偏差；设备仍为 experimental。实施分支：`refactor`。
 
+2026-11-17 的 XP 175.16 后续修复按用户要求提交于 `ios6`：接通关闭 API 代理时的
+浏览器 WebGPU 加载，补全 PVIDEO 原生视频通知，并修复未使用的 TEX8/9 控制字及
+SHORT2N/SHORT4N 顶点声明。原版 DxDiag 和三款游戏的功能验证见下表；这不扩大
+93.71 的基准测试或性能结论。GTA SA 当前仍较慢，不计作流畅度验收。
+
 本阶段实现 AGP 版 GeForce 6800 GT 的 NV40 身份，在 i440FX/IDE 平台以 PCI 模式运行。
 原版 XP 93.71 和 Win98 81.98 都接受此路径，因此未触发可选 A1（AGP/GART）。
 设备保持 experimental；既有 XP/98 预设保留原显示适配器。
@@ -24,6 +29,7 @@
 | 客体 | 已验证套件 | 图像方法 |
 | --- | --- | --- |
 | XP SP3 / 93.71 | 99 MAX 26项、2000 22项、2001 SE 21项、03 11项、05 16项、06默认6项及补充7 feature/6 batch | 原版 IQ；06 feature 无 IQ 时用原版固定帧率模式的匹配 HUD 帧截图 |
+| XP SP3 / 175.16 | 原版 DxDiag DirectDraw/D3D7/8/9；Warcraft III、KartRider、GTA SA 实际画面与操作 | [DxDiag](../tests/acceptance/nv40/xp-17516-dxdiag.json)、[魔兽3](../tests/acceptance/nv40/xp-17516-warcraft3.json)、[跑跑计时赛](../tests/acceptance/nv40/xp-17516-kartrider.json)、[GTA 新游戏与移动](../tests/acceptance/nv40/xp-17516-gtasa.json)；各自记录退出与关机 |
 | Win98 SE / 81.98 | 99 MAX 26项、2000 22项、2001 SE 21项、03 11项 | 原版 IQ，XP/Win98与API代理参照逐图复核 |
 
 成功项目文件、完成窗口、GPU/FIFO/PGRAPH 诊断、原始 BMP、配套 RAM/磁盘及正常关机
