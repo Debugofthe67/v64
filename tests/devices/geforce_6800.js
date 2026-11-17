@@ -101,6 +101,26 @@ try
     assert.equal(read(fb + (128 << 20) - (1 << 20) + 0x120), 0x12345678, "RAMIN lives in VRAM");
     write(ramin + 0x124, 0xAABBCCDD);
     assert.equal(read(mmio + 0x700124), 0xAABBCCDD);
+
+    for(const [at, value] of [[0x1200, 0x303D], [0x1204, 31], [0x1208, 0xB003],
+        [0x4000, 0x4097], [0x4004, 0x120], [0x4100, 0x4097], [0x4104, 0x120]])
+        write(ramin + at, value);
+    nv.graph.bind(0, 2, 0x4000);
+    nv.graph.bind(0, 3, 0x4100);
+    for(const [at, subc, instance] of [[0x40014C, 3, 0x4100], [0x400188, 2, 0x4000]])
+    {
+        cpu.write8(mmio + at + 3, 3);
+        assert.equal(read(mmio + at), 0x03000120);
+        write(fb + 0xB00C, 0xFFFFFFFF);
+        nv.graph.method(0, subc, instance, 0x104, 0);
+        assert.equal(read(fb + 0xB00C), 0, "byte updates retain the DMA instance for notifier completion");
+    }
+    nv.registers.set(0x400100, 0x10001);
+    nv.registers.set(0x400108, 0x8001);
+    cpu.write8(mmio + 0x400102, 1);
+    assert.equal(read(mmio + 0x400100), 1, "acknowledging bit 16 preserves the adjacent pending interrupt");
+    assert.equal(read(mmio + 0x400108), 1);
+    cpu.write8(mmio + 0x400100, 1);
     vm.v86.cpu.devices.graphics_adapter.device["nvlog"](true);
     write(mmio + 0x100240, 0xBADC0FFE);
     assert.equal(read(mmio + 0x100240), 0xBADC0FFE);
