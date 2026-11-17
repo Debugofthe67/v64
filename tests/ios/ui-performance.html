@@ -42,7 +42,15 @@ try{
         const saved=await file.getFile();log("Saved "+scene+": "+saved.size+" bytes");
         return{scene,bytes:saved.size,vm:config.id};
     };
-    if(q.has("setup")){log("Setup: navigate through UI, then checkpoint_save(scene); close this profile before cloning it.");await new Promise(()=>{});}
+    if(q.has("setup")){
+        if(q.has("restore")){
+            const scene=q.get("restore");if(!["springboard","pvz"].includes(scene))throw Error("Unknown setup checkpoint");
+            await emulator.stop();const file=await(await dir.getFileHandle(scene+".v86")).getFile();
+            await emulator.restore_state_stream({size:file.size,read:async(a,n)=>new frame.contentWindow.Uint8Array(await file.slice(a,a+n).arrayBuffer())});
+            await emulator.run();
+        }
+        log("Setup: navigate through UI, then checkpoint_save(scene); close this profile before cloning it.");await new Promise(()=>{});
+    }
     const scene=q.get("scene");if(!["springboard","pvz"].includes(scene))throw Error("Unknown scene");
     await emulator.stop();const file=await(await dir.getFileHandle(scene+".v86")).getFile();
     await emulator.restore_state_stream({size:file.size,read:async(a,n)=>new frame.contentWindow.Uint8Array(await file.slice(a,a+n).arrayBuffer())});
@@ -52,15 +60,16 @@ try{
         if(!d.graphics?.panel?.awake||screenStates.some(s=>!s.awake))throw Error("Display slept; invalid FPS window");
         return d;
     };
-    const frames=d=>(d.graphics.native?.drawables||[]).filter(x=>x.width===960&&x.height===640).reduce((n,x)=>n+x.frames,0);
+    const gameWidth=Number(q.get("width")||320),gameHeight=Number(q.get("height")||480);
+    const frames=d=>(d.graphics.native?.drawables||[]).filter(x=>x.width===gameWidth&&x.height===gameHeight).reduce((n,x)=>n+x.frames,0);
     const mouse=(x,y,down)=>{emulator.bus.send("mouse-absolute",[x,y,640,960]);if(down!==undefined)emulator.bus.send("mouse-click",[down,false,false,false]);};
     screenStates.length=0;await emulator.run();await sleep(500);
-    const hostBefore=await space(),windows=[];
+    let hostBefore;const windows=[];
     if(scene==="springboard"){
         const warmup=Number(q.get("warmup")||40),count=Number(q.get("strokes")||20);
         for(let stroke=0;stroke<warmup+count;stroke++){
             window.performance_progress={phase:stroke<warmup?"warmup":"measure",stroke,warmup,count};
-            if(stroke===warmup){await emulator.stop();await capture("start.png");await emulator.run();await sleep(500);log("Desktop warmup completed: "+warmup+" strokes");}
+            if(stroke===warmup){await emulator.stop();await capture("start.png");await emulator.run();await sleep(500);hostBefore=await space();log("Desktop warmup completed: "+warmup+" strokes");}
             const left=stroke%2===0,from=left?550:90,to=left?90:550;
             mouse(from,500,true);await sleep(150);const before=await sample(),start=performance.now();
             for(;;){const t=Math.min(1,(performance.now()-start)/600);mouse(from+(to-from)*t,500);if(t===1)break;await sleep(16);}
@@ -72,6 +81,7 @@ try{
         window.performance_progress={phase:"warmup"};
         await until(async()=>{await sleep(100);const d=await sample();return frames(d)-frames(initial)>=warmup&&d.host_time-initial.host_time>=warmupMs},"PvZ warmup",180000);
         await emulator.stop();await capture("start.png");await emulator.run();await sleep(500);
+        hostBefore=await space();
         window.performance_progress={phase:"measure"};
         const before=await sample(),duration=Number(q.get("duration")||20000);await sleep(duration);windows.push({before,after:await sample()});
     }
@@ -80,7 +90,7 @@ try{
     const panelFrames=windows.reduce((n,w)=>n+w.after.graphics.panel.frames-w.before.graphics.panel.frames,0);
     const gameFrames=windows.reduce((n,w)=>n+frames(w.after)-frames(w.before),0);
     if(panelFrames<1||scene==="pvz"&&gameFrames<1)throw Error("No completed visible frames; invalid FPS window");
-    const result={scene,label:q.get("label")||"unlabelled",settings:Object.fromEntries(q),checkpoint:{name:file.name,bytes:file.size,modified:file.lastModified},
+    const result={scene,label:q.get("label")||"unlabelled",settings:Object.fromEntries(q),drawable:{width:gameWidth,height:gameHeight},checkpoint:{name:file.name,bytes:file.size,modified:file.lastModified},
         protocol:scene==="springboard"?"alternating 600 ms drags, 150 ms initial hold and 650 ms release settling excluded":"same-checkpoint live gameplay; warmup frames excluded",
         duration_ms:durationMs,panel_frames:panelFrames,panel_fps:panelFrames*1000/durationMs,
         game_frames:gameFrames,game_fps:gameFrames*1000/durationMs,windows,host:{before:hostBefore,after:hostAfter},screen_states:screenStates};
