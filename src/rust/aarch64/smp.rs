@@ -275,14 +275,11 @@ pub fn reserved_backing(core: usize) -> u32 {
     unsafe { crate::parallel::word_load(granule(core)) << 6 }
 }
 
-/// Whether a core holds a reservation in the RAM page at `backing` (the page
-/// tier's access cache serves no stores to it)
+/// A compiled store must reach the bus if another observer reserved this page.
+/// The A4 IOP uses a monitor slot even though only its AP is enumerated.
 pub fn reserved_page(backing: u32) -> bool {
-    if core_count() == 1 {
-        return false;
-    }
     let page = backing >> 12;
-    let held = unsafe { crate::parallel::word_load(monitors()) };
+    let held = unsafe { crate::parallel::word_load(monitors()) } & !(1 << current_core());
     held != 0
         && (0..MAX_CORES).any(|c| {
             held & 1 << c != 0 && unsafe { crate::parallel::word_load(granule(c)) } >> 6 == page
