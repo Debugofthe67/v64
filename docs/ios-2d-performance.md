@@ -251,3 +251,24 @@ iOS 回归、QEMU JIT MMU 300 cases / 4,285 probes 均通过。
 IOP 每次仍获得完整的 4,096 指令预算；AP 等待不会减掉独立 IOP 的完整时间片。
 这是后续独立 IOP 服务期限候选的依据，包含时间存在重叠，不能相加成独占 CPU 分解。
 带统计/Profiler 的运行不计入 FPS 成绩。原始资料为本地 `desktop-phase-4-*`。
+
+## 独立 IOP 服务期限候选撤回
+
+尝试在正常时钟下按 1 ms 来宾时间为 IOP 提供独立时间片；AP 的 WFI 和图形 yield 不再
+各自附带一次完整 IOP 时间片。IRQ/FIQ、复位立即处理；调度返回时间限制在下一次 IOP
+服务期限以内，确定性时钟和显式 `iop.run()` 保持原预算。复位/恢复清除派生期限。
+AP 等待/运行、时钟倒退、IRQ/FIQ、异步 NAND 的 32/4,096 指令预算、停止/重启与快照
+边界测试，以及原生 counter/status、iOS 回归、类型检查及 app 构建通过。
+
+固定同一配对检查点、Wasm、GLES、WebGPU，仅切换 CPU worker，仍用 40/20 拖动协议：
+
+| 可见 LCD FPS | 对照前 | 候选 1 | 候选 2 | 对照后 |
+| --- | ---: | ---: | ---: | ---: |
+| `desktop-deadline-*` | 26.422 | 25.217 | 25.936 | 26.621 |
+
+均值约 -3.6%，两轮都低于两个对照，故撤回运行时及候选测试。首对活动窗口的累计
+page-tier native retirement 从 11.806 亿降到 8.212 亿，AP 自身 retirement 为 8.484 /
+8.053 亿；说明减少执行工作没有转化为帧率收益，不能用 IOP 的包含时间直接认定它限帧。
+该差值不是精确的 IOP 指令数，未编译指令与 AP 执行变化也会影响它。
+所有窗口 normal rate 1、亮屏、无 undefined/discarded host time；起止桌面已核对。
+本地保留 `deadline-rejected.patch`、测试及原始记录，产品继续使用原调度。
