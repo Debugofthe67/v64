@@ -321,11 +321,27 @@ AArch32 页面保留 locals，在 helper 前后仍提交/重载完整存活 GPR�
 | `pvz-gpr-locals-*` | 28.648 | 27.549 | 27.895 | 28.146 | -2.4% |
 
 桌面两对均改善，但 PvZ 两对均回退，因此不保留全局策略，继续验证仅对 PL1 内核代码
-放开缓存、EL0 保留原策略的较窄候选。桌面代码量约 80.3→78.9 MiB（此处原始计数为 bytes，
-分别约 76.6→75.2 MiB），无 evictions；不把代码量变化当作 FPS。
+放开缓存、EL0 保留原策略的较窄候选。桌面代码量约 76.6→75.2 MiB，
+无 evictions；不把代码量变化当作 FPS。
 所有窗口 normal rate 1、亮屏、无 undefined/discarded host time；场景图片已核对。
 本地保留 `all-gpr-rejected.patch`、冻结构建与原始记录。
 
 排除取指异常残留后的 20.251 s 诊断 `desktop-words-2` 记录到 BX LR `0x4770`
 3,423,434 次、DCCSW `0xee070f5a` 886,784 次及 LDREX `0xe8531f00` 553,608 次。
 这些是指令调用频率，不是独占耗时；后续同时验证内核缓存清理指令的解释器往返。
+
+## 仅 PL1 GPR locals 候选撤回
+
+为避免全局候选的 PvZ 回退，单独对 PL1 放开 opaque helper 页的 locals，EL0 保留原策略。
+完整 page、fallback、ARM32 特权/GIC 差分、seed 6022 随机程序、iOS 和原生 IOP 状态回归通过。
+同一桌面/实战检查点与同样冻结的其他组件，A/B/B/A 为：
+
+| 可见 LCD FPS | 对照前 | 候选 1 | 候选 2 | 对照后 |
+| --- | ---: | ---: | ---: | ---: |
+| `desktop-pl1-gpr-*` | 26.874 | 25.509 | 26.195 | 26.353 |
+| `pvz-pl1-gpr-*` | 22.049 | 21.348 | 24.547 | 25.298 |
+
+桌面均值约 -2.9%，PvZ 约 -3.1%；两场景的两对均回退，撤回该策略，继续单独验证 EL0。
+PvZ 组的前后对照有较大变化，只与本组相邻对照比较，不与先前接近 30 FPS 的运行混算。
+所有窗口 normal rate 1、亮屏、无 undefined/discarded host time。
+本地保留 `pl1-gpr-rejected.patch` 及全部原始结果。
