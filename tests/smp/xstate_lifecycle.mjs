@@ -122,9 +122,9 @@ for(const count of [1, 2])
             assert.equal(cpu.mxcsr[0], 0x1F80, "reset: MXCSR");
         }
 
-        // the CPU features: a machine without them refuses the snapshot, and
+        // A machine explicitly configured without extensions refuses the snapshot, and
         // this one a snapshot from before features were recorded
-        const plain = await machine(count);
+        const plain = await machine(count, []);
         try
         {
             const target = plain.v86.cpu, before = target.get_machine_core_state();

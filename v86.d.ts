@@ -1125,6 +1125,9 @@ export interface V86Options {
         "cortex-a8" | "cortex-a15";
 
     /**
+     * With cpu_type "x86_64", "x86-64-v1" selects the psABI baseline,
+     * excluding the v2 instructions even when running 32-bit code (LAHF/SAHF
+     * remain available there). An empty array retains the historical CPU.
      * CPU features beyond the base profile, reported by CPUID: SSSE3, SSE4.1
      * and SSE4.2, by name or as the preset "x86-64-v2" (with
      * cpu_type: "x86_64", what x86-64-v2 requires: RHEL 9, Windows 11 24H2);
@@ -1142,7 +1145,7 @@ export interface V86Options {
      * See [docs/x86-64.md](https://github.com/speedyHKjournalist/v64/blob/master/docs/x86-64.md).
      */
     cpu_features?: Array<"SSSE3" | "SSE4.1" | "SSE4.2" | "XSAVE" | "AVX" | "AVX2" | "FMA" | "F16C" | "BMI1" | "BMI2" |
-        "LZCNT" | "MOVBE" | "XSAVEOPT" | "XSAVEC" | "XGETBV1" | "XSAVES"> | "x86-64-v2" | "x86-64-v3";
+        "LZCNT" | "MOVBE" | "XSAVEOPT" | "XSAVEC" | "XGETBV1" | "XSAVES"> | "x86-64-v1" | "x86-64-v2" | "x86-64-v3";
 
     /**
      * Log level (for debug builds)

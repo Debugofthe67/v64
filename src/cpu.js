@@ -24,7 +24,7 @@ import { PFlash } from "./pflash.js";
 import { ACPI_LOADER_FILE, ACPI_RSDP_FILE, ACPI_TABLES_FILE, TPM_LOG_FILE, build_acpi_tables, locate_acpi_tables } from "./acpi_tables.js";
 import { ACPI_PM_BASE_DEFAULT, MACHINE_LAYOUT_VERSION, Platform, check_platform, create_platform, pci_functions } from "./platform.js";
 import { CORE_STATE_RANGES, INIT_PRESERVED, STATE_OFFSETS } from "./state_layout.js";
-import { CPU_FEATURES, CPU_FEATURE_PRESETS } from "./cpu_features.js";
+import { CPU_FEATURES, CPU_FEATURE_PRESETS, X86_64_V1 } from "./cpu_features.js";
 import { build_jit_defaults, set_jit_switches } from "./jit_switches.js";
 import { ParallelMachine } from "./parallel/machine.js";
 import { ExtendedStore } from "./extended_memory.js";
@@ -1069,6 +1069,11 @@ const X86_64_DEFAULT_FEATURES = Object.keys(CPU_FEATURES).filter(name =>
  */
 export function resolve_cpu_features(requested, x86_64, cpuid_level)
 {
+    if(requested === "x86-64-v1")
+    {
+        if(!x86_64) throw new Error('cpu_features: x86-64-v1 needs cpu_type: "x86_64"');
+        return X86_64_V1;
+    }
     if(requested === undefined)
     {
         if(!x86_64) return 0;
@@ -1095,6 +1100,10 @@ export function resolve_cpu_features(requested, x86_64, cpuid_level)
     {
         count = kept.length;
         kept = kept.filter(name => CPU_FEATURES[name]["requires"].every(required => kept.includes(required)));
+    }
+    if(typeof requested === "string" && kept.length !== names.length)
+    {
+        throw new Error("cpu_features: cpuid_level is too low for " + requested);
     }
     return kept.reduce((set, name) => set | 1 << CPU_FEATURES[name]["bit"], 0);
 }
@@ -1358,9 +1367,13 @@ CPU.prototype.validate_state = function(state)
     // before them have none): a machine whose features were not chosen
     // (cpu_features not given) takes the snapshot's, set_state
     const features = state[106] || 0;
+    if(!this.wm.exports["cpu_features_valid"](features))
+    {
+        throw new Error("The snapshot has CPU features incompatible with this CPU type");
+    }
     if(features !== this.cpu_features && this.cpu_features_explicit)
     {
-        const names = mask => Object.keys(CPU_FEATURES).filter(name => mask & 1 << CPU_FEATURES[name].bit).join(" ") || "none";
+        const names = mask => mask === X86_64_V1 ? "x86-64-v1" : Object.keys(CPU_FEATURES).filter(name => mask & 1 << CPU_FEATURES[name].bit).join(" ") || "none";
         throw new Error("The snapshot is from a machine with the CPU features " + names(features) +
             " (cpu_features), this one has " + names(this.cpu_features));
     }

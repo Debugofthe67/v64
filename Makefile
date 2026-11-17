@@ -1360,6 +1360,7 @@ platform-contract-tests: build/v86-debug.wasm build/libv86.mjs build/v86.wasm bu
 	node tools/cpu_contract.mjs --check
 	node tests/x64/profile_options.mjs
 	node tests/x64/cpu_features.mjs
+	node tests/x64/isa_levels.mjs
 	node tests/smp/topology.mjs
 	node tests/devices/acpi_tables.js
 

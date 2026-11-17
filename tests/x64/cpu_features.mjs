@@ -62,6 +62,8 @@ for(const [options, expected, level] of [
     [{}, []],
     [{cpu_type: "x86_64"}, [...V3, ...XSAVE_FAMILY.slice(1)]],
     [{cpu_type: "x86_64", cpu_features: []}, []],
+    [{cpu_type: "x86_64", cpu_features: "x86-64-v1"}, []],
+    [{cpu_type: "x86_64", cpu_features: "x86-64-v2"}, V2],
     [{cpu_features: [...V2, "BMI1", "BMI2", "MOVBE"], cpu_features_unreleased: true}, [...V2, "BMI1", "BMI2", "MOVBE"]],
     [{cpu_features: "x86-64-v2"}, V2],
     [{cpu_features: ["XSAVE"]}, ["XSAVE"]],
@@ -81,6 +83,12 @@ for(const [options, expected, level] of [
     const result = await actual(directory, {length: 24, options});
     const name = JSON.stringify(options);
     const [leaf0, leaf1, leaf7, ext1, leafd1] = [4, 8, 12, 16, 20].map(at => result.readUInt32LE(at));
+    const strict_v1 = options.cpu_features === "x86-64-v1";
+    const sse3_popcnt = 1 | 1 << 23;
+    assert.equal(leaf1 & sse3_popcnt, strict_v1 ? 0 : sse3_popcnt, name + " SSE3/POPCNT");
+    const cx16_lahf = options.cpu_type === "x86_64" && !strict_v1;
+    assert.equal(!!(leaf1 & 1 << 13), cx16_lahf, name + " CMPXCHG16B");
+    assert.equal(!!(ext1 & 1), cx16_lahf, name + " long-mode LAHF/SAHF");
     assert.equal(leaf1 & all(LEAF1), mask(LEAF1, expected), `${name}: CPUID.1:ECX ${leaf1.toString(16)}`);
     assert.equal(leaf7 & all(LEAF7), mask(LEAF7, expected), `${name}: CPUID.7.0:EBX ${leaf7.toString(16)}`);
     assert.equal(ext1 & all(EXT1), mask(EXT1, expected), `${name}: CPUID.80000001h:ECX ${ext1.toString(16)}`);
@@ -91,6 +99,8 @@ for(const [options, expected, level] of [
 }
 
 for(const [options, message] of [
+    [{cpu_features: "x86-64-v1"}, /x86-64-v1 needs cpu_type/],
+    [{cpu_type: "x86_64", cpu_features: "x86-64-v3", cpuid_level: 7}, /cpuid_level is too low/],
     [{cpu_features: ["LZCNT"]}, /LZCNT needs cpu_type: "x86_64"/],
     [{cpu_features: "x86-64-v3"}, /LZCNT needs cpu_type: "x86_64"/],
     [{cpu_features: ["SSE4.1"]}, /SSE4\.1 requires SSSE3/],
@@ -130,6 +140,18 @@ for(const [options, message] of [
     await defaulted.restore_state(state);
     assert.equal(defaulted.v86.cpu.cpu_features, 0, "the restored machine has the snapshot's features");
     assert.equal(defaulted.v86.cpu.wm.exports["get_cpu_features"](), 0, "and so has the core");
+    const strict = await machine({cpu_features: "x86-64-v1"});
+    await assert.rejects(strict.restore_state(state), /this one has x86-64-v1/);
+    const v1_state = await strict.save_state();
+    await strict.destroy();
+    const legacy = await machine({cpu_type: "x86"});
+    await assert.rejects(legacy.restore_state(v1_state), /incompatible with this CPU type/);
+    await legacy.destroy();
+    await defaulted.restore_state(v1_state);
+    const cpuid = defaulted.v86.cpu.wm.exports["cpuid_query"];
+    assert.equal(cpuid(1, 0, 2) & (1 | 1 << 13 | 1 << 23), 0, "restored v1 CPUID");
+    await defaulted.restore_state(state);
+    assert.ok(cpuid(1, 0, 2) & 1, "restored historical CPU has SSE3");
     await defaulted.destroy();
     const chosen = await machine({cpu_features: "x86-64-v3"});
     await assert.rejects(chosen.restore_state(state), /The snapshot is from a machine with the CPU features none/);

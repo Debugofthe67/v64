@@ -57,6 +57,7 @@ const PROFILES = {
     "x64-1": { cpu_type: "x86_64" },
     "x64-4": { cpu_type: "x86_64", cpu_cores: 4, acpi: true },
     // the released features (docs/simd-xsave-plan.md M1-M5)
+    "x64-v1": { cpu_type: "x86_64", cpu_features: "x86-64-v1" },
     "legacy-v2": { cpu_features: "x86-64-v2" },
     "x64-v2": { cpu_type: "x86_64", cpu_features: "x86-64-v2" },
     "legacy-xsave": { cpu_features: ["XSAVE"] },

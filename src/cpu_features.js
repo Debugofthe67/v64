@@ -189,8 +189,12 @@ export const CPU_FEATURES = {
     }
 };
 
+/** Snapshot-compatible feature mask for the explicit x86-64 baseline. */
+export const X86_64_V1 = 0x40000000;
+
 /** Feature sets by name */
 export const CPU_FEATURE_PRESETS = {
+    "x86-64-v1": [],
     "x86-64-v2": [
         "SSSE3",
         "SSE4.1",

@@ -157,7 +157,8 @@ function check_contract()
         const key = "0x" + leaf.toString(16).padStart(8, "0") + "." + subleaf;
         for(const [profile, [cpu_type, requested]] of Object.entries(CONTRACT_PROFILES))
         {
-            const expected = (f.open || []).includes(cpu_type) || requested.includes(f.name);
+            const historical = profile !== "x64-v1" && (f.open || []).includes(cpu_type);
+            const expected = historical || requested.includes(f.name);
             const values = contract.profiles[profile].cpuid[key];
             assert.ok(values, `cpu-contract.json: ${profile} has no CPUID ${key}`);
             const set = (parseInt(values[REGISTERS.indexOf(register)], 16) >>> bit & 1) === 1;
@@ -169,7 +170,11 @@ function check_contract()
 
 // Feature sets by name (Q4); x86-64 levels need the x86-64 profile's CX16,
 // LAHF/SAHF, POPCNT and SSE3 too
+// Snapshot feature masks predating the explicit v1 preset (including zero)
+// retain their original CPU. Reserve this bit independently of extension IDs.
+const V1_MASK = 1 << 30;
 export const PRESETS = {
+    "x86-64-v1": [],
     "x86-64-v2": ["SSSE3", "SSE4.1", "SSE4.2"],
     "x86-64-v3": ["SSSE3", "SSE4.1", "SSE4.2", "XSAVE", "AVX", "AVX2", "FMA", "F16C", "BMI1", "BMI2", "LZCNT", "MOVBE"],
 };
@@ -183,6 +188,7 @@ const X86_64_DEFAULT = feature_bits().filter(f => RELEASED.includes(f.milestone)
 // features they request
 const CONTRACT_PROFILES = {
     "legacy-1": ["x86", []], "legacy-4": ["x86", []], "x64-1": ["x86_64", X86_64_DEFAULT], "x64-4": ["x86_64", X86_64_DEFAULT],
+    "x64-v1": ["x86_64", PRESETS["x86-64-v1"]],
     "legacy-v2": ["x86", PRESETS["x86-64-v2"]], "x64-v2": ["x86_64", PRESETS["x86-64-v2"]],
     "legacy-xsave": ["x86", ["XSAVE"]], "x64-xsave": ["x86_64", ["XSAVE"]],
     "legacy-avx": ["x86", [...PRESETS["x86-64-v2"], "XSAVE", "AVX"]], "x64-avx": ["x86_64", [...PRESETS["x86-64-v2"], "XSAVE", "AVX"]],
@@ -208,7 +214,8 @@ function rust_consts()
     const bits = feature_bits();
     const index = new Map(bits.map(f => [f.name, f.bit]));
     const mask = names => names.filter(n => index.has(n)).map(n => rust_name(n)).join(" | ") || "0";
-    const lines = [];
+    assert.ok(bits.length <= 30, "feature bits overlap the v1 preset marker");
+    const lines = [`pub const X86_64_V1: u32 = ${hex(V1_MASK)};`];
     for(const f of bits) lines.push(`pub const ${rust_name(f.name)}: u32 = 1 << ${f.bit};`);
     lines.push(`pub const COUNT: usize = ${bits.length};`);
     lines.push(`pub const ALL: u32 = ${hex((2 ** bits.length) - 1)};`);
@@ -245,6 +252,9 @@ function js_file()
  * released (else it is for tests and development)
  */
 export const CPU_FEATURES = ${JSON.stringify(table, null, 4)};
+
+/** Snapshot-compatible feature mask for the explicit x86-64 baseline. */
+export const X86_64_V1 = ${hex(V1_MASK)};
 
 /** Feature sets by name */
 export const CPU_FEATURE_PRESETS = ${JSON.stringify(PRESETS, null, 4)};

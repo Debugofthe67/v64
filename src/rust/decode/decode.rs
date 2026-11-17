@@ -352,7 +352,8 @@ pub fn decode(
     let row = rows
         .iter()
         .find(|row| row.group < 0 || modrm.map(|m| (m >> 3 & 7) as i8) == Some(row.group));
-    let early_ud = variant == Variant::Undefined
+    let early_ud = crate::decode_rules::v1_opcode_ud(opcode, modrm, false, false)
+        || variant == Variant::Undefined
         || rows.is_empty()
         || row.is_some_and(|row| !row.exists() || !row.implemented());
     let encoding = if early_ud {

@@ -3605,6 +3605,13 @@ pub unsafe fn instr_0FA2() {
 
     let mut topology = [eax as u32, ebx as u32, ecx as u32, edx as u32];
     apply_x64_test_capabilities(X64_TEST_CAPABILITIES, level, &mut topology);
+    if crate::cpu::features::has(crate::cpu::features::X86_64_V1) {
+        match level {
+            1 => topology[2] &= !(1 | 1 << 13 | 1 << 23), // SSE3, CX16, POPCNT
+            0x8000_0001 => topology[2] &= !1,             // LAHF/SAHF in long mode
+            _ => {},
+        }
+    }
     crate::cpu::features::cpuid(level, read_reg32(ECX) as u32, &mut topology);
     crate::cpu::xstate::cpuid(level, read_reg32(ECX) as u32, &mut topology);
     crate::cpu::topology::apply(

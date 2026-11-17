@@ -451,7 +451,11 @@ where
         .iter()
         .find(|row| row.group < 0 || modrm.is_some_and(|m| (m >> 3 & 7) as i8 == row.group))
         .ok_or(DecodeError::InvalidOpcode)?;
-    if variant == Variant::Undefined || !row.exists() || !row.implemented() {
+    if variant == Variant::Undefined
+        || !row.exists()
+        || !row.implemented()
+        || crate::decode_rules::v1_opcode_ud(opcode, modrm, mode.is_long(), prefixes.w())
+    {
         return Err(DecodeError::InvalidOpcode);
     }
     if prefixes.lock && !crate::decode_rules::lock_allowed(base_opcode, modrm) {
