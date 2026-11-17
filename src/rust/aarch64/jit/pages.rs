@@ -617,10 +617,11 @@ fn retire(r: &mut Runtime, index: usize) {
         }
     }
     let table_index = f.slot + crate::aarch64::root::WASM_TABLE_OFFSET;
+    // execute publishes a slot only in the mode of its compiled page. Each
+    // core can have virtual aliases for that page in its own chain table.
+    let mode = (f.page >> MODE_SHIFT) as usize;
     for core in 0..MAX_CORES {
-        for table in chain(core).0.iter_mut() {
-            table.unchain(table_index);
-        }
+        chain(core).0[mode].unchain(table_index);
     }
     r.stats[RETIRED_FUNCTIONS] += 1;
     unsafe { CODE_WRITES += 1 };
