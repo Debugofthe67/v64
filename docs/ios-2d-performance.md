@@ -109,3 +109,24 @@ SIMD 与非 SIMD Wasm 均通过逐字节像素、alpha、尾部、背光、DART�
 对照 GLES 插件 SHA-256 为 `1fae5b2890819c9a986e3ae1bdee6e16b50c20b781be2baa6cacca18183cf276`，
 免复制候选为 `de194543c15d53716ae99197f1063b3eba9c0576d09627bc1f88ef6c105dae0a`。
 原始结果与撤回补丁仅保存在本地 `*-thread-*` / `thread-rejected.patch`。
+
+## PvZ 1.0 的应用自身调度上限
+
+检查用户提供的原始 `Plant vs Zombies V1.0.ipa`（SHA-256：
+`25bd09f5da779abac6aa2a90bd243f280df3975eba990d667cb204801a76c9c8`）发现：
+
+- ARMv6 `AppController::startAnimating` 在原始虚拟地址 `0x156de8`。
+- `0x156e54` 把第一个 Objective-C 实参 r2 设为 2，随后调用 `setFrameInterval:`。
+  `0x156e58` 的 PC 相对取址解析到 selector 引用 `0x239e70`，字符串地址 `0x20d5ac`，确认不是
+  仅凭立即数猜测。调用在 `0x156e68`。
+- 同一函数的备用 NSTimer 分支加载 `0x156f54` 的 double 常量
+  `0x3fa1111111111111`，即 `0.03333333333333333` 秒。
+
+[Apple 对 frameInterval 的说明](https://developer.apple.com/documentation/quartzcore/cadisplaylink/frameinterval?language=objc)
+规定值 2 每两个显示刷新触发一次。因此，在本设备 60 Hz 的显示时钟下，该版本主动按约 30 FPS
+调度，两条代码路径一致。观察到接近 30 的发布帧率不能全部归因为模拟器没有达到 60。
+兼容运行原始应用时应先优化 30 FPS 的稳定性；60 FPS 还需要另行评估应用调度和更新逻辑的修改，
+不能通过加速虚机时钟、重复呈现旧帧或修改 FPS 计数来达成。
+
+本轮没有修改游戏二进制或游戏速度。SpringBoard 翻页仍以真实 60 FPS 为目标。
+反汇编与原始可执行文件仅保留在本地诊断目录，不提交游戏内容。
