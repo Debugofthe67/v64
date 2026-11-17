@@ -219,3 +219,22 @@ host time 或未定义指令，画面中没有失败菜单或息屏。起止图�
 所有窗口保持屏幕唤醒，无 undefined、discarded host time；起止场景为同一正常桌面。
 继续使用 GPU 条带读回缓存和 LCD SIMD 转换。候选补丁、测试及原始结果只保存在
 本地 `build/ios/ios6-2d/helper-rejected*` 和上述运行目录，未提交来宾数据。
+
+## IOP 计数器 JIT 入口候选撤回
+
+另一候选在 IOP 的标量 LDR 模板里守卫两个精确的 PMGR 物理地址，跳过必然不能命中的
+RAM access cache；专用 helper 仍检查 IOP、MMU-off 和当前 MMIO 映射，每次读取同一
+机器时钟。没有缓存计数值、减少 IOP 指令或改动调度。高低位溢出、暂停/恢复、AP 拒绝、
+非对齐/相邻地址、MMU-on 拒绝、移除 MMIO 和 LDM 回退检查，以及 SIMD/非 SIMD 构建、
+iOS 回归、QEMU JIT MMU 300 cases / 4,285 probes 均通过。
+
+同一 RAM/NAND 配对、40 次预热和 20 次计量拖动，只切换 Wasm：
+
+| 可见 LCD FPS | 对照前 | 候选 1 | 候选 2 | 对照后 |
+| --- | ---: | ---: | ---: | ---: |
+| `desktop-inline-counter-*` | 23.383 | 22.279 | 24.075 | 23.435 |
+
+候选均值约 -1.0%，没有确认改善，撤回运行时及候选测试。所有窗口 normal rate 1、
+屏幕保持唤醒，无 undefined 或 discarded host time，起止桌面已核对。
+宿主存在并发 Node/Chrome、C++ 索引和存储管理负载，此组只能与自己的前后对照比较。
+原始资料与 `inline-counter-rejected.patch` 留在本地，不把组件路径缩短当作 FPS 成绩。
