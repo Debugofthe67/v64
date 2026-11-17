@@ -1,0 +1,108 @@
+{
+  "scope": "Original XP SP3 DxDiag with ForceWare 175.16, native Windows DirectX; all four original test results successful. Game tests are recorded separately.",
+  "date": "2026-11-17",
+  "configuration": {
+    "machine": "i440FX/IDE",
+    "acpi": false,
+    "cores": 1,
+    "ramMiB": 1024,
+    "vramMiB": 256,
+    "graphics_adapter": "geforce_6800",
+    "renderer": "Chrome WebGPU",
+    "cpu": "x86",
+    "software": [
+      {
+        "file": "build/libv86.mjs",
+        "bytes": 891559,
+        "sha256": "0b3a102ef2a1a14d7993cec09994d4fc18cc744179fe78f7551b1f8f413f1547"
+      },
+      {
+        "file": "build/v86-geforce-6800.js",
+        "bytes": 218508,
+        "sha256": "1394da304b893d4146ae033a8427c127abaf7592f61dc48ce59134b280c8f053"
+      },
+      {
+        "file": "build/glbridge/libv86-webgpu.js",
+        "bytes": 4395303,
+        "sha256": "4236eabbb7746540dca8e6ad4c1dacbe779806890751624de08794615403abd6"
+      },
+      {
+        "file": "build/nv40-175-cpu.wasm",
+        "bytes": 3035311,
+        "sha256": "d3e98ac0d45d06749d58ac494e4dd8936053f6291309bd1fd36f3b1914275795"
+      },
+      {
+        "file": "/Users/renruisi/Downloads/driver/175.16_geforce_winxp_32bit_english_whql.exe",
+        "bytes": 39793128,
+        "sha256": "aa7da7b22f104c6fc6ba874284c5fed90890c32189db0b78660ad5098e733cd7"
+      }
+    ]
+  },
+  "setup": {
+    "installer": "175.16_geforce_winxp_32bit_english_whql.exe",
+    "coldBootRequired": true,
+    "acceleratedProbe": "build/nv40-xp-17516-cold-probe/NV.TXT",
+    "probeSHA256": "ceeebb016cf4d70ae5a9ff4d028a72c77849da8ab5fda1c85435056693eab8bb",
+    "probeChecks": [
+      "GDI_TEST failures=0",
+      "DDRAW_TEST failures=0",
+      "D3D9_TEST failures=0",
+      "D3D9_RGB565_FAILURES=00000000",
+      "D3D9_DEVICE_RESULT=00000000"
+    ]
+  },
+  "dxdiag": {
+    "report": "build/nv40-xp-17516-dxdiag-live/DXDIAG.TXT",
+    "sha256": "585e7668ed1bed15c2cde25a9d8d1b8504e6cadab082857f0c112779e0ee6f45",
+    "driver": "6.14.0011.7516",
+    "results": [
+      "DDraw Test Result: All tests were successful.",
+      "D3D7 Test Result: All tests were successful.",
+      "D3D8 Test Result: All tests were successful.",
+      "D3D9 Test Result: All tests were successful."
+    ],
+    "screenshots": [
+      {
+        "test": "window DirectDraw",
+        "file": "build/nv40-xp-17516-dxdiag-live/fast-0122.png",
+        "sha256": "78d417fd32219c886a3931d6d060c15847637fcab0584526d279f8a47746e56d"
+      },
+      {
+        "test": "fullscreen DirectDraw A",
+        "file": "build/nv40-xp-17516-dxdiag-live/fast-0419.png",
+        "sha256": "e6ee421b29fe9face0bcee1f587fce42a6e06028d8aac3cb28dbd0079fe2a105"
+      },
+      {
+        "test": "fullscreen DirectDraw B",
+        "file": "build/nv40-xp-17516-dxdiag-live/fast-0440.png",
+        "sha256": "bb31a3c9d8e32bf23bf276afaa36034a85dde9d2b93642f7d7c1e5916321108b"
+      },
+      {
+        "test": "Direct3D 7",
+        "file": "build/nv40-xp-17516-dxdiag-live/capture-0151.png",
+        "sha256": "9f3e17b1ebfa7954e771b7cb2a093c0300394eb43119d70927841f9175ceaba2"
+      },
+      {
+        "test": "Direct3D 8",
+        "file": "build/nv40-xp-17516-dxdiag-live/capture-0167.png",
+        "sha256": "7563d3c1765940308f85c9b36eb447e45c2853517f7141d01e4635818c29c52e"
+      },
+      {
+        "test": "Direct3D 9",
+        "file": "build/nv40-xp-17516-dxdiag-live/capture-0185.png",
+        "sha256": "d4efc173facd2f9ecebd664d292ab5af8a7fb986e6d070cc76d8a78c670b7cbd"
+      }
+    ]
+  },
+  "uiHelper": {
+    "source": "tests/devices/geforce_ui.c",
+    "sha256": "0d46bacdbeaaf88b8f3f64759cb3f1e0f7fdf4e4b3a7d7a896979ca11956d7bb",
+    "selection": "NV_UI_PROCESS_NAME=\"dxdiag.exe\"; exact process ownership and visible/enabled/ancestor guards retained; default 3DMark selection unchanged",
+    "validation": "Both default and exact-process builds passed -Wall -Wextra -Werror. Original visible Next Page and test confirmation controls were exercised; normal keyboard input drove fullscreen tests."
+  },
+  "limitations": [
+    "Does not establish the owner's exact failing VM configuration; clarification was requested while testing continued.",
+    "An installation-session PnP started flag does not establish a completed reboot or accelerated driver load.",
+    "PFIFO cache flags 0x100 are retained in diagnostics; no blanket zero-hardware-fault claim is made."
+  ]
+}

@@ -190,13 +190,15 @@ The tested configuration is XP SP3 on i440FX with IDE, ACPI disabled,
 1024 MiB system RAM and `graphics_adapter: "geforce_6800"`. Select 128 or
 256 MiB VRAM and retain the bundled `bios/vgabios-geforce6800.bin` ROM.
 
-1. Extract `93.71_forceware_winxp2k_english_whql.exe` inside the guest.
+1. Extract `93.71_forceware_winxp2k_english_whql.exe` or
+   `175.16_geforce_winxp_32bit_english_whql.exe` inside the guest.
 2. In Device Manager, update the display adapter from the extracted NVIDIA
    INF. The package includes `PCI\VEN_10DE&DEV_0045` and installs the `nv`
    service. Restart, then confirm GeForce 6800 GT starts without a problem code.
 3. Select 1024×768, 32-bit color, and enable full display acceleration.
 4. With a WebGPU renderer available on the host, run DxDiag's DirectDraw
-   and Direct3D tests. Native 93.71 has been verified with D3D7/8/9; the
+   and Direct3D tests. Native 93.71 and
+   [175.16](../tests/acceptance/nv40/xp-17516-dxdiag.json) have been verified with D3D7/8/9; the
    [RGB565 fixture](../tests/acceptance/nv40/g3-xp-9371-rgb565.json) also checks native
    D3D9 rendering, system-memory readback and GDI conversion.
 

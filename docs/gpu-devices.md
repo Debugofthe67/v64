@@ -249,6 +249,7 @@ driver binary or microcode is distributed with the device.
 | Guest | Native driver | Verified scope |
 | --- | --- | --- |
 | XP SP3, 1024 MiB RAM, IDE, ACPI off | ForceWare 93.71 | Device started, 1024×768×32, GDI, DirectDraw, DxDiag D3D7/8/9 and native RGB565 render/readback |
+| XP SP3, 1024 MiB RAM, IDE, ACPI off | ForceWare 175.16 | Cold boot after installation, 1024×768×32, GDI, DirectDraw, original DxDiag D3D7/8/9, native D3D9 HAL and RGB565/texture readback; [evidence](../tests/acceptance/nv40/xp-17516-dxdiag.json) |
 | Win98 SE, 256 MiB RAM, IDE, ACPI off | ForceWare 81.98 and a Win98-compatible DirectX 9.0c runtime | Device started, 8/16/32 bpp mode changes, DOS graphics/text/desktop round trip, GDI, DirectDraw, DxDiag D3D7/8/9, StarCraft 8bpp and Red Alert 2 RGB565 gameplay/desktop round trips |
 
 Driver setup is described in [Windows 9x](windows-9x.md#323-geforce-6800-gt-experimental)
