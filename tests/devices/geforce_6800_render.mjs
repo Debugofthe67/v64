@@ -2034,8 +2034,29 @@ try
         }
         finally {engine.shaders=loopShaders;}
         console.log("PASS: real WebGPU fragment LOOP counters, indexed texture attributes and nested index restoration");
-
-
+        graph.reset();const shortFaultCount=graph.faults.length;
+        for(const [at,value] of [[0x194,0x100],[0x184,0x100],[0x200,8<<16],[0x204,8<<16],[0x208,0x148],
+            [0x20C,32],[0x210,0x10000],[0x220,1],[0x8C0,8<<16],[0x8C4,8<<16],
+            [0x1E94,0x101],[0x8E4,0x9001],[0x1E9C,0]])method(at,value);
+        [0x401F9C6C,0x0040000D,0x81000000,0x0001EF81].forEach((word,i)=>method(0xB80+i*4,word));
+        [0x01001E81,0x001DC802,0,0,0x3E4CCCCD,0x3ECCCCCD,0x3F19999A,0x3F800000]
+            .forEach((word,i)=>view.setUint32(0x9000+i*4,word,true));
+        for(const size of [2,4])
+        {
+            vram.fill(0,0x10000,0x10100);method(0x1740,0x10000|size<<4|1);method(0x1808,6);
+            for(const [x,y] of [[-32768,-32768],[32767,-32768],[-32768,32767],[32767,32767]])
+            {
+                method(0x1818,(y&65535)<<16|x&65535);
+                if(size===4)method(0x1818,0x7FFF0000);
+            }
+            method(0x1808,0);await engine.backend.quiesce();
+            assert.deepEqual([...vram.subarray(0x10000,0x10004)],[0x99,0x66,0x33,0xFF],
+                "DirectX SHORT"+size+"N positions reach actual WebGPU rasterization");
+            assert.deepEqual([...vram.subarray(0x10024,0x10028)],[0,0,0,0],
+                "normalized positions do not become unscaled 32767-unit coordinates");
+        }
+        assert.equal(graph.faults.length,shortFaultCount);assert.equal(engine.backend.stats.failures,0);
+        console.log("PASS: real WebGPU DirectX SHORT2N/SHORT4N position pixels and normalized bounds");
     }
     console.log("PASS: NV40 primitive expansion, partial draw snapshot, GPU readback ordering and delayed fence"+(remote?"; real WebGPU pixels matched":""));
 }

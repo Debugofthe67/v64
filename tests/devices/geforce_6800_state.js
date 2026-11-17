@@ -128,6 +128,22 @@ assert.deepEqual(floats(state.inline_vertices(o,skinWords,skinInputs).bytes),ski
 skinWords.forEach((word,i)=>new DataView(vram.buffer).setUint32(0x3000+i*4,word,true));
 assert.deepEqual(floats(state.array_vertices(o,[0],skinInputs).bytes),skinValues,"indexed UBYTE4 uses the same unsigned byte order and conversion");
 assert.throws(()=>state.vertex_layout(0x114BC),/DirectX/);
+for(const size of [2,4])
+{
+    const stride=16+size*2,shortFormat=0x10000|stride<<8|size<<4|1;
+    const shortDecl={methods:new Map([[0x19C,0x10],[0x1740,0x100BB|stride<<8],
+        [0x1760,shortFormat],[0x1680,0x3000],[0x16A0,0x3010]])};
+    const shortInputs=[[0,[1,0]],[8,[1,8]]],shortWords=[f(1),f(2),f(3),f(1),0x7FFF8000];
+    if(size===4)shortWords.push(0x4000C000);
+    const expectedShort=[1,2,3,1,-1,1,...(size===4?[Math.fround(-16384/32767),Math.fround(16384/32767)]:[0,1])];
+    assert.deepEqual(state.vertex_layout(shortFormat),{type:1,size,bytes:size*2});
+    assert.deepEqual(floats(state.inline_vertices(shortDecl,shortWords,shortInputs).bytes),expectedShort,
+        "DirectX SHORT"+size+"N preserves signed endpoints and inline DWORD consumption");
+    shortWords.forEach((word,i)=>new DataView(vram.buffer).setUint32(0x3000+i*4,word,true));
+    shortWords.forEach((word,i)=>new DataView(vram.buffer).setUint32(0x3000+stride+i*4,word,true));
+    assert.deepEqual(floats(state.array_vertices(shortDecl,[1,0],shortInputs).bytes),expectedShort.concat(expectedShort),
+        "DirectX SHORT"+size+"N respects interleaved indexed strides");
+}
 o.methods.set(0x1740,0x23);o.methods.set(0x1744,2);o.methods.set(0x1748,2);o.methods.set(0x174C,2);
 assert.deepEqual(floats(state.inline_vertices(o,[0x40003C00],[[0,[1,0]]]).bytes),[1,2,0,1],"packed FP16 inline attributes consume one DWORD");
 const clear={methods:new Map([[0x194,0x10],[0x198,0x10],[0x200,2<<16],[0x204,2<<16],[0x208,0x148],

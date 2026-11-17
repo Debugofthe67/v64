@@ -18,9 +18,11 @@ for(let value=0;value<256;value++)
     byteUnormBits[value]=f32bits(value/255);byteIntegerBits[value]=f32bits(value);
 }
 // Curie's alternate DirectX declaration encoding (VTXFMT bit 16). The
-// replicated low nibble is a type code, not TYPE/SIZE. Native 93.71 uses
+// replicated codes below are type codes, not TYPE/SIZE. Native 93.71 uses
 // 0x114BB for FLOAT4 and 0x114CC for D3DCOLOR with a 20-byte stride.
-const DX_VERTEX=new Map([[0x44,[4,4]],[0x88,[2,1]],[0x99,[2,2]],[0xAA,[2,3]],
+// 175.16 also emits SHORT2N/SHORT4N as 0x21/0x41 with this flag set.
+// Those declarations retain the ordinary signed-normalized short layout.
+const DX_VERTEX=new Map([[0x21,[1,2]],[0x41,[1,4]],[0x44,[4,4]],[0x88,[2,1]],[0x99,[2,2]],[0xAA,[2,3]],
     [0xBB,[2,4]],[0xCC,[0,4]],[0xDD,[7,4]],[0xEE,[5,2]]]);
 const half=value=>{
     const sign=value&0x8000?-1:1,exponent=value>>>10&31,mantissa=value&1023;
