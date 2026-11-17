@@ -184,6 +184,56 @@ try
         method(0x1808,0);await engine.backend.wait();
         for(let at=0x10000;at<0x10100;at+=4)assert.deepEqual([...vram.subarray(at,at+4)],[0x99,0x66,0x33,255],"native Direct3D triangle fan covers both triangles");
         console.log("PASS: native 0x1015 triangle fan, snapshot/index stream and real WebGPU coverage");
+        {
+            const object = graph.object(0, 0x2000), previous = new Map(object.methods);
+            const dispatch = (at, value) => graph.method(0, 0, 0x2000, at, value);
+            const queueColor = () => {
+                vram.fill(0, 0x10000, 0x10100);
+                method(0x1740, 0x822);
+                method(0x1808, 6);
+                for(const word of [0, 0, 0, 0x41800000, 0x41800000, 0]) method(0x1818, word);
+                method(0x1808, 0);
+            };
+            device.fifo.running = true;
+            try
+            {
+                queueColor();
+                method(0x1740, 0x22); // Zero-stride, disjoint vertex array.
+                method(0x1680, 0x3000);
+                method(0x1820, 0x10);
+                method(0x181C, 0x10100);
+                view.setUint16(0x10100, 7, true);
+                method(0x1808, 5);
+                assert.equal(dispatch(0x1824, 0), true, "index immediately beyond the attachment stays batched");
+                method(0x181C, 0xFFFE);
+                assert.equal(dispatch(0x1824, 2 << 24 | 1), false, "index DMA waits for the overlapping color target");
+                assert.deepEqual(object.stream, [7], "a deferred index fetch consumes no stream entries");
+                await engine.backend.wait();
+                assert.equal(dispatch(0x1824, 2 << 24 | 1), true);
+                assert.deepEqual(object.stream, [7, 0x6699, 0xFF33, 0x6699], "retried UINT16 indices contain the preceding GPU pixels");
+                method(0x1808, 0);
+                await engine.backend.wait();
+
+                queueColor();
+                method(0x1680, 0xFFF8);
+                method(0x173C, 1); // First FLOAT2 starts at the pending target.
+                method(0x1808, 1);
+                method(0x1810, 0);
+                assert.equal(dispatch(0x1808, 0), false, "vertex DMA at END observes the same dependency");
+                assert.deepEqual(object.stream, [0], "the indexed primitive survives the deferred END");
+                await engine.backend.wait();
+                assert.equal(view.getUint32(0x10000, true), 0xFF336699);
+                assert.equal(dispatch(0x1808, 0), true);
+                await engine.backend.wait();
+                assert.equal(object.stream.length, 0);
+                assert.equal(engine.backend.stats.failures, 0);
+            }
+            finally
+            {
+                device.fifo.running = false;
+                object.methods = previous;
+            }
+        }
         vram.fill(0,0x10000,0x10100);
         method(0x1808,0x1012);
         for(const word of new Uint32Array(Float32Array.of(0,0,0,16,16,16,0,0,16,16,16,0).buffer))method(0x1818,word);

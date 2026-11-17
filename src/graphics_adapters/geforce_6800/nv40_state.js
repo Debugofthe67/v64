@@ -299,20 +299,22 @@ export class NV40State
         }
         return {bytes,count,stride:inputs.length*16};
     }
-    indices(o,first,count)
+    indices(o,first,count,read_conflicts=null)
     {
         const format=get(o,0x1820),type=format>>>4&15;
         if(type>1 || format&~0x11) throw new RangeError("NV40 invalid index buffer format");
         if(!Number.isSafeInteger(first) || !Number.isSafeInteger(count) || first<0 || count<0 || count>1<<20)
             throw new RangeError("NV40 invalid index buffer range");
         const size=type===1?2:4,dma=this.dma(o,format&1?0x1A0:0x19C);
-        const bytes=this.device.dma.read(dma,get(o,0x181C)+first*size,count*size),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+        const offset = get(o,0x181C) + first * size, length = count * size;
+        if(read_conflicts && read_conflicts(dma, offset, length)) return null;
+        const bytes=this.device.dma.read(dma,offset,length),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
         const indices=new Array(count);
         if(size===2) for(let i=0;i<count;i++)indices[i]=view.getUint16(i*2,true);
         else for(let i=0;i<count;i++)indices[i]=view.getUint32(i*4,true);
         return indices;
     }
-    array_vertices(o,indices,inputs)
+    array_vertices(o,indices,inputs,read_conflicts=null)
     {
         const bytes=new Uint8Array(indices.length*inputs.length*16),view=new DataView(bytes.buffer);
         const baseVertex=get(o,0x173C)|0;
@@ -322,7 +324,8 @@ export class NV40State
             const attribute=inputs[slot][0],format=get(o,0x1740+attribute*4),layout=this.vertex_layout(format),stride=format>>>8&255;
             const offset=get(o,0x1680+attribute*4),dma=layout.size?this.dma(o,offset&0x80000000?0x1A0:0x19C):null;
             const current=layout.size?null:this.attribute(o,attribute);
-            if(layout.size && layout.type===2 && dma.linear && !dma.target && stride && indices.length)
+            const contiguous = layout.size && layout.type===2 && dma.linear && !dma.target && stride;
+            if(layout.size && indices.length && (read_conflicts || contiguous))
             {
                 if(bounds===null)
                 {
@@ -335,13 +338,15 @@ export class NV40State
                     }
                     bounds=[first,last];
                 }
+                const first = (offset & 0x0FFFFFFF) + bounds[0] * stride;
                 const length=(bounds[1]-bounds[0])*stride+layout.bytes;
+                if(read_conflicts && read_conflicts(dma, first, length)) return null;
                 // Only plain linear VRAM permits reading unused gaps. Paged
                 // and system-memory objects keep per-vertex checks; sparse
                 // indices also keep their small original transfers.
-                if(length<=4<<20 && length<=indices.length*layout.bytes*4)
+                if(contiguous && length<=4<<20 && length<=indices.length*layout.bytes*4)
                 {
-                    const block=this.device.dma.read(dma,(offset&0x0FFFFFFF)+bounds[0]*stride,length);
+                    const block=this.device.dma.read(dma,first,length);
                     const source=new DataView(block.buffer,block.byteOffset,block.byteLength),size=layout.size;
                     for(let vertex=0;vertex<indices.length;vertex++)
                     {

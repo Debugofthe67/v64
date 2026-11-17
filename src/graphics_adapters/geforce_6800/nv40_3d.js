@@ -125,7 +125,12 @@ export class NV40_3D
             let values;
             if(at===0x180C) values=[value&65535,value>>>16];
             else if(at===0x1814) values=Array.from({length:count},(_,i)=>(value&0xFFFFFF)+i);
-            else if(at===0x1824) values=this.state.indices(o,value&0xFFFFFF,count);
+            else if(at===0x1824)
+            {
+                values = this.state.indices(o, value & 0xFFFFFF, count,
+                    this.backend.batch?.outputs.size ? this.backend.input_overlaps_output : null);
+                if(!values) {this.backend.flush();return null;}
+            }
             else values=[value>>>0];
             o.methods.set(VERTEX_MODE,mode);o.stream.push(...values);return true;
         }
