@@ -345,3 +345,20 @@ AArch32 页面保留 locals，在 helper 前后仍提交/重载完整存活 GPR�
 PvZ 组的前后对照有较大变化，只与本组相邻对照比较，不与先前接近 30 FPS 的运行混算。
 所有窗口 normal rate 1、亮屏、无 undefined/discarded host time。
 本地保留 `pl1-gpr-rejected.patch` 及全部原始结果。
+
+## 仅 EL0 GPR locals 候选撤回
+
+反向单独开启 EL0 的 opaque helper 页 locals，PL1 保持原策略。完整 page、fallback、
+QEMU IT 调用、seed 6023 随机程序、iOS 与原生 IOP 状态回归通过。同一配对检查点：
+
+| 可见 LCD FPS | 对照前 | 候选 1 | 候选 2 | 对照后 |
+| --- | ---: | ---: | ---: | ---: |
+| `desktop-el0-gpr-*` | 24.874 | 24.103 | 25.091 | 26.979 |
+| `pvz-el0-gpr-*` | 20.898 | 28.398 | 27.147 | 24.397 |
+
+桌面两对均回退，均值约 -5.1%，因此撤回此单独策略。PvZ 两对更快，但对照本身也明显
+波动，不能将跨场景或跨组差值当作稳定收益。两种单独策略均未复现全局候选的桌面改善，
+说明不能直接把包含采样和简单分组的收益相加。下一项实测全局 locals 与 DCCSW 原生空操作
+组合，验证去掉内核单步/同步往返后的实际效果。
+所有窗口 normal rate 1、亮屏、无 undefined/discarded host time，实战图片已核对。
+本地保留 `el0-gpr-rejected.patch` 及原始记录。
