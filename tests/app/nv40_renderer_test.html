@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native NV40 renderer without the API proxy</title>
+<!-- node tests/app/browser_runner.mjs tests/app/nv40_renderer_test.html webgpu=1 [worker=0] [entry=query] -->
+<pre id="result"></pre>
+<script type="module">
+import {VMStore} from "../../src/app/vm_store.js";
+import {new_config} from "../../src/app/vm_config.js";
+import {change} from "../../src/app/vm_model.js";
+const args=new URLSearchParams(location.search),sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+let emulator,frame;
+try
+{
+    const config=change(new_config({name:"Native NV40 renderer test"}),"display.adapter","geforce_6800").config;
+    config.memory.mb=64;
+    config.display.proxy=false;
+    config.network=[];
+    config.advanced.cpu_worker=args.get("worker")!=="0";
+    const store=await VMStore.open();
+    const stored=await store.put(config);store.close();
+    frame=document.createElement("iframe");
+    const query="?profile=custom&hda.url=images/msdos622.img&graphics_adapter=geforce_6800&vram=128&m=64&graphics_proxy=0&cpu_worker="+(config.advanced.cpu_worker?"1":"0");
+    frame.src=args.get("entry")==="legacy" ? "/debug.html"+query :
+        args.get("entry")==="query" ? "/index.html"+query : "/index.html?vm="+stored.id;
+    document.body.append(frame);
+    const end=Date.now()+60000;
+    while(!(emulator=frame.contentWindow?.v86_console?.emulator || frame.contentWindow?.emulator))
+    {
+        if(Date.now()>end)throw Error("console did not create the native VM");
+        await sleep(100);
+    }
+    if(!emulator.is_running()) await new Promise((resolve,reject)=>
+    {
+        emulator.add_listener("emulator-ready",resolve);
+        emulator.add_listener("emulator-error",reject);
+        setTimeout(()=>reject(Error("emulator-ready timeout")),30000);
+    });
+    const w=frame.contentWindow;
+    if(typeof w.V86SVGARenderer!=="function")throw Error("native NV40 did not load its renderer bundle");
+    if(!emulator.adapter_renderer)throw Error("native NV40 has no host renderer with graphics_proxy disabled");
+    if(emulator.device_plugins.length)throw Error("loading native rendering unexpectedly enabled the API proxy");
+    if(config.advanced.cpu_worker && !emulator.worker_controller.adapter_renderer)throw Error("native renderer channel did not reach the CPU Worker");
+    if(!config.advanced.cpu_worker && !emulator.adapter_host_state())throw Error("native device has no renderer channel");
+    await emulator.stop();
+    document.getElementById("result").textContent="PASS native NV40 loads its WebGPU renderer without the API proxy ("+(config.advanced.cpu_worker?"Worker":"page")+", "+(args.get("entry")||"saved VM")+")";
+}
+catch(error){document.getElementById("result").textContent="FAIL "+error.stack;}
+finally{if(emulator)await emulator.destroy();frame?.remove();}
+</script>

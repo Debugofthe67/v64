@@ -181,10 +181,9 @@ export class NV40_3D
         if(at >= 0xB00 && at <= 0xB3C && (value & ~0x000FFFDF || (value >>> 15 & 7) > 4))
             throw new RangeError("NV40 invalid texture filter optimization");
         // Curie has ten XF texture-coordinate controls, including TEX8/9.
-        // A zero word disables all three controls. Nonzero TEX8/9 controls
-        // remain explicit refusals until their raster semantics are modeled.
+        // Retain all legal words even for unused interpolators. Whether an
+        // extended control affects a draw depends on its fragment inputs.
         if(at>=0xB40 && at<=0xB64 && value&~0x111) throw new RangeError("NV40 invalid texture coordinate control");
-        if(at>=0xB60 && at<=0xB64 && value) throw new RangeError("NV40 extended texture coordinate control is not connected");
         if(at === 0x1D6C && (value & ~0x0F000FF0 || (value >>> 24) > 4)) throw new RangeError("NV40 invalid fence offset");
         if([0x1E9C, 0x1EA0, 0x1EFC].includes(at) && value >= 0x220) throw new RangeError("NV40 invalid vertex program address");
         if(at === 0x1E9C) o.methods.set(VP_WORD, value);
@@ -267,6 +266,13 @@ export class NV40_3D
                 this.translated.set(key,compiled);this.translation_bytes+=compiled.bytes;
             }
         }
+        // Native 175.16 initializes TEX8/9 even when the fragment program
+        // reads only TEX0. Such state cannot affect the observable draw.
+        // Check after lowering (including relative input declarations), and
+        // on cache hits too: active unknown controls remain explicit faults.
+        for(let unit=8;unit<10;unit++)
+            if(get(o,0xB40+unit*4) && compiled.fragment.inputs.some(([index])=>index===unit+4))
+                throw new RangeError("NV40 active extended texture coordinate control is not connected");
         return {vertex:compiled.vertex,fragment:{...compiled.fragment,constant_values:program.fragment.constants.map(words=>Uint32Array.from(words))}};
     }
     vertex_program(o, first = get(o, 0x1EA0), count = 0x220 - first)

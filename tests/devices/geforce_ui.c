@@ -1,4 +1,4 @@
-/* Native benchmark UI diagnostics. Inspect actual HWNDs, then invoke an
+/* Native graphics application UI diagnostics. Inspect actual HWNDs, then invoke an
  * observed, visible control through its normal Windows message handler.
  * No graphics entry points, driver state or benchmark results are changed. */
 #define WIN32_LEAN_AND_MEAN
@@ -40,7 +40,15 @@ static void find_benchmarks(void)
         for(;i<6 && name[i];i++)
         {char c=name[i];if(c>='a' && c<='z')c-=32;if(c!=prefix[i])break;}
         unsigned int length=(unsigned int)lstrlenA(name);
-        if(i==6 && length>=10 && !lstrcmpiA(name+length-4,".exe") && benchmark_process_count<16)
+#ifdef NV_UI_PROCESS_NAME
+        /* Diagnostic builds may select one exact application (e.g. DxDiag).
+         * Keep the process ownership checks for every subsequent action. */
+        BOOL selected=!lstrcmpiA(name,NV_UI_PROCESS_NAME);
+        (void)i;(void)length;
+#else
+        BOOL selected=i==6 && length>=10 && !lstrcmpiA(name+length-4,".exe");
+#endif
+        if(selected && benchmark_process_count<16)
         {
             benchmark_processes[benchmark_process_count++]=process.th32ProcessID;
             text("PROCESS PID=");hex(process.th32ProcessID);text(" EXE=");text(name);text("\r\n");

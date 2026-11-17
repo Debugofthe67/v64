@@ -39,6 +39,8 @@ test("local 10B329 kernel: reversible trust, immutable Buffer input, atomic boot
     const manifest = { format: "v86-ios-install", format_version: 1, architecture: "armv7", bundle_id: "org.v86.New", version: "1",
         prepared_sha256: "a".repeat(64), trusted: [{ cdhashes: [hash(9)] }] };
     const staged = stage_install_trust(kernel, initial, manifest, "fixture-1");
+    assert.equal(stage_install_trust(kernel, initial, { ...manifest, architecture: "armv6" }, "legacy").state.pending.bundle_id, manifest.bundle_id);
+    assert.throws(() => stage_install_trust(kernel, initial, { ...manifest, architecture: "armv5" }, "unsupported"), /manifest/);
     assert.equal(staged.state.generation, 2); assert.equal(n90_kernel_hashes(staged.kernel).length, hashes.length + 1);
     const slots = new Map(), puts = [];
     const put = (bus, ce, row, bytes) => {

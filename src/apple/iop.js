@@ -65,7 +65,7 @@ export class AppleIOP
         if(this.in_slice) this.polling = pending;
     }
 
-    run()
+    run(quantum = 4096)
     {
         if(!this.running) return false;
         if(this.pending_reset)
@@ -73,7 +73,7 @@ export class AppleIOP
             this.core["a32_iop_reset"]();
             this.pending_reset = false;
         }
-        const budget = this.polling?.size ? 32 : 4096;
+        const budget = this.polling?.size ? 32 : quantum;
         this.polling = null;
         this.in_slice = true;
         try

@@ -22,7 +22,7 @@
 
 ### 首版支持范围
 
-- 用户本地提供的未加密 IPA，包含可在 Cortex-A8 上执行的 ARMv7 切片。
+- 用户本地提供的未加密 IPA，包含可在 Cortex-A8 上执行的 ARMv7 或 ARMv6 切片。
 - 应用及必需的附带代码最低系统版本不高于 iOS 6.1.3，依赖的系统框架在该固件上存在。
 - 主程序、资源、附带动态库的安装；安装时需要的临时空间检查、进度、错误报告和中断恢复。
 - 先验证自行编译的 ad-hoc 签名应用，再扩展到需要本地重新签名的未加密 IPA。
@@ -68,7 +68,7 @@
 ```text
 iPhone 控制台：Install IPA…
     ↓
-浏览器准备 Worker：检查 IPA → 选择 ARMv7 → 图形适配 → 重签名 → 生成清单
+浏览器准备 Worker：检查 IPA → ARMv7 优先 / ARMv6 回退 → 图形适配 → 重签名 → 生成清单
     ↓
 V86 公共安装 API → ARM 后门中的独立安装服务
     ↓
@@ -101,7 +101,7 @@ MobileInstallationInstall → installd → 应用容器与系统注册
 
 ### 对话框流程
 
-1. **Choose IPA**：说明当前支持 ARMv7、iOS 6.1.3 兼容、未加密应用。
+1. **Choose IPA**：说明当前支持 ARMv7 / ARMv6、iOS 6.1.3 兼容、未加密应用。
 2. **Checking IPA…**：读取文件，显示名称、Bundle ID、版本、最低 iOS、选中的架构和包大小。
    图标仅在可正确解码时预览，否则使用占位图标，不阻塞安装。
 3. **Ready to install**：显示目标虚机。新应用按钮为 **Install**；相同 Bundle ID 为 **Update**，
@@ -202,7 +202,7 @@ CPU Worker 面板测试、iPhone 导入向导测试及带本地原版 installd �
 
 1. 验证 ZIP 完整性，要求一个明确的 `Payload/<name>.app` 主应用。
 2. 读取 XML / binary `Info.plist`，检查 Bundle ID、可执行文件、版本、设备类型及系统版本要求。
-3. 检查主程序及必需附带 Mach-O；从 Fat 文件中选择兼容 ARMv7 切片，并核对实际依赖和最低版本。
+3. 检查主程序及必需附带 Mach-O；从 Fat 文件中优先选择 ARMv7、其次选择 ARMv6 切片，并核对实际依赖和最低版本。
 4. 检查 `LC_ENCRYPTION_INFO`：缺少加密命令或 `cryptid == 0` 才进入后续准备；这只是包检查，
    不能把标记改为 0 当作解密。
 5. 检查路径、重复条目、符号链接目标和资源上限；包不能借解压覆盖应用目录以外的文件。
@@ -402,3 +402,98 @@ BROWSER_FOCUS=1 TEST_ARTIFACT_DIR=build/ios/ipa-acceptance/acceptance TIMEOUT_MS
 建议实施顺序为 P0 → P1 → P2 / P3 → P4 → P5 → P6 → P7。
 第一个可运行里程碑是“原生安装自制 UIKit IPA 并点击启动”；最终交付必须包含 UI 入口及完整持久化流程，
 不能止于命令行实验或文件上传。
+
+## 9. ARMv6 应用与原生 ES 1.1 路径
+
+2026-11-16：安装器接受未加密 ARMv6 应用，Fat 包优先 ARMv7、其次 ARMv6；保持实际切片架构参与
+改写、签名和信任验证。旧 IPA 的 `Container/` 是沙盒备份，不作为应用内容恢复；包路径、CRC 和
+应用内符号链接仍严格检查。用户原始 PvZ 1.0（build 524）已通过 UI 原生安装，主可执行文件保留 ARMv6。
+
+图形桥接按 EAGLContext 的 API 创建 ES1/ES2 宿主上下文。ES1 补齐矩阵、光照、材质、纹理环境、雾、
+裁剪平面、定点/浮点向量查询与客户端数组入口。客户端数组在绘制时读取并打包，保留原始 stride 查询值；VBO 参数
+作为偏移传递。索引 VBO 与客户端数组混用时，宿主从已上传的索引缓冲查询最大索引以限定复制范围。
+原生扩展串过滤 iOS 无法提供的 EGLImage/Android 接口；不声明矩阵调色板。
+
+验证分为三个层次，入口覆盖不能替代行为或一致性验证：
+
+- `tests/ios/gl-fixed-coverage.mjs <本地 dyld cache>`：145 个 ES 1.1 核心入口的原生槽位路由。
+- `tests/ios/gl-scalar.mjs`、`gl-query.mjs`、`gl-fixed.mjs`：通过本地原版 iOS 包装函数检查 ARM 调用约定、
+  独立编码器预期字节、向量长度、查询输出边界、活跃客户端数组、多纹理单元与 VBO 偏移。
+- `make gles-tests` 及 `gles_executor_browser_test.html`：影子状态、索引缓冲边界、快照，以及真实 WebGPU
+  像素检查；包括 ES1 交错顶点/UV、非零 first 和非零索引 VBO 偏移。
+
+原生 ES1 测试应用与 PvZ 可游玩场景的结果见下文。`docs/gpu-deviations.md` 继续记录硬件和渲染精度
+差异；完整入口路由和定向行为测试不等同于 Khronos 一致性认证。
+
+原生 `V86GLES1Test.ipa` 已通过 UI 安装和运行：EAGL API1、16.16 矩阵栈、带边界哨兵的光照查询、
+交错 short 顶点/UV、非零 first、顶点及索引 VBO 混用客户端颜色、向量 DrawTex、原生 glReadPixels
+逐像素检查均通过，页面显示红/蓝/青三个区域与 `ES1 PASS`。新增 `fixed_queries.mjs` 区分枚举与数值的
+定点查询转换，并检查纹理定点形式及删除缓冲后的固定功能数组绑定。
+
+ES1 的点绘制另外实现为逐点六角点展开，保持矩阵/光照/雾，支持大小、距离衰减、定点大小数组和
+OES 点精灵坐标替换。WebGPU 像素测试覆盖点的方形范围、非零索引数组、纹理四象限与多边形剔除独立性。
+ES1 平滑点保持声明的一像素范围，多重采样的淡出行为仍是已记录差异。
+
+ES1 `COLOR_LOGIC_OP` 使用目标附件副本执行全部 16 种逐位运算，启用时按规范禁用混合。一次绘制中
+可能重叠的图元依次提交，使后一个图元读取前一个的结果。真实 GPU 测试验证 XOR 重叠恢复、FBO 目标
+和颜色掩码；此路径会增加附件复制与绘制开销。
+
+`OES_compressed_paletted_texture` 的十种 4/8 位索引与 RGB8/RGBA8/565/4444/5551 调色板格式均已实现。
+负 level 一次提交共享调色板的 mip 链，4 位索引按高半字节优先解码；ES1 格式查询和扩展串同步公布能力。
+单元测试覆盖全部格式、透明度、尺寸、截断与错误，GPU 测试验证绘制、mip 选择和 RGB 纹理的 alpha 规则。
+
+用户原始 `Plant vs Zombies V1.0.ipa`（SHA-256
+`25bd09f5da779abac6aa2a90bd243f280df3975eba990d667cb204801a76c9c8`）已通过 UI 安装，进入 Adventure，
+触控种植两株豌豆射手、收集阳光，并完成第一关获得向日葵卡片。测试使用独立 OPFS 磁盘，未改写 IPA
+架构来绕过检查，也未通过恢复 `Container/` 存档跳过关卡。
+
+自动 mip 生成会在 ES1 基础纹理上传、子图更新、压缩数据更新及帧缓冲复制后同步刷新影子元数据和 GPU
+内容；不把 `GENERATE_MIPMAP` 仅作为可查询开关。`OES_matrix_get` 的三个查询返回 16 个 IEEE754 原始位，
+原生输出长度与边界哨兵也有独立调用测试。
+
+Flat shading 将独立三角形、strip、fan 和线的末顶点作为 provoking vertex，三角形保持绕序。
+DrawTex 保留片段阶段的雾（距离为零），忽略几何裁剪、剔除和光照；GPU 用组合状态验证这些规则。
+
+客户端数组遵循 [emugl 编码器的打包规则](https://github.com/google/gfxstream/blob/main/guest/GLESv1_enc/GLEncoder.cpp)：
+传输原始 stride 元数据，但逐元素紧密打包数据。iOS 原生端处理交错源布局，渲染器与 Android 继续使用同一
+数据约定。查询仍返回原始 stride；独立 ARM 包测试及 GPU 测试同时检查此约定，并覆盖多纹理单元与 COMBINE。
+
+DrawTex 的标量与向量入口都会标记离屏帧缓冲为已修改，使 IOSurface 在 Flush 时同步绘制结果。
+原版 iOS 包装函数测试检查 float/short/int/fixed 标量的 AAPCS 参数和线包长度，并验证脏帧状态。
+
+原生 `V86GLES1Test.ipa` 另外验证带边界哨兵的矩阵原始位查询，以及调色板压缩纹理上传后自动生成
+mip 并缩小采样；从新建测试 NAND 通过 UI 安装运行，原生像素断言通过并显示 `ES1 PASS`。
+
+2026-11-17：使用 `9d1354998` 的原生适配库完成上述 PvZ 通关后，通过控制台 Power off 关闭虚机，
+再从同一 OPFS NAND 全新启动，不加载内存快照。原生安装查询仍为 PvZ 1.0，游戏菜单显示
+`WELCOME BACK, Est!` 与 Adventure `1-2`；进入后显示恢复当前关卡的 Continue 对话框，
+点击继续并成功种下一株向日葵，僵尸与阳光继续更新。
+此轮运行的 EL0/EL1 未定义指令均为零，GLES unknown/malformed/failed/errors 均为空。
+后续 `2c2b69b1d` 的离屏 DrawTex 脏帧修复由原版 iOS 包装函数测试单独验证。
+
+回归结果：`make ios-tests`、`make gles-tests`、`make app-check`、原生 145 核心入口路由、130 标量 ABI、
+向量/查询/客户端数组测试通过；真实 WebGPU 的 ES1/ES2 执行器通过 177 项检查，ES3 执行器通过
+107 项检查。安装器 UI 和 iPhone 创建向导定向测试通过；这不代表全部第三方应用或 Khronos 测试集通过。
+本轮临时原始 NAND、packed NAND、HFS 副本与被替代的独立浏览器测试盘已删除，保留最终验收虚机和
+本地截图/日志，不删除此前已有的用户虚机、固件和检查点。
+
+## 10. Asphalt 4 的签名元数据空间
+
+2026-11-17：用户原始 `Asphalt 4 1.3.8.ipa`（SHA-256
+`1ca7617496871cfd359ffae95730b59154a4b6e28577a143b9754a072e48cad3`）在准备阶段报
+`insufficient Mach-O header padding for the signed Info.plist`。加入图形库后，加载命令末端为
+3280，首个代码 section 偏移为 4096，头部剩余 816 字节；原始 Info.plist 有 1075 字节。
+
+准备器继续在头部加入 section 描述，必要时把 plist 原始字节放入 `__TEXT` 段尾未使用的零填充。
+选择位置时排除所有已声明 section、其他段和链接器表，检查文件/映射边界及实际零字节；仍无空间时明确拒绝。
+本样本使用文件偏移 1017536，原有 24 个 section 的地址、偏移和内容保持一致。新增 TEXT section 后，
+同步调整后续 section 的 nlist 和本地重定位序号；外部符号索引、scattered 重定位和 ARM pair 数据保持原语义。
+
+9 项签名/准备定向测试、`make ios-tests`、`make app-check`、构建与 lint 通过。原样本的 2324 个
+符号解析结果保持一致，签名 Info 特殊槽与 bundle 的 plist 一致，客体 C 签名检查器验证最终 CDHash。
+从原始 IPA 通过真实 UI 完成准备、传输、iOS 原生安装与安装后查询，确认
+`com.gameloft.ASPHALT4` 版本 `1.3.8` 已安装。原生 Open application 启动后跳过开场视频，
+完成音效选择并显示游戏标题与 `TOUCH SCREEN TO CONTINUE`；此轮未验证赛车实机场景或帧率。
+启动诊断中 EL0/EL1 未定义指令为零，GLES unknown/malformed/failed/errors 均为空。
+修复位于网页端 IPA 准备器，更新网页并刷新后重新选择
+原始 IPA 即可使用；无需为这一修复重新导入固件。复用已有独立验收盘，未创建新的 NAND/HFS 临时镜像。

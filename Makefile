@@ -285,6 +285,7 @@ build/v86-geforce-6800.js: $(CLOSURE) src/*.js src/graphics_adapters/*.js src/gr
 		--js src/graphics_adapters/vmware_svga/d9wg_constants.js --js src/graphics_adapters/vmware_svga/svga3d_d9wg.js \
 		--js src/graphics_adapters/geforce_6800/nv_trace.js --js src/graphics_adapters/geforce_6800/nv_ddc.js \
 		--js src/graphics_adapters/geforce_6800/nv_display.js \
+		--js src/graphics_adapters/geforce_6800/nv_video.js \
 		--js src/graphics_adapters/geforce_6800/nv_dma.js \
 		--js src/graphics_adapters/geforce_6800/nv_fifo.js \
 		--js src/graphics_adapters/geforce_6800/nv40_program.js \
@@ -815,6 +816,7 @@ devices-test: build/v86-debug.wasm
 	node tests/devices/geforce_ide_watch.mjs
 	node tests/devices/geforce_6800_fifo.js
 	node tests/devices/geforce_6800_graph.js
+	node tests/devices/geforce_6800_video.js
 	node tests/devices/geforce_6800_state.js
 	node tests/devices/geforce_6800_vertex_span.mjs
 	node tests/devices/geforce_6800_texture.js
@@ -2141,6 +2143,7 @@ sse-fault-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v8
 # make themselves (made-up keys, no Apple files)
 .PHONY: ios-tests ios-pvrtc-tests ios-amc-tests
 ios-tests:
+	node tests/ios/scanout.mjs
 	node tests/ios/guest-texture.mjs
 	node --test tests/ios/network.mjs
 	node --test tests/ios/graphics-assets.mjs
@@ -2186,6 +2189,9 @@ gles-tests: build/v86-gles.js build/glslang.wasm
 	node tests/gles/stream.mjs
 	node tests/gles/render_control.mjs
 	node tests/gles/shadow.mjs
+	node tests/gles/native_indices.mjs
+	node tests/gles/fixed_queries.mjs
+	node tests/gles/paletted.mjs
 	node tests/gles/shadow3.mjs
 	node tests/gles/shadow31.mjs
 	node tests/gles/batch.mjs

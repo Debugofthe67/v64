@@ -190,15 +190,51 @@ The tested configuration is XP SP3 on i440FX with IDE, ACPI disabled,
 1024 MiB system RAM and `graphics_adapter: "geforce_6800"`. Select 128 or
 256 MiB VRAM and retain the bundled `bios/vgabios-geforce6800.bin` ROM.
 
-1. Extract `93.71_forceware_winxp2k_english_whql.exe` inside the guest.
+1. Extract `93.71_forceware_winxp2k_english_whql.exe` or
+   `175.16_geforce_winxp_32bit_english_whql.exe` inside the guest.
 2. In Device Manager, update the display adapter from the extracted NVIDIA
    INF. The package includes `PCI\VEN_10DE&DEV_0045` and installs the `nv`
    service. Restart, then confirm GeForce 6800 GT starts without a problem code.
 3. Select 1024×768, 32-bit color, and enable full display acceleration.
 4. With a WebGPU renderer available on the host, run DxDiag's DirectDraw
-   and Direct3D tests. Native 93.71 has been verified with D3D7/8/9; the
+   and Direct3D tests. Native 93.71 and
+   [175.16](../tests/acceptance/nv40/xp-17516-dxdiag.json) have been verified with D3D7/8/9; the
    [RGB565 fixture](../tests/acceptance/nv40/g3-xp-9371-rgb565.json) also checks native
    D3D9 rendering, system-memory readback and GDI conversion.
+
+Restart Windows after installing the display driver before testing acceleration.
+A started PnP device in the installation session does not establish that the
+accelerated display driver has loaded. Cold booting the installed disk also
+avoids resuming a saved state from before the restart.
+
+Use Windows' original DirectX runtime with the native NVIDIA driver. The
+`d3d8.dll`, `d3d9.dll` and `ddraw.dll` on the owner's `driver.iso` are v86 graphics
+proxies for the separate `graphics_proxy` option. An application-local proxy
+can override Windows' runtime and prevent that application from using NV40.
+Move only identified proxy DLLs aside, retaining a backup; do not remove the
+Microsoft DLLs from `Windows\System32`. The owner's GTA San Andreas image
+contains such an application-local D3D9 proxy.
+
+The VM manager and debug page load the host WebGPU renderer automatically for
+GeForce 6800 GT, independently of the graphics proxy checkbox. Earlier page
+startup code omitted this load when the proxy was disabled: the NVIDIA desktop
+could work while DirectX tests and games had no host renderer. After updating,
+shut down XP, reload the page and power it on again. The
+[browser regression](../tests/acceptance/nv40/native-renderer-startup.json) covers
+saved machines, URL starts, CPU Workers and the debug page.
+
+Native 175.16 gameplay has also been checked with the provided
+[Warcraft III](../tests/acceptance/nv40/xp-17516-warcraft3.json),
+[KartRider](../tests/acceptance/nv40/xp-17516-kartrider.json) and
+[GTA San Andreas](../tests/acceptance/nv40/xp-17516-gtasa.json) images, using
+256 MiB VRAM and 1024 or 2048 MiB system RAM. KartRider's original launcher
+leads to Menu → 计时赛 for single-player testing. GTA uses its original
+startup video and New Game path; characters, forward/right input, the quit
+confirmation and desktop return were verified. GTA remains slow; these are
+rendering and interaction checks, not frame-rate acceptance. Original host
+images are read-only and game/OS writes stay in disposable overlays. The
+owner confirmed they had not copied proxy DLLs; the application-local proxy
+in the provided GTA image predates these tests.
 
 Before a long benchmark run, select **(None)** in Display Properties →
 Screen Saver and **Never** for monitor power-off in Power Options. The original

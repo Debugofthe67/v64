@@ -699,7 +699,9 @@ A64CPU.prototype.run_machine_core = function()
     try
     {
         const iop = this.devices.apple_iop;
-        const iop_busy = iop?.run();
+        // A runnable IOP gets a turn every AP slice. Shorter normal-clock
+        // turns keep its timer polling from dominating the application core.
+        const iop_busy = iop?.run(this.clock.mode === "normal" ? 1024 : 4096);
         this.devices.apple_amc?.poll();
         this.devices.apple_i2s0?.poll();
         this.devices.apple_i2s1?.poll();
@@ -1526,6 +1528,30 @@ A64CPU.prototype.step_stats = function(top = 20)
         }
         words.sort((a, b) => b["count"] - a["count"]);
         result["helped_words"] = words.slice(0, top);
+    }
+    const stepped_word = this.wm.exports["a32_stepped_word"];
+    if(stepped_word)
+    {
+        const words = [];
+        for(let i = 0; i < 4096; i++)
+        {
+            const count = stepped_word(i, true);
+            if(count) words.push({ "word": "0x" + (stepped_word(i, false) >>> 0).toString(16).padStart(8, "0"), "count": count });
+        }
+        words.sort((a, b) => b["count"] - a["count"]);
+        result["a32_stepped_words"] = words.slice(0, top);
+    }
+    const retried_word = this.wm.exports["a32_retried_word"];
+    if(retried_word)
+    {
+        const words = [];
+        for(let i = 0; i < 4096; i++)
+        {
+            const count = retried_word(i, true);
+            if(count) words.push({ "word": "0x" + (retried_word(i, false) >>> 0).toString(16).padStart(8, "0"), "count": count });
+        }
+        words.sort((a, b) => b["count"] - a["count"]);
+        result["a32_retried_words"] = words.slice(0, top);
     }
     ["stepped", "changed_context", "helped"].forEach((name, kind) => {
         const rows = [];

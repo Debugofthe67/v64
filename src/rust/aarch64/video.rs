@@ -45,7 +45,7 @@ fn same(a: &[u32], b: &[u32]) -> bool {
 }
 
 /// Compare every bit, including alpha. On a change copy the full source
-/// to the shadow; JS still performs the existing exact pixel conversion.
+/// to the shadow, before converting the staging pixels for presentation.
 #[no_mangle]
 pub fn a64_video_changed() -> u32 {
     if crate::parallel::active() {
@@ -62,5 +62,47 @@ pub fn a64_video_changed() -> u32 {
         }
         shadow.copy_from_slice(source);
         1
+    }
+}
+
+/// Full-backlight BGRA -> opaque RGBA, in the already allocated staging
+/// buffer. The comparison shadow remains BGRA. No allocations or guest stores.
+/// Return the OR of the source color channels for black-panel detection.
+#[no_mangle]
+pub fn a64_video_convert_bgra() -> u32 {
+    if crate::parallel::active() {
+        return 0;
+    }
+    unsafe {
+        let source = &mut *crate::parallel::machine(&raw mut SOURCE);
+        let mut at = 0;
+        let mut any = 0u32;
+        #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+        {
+            use core::arch::wasm32::{
+                i32x4_extract_lane, i32x4_splat, i8x16_shuffle, v128_load, v128_or, v128_store,
+            };
+            let mut seen = i32x4_splat(0);
+            let alpha = i32x4_splat(0xFF000000u32 as i32);
+            while at + 4 <= source.len() {
+                let p = v128_load(source.as_ptr().add(at).cast());
+                seen = v128_or(seen, p);
+                let rgba =
+                    i8x16_shuffle::<2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15>(p, p);
+                v128_store(source.as_mut_ptr().add(at).cast(), v128_or(rgba, alpha));
+                at += 4;
+            }
+            any |= (i32x4_extract_lane::<0>(seen)
+                | i32x4_extract_lane::<1>(seen)
+                | i32x4_extract_lane::<2>(seen)
+                | i32x4_extract_lane::<3>(seen)) as u32;
+        }
+        while at < source.len() {
+            let p = source[at];
+            any |= p;
+            source[at] = 0xFF000000 | (p & 255) << 16 | p & 0xFF00 | p >> 16 & 255;
+            at += 1;
+        }
+        any & 0xFFFFFF
     }
 }

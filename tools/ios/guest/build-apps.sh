@@ -22,7 +22,7 @@ stub System /usr/lib/libSystem.B.dylib '_printf, _snprintf, _strcmp, _memcmp, _s
 stub objc /usr/lib/libobjc.A.dylib '_objc_getClass, _object_getClass, _sel_registerName, _objc_allocateClassPair, _objc_registerClassPair, _class_addMethod, _objc_msgSend, _objc_autoreleasePoolPush, _objc_autoreleasePoolPop'
 stub CoreFoundation /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation '_CFStringCreateWithCString, _CFStringGetCString, _CFDictionaryCreateMutable, _CFDictionaryCreateMutableCopy, _CFDictionarySetValue, _CFDictionaryGetValue, _CFDictionaryGetCount, _CFURLCreateWithFileSystemPath, _CFBundleCreate, _CFBundleCopyExecutableURL, _CFURLGetFileSystemRepresentation, _CFRelease, _CFShow, _CFDataCreate, _CFPropertyListCreateWithData, _kCFBooleanTrue, _kCFTypeDictionaryKeyCallBacks, _kCFTypeDictionaryValueCallBacks'
 stub UIKit /System/Library/Frameworks/UIKit.framework/UIKit '_UIApplicationMain'
-stub OpenGLES /System/Library/Frameworks/OpenGLES.framework/OpenGLES '_glGetActiveAttrib, _glGetActiveUniform, _glGetUniformLocation, _glUniform4fv, _kEAGLDrawablePropertyColorFormat, _kEAGLColorFormatRGB565, _glCheckFramebufferStatus, _glGenRenderbuffers, _glBindRenderbuffer, _glGenFramebuffers, _glBindFramebuffer, _glFramebufferRenderbuffer, _glGetRenderbufferParameteriv, _glViewport, _glClearColor, _glClear, _glCreateShader, _glShaderSource, _glCompileShader, _glCreateProgram, _glAttachShader, _glBindAttribLocation, _glLinkProgram, _glUseProgram, _glVertexAttribPointer, _glEnableVertexAttribArray, _glDrawArrays, _glGetError'
+stub OpenGLES /System/Library/Frameworks/OpenGLES.framework/OpenGLES '_glGetActiveAttrib, _glGetActiveUniform, _glGetUniformLocation, _glUniform4fv, _kEAGLDrawablePropertyColorFormat, _kEAGLColorFormatRGB565, _glCheckFramebufferStatus, _glGenRenderbuffers, _glBindRenderbuffer, _glGenFramebuffers, _glBindFramebuffer, _glFramebufferRenderbuffer, _glGetRenderbufferParameteriv, _glViewport, _glClearColor, _glClear, _glCreateShader, _glShaderSource, _glCompileShader, _glCreateProgram, _glAttachShader, _glBindAttribLocation, _glLinkProgram, _glUseProgram, _glVertexAttribPointer, _glEnableVertexAttribArray, _glDrawArrays, _glGetError, _glEnable, _glMatrixMode, _glLoadIdentity, _glOrthof, _glTranslatex, _glPushMatrix, _glPopMatrix, _glGetFloatv, _glGetFixedv, _glGetIntegerv, _glVertexPointer, _glTexCoordPointer, _glColorPointer, _glEnableClientState, _glDisableClientState, _glColor4ub, _glDrawElements, _glGenBuffers, _glBindBuffer, _glBufferData, _glDeleteBuffers, _glGenTextures, _glBindTexture, _glTexImage2D, _glTexParameteri, _glTexParameteriv, _glTexEnvi, _glDisable, _glDrawTexivOES, _glReadPixels, _glLightfv, _glGetLightxv, _glCompressedTexImage2D'
 compile() { xcrun clang -target armv7-apple-ios6.0 -marm -Os -fPIC -ffreestanding -fno-stack-protector -I "$src" "$@"; }
 link() { xcrun ld -arch armv7 -segalign 0x1000 -headerpad 0x400 -platform_version ios 6.0 6.1 -L "$out" -lSystem -lobjc -lCoreFoundation "$@"; }
 compile -c "$src/app-agent.c" -o "$out/app-agent.o"
@@ -36,10 +36,11 @@ codesign -f -s - --identifier org.v86.app-bootstrap --digest-algorithm=sha1,sha2
 compile -c "$src/install-policy.c" -o "$out/install-policy.o"
 link -dylib -install_name /usr/lib/libv86install.dylib -o "$out/libv86install.dylib" "$out/install-policy.o"
 codesign -f -s - --identifier org.v86.install-policy --digest-algorithm=sha1,sha256 "$out/libv86install.dylib"
-for variant in Install GLES2 GLES565 Network Volume; do
+for variant in Install GLES1 GLES2 GLES565 Network Volume; do
     app="$out/Payload/V86${variant}Test.app"
     mkdir -p "$app"
     flag=
+    if [ "$variant" = GLES1 ]; then flag="-DV86_GLES_TEST -DV86_GLES1_TEST"; fi
     if [ "$variant" = GLES2 ]; then flag=-DV86_GLES_TEST; fi
     if [ "$variant" = GLES565 ]; then flag="-DV86_GLES_TEST -DV86_RGB565_TEST"; fi
     if [ "$variant" = Network ]; then flag=-DV86_NETWORK_TEST; fi

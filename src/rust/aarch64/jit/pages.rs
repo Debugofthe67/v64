@@ -858,6 +858,25 @@ static mut STEP_FLOW: Option<Flow> = None;
 /// executing the instruction again
 static mut HELPER_DONE: Option<(u64, Flow)> = None;
 
+/// Exact AP retry words, separate from instructions stepped inside a page.
+/// A failed fetch leaves LAST_STEPPED unchanged and must not count that word.
+#[inline(always)]
+fn interpret_page_retry() -> Flow {
+    if !(unsafe { STEP_STATS } && cpu::aarch32() && !bus::iop_active()) {
+        return execute::interpret_one();
+    }
+    let previous = unsafe { core::ptr::replace(&raw mut execute::LAST_STEPPED, (u32::MAX, 0)) };
+    let flow = execute::interpret_one();
+    let (key, word) = unsafe { execute::LAST_STEPPED };
+    if key == u32::MAX {
+        unsafe { execute::LAST_STEPPED = previous };
+    }
+    else {
+        note_instruction_word(&raw mut A32_RETRIED_WORDS, word);
+    }
+    flow
+}
+
 /// A native BX/BLX changed only the instruction set. Select that mode's
 /// chaining table before leaving the source function. Privilege and the
 /// data-access epoch/table are unchanged; code entries remain guarded by
@@ -919,7 +938,7 @@ fn execute(slot: u32, budget: u32, pc: u64) -> Ran {
         EXIT_RETRY => {
             // (the instruction at the PC: a template refused it before any of its effects)
             r.stats[RETRIES] += 1;
-            let f = execute::interpret_one();
+            let f = interpret_page_retry();
             if !matches!(f, Flow::Set | Flow::Retry) {
                 retired += 1;
             }
@@ -1391,9 +1410,23 @@ impl StepFrontend for A64Step {
     type Context = Context;
     fn context() -> Context { context() }
     fn interpret_one() {
+        let a32 = unsafe { STEP_STATS } && cpu::aarch32();
+        let previous = unsafe { execute::LAST_STEPPED };
+        if a32 {
+            // A fetch/debug exception never replaces LAST_STEPPED. Do not
+            // attribute that exception to the previously fetched word.
+            unsafe { execute::LAST_STEPPED = (u32::MAX, 0) };
+        }
         let flow = execute::interpret_one();
+        let fetched = !a32 || unsafe { execute::LAST_STEPPED.0 } != u32::MAX;
+        if !fetched {
+            unsafe { execute::LAST_STEPPED = previous };
+        }
         let (key, word) = unsafe { execute::LAST_STEPPED };
         note_step(STEPPED, key, word);
+        if a32 && fetched && unsafe { STEP_STATS } {
+            note_instruction_word(&raw mut A32_STEPPED_WORDS, word);
+        }
         if matches!(flow, Flow::Wait(_) | Flow::Off | Flow::Yield | Flow::Retry) {
             unsafe { STEP_FLOW = Some(flow) };
         }
@@ -1580,9 +1613,13 @@ pub fn a64_page_helper(word: u32, pc: u64) -> u32 {
 /// addressed table of (word, count), new words dropped when it is full
 const HELPER_WORDS_SIZE: usize = 4096;
 static mut HELPER_WORDS: [(u32, u32); HELPER_WORDS_SIZE] = [(0, 0); HELPER_WORDS_SIZE];
+static mut A32_STEPPED_WORDS: [(u32, u32); HELPER_WORDS_SIZE] = [(0, 0); HELPER_WORDS_SIZE];
+static mut A32_RETRIED_WORDS: [(u32, u32); HELPER_WORDS_SIZE] = [(0, 0); HELPER_WORDS_SIZE];
 #[inline(always)]
-fn note_helper_word(word: u32) {
-    let table = unsafe { &mut *crate::parallel::machine(&raw mut HELPER_WORDS) };
+fn note_helper_word(word: u32) { note_instruction_word(&raw mut HELPER_WORDS, word); }
+#[inline(always)]
+fn note_instruction_word(table: *mut [(u32, u32); HELPER_WORDS_SIZE], word: u32) {
+    let table = unsafe { &mut *crate::parallel::machine(table) };
     let mut i = (word.wrapping_mul(0x9E37_79B1) >> 20) as usize;
     for _ in 0..8 {
         let e = &mut table[i];
@@ -1599,6 +1636,35 @@ fn note_helper_word(word: u32) {
 pub fn a32_helper_word(i: u32, count: bool) -> f64 {
     let e = unsafe {
         (*crate::parallel::machine(&raw mut HELPER_WORDS))[i as usize % HELPER_WORDS_SIZE]
+    };
+    if count {
+        e.1 as f64
+    }
+    else {
+        e.0 as f64
+    }
+}
+
+/// Exact AArch32 stepped words, only updated with a64_step_stats enabled.
+/// The class table's last word does not establish that word's frequency.
+#[no_mangle]
+pub fn a32_stepped_word(i: u32, count: bool) -> f64 {
+    let e = unsafe {
+        (*crate::parallel::machine(&raw mut A32_STEPPED_WORDS))[i as usize % HELPER_WORDS_SIZE]
+    };
+    if count {
+        e.1 as f64
+    }
+    else {
+        e.0 as f64
+    }
+}
+
+/// Exact AP AArch32 words retried after a native activation refused them.
+#[no_mangle]
+pub fn a32_retried_word(i: u32, count: bool) -> f64 {
+    let e = unsafe {
+        (*crate::parallel::machine(&raw mut A32_RETRIED_WORDS))[i as usize % HELPER_WORDS_SIZE]
     };
     if count {
         e.1 as f64

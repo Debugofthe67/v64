@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { inspect_ipa } from "../../src/ios/ipa.js";
 import { plist_parse, plist_encode } from "../../src/ios/plist.js";
-import { macho_armv7 } from "../../src/apple/macho.js";
+import { macho_armv7, macho_ios_app } from "../../src/apple/macho.js";
 import { make_zip } from "../android/fixtures.mjs";
 
 const enc = s => new TextEncoder().encode(s);
@@ -30,6 +30,20 @@ function archive({ main = executable(), plist = info(), extra = [] } = {})
         { name: "Payload/Fixture.app/Fixture", data: main, store: true }, ...extra]);
 }
 const inspect = b => inspect_ipa((at, n) => b.subarray(at, at + n), b.length);
+function symlink_mode(b, name)
+{
+    const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    for(let at = v.getUint32(b.length - 6, true); v.getUint32(at, true) === 0x02014B50;)
+    {
+        const length = v.getUint16(at + 28, true);
+        if(new TextDecoder().decode(b.subarray(at + 46, at + 46 + length)) === name)
+        {
+            v.setUint16(at + 4, 3 << 8 | 20, true); v.setUint32(at + 38, 0o120755 << 16, true); return b;
+        }
+        at += 46 + length + v.getUint16(at + 30, true) + v.getUint16(at + 32, true);
+    }
+    throw Error("Missing link fixture");
+}
 
 test("binary plist: Python plistlib interoperability, UTF-16, data and safe dictionary keys", () => {
     const b = Buffer.from("YnBsaXN0MDDWAQIDBAUGBwgLDA0OWV9fcHJvdG9fX1VhcnJheVVjb3VudFRkYXRhVGZsYWdUbmFtZVRzYWZlogkKEAEQAhAqQ2FiYwlibUuL1QgVHyUrMDU6P0JERkhMTQAAAAAAAAEBAAAAAAAAAA8AAAAAAAAAAAAAAAAAAABS", "base64");
@@ -93,6 +107,21 @@ test("IPA: CRC failure in resources is detected before preparation", async () =>
     const at = Buffer.from(b).indexOf("known-resource"); b[at] ^= 1;
     await assert.rejects(inspect(b), /CRC-32/);
 });
+test("IPA: old sandbox backups are verified but excluded, without relaxing application links", async () => {
+    const name = "Container/Library/Preferences/.GlobalPreferences.plist";
+    const backup = () => symlink_mode(archive({ extra: [{ name, data: enc("/private/var/mobile/Library/Preferences/.GlobalPreferences.plist"), store: true },
+        { name: "Container/Documents/save.dat", data: enc("old-save"), store: true }] }), name);
+    const b = backup(), app = await inspect(b);
+    assert.ok(!app.entries.some(e => e.name.startsWith("Container/")));
+    assert.equal(app.report.original_sha256, createHash("sha256").update(b).digest("hex"));
+    const broken = backup(); broken[Buffer.from(broken).indexOf("old-save")] ^= 1;
+    await assert.rejects(inspect(broken), /CRC-32/);
+    const inApp = "Payload/Fixture.app/link";
+    await assert.rejects(inspect(symlink_mode(archive({ extra: [{ name: inApp, data: enc("/private/var/mobile"), store: true }] }), inApp)), /unsafe symbolic link/);
+    const outside = "Other/link";
+    await assert.rejects(inspect(symlink_mode(archive({ extra: [{ name: outside, data: enc("/private/var/mobile"), store: true }] }), outside)), /outside the application/);
+    await assert.rejects(inspect(archive({ extra: [{ name: "Container/../outside", data: enc("bad") }] })), /unsafe archive path/);
+});
 test("Mach-O: selects ARMv7 Fat slice and validates slice bounds", () => {
     const b = new Uint8Array(1536), v = new DataView(b.buffer), arm = executable(), v7s = executable({ subtype: 11 });
     v.setUint32(0, 0xCAFEBABE); v.setUint32(4, 2);
@@ -105,6 +134,23 @@ test("Mach-O: selects ARMv7 Fat slice and validates slice bounds", () => {
     v.setUint32(36, 512); assert.throws(() => macho_armv7(b), /bounds/);
     const malformed = executable(); new DataView(malformed.buffer).setUint32(20, 0, true);
     assert.throws(() => macho_armv7(malformed), /load command/);
+});
+test("Mach-O: prefers ARMv7, falls back to ARMv6, and preserves architecture identity", async () => {
+    const arm6 = executable({ subtype: 6 }), arm7 = executable();
+    assert.equal(macho_ios_app(arm6).architecture, "armv6");
+    assert.equal((await inspect(archive({ main: arm6 }))).report.architecture, "armv6");
+    assert.throws(() => macho_armv7(arm6), /ARMv7/);
+    const b = new Uint8Array(1536), v = new DataView(b.buffer);
+    v.setUint32(0, 0xCAFEBABE); v.setUint32(4, 2);
+    for(const [i, subtype] of [6, 9].entries())
+        [12, subtype, 512 + 512 * i, 512, 9].forEach((n, j) => v.setUint32(8 + 20 * i + j * 4, n));
+    b.set(arm6, 512); b.set(arm7, 1024);
+    assert.deepEqual(macho_ios_app(b).bytes, arm7);
+    v.setUint32(32, 11); assert.deepEqual(macho_ios_app(b).bytes, arm6);
+    v.setUint32(12, 9); v.setUint32(32, 6);
+    assert.throws(() => macho_ios_app(b), /does not match/);
+    for(const subtype of [0, 5, 7, 8, 11, 14]) assert.throws(() => macho_ios_app(executable({ subtype })), /device slice/);
+    assert.throws(() => macho_ios_app(executable({ subtype: 6, encrypted: true })), /encrypted/);
 });
 
 test("IPA: resolves framework links and rejects indirect escapes, cycles and link parents", async()=>{

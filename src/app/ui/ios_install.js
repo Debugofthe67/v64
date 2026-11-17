@@ -22,7 +22,7 @@ export function show_ios_install(controller,name)
     const element=/** @type {HTMLDialogElement} */(h("dialog.dialog.ios-install-dialog",{id:"ios_ipa_dialog",ondragover:e=>{e.preventDefault();},ondrop:e=>{
         e.preventDefault();if(!controller.active()&&e.dataTransfer?.files?.[0])controller.choose(e.dataTransfer.files[0]);
     }},h("h2",null,"Install IPA"),h("div.dialog-body",null,
-        h("p",null,"Install a local, unencrypted ARMv7 application compatible with iOS 6.1.3 on ",h("strong",null,name),"."),
+        h("p",null,"Install a local, unencrypted ARMv7 or ARMv6 application compatible with iOS 6.1.3 on ",h("strong",null,name),"."),
         h("label",null,"Choose or drop an IPA",picker),report,status,progress,error,downgrade_row,
         h("details",null,h("summary",null,"Technical details"),detail)),
         h("div.dialog-buttons",null,cancel,resume,h("button",{type:"button",onclick:close},"Close"),install,open)));

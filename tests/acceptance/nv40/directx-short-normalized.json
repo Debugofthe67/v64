@@ -1,0 +1,56 @@
+{
+  "date": "2026-11-17",
+  "scope": "NV40 alternate DirectX SHORT2N/SHORT4N vertex declaration decoding; isolated unit and actual WebGPU pixel regression, not complete GTA gameplay acceptance",
+  "trigger": {
+    "guest": "XP SP3 / original NVIDIA 175.16 / original GTA San Andreas",
+    "faults": [
+      "NV40 unsupported DirectX vertex format 0x21",
+      "NV40 unsupported DirectX vertex format 0x41"
+    ],
+    "method": "NV40_3D END (0x1808)",
+    "note": "Historical native draw faults occurred in the airport opening. The accompanying capture records fault history and current declarations; the current declarations had changed by capture time."
+  },
+  "change": {
+    "flag": "VTXFMT bit 16",
+    "formats": {
+      "0x21": "signed normalized SHORT2, four bytes",
+      "0x41": "signed normalized SHORT4, eight bytes"
+    },
+    "conversion": "Existing SNORM16 decoder, clamp -32768 to -1; pad SHORT2 z=0,w=1",
+    "unknownFormats": "Remain rejected"
+  },
+  "verification": [
+    "Signed endpoint and intermediate conversion",
+    "Inline DWORD consumption and padded components",
+    "Interleaved indexed attributes with both vertex strides",
+    "Actual Chrome WebGPU rasterization and normalized coordinate bounds",
+    "Full existing NV40 real WebGPU render suite; graph/FIFO/span units; Closure build"
+  ],
+  "artifacts": [
+    {
+      "file": "build/nv40-xp-17516-gtasa-counter-samples/native-vertex-formats.json",
+      "sha256": "cfbc12872d42914f0ad69e5f8c95170b44afd3acb54e7cf556e87291c2499c29"
+    },
+    {
+      "file": "build/nv40-short-normalized-render.log",
+      "sha256": "8d25b546ef7574443007a241649e4da5732340f5dbc362eda51ec1372a42c2ba"
+    },
+    {
+      "file": "build/nv40-short-normalized-build.log",
+      "sha256": "741893a41d709138ec594516bbe95b2a4a3505998273740ba16101bef87d9fa9"
+    },
+    {
+      "file": "build/nv40-short-normalized-graph.log",
+      "sha256": "c6aec485b53c53ece999006a90a06b1b0039996116d15108aad4a54bd205edcd"
+    },
+    {
+      "file": "build/nv40-short-normalized-fifo.log",
+      "sha256": "ee3a945b6ec642f0da4dfccee5632271a713cb0d686f45f258374e066423b8f3"
+    },
+    {
+      "file": "build/nv40-short-normalized-span.log",
+      "sha256": "93237b2f5054d37cae3228a2fb5336cb33e9410f387b1efb6c224fa7d3bb2ccc"
+    }
+  ],
+  "nativeAirportRestore": "Excluded as acceptance: old diagnostic snapshot retained the preceding PGRAPH fault interrupt; clean cold boot is required."
+}

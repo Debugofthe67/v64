@@ -1,4 +1,5 @@
 import { pvrtc_bytes } from "./pvrtc.js";
+import { paletted_layout } from "./paletted.js";
 // The shadow state (docs/gles-proxy-plan.md "影子状态", E2): OpenGL ES 2.0's
 // state machine, written from the GLES 2.0 specification, on the CPU side,
 // so that the guest's queries are answered without waiting for the page:
@@ -20,7 +21,7 @@ import { pvrtc_bytes } from "./pvrtc.js";
 // their fixed-function state is answered from its initial values until E4.
 
 import { GL, CAPS_1, CAPS_2, RENDERBUFFER_FORMATS, etc1_bytes, image_bytes, texel_bytes, texture_format_error, texture_kind } from "./gles_formats.js";
-import { CONFIG_ATTRIBUTES, COMPRESSED_TEXTURE_FORMATS, EGL, GL_STATE, MAX_SIZE } from "./gles_caps.js";
+import { CONFIG_ATTRIBUTES, COMPRESSED_TEXTURE_FORMATS, COMPRESSED_TEXTURE_FORMATS_1, EGL, GL_STATE, MAX_SIZE } from "./gles_caps.js";
 import { compile_shader, link_program } from "./glsl_es.js";
 import { STAGE_OF_GL_TYPE } from "./glslang.js";
 import { es3_rules, glsl_version } from "./glsl_es_rewrite.js";
@@ -62,6 +63,8 @@ const USAGES = new Set([GL.STREAM_DRAW, GL.STATIC_DRAW, GL.DYNAMIC_DRAW]);
 const MIN_FILTERS = new Set([GL.NEAREST, GL.LINEAR, GL.NEAREST_MIPMAP_NEAREST, GL.LINEAR_MIPMAP_NEAREST, GL.NEAREST_MIPMAP_LINEAR, GL.LINEAR_MIPMAP_LINEAR]);
 const WRAPS = new Set([GL.REPEAT, GL.CLAMP_TO_EDGE, GL.MIRRORED_REPEAT]);
 const ATTACHMENTS = [GL.COLOR_ATTACHMENT0, GL.DEPTH_ATTACHMENT, GL.STENCIL_ATTACHMENT];
+const TEXTURE_CHANGES = new Set(["glTexImage2D", "glTexSubImage2D", "glCompressedTexImage2D",
+    "glCompressedTexSubImage2D", "glCopyTexImage2D", "glCopyTexSubImage2D"]);
 
 /** A call's outcome when the rules refuse it */
 const REFUSED = Symbol("refused");
@@ -257,7 +260,7 @@ function put(out, values, as, kind)
         {
             case "b": out.data[i] = v ? 1 : 0; break;
             case "f": out.view.setFloat32(4 * i, kind === "b" ? (v ? 1 : 0) : v, true); break;
-            case "x": out.view.setInt32(4 * i, Math.round(v * 65536), true); break;
+            case "x": out.view.setInt32(4 * i, kind === "e" ? v : Math.max(-0x80000000, Math.min(0x7FFFFFFF, Math.round(v * 65536))), true); break;
             default:
                 if(kind === "n") out.view.setInt32(4 * i, Math.round(Math.max(-1, Math.min(1, v)) * 0x7FFFFFFF), true);
                 else out.view.setInt32(4 * i, kind === "f" ? Math.round(v) : v | 0, true);
@@ -277,6 +280,9 @@ function put_text(out, text)
 
 /** The state glGet answers that is a float, a color or depth (normalized) or a boolean; the rest are integers */
 const STATE_KIND = new Map([
+    ...[0x0B45,0x0B46,0x0B74,0x0B92,0x0B94,0x0B95,0x0B96,0x0BE0,0x0BE1,
+        0x80C8,0x80C9,0x80CA,0x80CB,0x8009,0x883D,0x84E0,0x86A3,0x8B9A,0x8B9B,
+        0x0C50,0x0C51,0x0C52,0x0C53,0x0C54,0x8192].map(pname => [pname, "e"]),
     [0x0B70, "n"], [0x0B21, "f"], [0x8038, "f"], [0x2A00, "f"], [0x80AA, "f"], [0x0C22, "n"], [0x0B73, "n"], [0x8005, "n"],
     [0x846D, "f"], [0x846E, "f"], [0x0B12, "f"], [0x0B22, "f"],
     [0x0C23, "b"], [0x0B72, "b"], [0x80AB, "b"], [0x8DFA, "b"],
@@ -478,7 +484,26 @@ GLESShadow.prototype.call = function(handle, command, args)
     }
     const ret = handler(this, context, args);
     if(ret === REFUSED) return { ret: 0, keep: false };
+    const texture = this.mipmap_target(context, base, args);
+    if(texture)
+    {
+        const image = texture.images.get(0);
+        if(image)
+            for(let level = 1, w = image.width, h = image.height; w > 1 || h > 1; level++)
+            {
+                w = Math.max(1, w >> 1);h = Math.max(1, h >> 1);
+                texture.images.set(level, { width:w, height:h, format:image.format, type:image.type, compressed:image.compressed });
+            }
+    }
     return { ret, keep: this.keep };
+};
+
+/** An accepted ES1 base-image edit that must regenerate the mip chain. */
+GLESShadow.prototype.mipmap_target = function(c, name, args)
+{
+    if(c.api !== 1 || !TEXTURE_CHANGES.has(name) || args[1] > 0 || args[0] !== GL.TEXTURE_2D) return null;
+    const texture = bound_texture(c,args[0]);
+    return texture && texture.generate_mipmap ? texture : null;
 };
 
 /** Record an error (the first stays until glGetError) @return {symbol} REFUSED */
@@ -676,7 +701,8 @@ GLESShadow.prototype.state_value = function(context, pname)
         case 0x8B8D: return [c.program];
         case 0x0D52: case 0x0D53: case 0x0D54: case 0x0D55: case 0x0D56: case 0x0D57:
             return [this.framebuffer_bits(c)[pname - 0x0D52]];
-        case 0x86A3: return COMPRESSED_TEXTURE_FORMATS;
+        case 0x86A2: return [c.api === 1 ? COMPRESSED_TEXTURE_FORMATS_1.length : COMPRESSED_TEXTURE_FORMATS.length];
+        case 0x86A3: return c.api === 1 ? COMPRESSED_TEXTURE_FORMATS_1 : COMPRESSED_TEXTURE_FORMATS;
     }
     if(c.hints.has(pname) && (c.api === 1 || pname === 0x8192 || pname === 0x8B8B)) return [c.hints.get(pname)];
     if((c.api === 1 ? CAPS_1 : CAPS_2).has(pname)) return [c.enabled.has(pname) ? 1 : 0];
@@ -690,6 +716,7 @@ function get(as)
     return (shadow, c, [pname, params]) =>
     {
         query(shadow);
+        if(c.api === 1 && pname >= 0x898D && pname <= 0x898F && as !== "i") return fail(c,GL.INVALID_ENUM);
         const own = c.api === 1 ? gles1_state_value(c, pname) : null;
         if(own) return put(params, own[0], as, own[1]);
         let value = shadow.state_value(c, pname);
@@ -876,7 +903,7 @@ const HANDLERS = {
     "glGetCompressedTextureFormats": (shadow, c, [count, formats]) =>
     {
         query(shadow);
-        put(formats, COMPRESSED_TEXTURE_FORMATS, "i", "i");
+        put(formats, c.api === 1 ? COMPRESSED_TEXTURE_FORMATS_1 : COMPRESSED_TEXTURE_FORMATS, "i", "e");
     },
     "glGetShaderPrecisionFormat": (shadow, c, [shadertype, precisiontype, range, precision]) =>
     {
@@ -1073,6 +1100,16 @@ const HANDLERS = {
         const t = image_target(c, target);
         if(!t) return REFUSED;
         const pvrtc = internalformat >= 0x8C00 && internalformat <= 0x8C03;
+        if(c.api === 1 && internalformat >= 0x8B90 && internalformat <= 0x8B99)
+        {
+            if(target !== GL.TEXTURE_2D || border) return fail(c, GL.INVALID_OPERATION);
+            if(!image_size_ok(c,target,0,width,height,0)) return REFUSED;
+            const palette = paletted_layout(internalformat,width,height,level);
+            if(!palette || size !== palette.size || !data || data.length < size) return fail(c, GL.INVALID_VALUE);
+            for(const image of palette.images) t.texture.images.set(image.level,
+                {width:image.width,height:image.height,format:internalformat,type:GL.UNSIGNED_BYTE,compressed:true});
+            return undefined;
+        }
         if(!pvrtc && internalformat !== GL.ETC1_RGB8_OES) return fail(c, GL.INVALID_ENUM);
         if(!image_size_ok(c, target, level, width, height, border)) return REFUSED;
         const expected = pvrtc ? pvrtc_bytes(width, height, !!(internalformat & 1)) : etc1_bytes(width, height);
@@ -1138,13 +1175,15 @@ const HANDLERS = {
     },
     "glTexParameterf": (shadow, c, [target, pname, param]) => tex_parameter(c, target, pname, [param]),
     "glTexParameteri": (shadow, c, [target, pname, param]) => tex_parameter(c, target, pname, [param]),
-    "glTexParameterx": (shadow, c, [target, pname, param]) => tex_parameter(c, target, pname, [param]),
+    "glTexParameterx": (shadow, c, [target, pname, param]) => tex_parameter(c, target, pname, [pname === GL.TEXTURE_MAX_ANISOTROPY_EXT ? param / 65536 : param]),
     "glTexParameterfv": (shadow, c, [target, pname, params]) => tex_parameter(c, target, pname, f32s(params)),
     "glTexParameteriv": (shadow, c, [target, pname, params]) => tex_parameter(c, target, pname, i32s(params)),
-    "glTexParameterxv": (shadow, c, [target, pname, params]) => tex_parameter(c, target, pname, i32s(params)),
+    "glTexParameterxv": (shadow, c, [target, pname, params]) => tex_parameter(c, target, pname,
+        i32s(params).map(v => pname === GL.TEXTURE_MAX_ANISOTROPY_EXT || pname === GL.TEXTURE_CROP_RECT_OES ? v / 65536 : v)),
     "glGetTexParameteriv": (shadow, c, [target, pname, params]) => get_tex_parameter(shadow, c, target, pname, params, "i"),
     "glGetTexParameterfv": (shadow, c, [target, pname, params]) => get_tex_parameter(shadow, c, target, pname, params, "f"),
-    "glGetTexParameterxv": (shadow, c, [target, pname, params]) => get_tex_parameter(shadow, c, target, pname, params, "i"),
+    "glGetTexParameterxv": (shadow, c, [target, pname, params]) => get_tex_parameter(shadow, c, target, pname, params,
+        pname === GL.TEXTURE_MAX_ANISOTROPY_EXT || pname === GL.TEXTURE_CROP_RECT_OES ? "x" : "i"),
     // EGL images (OES_EGL_image): the image's color buffer is the texture's level 0
     "glEGLImageTargetTexture2DOES": (shadow, c, [target, image]) =>
     {
@@ -1186,6 +1225,9 @@ const HANDLERS = {
             if(c.array_buffer === name) c.array_buffer = 0;
             if(c.element_array_buffer === name) c.element_array_buffer = 0;
             for(const a of c.attribs) if(a.buffer === name) a.buffer = 0;
+            if(c.api === 1)
+                for(const a of [c.ff.arrays.vertex,c.ff.arrays.normal,c.ff.arrays.color,c.ff.arrays.point_size,...c.ff.arrays.texcoord])
+                    if(a.buffer === name) a.buffer = 0;
         }
     },
     "glIsBuffer": (shadow, c, [name]) => { query(shadow); return c.group.buffers.has(name) ? 1 : 0; },
@@ -1195,14 +1237,25 @@ const HANDLERS = {
         if(size < 0) return fail(c, GL.INVALID_VALUE);
         const buffer = bound_buffer(c, target);
         if(!buffer) return REFUSED;
+        // Native ES1 can combine client arrays with an element VBO. Keep
+        // its indices so the native bridge can bound the live array copy.
+        let bytes = null;
+        if(c.api === 1 && shadow.keep_bytes)
+        {
+            try { bytes = new Uint8Array(size); }
+            catch(e) { return fail(c, GL.OUT_OF_MEMORY); }
+            if(data) bytes.set(data.subarray(0, size));
+        }
         buffer.size = size;
         buffer.usage = usage;
+        if(bytes) buffer.bytes = bytes;
     },
     "glBufferSubData": (shadow, c, [target, offset, size, data]) =>
     {
         const buffer = bound_buffer(c, target);
         if(!buffer) return REFUSED;
         if(offset < 0 || size < 0 || offset + size > buffer.size) return fail(c, GL.INVALID_VALUE);
+        if(c.api === 1 && shadow.keep_bytes && buffer.bytes && data) buffer.bytes.set(data.subarray(0, size), offset);
     },
     "glGetBufferParameteriv": (shadow, c, [target, pname, params]) =>
     {
@@ -1720,7 +1773,7 @@ function tex_parameter(c, target, pname, params)
             return undefined;
         case GL.TEXTURE_CROP_RECT_OES:
             if(c.api !== 1) return fail(c, GL.INVALID_ENUM);
-            texture.crop = params.slice(0, 4);
+            texture.crop = params.slice(0, 4).map(Math.round);
             return undefined;
     }
     return fail(c, GL.INVALID_ENUM);

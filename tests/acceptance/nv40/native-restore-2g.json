@@ -1,0 +1,16 @@
+{
+  "date": "2026-11-17",
+  "scope": "Checkpoint RAM-size validation only; this does not claim GTA gameplay acceptance.",
+  "requestedMemoryMiB": 2048,
+  "allocatedMemoryBytes": 2147352576,
+  "normalization": "CPU.create_memory reserves one 128 KiB MMIO block below 2 GiB.",
+  "failureBefore": "The harness compared restored 2147352576 bytes with the unnormalized 2147483648-byte UI request.",
+  "change": "Compare restored RAM with the initialized machine's normalized RAM allocation. Matching RAM/OS/game bundle validation remains required.",
+  "validation": {
+    "checkpoint": "build/nv40-175-gta-before-wait.state.bundle.json",
+    "beforeLog": "build/nv40-xp-17516-gtasa-pvideo-fixed-diag/host.log",
+    "afterLog": "build/nv40-xp-17516-gtasa-pvideo-resume/host.log",
+    "result": "Verified matching RAM/OS/game hashes; restore passed the memory assertion and resumed original GTA video execution.",
+    "originalImagesUnchanged": true
+  }
+}

@@ -6,7 +6,7 @@
 #include <stdio.h>
 typedef size_t usize;
 typedef uintptr_t driver_word;
-struct context { struct { unsigned connection, ok; } driver; unsigned error, unpack_row_bytes, client_storage; };
+struct context { struct { unsigned connection, ok; } driver; unsigned error, unpack_row_bytes, client_storage, api; };
 #define N90_MAX_PAYLOAD ((80u << 20) - 32)
 enum { gles2_glPixelStorei, gles2_glTexImage2D, gles2_glTexSubImage2D,
     gles2_glCompressedTexImage2D, gles2_glCompressedTexSubImage2D,
@@ -82,5 +82,9 @@ int main(void)
     tex_image(&c,0xde1,0,0x1908,16384,16384,0,0x1908,0x1401,bgra);
     assert(c.error==0x505&&!packet);
     reset(&c);
-    puts("PASS: native Apple BGRA uploads, row-byte override, query isolation, padding, reset and bounds");
+    c.api=1;compressed_image(&c,0xde1,0,0x8b91,4,4,1,100,(void *)1);
+    assert(c.error==0x502&&!packet);reset(&c);
+    c.api=2;compressed_image(&c,0xde1,0,0x8c00,4,4,1,32,(void *)1);
+    assert(c.error==0x501&&!packet);reset(&c);
+    puts("PASS: native Apple BGRA uploads, row-byte override, query isolation, padding, reset, palette border and bounds");
 }

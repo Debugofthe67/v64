@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { V86 } from "../../src/main.js";
 import { set_jit_switches } from "../../src/jit_switches.js";
+import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
 const directory = process.argv[2];
 if(!directory) throw Error("usage: iop-status.mjs owner-provided-10B329-directory");
 const emulator = new V86({machine_type:"s5l8930",graphics_adapter:"none",autostart:false,log_level:0,
-    wasm_path:path.resolve("build/v86-arm64.wasm"),jit_switches:{a64_page:1},
+    wasm_path:path.resolve(process.env.A64_WASM || "build/v86-arm64.wasm"),jit_switches:{a64_page:1},
     ios:{kernelcache:{url:path.resolve(directory,"kernelcache.n90.macho")},
         devicetree:{url:path.resolve(directory,"DeviceTree.n90ap.bin")}}});
 try
@@ -44,6 +45,42 @@ try
         assert.equal(count()-before,enabled?64:0,"disabled profiling performs no word-histogram updates");
         assert.equal(cpu.page_tier_stats().helpers-total,64,"total helper diagnostics always count the work");
         assert.equal(new Uint32Array(cpu.wasm_memory.buffer,cpu.state_base+64,1)[0],r0,"NOP preserves R0 with either profiling mode");
+    }
+    if(ex.a32_stepped_word)
+    {
+        const saved = cpu.save_core_state(), address = base + 8192;
+        cpu.write_blob_physical(new Uint8Array(new Uint32Array([0xE1A09009]).buffer), address);
+        const state = new DataView(cpu.wasm_memory.buffer, cpu.state_base, 4096);
+        const count = () => {
+            for(let i = 0; i < 4096; i++)
+                if(ex.a32_stepped_word(i, false) === 0xE1A09009) return ex.a32_stepped_word(i, true);
+            return 0;
+        };
+        try
+        {
+            state.setUint32(STATE_OFFSETS.pstate, 0x1D3, true);
+            state.setBigUint64(STATE_OFFSETS.sctlr_el1, 0n, true);
+            for(const enabled of [0, 1, 0])
+            {
+                set_jit_switches(ex, cpu.wasm_memory, { a64_step_stats: enabled });
+                const before = count();
+                for(let n = 0; n < 64; n++)
+                {
+                    state.setBigUint64(STATE_OFFSETS.pc, BigInt(address), true);
+                    ex.a64_page_step();
+                    assert.equal(state.getBigUint64(STATE_OFFSETS.pc, true), BigInt(address + 4));
+                }
+                assert.equal(count() - before, enabled ? 64 : 0, "exact stepped words are gated by the profiling switch");
+            }
+            set_jit_switches(ex, cpu.wasm_memory, { a64_step_stats: 1 });
+            const before = count();
+            state.setBigUint64(STATE_OFFSETS.pc, 0x20000000n, true);
+            ex.a64_page_step();
+            assert.equal(count(), before, "a fetch fault cannot count the previously stepped word again");
+            set_jit_switches(ex, cpu.wasm_memory, { a64_step_stats: 0 });
+        }
+        finally { cpu.load_core_state(saved); }
+        assert.ok(Array.isArray((await emulator.get_diagnostics(true)).steps.a32_stepped_words));
     }
     console.log("PASS: privileged native IOP MRS preserves flags, GE and interrupt masks without interpreter helpers");
 }

@@ -1,4 +1,5 @@
 import { decode_pvrtc } from "../pvrtc.js";
+import { decode_paletted, paletted_layout } from "../paletted.js";
 // The GLES executor (docs/gles-proxy-plan.md "执行器", E3): GLES batches
 // (src/gles/gles_batch.js) on WebGPU, on the page. It runs the same state
 // machine as the CPU side (src/gles/gles_shadow.js) over the commands it
@@ -21,7 +22,8 @@ import { decode_pvrtc } from "../pvrtc.js";
 // through staging buffers copied in the command encoder, in order with the
 // draws. A post (rcFBPost) shows the color buffer: in the compositor's layer
 // when there is one, otherwise read back and handed to the CPU side
-// ("frame"). Points are WebGPU's, one pixel each.
+// ("frame"). ES1 points expand to sized quads; ES2+ points use WebGPU's
+// one-pixel primitives.
 
 import { GLESShadow } from "../gles_shadow.js";
 import { read_gles_batch } from "../gles_batch.js";
@@ -131,7 +133,9 @@ GLESExecutor.prototype.reset = function()
     this.blit = null;
     /** the frame to show, a read of it in flight */
     this.posted = 0;
-    this.stats = { batches: 0, records: 0, draws: 0, refused: 0, pipelines: 0, uploads: 0, posts: 0, errors: [] };
+    this.stats = { batches: 0, records: 0, draws: 0, refused: 0, pipelines: 0, uploads: 0, posts: 0,
+        readbacks: 0, readback_bytes: 0, errors: [] };
+    this.native_read = null;
     this.pass = null;
     this.pass_target = null;
 };
@@ -214,6 +218,9 @@ GLESExecutor.prototype.submit = async function(bytes, sink)
 /** @param {!Object} record */
 GLESExecutor.prototype.run = function(record)
 {
+    // Only uninterrupted, contiguous strips share a publication. Any other
+    // record can change a texture or its aliases, including another context.
+    if(record.name !== "IOSURFACE_READ") this.native_read = null;
     switch(record.name)
     {
         case "COMMAND": return this.command(record);
@@ -315,11 +322,43 @@ GLESExecutor.prototype.run = function(record)
         {
             const cb = this.rc.color_buffers.get(record.color_buffer);
             if(!cb || record.flip > 1 || !record.height || record.y > cb.height || record.height > cb.height - record.y)
+            {
+                this.native_read = null;
                 return this.answer_failed(record.request);
+            }
             // The native publication's last strip establishes its memory
             // row order. A window renderbuffer retains GL rows; a compositor
             // sampling this IOSurface must see the same rows as its CPU bytes.
             if(record.y + record.height === cb.height) cb.native_flip = !!record.flip;
+            let cached = this.native_read;
+            const answer = sink => {
+                const row = record.flip ? cb.height - record.y - record.height : record.y;
+                this.answer(sink, record.request, cached.bytes.subarray(row * cb.width * 4, (row + record.height) * cb.width * 4));
+            };
+            if(cached && cached.texture === cb.texture && cached.handle === record.color_buffer &&
+                cached.flip === record.flip && record.y === cached.next_y)
+            {
+                cached.next_y += record.height;
+                if(cached.next_y === cb.height) this.native_read = null;
+                // A batch can contain several strips. The first read's map
+                // finishes before these ordered responses consume its bytes.
+                this.reads.push({ buffer: null, done: (_, sink) => answer(sink) });
+                return;
+            }
+            this.native_read = null;
+            if(record.y === 0 && record.height < cb.height && cb.width * cb.height * 4 <= 16 * 1024 * 1024)
+            {
+                cached = this.native_read = { texture: cb.texture, handle: record.color_buffer, flip: record.flip,
+                    next_y: record.height, bytes: null };
+                return this.read_texture(cb.texture, 0, 0, cb.width, cb.height, !!record.flip, (rgba, sink) => {
+                    for(let i = 0; i < rgba.length; i += 4)
+                    {
+                        const r = rgba[i]; rgba[i] = rgba[i + 2]; rgba[i + 2] = r;
+                    }
+                    cached.bytes = rgba;
+                    answer(sink);
+                });
+            }
             return this.read_texture(cb.texture, 0, record.y, cb.width, record.height, !!record.flip,
                 (rgba, sink) =>
                 {
@@ -389,12 +428,12 @@ GLESExecutor.prototype.command = function(record)
     if(c.glslang && this.command3(c, name, args)) return undefined;
     switch(name)
     {
-        case "glTexImage2D": return this.tex_image(c, args, false);
-        case "glTexSubImage2D": return this.tex_image(c, args, true);
-        case "glCompressedTexImage2D": return this.compressed_tex_image(c, args);
-        case "glCompressedTexSubImage2D": return this.compressed_tex_image(c, args, true);
-        case "glCopyTexImage2D": return this.copy_tex_image(c, args, false);
-        case "glCopyTexSubImage2D": return this.copy_tex_image(c, args, true);
+        case "glTexImage2D": this.tex_image(c, args, false); break;
+        case "glTexSubImage2D": this.tex_image(c, args, true); break;
+        case "glCompressedTexImage2D": this.compressed_tex_image(c, args); break;
+        case "glCompressedTexSubImage2D": this.compressed_tex_image(c, args, true); break;
+        case "glCopyTexImage2D": this.copy_tex_image(c, args, false); break;
+        case "glCopyTexSubImage2D": this.copy_tex_image(c, args, true); break;
         case "glGenerateMipmap": return this.generate_mipmap(c, args[0]);
         case "glEGLImageTargetTexture2D": return this.invalidate_texture(c, args[0]);
         case "glBufferData": return this.buffer_data(c, args, false);
@@ -418,6 +457,7 @@ GLESExecutor.prototype.command = function(record)
         case "glDrawTexfv": return this.draw_tex(c, Array.from(new Float32Array(args[0].slice().buffer)));
         case "glDrawTexxv": return this.draw_tex(c, Array.from(new Int32Array(args[0].slice().buffer), v => v / 65536));
     }
+    if(this.shadow.mipmap_target(c,name,args)) this.generate_mipmap(c,args[0]);
     return undefined;
 };
 
@@ -506,6 +546,15 @@ GLESExecutor.prototype.compressed_tex_image = function(c, args, sub = false)
     if(sub) [, , , , width, height, format, , data] = args;
     else [, , format, width, height, , , data] = args;
     const { texture, face } = bound(c, target);
+    if(!sub && c.api === 1 && format >= 0x8B90 && format <= 0x8B99)
+    {
+        const layout = paletted_layout(format,width,height,level);
+        const target_texture = texture && this.write_target(texture,0);
+        if(!target_texture) return;
+        for(const image of decode_paletted(layout,data))
+            if(image.width && image.height) this.upload(target_texture.texture,image.level,0,0,0,image.width,image.height,image.rgba);
+        return;
+    }
     const t = texture && this.write_target(texture, level);
     if(!t || level >= t.levels) return;
     const rgba = format === GL.ETC1_RGB8_OES ? decode_etc1(width, height, data) :
@@ -642,7 +691,8 @@ GLESExecutor.prototype.target_of = function(c)
     if(!any) return null;
     const view = t => t.texture.createView({ dimension: "2d", baseMipLevel: t.level, mipLevelCount: 1, baseArrayLayer: t.layer, arrayLayerCount: 1 });
     const width = Math.max(1, any.texture.width >> any.level), height = Math.max(1, any.texture.height >> any.level);
-    return { color: color ? color.texture : null, color_view: color ? view(color) : null, depth: depth ? view(depth) : null,
+    return { color: color ? color.texture : null, color_view: color ? view(color) : null,
+        color_level: color ? color.level : 0, color_layer: color ? color.layer : 0, depth: depth ? view(depth) : null,
         depth_format: depth ? depth.format : "", width, height, alpha: true,
         key: "f" + (color ? this.id_of(color.texture) + ":" + color.level + ":" + color.layer : "-") + "/" + (depth ? this.id_of(depth.texture) : "-") };
 };
@@ -836,12 +886,32 @@ GLESExecutor.prototype.apply_scissor = function(pass, c, target)
 
 // ---- draws
 
+/** Ordered independent primitives, preserving strip winding and GL's last vertex. */
+function primitive_order(mode, order)
+{
+    const out = [], count = order.length;
+    if(mode === GL.TRIANGLES || mode === GL.LINES)
+    {
+        const n = mode === GL.TRIANGLES ? 3 : 2;
+        for(let i = 0; i + n <= count; i += n) out.push(order.slice(i,i+n));
+    }
+    else if(mode === GL.TRIANGLE_STRIP || mode === GL.TRIANGLE_FAN)
+        for(let i = 2; i < count; i++) out.push(mode === GL.TRIANGLE_FAN ? [order[0],order[i-1],order[i]] :
+            i % 2 ? [order[i-1],order[i-2],order[i]] : order.slice(i-2,i+1));
+    else
+    {
+        for(let i = 1; i < count; i++) out.push([order[i-1],order[i]]);
+        if(mode === GL.LINE_LOOP && count > 1) out.push([order[count-1],order[0]]);
+    }
+    return out;
+}
+
 /**
  * A draw: vertices assembled on the CPU, the program's pipeline for the
  * state, its uniforms and textures
  * @param {?{type: number, bytes: (Uint8Array|undefined), offset: (number|undefined)}} elements
  */
-GLESExecutor.prototype.draw = function(c, mode, first, count, elements)
+GLESExecutor.prototype.draw = function(c, mode, first, count, elements, logic_split = false)
 {
     if(!count) return;
     const program = c.api === 1 ? null : c.group.objects.get(c.program);
@@ -871,6 +941,26 @@ GLESExecutor.prototype.draw = function(c, mode, first, count, elements)
     }
     const vertices = high - low + 1;
     if(vertices <= 0 || vertices > 1 << 24) return;
+    if(c.api === 1 && c.enabled.has(0x0BF2) && c.ff.logic_op !== 0x1503 && !logic_split && mode !== GL.POINTS)
+    {
+        // Destination reads must observe preceding primitives of this draw.
+        const order = indices ? [...indices] : Array.from({ length: count }, (_, i) => first + i);
+        const primitives = primitive_order(mode,order);
+        for(const primitive of primitives) this.draw(c, primitive.length === 3 ? GL.TRIANGLES : GL.LINES, 0, primitive.length,
+            { type: GL.UNSIGNED_INT, bytes: new Uint8Array(new Uint32Array(primitive).buffer) }, true);
+        return;
+    }
+    if(c.api === 1 && mode === GL.POINTS) return this.draw_points1(c, low, vertices, indices);
+    if(c.api === 1 && c.ff.shade_model === 0x1D00)
+    {
+        const order = indices ? [...indices] : Array.from({length:count},(_,i)=>first+i);
+        const primitives = primitive_order(mode,order);
+        // WebGPU uses the first provoking vertex; cyclically rotating a
+        // triangle keeps its winding while selecting GL's last vertex.
+        indices = new Uint32Array(primitives.flatMap(p=>[p.at(-1),...p.slice(0,-1)]));
+        mode = mode >= GL.TRIANGLES ? GL.TRIANGLES : GL.LINES;
+        count = indices.length;
+    }
     // (fans and loops as lists and strips; strips with indices keep u32, which never restarts)
     // (points: WebGPU's, one pixel each; gl_PointSize and glPointSize are not applied, gpu-deviations.md)
     let topology = { [GL.POINTS]: "point-list", [GL.LINES]: "line-list", [GL.LINE_STRIP]: "line-strip", [GL.LINE_LOOP]: "line-strip", [GL.TRIANGLES]: "triangle-list",
@@ -889,7 +979,7 @@ GLESExecutor.prototype.draw = function(c, mode, first, count, elements)
     const index_count = list ? list.length : count;
     if(!index_count) return;
     // (GLES 1.1: the fixed function's shaders for the state; GLES 2.0: the program's)
-    const ff = c.api === 1 ? this.ff_shaders(c, mode === GL.POINTS) : null;
+    const ff = c.api === 1 ? this.ff_shaders(c, false) : null;
     const shaders = ff ? ff.shaders : this.program_shaders(program);
     if(!shaders) return;
     const layout = ff ? this.ff_layout(c, ff.generated, low, vertices) : this.vertex_layout(c, program, low, vertices);
@@ -956,26 +1046,39 @@ GLESExecutor.prototype.stencil_faces = function(c, target, mode)
  * the draw_texture rectangle's: no lighting, fog or matrices), cached by
  * their signature
  */
-GLESExecutor.prototype.ff_shaders = function(c, rectangle)
+GLESExecutor.prototype.ff_shaders = function(c, rectangle, points = false)
 {
     const textures = Array.from({ length: UNITS }, (_, i) => unit_texture(c, i));
-    const signature = ff_signature(c, false, textures);
+    const signature = ff_signature(c, points, textures);
+    if(points) signature.pointSprite = true;
     if(rectangle)
     {
         signature.lighting = { enabled: false, lights: [] };
-        signature.fog = { enabled: false };
         signature.attributes.normal = false;
         signature.attributes.position = { components: 4 };
         signature.clipPlaneCount = 0;
         signature.texture.forEach(t => { if(t.enabled) t.matrix = false; });
     }
     const FF = globalThis["GLFixedFunction"];
-    const key = FF.signatureKey(signature);
+    const key = (rectangle ? "rectangle:" : points ? "points:" : "") + FF.signatureKey(signature);
     this.ff_cache = this.ff_cache || new Map();
     let entry = this.ff_cache.get(key);
     if(!entry)
     {
         const generated = FF.generate(signature);
+        if(rectangle) generated.wgslVertex = generated.wgslVertex.replace(/let fogCoord = [^;]+;/,"let fogCoord = 0.0;");
+        if(points)
+        {
+            generated.wgslVertex = generated.wgslVertex.replace("gl_point_position(clip,ptSize,corner,glState.viewportParams)",
+                "gles_point_position(clip,ptSize,corner,glState.viewportParams)") + `
+fn gles_point_position(clip:vec4<f32>,size:f32,corner:vec2<f32>,viewport:vec4<f32>)->vec4<f32>{
+ if(clip.w<=0.0||any(abs(clip.xyz)>vec3<f32>(clip.w))){return vec4<f32>(0.0,0.0,0.0,-1.0);}
+ let rounded=clamp(floor(size+0.5),1.0,256.0);
+ let window=viewport.xy+(clip.xy/clip.w*0.5+0.5)*viewport.zw;
+ let centre=select(floor(window)+0.5,floor(window+0.5),u32(rounded)%2u==0u);
+ return vec4<f32>(((centre-viewport.xy+corner*rounded*0.5)/viewport.zw*2.0-1.0)*clip.w,clip.zw);
+}`;
+        }
         const module = code =>
         {
             let m = this.shaders.get(code);
@@ -989,6 +1092,51 @@ GLESExecutor.prototype.ff_shaders = function(c, rectangle)
         this.ff_cache.set(key, entry);
     }
     return { generated: entry.generated, shaders: entry.shaders, textures };
+};
+
+// WebGPU has one-pixel point primitives. ES1 needs sized, attenuated
+// points and OES point-coordinate replacement, so rasterize six corners
+// per point with constant vertex attributes and the existing fixed shader.
+GLESExecutor.prototype.draw_points1 = function(c, low, vertices, indices)
+{
+    const target = this.target_of(c);
+    if(!target) return;
+    const enabled = new Set(c.enabled);
+    enabled.delete(0x0B44);
+    enabled.delete(0x8037);
+    const state = Object.assign({}, c, { enabled, front_face: 0x0901 });
+    const ff = this.ff_shaders(c, false, true);
+    const point = c.ff.arrays.point_size;
+    const sizes = point.enabled ? this.attribute_values(c, point, low, vertices, 1) : null;
+    if(point.enabled && !sizes) return;
+    const order = indices || Array.from({ length: vertices }, (_, i) => low + i);
+    const [vx, vy, vw, vh] = c.viewport;
+    if(vw <= 0 || vh <= 0) return;
+    for(const vertex of order)
+    {
+        const layout = this.ff_layout(c, ff.generated, vertex, 1);
+        if(!layout) return;
+        layout.formats.forEach(f => f.stride = 0);
+        layout.key = "point:" + layout.key;
+        const pipeline = this.pipeline(state, null, ff.shaders, layout, "triangle-list", target, false);
+        if(!pipeline) return;
+        const snapshot = ff_snapshot(c, c.viewport);
+        snapshot.point.size = sizes ? sizes[vertex - low] : c.ff.point.size;
+        if(c.enabled.has(0x0B10)) snapshot.point.sizeMin = snapshot.point.sizeMax = 1;
+        const groups = this.ff_bind_groups(c, ff, pipeline, target, c.viewport, snapshot);
+        const pass = this.begin_pass(target, null);
+        pass.setPipeline(pipeline);
+        for(const [index, group] of groups) pass.setBindGroup(index, group);
+        layout.buffers.forEach((buffer, i) => pass.setVertexBuffer(i, buffer));
+        pass.setViewport(vx, vy, vw, vh, Math.min(...c.depth_range), Math.max(...c.depth_range));
+        if(!this.apply_scissor(pass, c, target)) return;
+        pass.setBlendConstant(c.blend_func.some(f => f === 0x8003 || f === 0x8004) ?
+            { r: c.blend_color[3], g: c.blend_color[3], b: c.blend_color[3], a: c.blend_color[3] } :
+            { r: c.blend_color[0], g: c.blend_color[1], b: c.blend_color[2], a: c.blend_color[3] });
+        if(c.enabled.has(0x0B90)) pass.setStencilReference(c.stencil_func[0][1] & 255);
+        pass.draw(6);
+        this.stats.draws++;
+    }
 };
 
 /** A fixed-function draw's vertex buffers: each input from its client array or its current value */
@@ -1033,14 +1181,25 @@ GLESExecutor.prototype.ff_bind_groups = function(c, ff, pipeline, target, viewpo
         if(ff.shaders.bindings.has("2:" + t.samplerBinding)) entries.push({ binding: t.samplerBinding, resource: this.sampler(texture) });
     }
     if(entries.length) groups.push([2, this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(2), entries })]);
+    if(ff.shaders.bindings.has("3:0"))
+    {
+        // Sample a copy of the destination, never the attachment being drawn.
+        this.end_pass();
+        const copy = this.device.createTexture({ label: "ES1 logic destination", size: [target.width,target.height],
+            format: COLOR_FORMAT, usage: U.COPY_DST | U.TEXTURE_BINDING });
+        if(target.color) this.encoder.copyTextureToTexture({ texture: target.color, mipLevel: target.color_level || 0,
+            origin: [0,0,target.color_layer || 0] }, { texture: copy }, [target.width,target.height]);
+        this.staging.push(copy);
+        groups.push([3,this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(3),entries: [{binding:0,resource:copy.createView()}] })]);
+    }
     return groups;
 };
 
 /**
  * glDrawTex*OES: a rectangle at window coordinates (x, y) of width by
  * height, at depth z (0 to 1, in the depth range), each enabled unit's
- * texture by its crop rectangle, the current color; no lighting, fog,
- * matrices or viewport
+ * texture by its crop rectangle, the current color and fog distance zero;
+ * no lighting, clip planes, matrices or viewport
  */
 GLESExecutor.prototype.draw_tex = function(c, [x, y, z, w, h])
 {
@@ -1079,7 +1238,10 @@ GLESExecutor.prototype.draw_tex = function(c, [x, y, z, w, h])
         formats.push({ location: a.location, components: a.components, stride: a.components * 4 });
     }
     const layout = { buffers, formats, key: "tex:" + formats.map(f => f.location + ":" + f.components).join(",") };
-    const pipeline = this.pipeline(c, null, ff.shaders, layout, "triangle-list", target, false);
+    const enabled = new Set(c.enabled);
+    enabled.delete(0x0B44);enabled.delete(0x8037);
+    const raster = Object.assign({},c,{enabled,front_face:0x0901});
+    const pipeline = this.pipeline(raster, null, ff.shaders, layout, "triangle-list", target, false);
     if(!pipeline) return;
     const snapshot = ff_snapshot(c, [0, 0, W, H]);
     const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -1158,7 +1320,9 @@ GLESExecutor.prototype.attribute_values = function(c, a, low, vertices, componen
     let source, base, stride;
     if(a.data)
     {
-        // (client data: tight, element 0 the draw's first: low is 0 for those draws)
+        // Both encoders pack PointerData tightly; the original stride is
+        // retained as query metadata. Native iOS uploads from element zero;
+        // Android rebases its draw to zero after packing the requested range.
         source = a.data;
         stride = element;
         base = low * element;
@@ -1203,7 +1367,7 @@ GLESExecutor.prototype.attribute_values = function(c, a, low, vertices, componen
 /** The pipeline for the program, the vertex layout, the state and the target */
 GLESExecutor.prototype.pipeline = function(c, program, shaders, layout, topology, target, indexed, face)
 {
-    const blend = c.enabled.has(0x0BE2);
+    const blend = c.enabled.has(0x0BE2) && !(c.api === 1 && c.enabled.has(0x0BF2));
     const depth_test = c.enabled.has(0x0B71), stencil_test = c.enabled.has(0x0B90);
     // (one face's draw, stencil_faces: the other culled, that face's masks)
     const cull = face === 0 ? "back" : face === 1 ? "front" : c.enabled.has(0x0B44) ? (c.cull_face === 0x0404 ? "front" : "back") : "none";
@@ -1550,6 +1714,8 @@ GLESExecutor.prototype.read_texture = function(texture, x, y, width, height, fli
 {
     this.end_pass();
     const stride = Math.ceil(width * texel / 256) * 256;
+    this.stats.readbacks++;
+    this.stats.readback_bytes += stride * height;
     const buffer = this.device.createBuffer({ size: stride * height, usage: B.COPY_DST | B.MAP_READ });
     this.encoder.copyTextureToBuffer({ texture, mipLevel: mip, origin: [x, y, layer] }, { buffer, bytesPerRow: stride, rowsPerImage: height }, [width, height, 1]);
     this.reads.push({ buffer, stride, width, height, flip, done, texel });

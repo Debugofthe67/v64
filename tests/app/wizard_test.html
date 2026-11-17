@@ -867,8 +867,8 @@ const parts = {
         const steps = () => Array.from(wizard.querySelectorAll(".wizard-steps li"), li => li.textContent).join(",");
         check(source("cdrom").checked, "the default source is still CD/DVD");
         const ios = source("ios");
-        check(ios?.parentElement.textContent.includes("iPhone 4 (GSM) · iOS 6.1.3 (.ipsw)"), "the iPhone source is visible by default");
-        check(ios.parentElement.querySelector(".badge")?.textContent === "Experimental", "the experimental badge is visible");
+        check(ios?.parentElement.textContent.trim() === "iOS (.ipsw)", "the generic iOS source is visible by default");
+        check(!ios.parentElement.querySelector(".badge"), "the iOS source has no experimental badge");
         ios.click();
         check(d.activeElement === source("ios"), "the selected source keeps keyboard focus");
         check(steps() === "Source,Keys,Name,NAND,Summary", "the iPhone steps: " + steps());
@@ -899,7 +899,7 @@ const parts = {
         await store.put(config);
         library.remove();
         await open_library();
-        await until(() => names().includes(config.name), "saved experimental iPhone");
+        await until(() => names().includes(config.name), "saved iPhone");
         button("Edit settings…").click();
         const settings = await until(() => $("dialog.settings-dialog[open]"), "iPhone settings");
         const panels = Array.from(settings.querySelectorAll(".item-label"), l => l.textContent);
@@ -910,7 +910,7 @@ const parts = {
         button("Save", settings).click();
         await until(async () => (await store.get(config.id))?.ios?.orientation === 90, "saved initial orientation");
         await store.delete(config.id);
-        log("visible experimental iPhone source, incorrect IPSW rejected, PC flow restored, fixed iPhone hardware and saved orientation");
+        log("generic iOS source without an experimental badge, incorrect IPSW rejected, PC flow restored, fixed iPhone hardware and saved orientation");
     },
     async service()
     {

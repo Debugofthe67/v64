@@ -259,12 +259,52 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
                 return v === bytes[row * 16 + (i % 16 & ~3) + [2, 1, 0, 3][i & 3]];
             }), "native BGRA readback subrectangle, reversed rows=" + flip);
         }
+        for(const flip of [0,1])
+        {
+            const reads=executor.stats.readbacks,ids=[];
+            for(let y=0;y<4;y++)
+            {
+                const id=request++;ids.push(id);record(GLES.IOSURFACE_READ,50,y,1,flip,id);
+                // Both one submission and successive native round trips.
+                if(flip===0)await run();
+            }
+            if(flip===1)await run();
+            check(executor.stats.readbacks-reads===1,"contiguous native strips use one GPU readback, flip="+flip);
+            check(ids.every((id,y)=>answers.get(id)?.every((v,i)=>v===bytes[y*16+(i&~3)+[2,1,0,3][i&3]])),
+                "cached native strips preserve BGRA bytes and per-strip row direction, flip="+flip);
+        }
+        {
+            const ids=[request++,request++],reads=executor.stats.readbacks;
+            for(let strip=0;strip<2;strip++){record(GLES.IOSURFACE_READ,50,strip*2,2,1,ids[strip]);await run();}
+            check(executor.stats.readbacks-reads===1&&ids.every((id,strip)=>answers.get(id)?.every((v,i)=>{
+                const y=strip*2+1-(i/16|0);return v===bytes[y*16+(i%16&~3)+[2,1,0,3][i&3]];
+            })),"cached two-row strips reverse within each strip, not across the publication");
+        }
+        {
+            const first=request++,last=request++,reads=executor.stats.readbacks;
+            record(GLES.IOSURFACE_READ,50,0,2,0,first);await run();
+            const changed=new Uint8Array(bytes.length).fill(81);
+            writer.command(GLES.COLOR_BUFFER_UPDATE,[50,0,0,4,4,0x1908,0x1401,changed.length],changed);
+            record(GLES.IOSURFACE_READ,50,2,2,0,last);await run();
+            check(answers.get(last)?.every(v=>v===81),"a write between native strips invalidates the cached publication");
+            check(executor.stats.readbacks-reads===2,"changed native publication reads the GPU again");
+            writer.command(GLES.COLOR_BUFFER_UPDATE,[50,0,0,4,4,0x1908,0x1401,bytes.length],bytes);await run();
+        }
+        {
+            const reads=executor.stats.readbacks;
+            for(const [y,flip] of [[0,0],[2,0],[3,1]])
+            { record(GLES.IOSURFACE_READ,50,y,1,flip,request++);await run(); }
+            check(executor.stats.readbacks-reads===3,"noncontiguous rows and changed flip do not reuse a cached publication");
+        }
         {
             const id = request++;
             record(GLES.IOSURFACE_READ, 50, 3, 2, 0, id);
             await run();
             check(answers.get(id) === null, "native readback rejects a rectangle outside its surface");
         }
+        // Restore the shared fixture's CPU row order after complete flipped
+        // native publications; later EGL-image tests start in memory order.
+        writer.command(GLES.COLOR_BUFFER_UPDATE,[50,0,0,4,4,0x1908,0x1401,bytes.length],bytes);
         record(GLES.IMAGE_CREATE, 60, 0, 0x3140, 50);
         const ext_text = "#extension GL_OES_EGL_image_external : require\nprecision mediump float; uniform samplerExternalOES tex; varying vec2 v_uv; " +
             "void main() { gl_FragColor = texture2D(tex, v_uv); }";
@@ -420,6 +460,28 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         gl1("glDrawArrays", 4, 0, 6);
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 6, 2), [0, 255, 0, 255]) && near(pixel(window, W, 1, 1), [255, 128, 0, 255]), "a texture modulated by a color array, translated");
+        // Native ES1 packs interleaved attributes while retaining stride
+        // metadata. Skip a sentinel with first and a nonzero index range.
+        const interleaved = floats([99,99,99,99, 0,0,0.5,0.5, W/2,0,0.5,0.5, W/2,W,0.5,0.5,
+            0,0,0.5,0.5, W/2,W,0.5,0.5, 0,W,0.5,0.5]);
+        const interleavedValues=new Float32Array(interleaved.buffer);
+        const packedPosition=floats(Array.from({length:7},(_,i)=>[interleavedValues[i*4],interleavedValues[i*4+1]]).flat());
+        const packedUV=floats(Array.from({length:7},(_,i)=>[interleavedValues[i*4+2],interleavedValues[i*4+3]]).flat());
+        gl1("glVertexPointerData", 2, 0x1406, 16, packedPosition, packedPosition.length);
+        gl1("glTexCoordPointerData", 0, 2, 0x1406, 16, packedUV, packedUV.length);
+        gl1("glDisableClientState", 0x8076);
+        gl1("glColor4f", 0, 0, 1, 1);
+        gl1("glDrawArrays", 4, 1, 6);
+        window = await read_pixels(0, 0, W, W);
+        check(near(pixel(window,W,6,2),[0,0,255,255]), "ES1 interleaved client vertices/UV with nonzero first");
+        gl1("glBindBuffer", 0x8893, 90);
+        gl1("glBufferData", 0x8893, 14, new Uint8Array(new Uint16Array([99,1,2,3,4,5,6]).buffer), 0x88E4);
+        gl1("glColor4f", 1, 0, 0, 1);
+        gl1("glDrawElementsOffset", 4, 6, 0x1403, 2);
+        window = await read_pixels(0, 0, W, W);
+        check(near(pixel(window,W,6,2),[255,0,0,255]), "ES1 element VBO with interleaved client arrays and nonzero offset");
+        gl1("glBindBuffer", 0x8893, 0);
+        gl1("glVertexPointerData", 2, 0x1406, 0, floats([0,0,W/2,0,W/2,W,0,0,W/2,W,0,W]), 48);
         // a light: directional, along +z, a white material's diffuse
         gl1("glDisable", 0x0DE1);
         gl1("glDisableClientState", 0x8076);
@@ -449,7 +511,121 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 6, 6), [0, 0, 255, 255]) && near(pixel(window, W, 1, 1), [128, 128, 128, 255], 3), "glDrawTexiOES: the crop rectangle's texel at the window rectangle");
 
-        // ---- points: one pixel each (WebGPU's point list)
+        // ---- ES1 paletted textures: high nibble first and a supplied mip chain
+        gl1("glBindTexture",0xde1,85);
+        gl1("glTexParameteri",0xde1,0x2800,0x2600);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        const palette=new Uint8Array(64+8+2+1);
+        palette.set([255,0,0,255,0,255,0,255,0,0,255,255]);
+        palette.fill(0x01,64,72);palette.fill(0x11,72,74);palette[74]=0x20;
+        gl1("glCompressedTexImage2D",0xde1,-2,0x8b91,4,4,0,palette.length,palette);
+        gl1("glTexParameteriv",0xde1,0x8b9d,new Uint8Array(new Int32Array([0,0,4,4]).buffer));
+        gl1("glDrawTexiOES",0,0,0,8,8);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[255,0,0,255])&&near(pixel(window,W,2,0),[0,255,0,255]),"ES1 palette4 RGBA nibble order renders through DrawTex");
+        gl1("glTexParameteri",0xde1,0x2801,0x2700);
+        gl1("glDrawTexiOES",0,0,0,1,1);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[0,0,255,255]),"ES1 negative-level palette chain supplies the selected mip");
+        const rgbPalette=new Uint8Array(256*3+4);
+        rgbPalette.set([255,0,0],200*3);rgbPalette.set([0,255,0],17*3);rgbPalette.set([200,17,200,17],768);
+        gl1("glBindTexture",0xde1,86);gl1("glTexParameteri",0xde1,0x2800,0x2600);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        gl1("glCompressedTexImage2D",0xde1,0,0x8b95,2,2,0,rgbPalette.length,rgbPalette);
+        gl1("glTexParameteriv",0xde1,0x8b9d,new Uint8Array(new Int32Array([0,0,2,2]).buffer));
+        gl1("glColor4f",1,1,1,0.25);gl1("glDrawTexiOES",0,0,0,8,8);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[255,0,0,64])&&near(pixel(window,W,6,0),[0,255,0,64]),"ES1 palette8 RGB uses byte indices and REPLACE preserves current alpha");
+
+        // Automatic mip generation follows base uploads, edits and copies.
+        gl1("glBindTexture",0xde1,87);gl1("glTexParameteri",0xde1,0x8191,1);
+        gl1("glTexParameteri",0xde1,0x2800,0x2600);gl1("glTexParameteri",0xde1,0x2801,0x2700);
+        gl1("glTexParameteriv",0xde1,0x8b9d,new Uint8Array(new Int32Array([0,0,4,4]).buffer));
+        const solid=color=>new Uint8Array(Array.from({length:16},()=>color).flat());
+        gl1("glTexImage2D",0xde1,0,0x1908,4,4,0,0x1908,0x1401,solid([255,0,0,255]));
+        gl1("glDrawTexiOES",0,0,0,1,1);window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[255,0,0,255]),"ES1 GENERATE_MIPMAP creates a complete chain after upload");
+        gl1("glTexSubImage2D",0xde1,0,0,0,4,4,0x1908,0x1401,solid([0,255,0,255]));
+        gl1("glDrawTexiOES",0,0,0,1,1);window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[0,255,0,255]),"ES1 base subimage updates regenerate sampled mips");
+        gl1("glClearColor",0,0,1,1);gl1("glClear",0x4000);
+        gl1("glCopyTexImage2D",0xde1,0,0x1908,0,0,4,4,0);
+        gl1("glDrawTexiOES",0,0,0,1,1);window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[0,0,255,255]),"ES1 base framebuffer copy regenerates sampled mips");
+
+        // Multiple fixed-function units and an independent COMBINE stage.
+        gl1("glBindTexture",0xde1,85);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        gl1("glActiveTexture",0x84c1);gl1("glBindTexture",0xde1,88);
+        gl1("glTexParameteri",0xde1,0x2800,0x2600);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        gl1("glTexImage2D",0xde1,0,0x1908,1,1,0,0x1908,0x1401,new Uint8Array([128,255,255,255]));
+        gl1("glTexEnvi",0x2300,0x2200,0x2100);gl1("glEnable",0xde1);
+        gl1("glDrawTexiOES",0,0,0,8,8);window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[128,0,0,255])&&near(pixel(window,W,2,0),[0,255,0,255]),"ES1 texture unit 1 modulates unit 0 independently");
+        gl1("glTexImage2D",0xde1,0,0x1908,1,1,0,0x1908,0x1401,new Uint8Array([255,255,255,128]));
+        gl1("glTexEnvi",0x2300,0x2200,0x8570);gl1("glTexEnvi",0x2300,0x8571,0x8575);
+        gl1("glTexEnvi",0x2300,0x8580,0x8578);gl1("glTexEnvi",0x2300,0x8581,0x8576);gl1("glTexEnvi",0x2300,0x8582,0x1702);
+        gl1("glTexEnvi",0x2300,0x8572,0x1e01);gl1("glTexEnvi",0x2300,0x8588,0x8578);
+        gl1("glTexEnvfv",0x2300,0x2201,floats([0,0,1,1]));
+        gl1("glDrawTexiOES",0,0,0,8,8);window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,0,0),[128,0,127,255]),"ES1 COMBINE interpolates previous and constant colors with texture alpha");
+        gl1("glDisable",0xde1);gl1("glActiveTexture",0x84c0);
+
+        // ---- ES1 logic operations, including primitive ordering
+        gl1("glDisable",0xde1);
+        gl1("glEnable",0xbf2);gl1("glEnable",0xbe2);gl1("glBlendFunc",0,0);
+        const source=[0x33,0x66,0x99,0xcc],destination=[0x99,0xcc,0x66,0xff];
+        const logic=[()=>0,(s,d)=>s&d,(s,d)=>s&~d,s=>s,(s,d)=>~s&d,(s,d)=>d,(s,d)=>s^d,(s,d)=>s|d,
+            (s,d)=>~(s|d),(s,d)=>~(s^d),(s,d)=>~d,(s,d)=>s|~d,s=>~s,(s,d)=>~s|d,(s,d)=>~(s&d),()=>255];
+        for(let op=0;op<16;op++)
+        {
+            gl1("glClearColor",...destination.map(v=>v/255));gl1("glClear",0x4000);
+            gl1("glLogicOp",0x1500+op);gl1("glColor4ub",...source);gl1("glDrawArrays",4,0,6);
+            window=await read_pixels(0,0,W,W);
+            check(near(pixel(window,W,1,1),source.map((s,i)=>logic[op](s,destination[i])&255),0),"ES1 logic operation "+op+" disables blending");
+        }
+        gl1("glClear",0x4000);gl1("glLogicOp",0x1506);
+        gl1("glVertexPointerData",2,0x1406,0,floats([0,0,4,0,0,8,0,0,4,0,0,8]),48);
+        gl1("glDrawArrays",4,0,6);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,1,1),destination,0),"ES1 XOR observes two overlapping primitives in one draw");
+        gl1("glBindTexture",0xde1,83);
+        gl1("glTexImage2D",0xde1,0,0x1908,2,2,0,0x1908,0x1401,null);
+        gl1("glBindFramebufferOES",0x8d40,84);
+        gl1("glFramebufferTexture2DOES",0x8d40,0x8ce0,0xde1,83,0);
+        gl1("glClear",0x4000);gl1("glLogicOp",0x150a);gl1("glColorMask",1,0,1,0);
+        gl1("glDrawTexiOES",0,0,0,2,2);
+        window=await read_pixels(0,0,2,2);
+        check(near(pixel(window,2,0,0),[102,204,153,255],0),"ES1 logic destination uses the FBO attachment and preserves masked channels");
+        gl1("glColorMask",1,1,1,1);gl1("glBindFramebufferOES",0x8d40,0);
+        gl1("glDisable",0xbf2);gl1("glDisable",0xbe2);gl1("glBlendFunc",1,0);
+        gl1("glClearColor",0,0,0,1);
+
+        // Flat color comes from GL's final vertex, including strips/fans.
+        gl1("glClear",0x4000);gl1("glShadeModel",0x1d00);gl1("glEnableClientState",0x8076);
+        gl1("glColorPointerData",4,0x1401,0,new Uint8Array([255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255]),16);
+        gl1("glVertexPointerData",2,0x1406,0,floats([0,0,8,0,0,8]),24);gl1("glDrawArrays",4,0,3);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,1,1),[0,0,255,255]),"ES1 flat triangle uses the last vertex's color");
+        gl1("glVertexPointerData",2,0x1406,0,floats([0,0,8,0,0,8,8,8]),32);
+        gl1("glEnable",0xb44);gl1("glCullFace",0x405);gl1("glDrawArrays",5,0,4);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,1,1),[0,0,255,255])&&near(pixel(window,W,6,6),[255,255,255,255]),"ES1 flat strip preserves winding and each provoking vertex");
+        gl1("glDrawElementsData",6,4,0x1401,new Uint8Array([0,1,3,2]),4);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,6,1),[255,255,255,255])&&near(pixel(window,W,1,6),[0,0,255,255]),"ES1 indexed flat fan uses the last vertex of each triangle");
+        gl1("glVertexPointerData",2,0x1406,0,floats([0,4.5,8,4.5]),16);gl1("glDrawArrays",1,0,2);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,3,4),[0,255,0,255]),"ES1 flat line uses its final vertex");
+        gl1("glShadeModel",0x1d01);gl1("glDisableClientState",0x8076);
+        // DrawTex ignores geometric clipping/culling/lighting, but applies fog at distance zero.
+        gl1("glColor4f",1,0,0,1);gl1("glEnable",0xb60);gl1("glEnable",0xb50);
+        gl1("glFogf",0xb65,0x2601);gl1("glFogf",0xb63,-1);gl1("glFogf",0xb64,1);
+        gl1("glFogfv",0xb66,floats([0,1,0,1]));gl1("glClipPlanef",0x3000,floats([0,0,0,-1]));
+        gl1("glEnable",0x3000);gl1("glCullFace",0x408);gl1("glDrawTexiOES",0,0,0,8,8);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,4,4),[128,128,0,255]),"ES1 DrawTex fog uses distance zero and ignores lighting/clip planes/culling");
+        gl1("glDisable",0xb60);gl1("glDisable",0xb50);gl1("glDisable",0x3000);
+        gl1("glDisable",0xb44);gl1("glCullFace",0x405);
+
+        // ---- ES1 sized points, matrices, arrays and OES point sprites
         gl1("glDisable", 0x0DE1);
         gl1("glClear", 0x4000);
         gl1("glColor4f", 0, 1, 0, 1);
@@ -458,6 +634,48 @@ const check = (value, message) => { if(!value) throw new Error(message); checks.
         gl1("glEnable", 0x0DE1);
         window = await read_pixels(0, 0, W, W);
         check(near(pixel(window, W, 4, 4), [0, 255, 0, 255]) && near(pixel(window, W, 1, 1), [0, 0, 0, 255]), "a point: its pixel");
+        gl1("glDisable",0x0DE1);
+        gl1("glClear",0x4000);
+        gl1("glPointSize",4);
+        gl1("glVertexPointerData",2,0x1406,0,floats([2,2]),8);
+        gl1("glTranslatex",2*65536,2*65536,0);
+        gl1("glDrawArrays",0,0,1);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,2,2),[0,255,0,255])&&near(pixel(window,W,5,5),[0,255,0,255])&&
+            near(pixel(window,W,6,6),[0,0,0,255]),"ES1 four-pixel point retains modelview/projection and covers its square");
+        gl1("glLoadIdentity");
+        gl1("glClear",0x4000);
+        gl1("glVertexPointerData",2,0x1406,0,floats([99,99,2.5,2.5,6.5,6.5]),24);
+        gl1("glPointSizePointerData",0x140c,0,new Uint8Array(new Int32Array([65536,3*65536,65536]).buffer),12);
+        gl1("glEnableClientState",0x8b9c);
+        gl1("glDrawElementsData",0,2,0x1401,new Uint8Array([1,2]),2);
+        gl1("glDisableClientState",0x8b9c);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,1,1),[0,255,0,255])&&near(pixel(window,W,3,3),[0,255,0,255])&&
+            near(pixel(window,W,6,6),[0,255,0,255])&&near(pixel(window,W,5,5),[0,0,0,255]),"ES1 indexed fixed point-size array selects each point's size");
+        gl1("glClear",0x4000);
+        gl1("glMatrixMode",0x1701);gl1("glLoadIdentity");gl1("glOrthof",-4,4,-4,4,1,10);gl1("glMatrixMode",0x1700);
+        gl1("glVertexPointerData",3,0x1406,0,floats([0,0,-2]),12);
+        gl1("glPointParameterfv",0x8129,floats([0,0,1]));
+        gl1("glEnable",0xb44);gl1("glCullFace",0x408);gl1("glFrontFace",0x900);
+        gl1("glDrawArrays",0,0,1);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,3,3),[0,255,0,255])&&near(pixel(window,W,4,4),[0,255,0,255])&&
+            near(pixel(window,W,2,2),[0,0,0,255]),"ES1 point attenuation uses eye distance and ignores polygon culling");
+        gl1("glDisable",0xb44);gl1("glFrontFace",0x901);gl1("glPointParameterfv",0x8129,floats([1,0,0]));
+        gl1("glMatrixMode",0x1701);gl1("glLoadIdentity");gl1("glOrthof",0,W,0,W,-1,1);gl1("glMatrixMode",0x1700);
+        gl1("glClear",0x4000);
+        gl1("glBindTexture",0xde1,82);
+        gl1("glTexParameteri",0xde1,0x2800,0x2600);gl1("glTexParameteri",0xde1,0x2801,0x2600);
+        gl1("glTexImage2D",0xde1,0,0x1908,2,2,0,0x1908,0x1401,new Uint8Array([255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255]));
+        gl1("glEnable",0xde1);gl1("glEnable",0x8861);
+        gl1("glTexEnvi",0x8861,0x8862,1);gl1("glTexEnvi",0x2300,0x2200,0x1e01);
+        gl1("glVertexPointerData",2,0x1406,0,floats([4,4]),8);
+        gl1("glDrawArrays",0,0,1);
+        window=await read_pixels(0,0,W,W);
+        check(near(pixel(window,W,2,2),[0,0,255,255])&&near(pixel(window,W,5,2),[255,255,255,255])&&
+            near(pixel(window,W,2,5),[255,0,0,255])&&near(pixel(window,W,5,5),[0,255,0,255]),"OES point sprite replaces coordinates across the whole square");
+        gl1("glDisable",0x8861);gl1("glPointSize",1);gl1("glBindTexture",0xde1,81);
 
         // ---- an empty read is answered (no rows to copy)
         const empty = await read_pixels(0, 0, 0, 0);

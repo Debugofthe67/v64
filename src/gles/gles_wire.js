@@ -45,6 +45,7 @@ export const IOSURFACE_COMMANDS = [
     ["v86IOSurfaceIsCurrent", [["handle", "u32"], ["seed", "u32"]]],
     ["v86UploadIOSurface", [["handle", "u32"], ["seed", "u32"], ["pixels", "ptr", "in"]]],
     ["v86ReadIOSurface", [["handle", "u32"], ["y", "u32"], ["rows", "u32"], ["flip", "u32"], ["pixels", "ptr", "out"]]],
+    ["v86ElementIndexMax", [["count", "u32"], ["type", "u32"], ["offset", "u32"], ["maximum", "ptr", "out"]]],
 ];
 IOSURFACE_COMMANDS.forEach(([name, params], i) =>
 {

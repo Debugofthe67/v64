@@ -1,0 +1,102 @@
+<!doctype html><meta charset="utf-8"><title>iOS desktop and 2D performance</title>
+<style>iframe{width:1400px;height:1100px}pre{white-space:pre-wrap}</style>
+<pre id="log"></pre><pre id="result">Running…</pre>
+<script type="module">
+// Each measured run restores RAM against its matching, closed-profile NAND
+// clone. Setup writes checkpoints through a bounded stream, never a RAM Blob.
+import { VMStore } from "../../src/app/vm_store.js";
+const q=new URLSearchParams(location.search),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const log=s=>document.getElementById("log").textContent+=s+"\n";
+const artifact=async(name,body)=>{const r=await fetch("/__artifact?name="+name,{method:"POST",body});if(!r.ok)throw Error("Artifact write failed");};
+async function until(fn,what,ms=120000){const end=performance.now()+ms;while(performance.now()<end){const v=await fn();if(v)return v;await sleep(50)}throw Error("Timed out: "+what);}
+async function space(){const h=await(await fetch("/__host_metrics")).json();if(h.disk_available<3*1024**3)throw Error("Less than 3 GiB available");return h;}
+let emulator,frame,config,serial="";
+window.ios_acceptance={get emulator(){return emulator},get frame(){return frame},get config(){return config},get serial(){return serial}};
+try{
+    await space();const store=await VMStore.open();config=await store.get(q.get("vm"));store.close();if(!config)throw Error("Missing test VM");
+    frame=document.createElement("iframe");frame.src="/index.html?vm="+encodeURIComponent(config.id);document.body.append(frame);
+    emulator=await until(()=>frame.contentWindow.v86_console?.emulator,"CPU Worker");
+    if(!emulator.worker_controller)throw Error("CPU Worker required");
+    emulator.add_listener("serial0-output-byte",b=>{serial=(serial+String.fromCharCode(b)).slice(-32768)});
+    const screenStates=[];emulator.add_listener("ios-screen-state",s=>screenStates.push(s));
+    const root=await navigator.storage.getDirectory(),dir=await root.getDirectoryHandle("v86-performance",{create:true});
+    const capture=async name=>{
+        for(let attempt=0;attempt<10;attempt++){
+            emulator.worker_controller.request_frame(true);await until(()=>!emulator.worker_controller.frame_pending,"repaint",5000);
+            const image=await new Promise(r=>frame.contentWindow.requestAnimationFrame(()=>r(emulator.screen_make_screenshot())));
+            if(!image?.src)continue;await image.decode();
+            const canvas=document.createElement("canvas");canvas.width=image.width;canvas.height=image.height;
+            const ctx=canvas.getContext("2d",{willReadFrequently:true});ctx.drawImage(image,0,0);
+            if(!ctx.getImageData(0,0,canvas.width,canvas.height).data.some((v,i)=>i%4!==3&&v>8))continue;
+            await artifact(name,await(await fetch(image.src)).blob());return;
+        }
+        throw Error("No visible scene after full repaint");
+    };
+    window.checkpoint_save=async scene=>{
+        if(!["springboard","pvz"].includes(scene))throw Error("Unknown scene");
+        await space();await emulator.stop();
+        if(!(await emulator.get_diagnostics()).graphics?.panel?.awake)throw Error("Cannot checkpoint a sleeping panel");
+        await capture(scene+"-checkpoint.png");
+        const file=await dir.getFileHandle(scene+".v86",{create:true}),out=await file.createWritable();
+        try{await emulator.save_state_stream(b=>out.write(b.slice()));await out.close()}catch(e){await out.abort();throw e;}
+        const saved=await file.getFile();log("Saved "+scene+": "+saved.size+" bytes");
+        return{scene,bytes:saved.size,vm:config.id};
+    };
+    if(q.has("setup")){
+        if(q.has("restore")){
+            const scene=q.get("restore");if(!["springboard","pvz"].includes(scene))throw Error("Unknown setup checkpoint");
+            await emulator.stop();const file=await(await dir.getFileHandle(scene+".v86")).getFile();
+            await emulator.restore_state_stream({size:file.size,read:async(a,n)=>new frame.contentWindow.Uint8Array(await file.slice(a,a+n).arrayBuffer())});
+            await emulator.run();
+        }
+        log("Setup: navigate through UI, then checkpoint_save(scene); close this profile before cloning it.");await new Promise(()=>{});
+    }
+    const scene=q.get("scene");if(!["springboard","pvz"].includes(scene))throw Error("Unknown scene");
+    await emulator.stop();const file=await(await dir.getFileHandle(scene+".v86")).getFile();
+    await emulator.restore_state_stream({size:file.size,read:async(a,n)=>new frame.contentWindow.Uint8Array(await file.slice(a,a+n).arrayBuffer())});
+    const sample=async()=>{
+        const d=await emulator.get_diagnostics();
+        if(d.clock?.mode!=="normal"||d.clock.rate!==1||d.clock.paused)throw Error("Normal rate-1 clock required");
+        if(!d.graphics?.panel?.awake||screenStates.some(s=>!s.awake))throw Error("Display slept; invalid FPS window");
+        return d;
+    };
+    const gameWidth=Number(q.get("width")||320),gameHeight=Number(q.get("height")||480);
+    const frames=d=>(d.graphics.native?.drawables||[]).filter(x=>x.width===gameWidth&&x.height===gameHeight).reduce((n,x)=>n+x.frames,0);
+    const mouse=(x,y,down)=>{emulator.bus.send("mouse-absolute",[x,y,640,960]);if(down!==undefined)emulator.bus.send("mouse-click",[down,false,false,false]);};
+    screenStates.length=0;await emulator.run();await sleep(500);
+    let hostBefore;const windows=[];
+    if(scene==="springboard"){
+        const warmup=Number(q.get("warmup")||40),count=Number(q.get("strokes")||20);
+        for(let stroke=0;stroke<warmup+count;stroke++){
+            window.performance_progress={phase:stroke<warmup?"warmup":"measure",stroke,warmup,count};
+            if(stroke===warmup){await emulator.stop();await capture("start.png");await emulator.run();await sleep(500);hostBefore=await space();log("Desktop warmup completed: "+warmup+" strokes");}
+            const left=stroke%2===0,from=left?550:90,to=left?90:550;
+            mouse(from,500,true);await sleep(150);const before=await sample(),start=performance.now();
+            for(;;){const t=Math.min(1,(performance.now()-start)/600);mouse(from+(to-from)*t,500);if(t===1)break;await sleep(16);}
+            const after=await sample();mouse(to,500,false);await sleep(650);
+            if(stroke>=warmup)windows.push({before,after});
+        }
+    }else{
+        const initial=await sample(),warmup=Number(q.get("warmup")||60),warmupMs=Number(q.get("warmup_ms")||10000);
+        window.performance_progress={phase:"warmup"};
+        await until(async()=>{await sleep(100);const d=await sample();return frames(d)-frames(initial)>=warmup&&d.host_time-initial.host_time>=warmupMs},"PvZ warmup",180000);
+        await emulator.stop();await capture("start.png");await emulator.run();await sleep(500);
+        hostBefore=await space();
+        window.performance_progress={phase:"measure"};
+        const before=await sample(),duration=Number(q.get("duration")||20000);await sleep(duration);windows.push({before,after:await sample()});
+    }
+    const hostAfter=await space();await emulator.stop();
+    const durationMs=windows.reduce((n,w)=>n+w.after.host_time-w.before.host_time,0);
+    const panelFrames=windows.reduce((n,w)=>n+w.after.graphics.panel.frames-w.before.graphics.panel.frames,0);
+    const gameFrames=windows.reduce((n,w)=>n+frames(w.after)-frames(w.before),0);
+    if(panelFrames<1||scene==="pvz"&&gameFrames<1)throw Error("No completed visible frames; invalid FPS window");
+    const result={scene,label:q.get("label")||"unlabelled",settings:Object.fromEntries(q),drawable:{width:gameWidth,height:gameHeight},checkpoint:{name:file.name,bytes:file.size,modified:file.lastModified},
+        protocol:scene==="springboard"?"alternating 600 ms drags, 150 ms initial hold and 650 ms release settling excluded":"same-checkpoint live gameplay; warmup frames excluded",
+        duration_ms:durationMs,panel_frames:panelFrames,panel_fps:panelFrames*1000/durationMs,
+        game_frames:gameFrames,game_fps:gameFrames*1000/durationMs,windows,host:{before:hostBefore,after:hostAfter},screen_states:screenStates};
+    await artifact("performance.json",JSON.stringify(result,null,2));
+    await capture("end.png");
+    window.performance_result=result;log(JSON.stringify({scene,panel_fps:result.panel_fps,game_fps:result.game_fps}));
+    document.getElementById("result").textContent="PASS: measured actual updates; inspect scene screenshots before accepting comparisons";
+}catch(e){await emulator?.stop().catch(()=>{});log(e.stack);document.getElementById("result").textContent="FAIL: "+e.stack;}
+</script>

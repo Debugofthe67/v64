@@ -16,6 +16,7 @@ const calls = [
     ["glGetIntegerv", [0xba2, 16], new Int32Array([3, 4, 640, 960])],
     ["glGetFloatv", [0xb70, 8], new Float32Array([0.25, 0.75])],
     ["glGetBooleanv", [0xc23, 4], new Uint8Array([1, 0, 1, 0])],
+    ["glGetIntegerv", [0x898d, 64], new Int32Array(Array.from({length:16},(_,i)=>i+100))],
     ["glGetIntegerv", [0x86a2, 4], new Int32Array([3])],
     ["glGetIntegerv", [0x86a3, 12], new Int32Array([0x83f0, 0x83f1, 0x83f2])],
     ["glGetShaderiv", [7, 0x8b81, 4], new Int32Array([1])],
@@ -23,8 +24,11 @@ const calls = [
     ["glGetShaderInfoLog", [7, 8, 4, 8], new Uint8Array([7, 0, 0, 0, ...Buffer.from("compile\0")])],
     ["glGetProgramInfoLog", [9, 1, 4, 1], new Uint8Array(5)],
     ["glGetShaderSource", [7, 4, 4, 4], new Uint8Array([3, 0, 0, 0, 97, 98, 99, 0])],
+    ["glGetActiveUniform", [9, 0, 4, 4, 4, 4, 4], new Uint8Array([3,0,0,0,1,0,0,0,0x52,0x8b,0,0,97,98,99,0])],
+    ["glGetActiveAttrib", [9, 0, 1, 0, 0, 0, 1], new Uint8Array(1)],
 ];
 const defs = [], packets = [], asm = [".syntax unified", ".thumb", ".text"];
+defs.push("#define gles2_glGetRenderbufferParameteriv " + command_of_name("gles2:glGetRenderbufferParameteriv").opcode);
 for(const name of new Set(calls.map(c => c[0])))
 {
     defs.push("#define gles2_" + name + " " + command_of_name("gles2:" + name).opcode);
@@ -41,7 +45,7 @@ const c = `#include <stdio.h>
 #include <string.h>
 #include "gl-slots.h"
 typedef uintptr_t driver_word;
-struct context { struct { unsigned connection; int ok; } driver; unsigned error; };
+struct context { struct { unsigned connection; int ok; } driver; unsigned error, unpack_row_bytes, client_storage; };
 ${defs.join("\n")}
 static const struct {const unsigned char *req; unsigned n; const unsigned char *reply; unsigned r;} packets[] = {${packets}};
 static unsigned sent, read_at, reading;
@@ -69,6 +73,8 @@ extern void glGetIntegerv(unsigned,int *), glGetFloatv(unsigned,float *), glGetB
 extern void glGetShaderiv(unsigned,unsigned,int *), glGetProgramiv(unsigned,unsigned,int *);
 extern void glGetShaderInfoLog(unsigned,int,int *,char *), glGetProgramInfoLog(unsigned,int,int *,char *);
 extern void glGetShaderSource(unsigned,int,int *,char *);
+extern void glGetActiveUniform(unsigned,unsigned,int,int *,int *,unsigned *,char *);
+extern void glGetActiveAttrib(unsigned,unsigned,int,int *,int *,unsigned *,char *);
 static driver_word tls[64],table[N90_GL_TABLE_WORDS];
 int main(void)
 {
@@ -81,6 +87,8 @@ int main(void)
     if(memcmp(range,(float[]){11,0.25,0.75,12},sizeof(range))) return 2;
     unsigned char mask[6]={91,9,9,9,9,92}; glGetBooleanv(0xc23,mask+1);
     if(memcmp(mask,(unsigned char[]){91,1,0,1,0,92},6)) return 3;
+    int matrix[18];for(int i=0;i<18;i++)matrix[i]=91;matrix[17]=92;glGetIntegerv(0x898d,matrix+1);
+    if(matrix[0]!=91||matrix[17]!=92)return 30;for(int i=0;i<16;i++)if(matrix[i+1]!=i+100)return 31;
     int formats[5]={91,0,0,0,92}; glGetIntegerv(0x86a3,formats+1);
     if(memcmp(formats,(int[]){91,0x83f0,0x83f1,0x83f2,92},sizeof(formats))) return 4;
     int status=0; glGetShaderiv(7,0x8b81,&status); if(status!=1) return 5;
@@ -90,6 +98,9 @@ int main(void)
     if(length!=7 || log[0]!=91 || log[9]!=91 || strcmp(log+1,"compile")) return 7;
     glGetProgramInfoLog(9,1,0,log+1); if(log[1] || log[2]!='o') return 8;
     glGetShaderSource(7,4,&length,log+1); if(length!=3 || strcmp(log+1,"abc")) return 9;
+    int size=0;unsigned type=0;glGetActiveUniform(9,0,4,&length,&size,&type,log+1);
+    if(length!=3 || size!=1 || type!=0x8b52 || strcmp(log+1,"abc") || log[0]!=91 || log[5]!='i')return 12;
+    glGetActiveAttrib(9,0,1,0,0,0,log+1);if(log[1])return 13;
     unsigned before=sent; glGetShaderInfoLog(7,-1,&length,log);
     if(ctx.error!=0x501 || sent!=before || !ctx.driver.ok) return 10;
     if(sent!=sizeof(packets)/sizeof(*packets) || read_at!=packets[reading].r) return 11;

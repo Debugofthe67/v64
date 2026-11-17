@@ -249,6 +249,8 @@ driver binary or microcode is distributed with the device.
 | Guest | Native driver | Verified scope |
 | --- | --- | --- |
 | XP SP3, 1024 MiB RAM, IDE, ACPI off | ForceWare 93.71 | Device started, 1024×768×32, GDI, DirectDraw, DxDiag D3D7/8/9 and native RGB565 render/readback |
+| XP SP3, 1024 MiB RAM, IDE, ACPI off | ForceWare 175.16 | Cold boot after installation, 1024×768×32, GDI, DirectDraw, original DxDiag D3D7/8/9, native D3D9 HAL and RGB565/texture readback; [evidence](../tests/acceptance/nv40/xp-17516-dxdiag.json) |
+| XP SP3, 1024/2048 MiB RAM, 256 MiB VRAM, IDE, ACPI off, one core | ForceWare 175.16 | [Warcraft III](../tests/acceptance/nv40/xp-17516-warcraft3.json) Orc base and Peon movement; [KartRider](../tests/acceptance/nv40/xp-17516-kartrider.json) original launcher, time attack, throttle and steering; [GTA SA](../tests/acceptance/nv40/xp-17516-gtasa.json) cold boot, startup video, airport characters and player movement, original quit menu and desktop return. Functional coverage; GTA remains slow. |
 | Win98 SE, 256 MiB RAM, IDE, ACPI off | ForceWare 81.98 and a Win98-compatible DirectX 9.0c runtime | Device started, 8/16/32 bpp mode changes, DOS graphics/text/desktop round trip, GDI, DirectDraw, DxDiag D3D7/8/9, StarCraft 8bpp and Red Alert 2 RGB565 gameplay/desktop round trips |
 
 Driver setup is described in [Windows 9x](windows-9x.md#323-geforce-6800-gt-experimental)
@@ -265,6 +267,15 @@ control flow, predicates, R/H register aliasing, FP16/FP32 textures, vertex
 textures, cube/volume textures, MRT, queries, depth comparison and blending.
 Native Direct3D and the driver's 3D-assisted DirectDraw paths require a
 WebGPU renderer. Legacy VGA and CPU GDI do not require one.
+
+PVIDEO composites packed YUYV/UYVY video over the primary picture before the
+cursor. Its buffer doorbells, retrace counter samples, scheduled offset slot
+and PMC interrupt source run independently of PGRAPH. Original XP 175.16
+requires that path when leaving GTA SA's startup video; completing a draw
+alone cannot satisfy its video counter notification. The miniport services
+the interrupt and writes the notification in guest memory. The
+[PVIDEO fixture](../tests/acceptance/nv40/pvideo-native-counter.json) records
+the protocol and its current validation scope.
 
 VRAM remains the snapshot authority. Pending GPU work is completed and read
 back before saving; host resources and translation caches are recreated on

@@ -2,13 +2,16 @@
 // serializable; code and archive entries stay in the preparation worker.
 import { zip_entries, zip_read, zip_stream } from "../android/zip.js";
 import { plist_parse } from "./plist.js";
-import { macho_armv7 } from "../apple/macho.js";
+import { macho_ios_app } from "../apple/macho.js";
 import { SHA256 } from "../image/sha256.js";
 
 export const IPA_LIMITS = Object.freeze({ archive: 2 * 1024 ** 3, expanded: 4 * 1024 ** 3,
     member: 512 * 1024 ** 2, code: 128 * 1024 ** 2, entries: 100000, plist: 4 * 1024 ** 2 });
 const fail = message => { throw new Error("IPA: " + message); };
 const decode = bytes => new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+// Some old IPA exporters append the previous sandbox as Container/.
+// Inspect its ZIP integrity but never restore that data or follow its links.
+const sandbox_backup = entry => entry.name.startsWith("Container/");
 
 export function ios_version(value)
 {
@@ -59,7 +62,7 @@ export async function inspect_ipa(read, size, progress = () => {})
     const roots = new Set(entries.map(e => /^Payload\/([^/]+\.app)(?:\/|$)/.exec(e.name)?.[1]).filter(Boolean));
     if(roots.size !== 1) fail("expected exactly one Payload/*.app application");
     const root = "Payload/" + [...roots][0], prefix = root + "/";
-    if(entries.some(e => (e.unix_mode & 0o170000) === 0o120000 && (!e.name.startsWith(prefix) || e.name.endsWith("/"))))
+    if(entries.some(e => !sandbox_backup(e) && (e.unix_mode & 0o170000) === 0o120000 && (!e.name.startsWith(prefix) || e.name.endsWith("/"))))
         fail("symbolic link outside the application or with a directory entry name");
     const payloadDirectory = e => e.name === "Payload/" && e.size === 0 &&
         [0, 0o040000].includes(e.unix_mode & 0o170000);
@@ -116,7 +119,7 @@ export async function inspect_ipa(read, size, progress = () => {})
                 if([0xCEFAEDFE, 0xCFFAEDFE, 0xCAFEBABE, 0xBEBAFECA].includes(magic))
                 {
                     if(entry.size > IPA_LIMITS.code) fail("code exceeds the 128 MiB limit");
-                    const slice = macho_armv7(await zip_read(read, entry));
+                    const slice = macho_ios_app(await zip_read(read, entry));
                     if(slice.parsed.min_ios && ios_version(slice.parsed.min_ios) > ios_version("6.1.3"))
                         fail(entry.name + " requires iOS " + slice.parsed.min_ios);
                     code.push({ path: entry.name, ...slice });
@@ -146,7 +149,7 @@ export async function inspect_ipa(read, size, progress = () => {})
         }
     }
     const main = code.find(c => c.path === prefix + executable);
-    if(!main || main.parsed.filetype !== 2) fail("missing ARMv7 application executable");
+    if(!main || main.parsed.filetype !== 2) fail("missing ARMv7 or ARMv6 application executable");
     const digest = new SHA256();
     for(let at = 0; at < size; at += 1 << 20)
     {
@@ -156,7 +159,7 @@ export async function inspect_ipa(read, size, progress = () => {})
     }
     const report = { name: String(info.CFBundleDisplayName || info.CFBundleName || [...roots][0].slice(0, -4)),
         bundle_id: info.CFBundleIdentifier, executable, version: String(info.CFBundleShortVersionString || info.CFBundleVersion || ""),
-        build: String(info.CFBundleVersion || ""), minimum_ios: minimum, architecture: "armv7", size, expanded_size: expanded,
+        build: String(info.CFBundleVersion || ""), minimum_ios: minimum, architecture: main.architecture, size, expanded_size: expanded,
         original_sha256: digest.hex(), code_count: code.length };
-    return { report, entries, info, root, main, code };
+    return { report, entries: entries.filter(e => !sandbox_backup(e)), info, root, main, code };
 }
