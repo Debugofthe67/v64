@@ -1539,6 +1539,18 @@ A64CPU.prototype.step_stats = function(top = 20)
         words.sort((a, b) => b["count"] - a["count"]);
         result["a32_stepped_words"] = words.slice(0, top);
     }
+    const retried_word = this.wm.exports["a32_retried_word"];
+    if(retried_word)
+    {
+        const words = [];
+        for(let i = 0; i < 4096; i++)
+        {
+            const count = retried_word(i, true);
+            if(count) words.push({ "word": "0x" + (retried_word(i, false) >>> 0).toString(16).padStart(8, "0"), "count": count });
+        }
+        words.sort((a, b) => b["count"] - a["count"]);
+        result["a32_retried_words"] = words.slice(0, top);
+    }
     ["stepped", "changed_context", "helped"].forEach((name, kind) => {
         const rows = [];
         for(let key = 0; key < 1024; key++)

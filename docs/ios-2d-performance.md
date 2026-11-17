@@ -402,3 +402,14 @@ counter/status 和 app 检查通过。独立复现：`node tests/ios/cache-clean
 额外预算断言发现旧相邻单步路径会重复统计诊断用 retired 数，未在本步骤修改该旧记账；
 它不作为 FPS 分子或分母。FPS 始终来自 CLCD 的实际变化与宿主活动窗口。
 原始结果和冻结组件哈希保存在本地 `cache-clean-accepted-summary.json`。
+
+## AP 原生页重试统计
+
+增加独立的 `a32_retried_words`，只在诊断开关打开时统计 AP AArch32 的 EXIT_RETRY；
+抓取本次真实取得的指令，取指失败不重复归给旧指令。主/fallback 的真实 MMU 测试
+验证故障 LDR，既有 IOP 状态与布局检查通过，app 构建通过。
+
+同一桌面检查点的 20.266 秒诊断 `desktop-retries-1` 显示：
+`0xe59cf000`（LDR PC,[R12]）3,991,779 次，POP 479,848 次，其他 LDR 各 424,483 次。
+因此下一项检查内存返回的 ISA 切换。计数是调用频率，不是独占耗时；诊断运行不用于 FPS。
+此轮 AP 约 10.32 秒、IOP 7.31 秒；AP 等待仅约 0.39 秒。

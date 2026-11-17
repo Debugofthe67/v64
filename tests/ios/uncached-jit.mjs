@@ -42,9 +42,10 @@ int main(int argc,char **argv){
 }`);
 const binary=build32("uncached-jit",[dir+"memory.c",root+"tests/a32/system_asm.S"]);
 process.env.A64_JIT="1";process.env.A64_JIT_HOT="1";process.env.A64_JIT_SWITCHES="a64_page_aarch32=1";
-let probes=0;
+let probes=0,cpu_ref;
 const result=await actual32(binary,{cores:2,setup:cpu=>{
  const ex=cpu.wm.exports;
+ cpu_ref=cpu;
  const backdoor=cpu.devices.backdoor=new BackdoorA32(cpu,()=>null);
  backdoor.connections.set(1,{name:"fixture",service:{available:()=>true,close(){},read:()=>{
   probes++;
@@ -75,4 +76,9 @@ const result=await actual32(binary,{cores:2,setup:cpu=>{
 }});
 assert.equal(result.status,"ok",result.text);assert.equal(probes,2);
 assert.ok(result.page_tier.compiled>0,"real page functions executed");
+if(cpu_ref.wm.exports.a32_retried_word){
+ const word=cpu_ref.wm.exports.a32_retried_word;let seen=false;
+ for(let i=0;i<4096;i++)if(word(i,false)===0xE5902000&&word(i,true)>0)seen=true;
+ assert.ok(seen,"AP retries report the actual faulting LDR, separately from page steps");
+}
 console.log("PASS: compiled uncached DRAM, widths 1/2/4/8/16, no Device cache entries, alignment/RO faults, MMIO/hole/code/reservation exclusion");
