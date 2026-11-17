@@ -117,7 +117,8 @@ export const PRESETS = [
     {
         id: "windowsxp", name: "Windows XP", guest: "windowsnt", verified: true, basis: "the owner's XP performance gate (tests/ir/performance/xp_boot.mjs)",
         install: ["cdrom"], install_text: "From the CD", disk_mb: 4 * GB, disk_location: "memory",
-        checklist: ["D3D programs such as 3DMark06: d3d9.dll from driver.iso"],
+        checklist: ["GeForce 6800 GT: install the NVIDIA XP driver and restart Windows before testing DirectX",
+            "Native NVIDIA graphics use Windows' DirectX DLLs; the d3d8/d3d9/ddraw DLLs from driver.iso are for the separate graphics proxy"],
         issues: ["Keep the x86 CPU: x86_64 makes XP use its PAE kernel", "XP's and 2000's ACPI HAL is not verified: one core only"],
         hardware: pc({ memory: 2048 * MB, vram: 16, tablet: true, usb: "ehci" }),
     },

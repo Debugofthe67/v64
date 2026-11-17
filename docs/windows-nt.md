@@ -200,6 +200,19 @@ The tested configuration is XP SP3 on i440FX with IDE, ACPI disabled,
    [RGB565 fixture](../tests/acceptance/nv40/g3-xp-9371-rgb565.json) also checks native
    D3D9 rendering, system-memory readback and GDI conversion.
 
+Restart Windows after installing the display driver before testing acceleration.
+A started PnP device in the installation session does not establish that the
+accelerated display driver has loaded. Cold booting the installed disk also
+avoids resuming a saved state from before the restart.
+
+Use Windows' original DirectX runtime with the native NVIDIA driver. The
+`d3d8.dll`, `d3d9.dll` and `ddraw.dll` on the owner's `driver.iso` are v86 graphics
+proxies for the separate `graphics_proxy` option. An application-local proxy
+can override Windows' runtime and prevent that application from using NV40.
+Move only identified proxy DLLs aside, retaining a backup; do not remove the
+Microsoft DLLs from `Windows\System32`. The owner's GTA San Andreas image
+contains such an application-local D3D9 proxy.
+
 Before a long benchmark run, select **(None)** in Display Properties →
 Screen Saver and **Never** for monitor power-off in Power Options. The original
 XP screen saver interrupted a native 3DMark05 run with `D3DERR_DEVICELOST`;
