@@ -238,3 +238,16 @@ iOS 回归、QEMU JIT MMU 300 cases / 4,285 probes 均通过。
 屏幕保持唤醒，无 undefined 或 discarded host time，起止桌面已核对。
 宿主存在并发 Node/Chrome、C++ 索引和存储管理负载，此组只能与自己的前后对照比较。
 原始资料与 `inline-counter-rejected.patch` 留在本地，不把组件路径缩短当作 FPS 成绩。
+
+## 区分 AP 等待和 IOP 时间片
+
+诊断工具现在可用 `IOS_PROFILE_STEPS=1` 临时打开指令统计，保存开始/结束诊断及原 JIT
+开关，结束时恢复开关；只在独立诊断 worker 中使用。采集器等待 CPU Worker 就绪，避免
+在页面尚未创建 worker 时过早失败。AP 返回的等待时间另计 `ap.wait` / `ap.run`，不切换
+寄存器组，也不更改来宾时间。
+
+正常构建的同一桌面检查点、40 次预热后，20.258 s 诊断窗口有 141,813 次 IOP 时间片，
+累计 6.525 s；AP 75,408 次返回等待，仅消耗 0.394 s，另有 66,405 次运行返回。
+IOP 每次仍获得完整的 4,096 指令预算；AP 等待不会减掉独立 IOP 的完整时间片。
+这是后续独立 IOP 服务期限候选的依据，包含时间存在重叠，不能相加成独占 CPU 分解。
+带统计/Profiler 的运行不计入 FPS 成绩。原始资料为本地 `desktop-phase-4-*`。

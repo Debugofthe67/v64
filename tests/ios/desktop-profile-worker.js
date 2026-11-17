@@ -5,12 +5,20 @@ import { A64CPU } from "../../src/arm/cpu.js";
 import { AppleIOP } from "../../src/apple/iop.js";
 import { AppleCLCD } from "../../src/apple/clcd.js";
 import { BackdoorA32, BACKDOOR, BACKDOOR_ERROR } from "../../src/arm/backdoor_a32.js";
+import { get_jit_switches, set_jit_switches } from "../../src/jit_switches.js";
 
 const capacity = 131072;
 let active = false, start = 0, total = 0, records = [], metrics = {}, scheduled;
+let machine, before, switches;
 const stamp = () => performance.timeOrigin + performance.now();
 const probe = globalThis.__ios_desktop_probe = {
-    start() { records = [];metrics = {};total = 0;start = stamp();active = true; },
+    start(options = {}) {
+        if(active) throw Error("Desktop probe already running");
+        switches = get_jit_switches(machine.wm.exports, machine.wasm_memory);
+        before = machine.get_diagnostics(!!options.steps);
+        if(options.steps) set_jit_switches(machine.wm.exports, machine.wasm_memory, { a64_step_stats: 1 });
+        records = [];metrics = {};total = 0;start = stamp();active = true;
+    },
     mark(name, a = 0, b = 0) {
         if(active) { records[total % capacity] = [stamp(), name, a, b];total++; }
     },
@@ -21,8 +29,11 @@ const probe = globalThis.__ios_desktop_probe = {
     },
     stop() {
         active = false;
+        const end = stamp(), after = machine.get_diagnostics(true);
+        set_jit_switches(machine.wm.exports, machine.wasm_memory, { a64_step_stats: switches.a64_step_stats });
         const offset = total > capacity ? total % capacity : 0;
-        return { start, end: stamp(), time_origin: performance.timeOrigin, metrics, dropped_records: Math.max(0, total - capacity),
+        return { start, end, time_origin: performance.timeOrigin, metrics, before, after, switches,
+            dropped_records: Math.max(0, total - capacity),
             records: offset ? records.slice(offset).concat(records.slice(0, offset)) : records };
     },
 };
@@ -42,10 +53,16 @@ const init = A64CPU.prototype.init;
 A64CPU.prototype.init = function(...args)
 {
     const result = init.apply(this, args), run = this.wm.exports.a64_run_slice;
+    machine = this;
     // Preserve the instance's memory/table and every other export. Only the
     // JS call boundary is timed; the original Wasm function runs unchanged.
     this.wm = { ...this.wm, exports: { ...this.wm.exports,
-        a64_run_slice: (...a) => timed(run, "ap", null, a) } };
+        a64_run_slice: (...a) => {
+            const begin = active ? performance.now() : 0;
+            const next = timed(run, "ap", null, a);
+            if(active) probe.metric(next > 0 ? "ap.wait" : "ap.run", performance.now() - begin);
+            return next;
+        } } };
     return result;
 };
 wrap(A64CPU, "run_machine_core", "machine");

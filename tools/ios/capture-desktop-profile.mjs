@@ -34,8 +34,12 @@ try
     if(!target) throw Error("Owned benchmark page missing");
     ({ sessionId } = await send("Target.attachToTarget", { targetId: target.targetId, flatten: true }));
     await send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sessionId);
-    await sleep(100);
-    const workerId = attached.find(a => a.targetInfo.title === "v86 CPU")?.sessionId;
+    let workerId;
+    for(let i = 0; i < 300 && !workerId; i++)
+    {
+        workerId = attached.find(a => a.targetInfo.title === "v86 CPU")?.sessionId;
+        if(!workerId) await sleep(100);
+    }
     if(!workerId) throw Error("CPU Worker missing");
     for(let i = 0;;i++)
     {
@@ -44,7 +48,7 @@ try
         if(i > 360) throw Error("Warmup timed out");
         await sleep(500);
     }
-    const started = await send("Runtime.evaluate", { expression: "__ios_desktop_probe.start();true", returnByValue: true }, workerId);
+    const started = await send("Runtime.evaluate", { expression: "__ios_desktop_probe.start({steps:" + (process.env.IOS_PROFILE_STEPS === "1") + "});true", returnByValue: true }, workerId);
     if(started.exceptionDetails) throw Error("Diagnostic worker required");
     for(const sid of [sessionId, workerId])
     {
