@@ -305,3 +305,27 @@ word 的频率。新增有界的 `steps.a32_stepped_words`，仅在 `a64_step_st
 确认不会重复计算前一条指令。主核心及非 SIMD 核心通过，原 helper 开关回归仍通过。
 新静态表归类为 debug，状态布局检查、iOS 回归、类型检查与 app 构建通过。
 只在独立诊断 worker 打开，采样结束恢复原开关；相关采样不计入 FPS。
+
+## 全局 AArch32 GPR locals：桌面收益与游戏回退
+
+整页只要有 opaque helper，原策略就让所有原生指令通过状态内存读写 GPR。尝试让所有
+AArch32 页面保留 locals，在 helper 前后仍提交/重载完整存活 GPR，不改变精确 retry、
+异常、NZCV 或页失效。完整 30 组 page、fallback 十组、QEMU IT 调用和 ARM32 特权/GIC
+差分、seed 6021 的 40×100×32 随机程序、iOS 回归及原生 IOP 状态检查通过。
+
+固定同一 RAM/NAND 配对和全部其他组件，桌面保持 40/20 拖动，PvZ 保持同一实战检查点：
+
+| 可见 LCD FPS | 对照前 | 候选 1 | 候选 2 | 对照后 | 均值变化 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `desktop-gpr-locals-*` | 27.242 | 29.662 | 29.700 | 27.893 | +7.7% |
+| `pvz-gpr-locals-*` | 28.648 | 27.549 | 27.895 | 28.146 | -2.4% |
+
+桌面两对均改善，但 PvZ 两对均回退，因此不保留全局策略，继续验证仅对 PL1 内核代码
+放开缓存、EL0 保留原策略的较窄候选。桌面代码量约 80.3→78.9 MiB（此处原始计数为 bytes，
+分别约 76.6→75.2 MiB），无 evictions；不把代码量变化当作 FPS。
+所有窗口 normal rate 1、亮屏、无 undefined/discarded host time；场景图片已核对。
+本地保留 `all-gpr-rejected.patch`、冻结构建与原始记录。
+
+排除取指异常残留后的 20.251 s 诊断 `desktop-words-2` 记录到 BX LR `0x4770`
+3,423,434 次、DCCSW `0xee070f5a` 886,784 次及 LDREX `0xe8531f00` 553,608 次。
+这些是指令调用频率，不是独占耗时；后续同时验证内核缓存清理指令的解释器往返。
