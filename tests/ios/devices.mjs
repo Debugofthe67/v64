@@ -765,6 +765,8 @@ banks.write(0x1014, 0x3000);
 banks.write(0x1010, 11);
 callbacks[0](new Uint8Array(8).fill(0x35));
 assert.equal(banks.read(0x14), 0x35353535);
+banks.write(0x100C, 0);
+assert.equal(banks.read(0x200C), 0, "IOP reads the completed page's ECC result after releasing CE");
 banks.write(0x100C, 2);
 assert.equal(banks.read(0x200C), 2, "unloaded CE has erased ECC status");
 assert.equal(banks.read(0x14), 0xFFFFFFFF, "unloaded CE has its own erased data register");

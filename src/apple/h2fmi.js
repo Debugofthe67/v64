@@ -222,7 +222,10 @@ export class AppleH2FMI
         if(offset === 0x1C && this.pio_left) return 0x18;
         if(offset === 0x200C)
         {
-            if(!this.program && this.page_chip !== this.chip()) this.select_page();
+            // The IOP releases CE after draining the boot page, then reads
+            // the controller's ECC result for that transfer.
+            const ce = this.chip();
+            if(ce >= 0 && !this.program && this.page_chip !== ce) this.select_page();
             return this.fail ? 4 : this.erased ? 2 : 0;
         }
         if(offset === 0xC) return this.regs[3] | (this.regs[0x1040 >>> 2] & this.regs[0x1044 >>> 2] ? 0x100 : 0);
