@@ -760,6 +760,23 @@ const banks = new AppleH2FMI(controllerCPU, 0x81200000, 0, {
 const twoIds = new Uint8Array(256);
 twoIds[0] = twoIds[8] = 0xEC;
 banks.configure(twoIds, 0);
+banks.write(0x100C, 1);
+banks.write(0x1014, 0x3000);
+banks.write(0x1010, 11);
+callbacks[0](new Uint8Array(8).fill(0x35));
+assert.equal(banks.read(0x14), 0x35353535);
+banks.write(0x100C, 2);
+assert.equal(banks.read(0x200C), 2, "unloaded CE has erased ECC status");
+assert.equal(banks.read(0x14), 0xFFFFFFFF, "unloaded CE has its own erased data register");
+channelDMA.reset();
+descriptor.setUint32(0x104, 0x103, true);
+descriptor.setUint32(0x108, 0x200, true);
+descriptor.setUint32(0x10C, 4, true);
+banks.write(0, 0xF5);
+banks.write(4, 3);
+arm();
+assert.deepEqual([...memory.subarray(0x200, 0x204)], [255, 255, 255, 255], "DMA sees the unloaded CE");
+banks.reset();
 for(const mask of [1, 2])
 {
     banks.write(0x100C, mask);

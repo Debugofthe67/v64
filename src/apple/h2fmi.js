@@ -149,7 +149,10 @@ export class AppleH2FMI
     {
         const address = this.regs[0x1018 >>> 2], row = this.row(), ce = this.chip();
         const token = this.begin_operation(ce);
+        this.cache.delete(ce);
+        this.page_chip = ce;
         this.page = this.program = this.program_address = null;
+        this.erased = true;
         this.pio_left = 0;
         if(!this.read_stream) this.requests = 0;
         this.fail = false;
@@ -158,8 +161,8 @@ export class AppleH2FMI
             if(!this.complete_operation(ce, token, failed)) return;
             const entry = [page, address & 65535, !page || page.every(byte => byte === 255), failed];
             this.cache.set(ce, entry);
-            this.page_chip = ce;
-            [this.page, this.column, this.erased, this.fail] = entry;
+            if(ce === this.page_chip && !this.program)
+                [this.page, this.column, this.erased, this.fail] = entry;
             this.regs[0x1044 >>> 2] |= run & 15;
             this.update_irq();
         };
@@ -172,13 +175,9 @@ export class AppleH2FMI
     // another chip before switching the bus back to drain the first chip.
     select_page()
     {
-        const entry = this.cache.get(this.chip());
-        if(entry)
-        {
-            this.page_chip = this.chip();
-            [this.page, this.column, this.erased, this.fail] = entry;
-        }
-
+        this.page_chip = this.chip();
+        [this.page, this.column, this.erased, this.fail] =
+            this.cache.get(this.page_chip) || [null, 0, true, false];
     }
 
     drain(bit)
@@ -221,7 +220,11 @@ export class AppleH2FMI
         if(offset === 0x1044 && !this.regs[offset >>> 2] && this.pending.size)
             this.wait_for_io?.(this.pending);
         if(offset === 0x1C && this.pio_left) return 0x18;
-        if(offset === 0x200C) return this.fail ? 4 : this.erased ? 2 : 0;
+        if(offset === 0x200C)
+        {
+            if(!this.program && this.page_chip !== this.chip()) this.select_page();
+            return this.fail ? 4 : this.erased ? 2 : 0;
+        }
         if(offset === 0xC) return this.regs[3] | (this.regs[0x1040 >>> 2] & this.regs[0x1044 >>> 2] ? 0x100 : 0);
         if(offset === 0x14 && this.regs[0x1014 >>> 2] === 0x90)
         {
