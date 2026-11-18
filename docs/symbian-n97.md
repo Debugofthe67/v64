@@ -57,7 +57,7 @@ FPSX 的程序、证书和擦除范围以闪存地址记录。`SOS+CORE` 中 ROM
 
 变体按 XIP `+0x974A4–0x9759C` 写入 18 个配置字。V86 保留写入值和字节通道，`0x20031C80` 等间隙仍为未映射空间。RAP3NAND `+0x3A86` 也访问 `0x20031C00` 所在区域，具体位与板上引脚的对应关系待测。
 
-原版在 XIP `+0x8DD2C` 初始化 ICU，在 `+0x8DFA4` 绑定 IRQ 35。它在 `+0x8E4B0` 向 `0x200401A4` 装入 9600 计数，再向 ICU `0x2040000C` 写 35 解屏蔽。计时器以客体每毫秒重载 9600 为依据，按仿真时钟每毫秒递减 9600。到零时提出 IRQ，客体读 `0x20400008` 取得源编号，读 `0x200401C4` 得到零并写 9600 重载。客体随后读到空队列 ID `0xFFFFFFFF`，再读 `0x20400080` 后走完 IRQ 路径。当前连接了这条计时器 IRQ，FIQ 和 GPIO 中断源未接入。
+原版在 XIP `+0x8DD2C` 初始化 ICU，在 `+0x8DFA4` 绑定 IRQ 35。它在 `+0x8E4B0` 向 `0x200401A4` 装入 9600 计数，再向 ICU `0x2040000C` 写 35 解屏蔽。计时器以客体每毫秒重载 9600 为依据，按仿真时钟每毫秒递减 9600。到零时提出 IRQ，客体读 `0x20400008` 取得源编号，读 `0x200401C4` 得到零并写 9600 重载。客体随后读到空队列 ID `0xFFFFFFFF`，再读 `0x20400080` 后走完 IRQ 路径。这一阶段验收的是计时器 IRQ。后续 GPIO 接线和原厂驱动验收记录见下文。
 
 原版 RAM 分配器扫描普通内存和专用保留区。此前的 MCUSW 起址指向 XIP 首地址 `0x08900000`，导致原版试图保留已从普通 RAM bank 移除的页并报告 `RAM-ALLOC 13`。修正 TOC 后，原版通过该检查并执行内核线程上下文切换。ARM1136 的 VFPv2 `FPINST` 和 `FPINST2` 现在支持有权限的客体保存、恢复和快照。固件两次在 FPEXC 禁用时访问 FPSCR，进入自己的惰性 VFP 异常处理，随后继续执行。[Symbian RAM 分配器](https://github.com/SymbianSource/oss.FCL.sf.os.kernelhwsrv/blob/master/kernel/eka/memmodel/epoc/mmubase/ramalloc.cpp) · [QEMU VFPv2 系统寄存器](https://github.com/qemu/qemu/blob/master/target/arm/tcg/translate-vfp.c)
 
@@ -92,6 +92,8 @@ RM-505 的 CORE 包含外层 FPSX 闪存目录和 `SOS*DSP0`、`SOS*ISASW` 组�
 
 仅 AP 的显式诊断入口使用同一未修改的 XIP 和其可选配置记录路径，保留内核 IRQ 验收。原版通过 `Sys/Bin/dma.dll` 的六通道复位，并从 `0x8009D114` 返回调用者 `0x8009D2EC`。下一处原版异常来自 `Sys/Bin/sisa.ext` 的 `0x800B3B40`。它读取未由 AP 单独引导提供的 ISASW 交接地址，产生 `FAR=0`、`FSR=5` 的数据异常。原版 XTI 识别异常线程为 `ekern.exe::Supervisor`，输出 `FAULT: Exception 0x10000000`。普通 VM 保留 DSP0、ISASW 以及 `0xFFFF1208` 芯片 ROM 服务的原版调用。
 
+0576555 清单里的 `RM505_APE_ONLY_ENO_09w23_v0.072.fpsx` 是独立的 `SOS*ENO` 交付组件。该样本的 2877440 字节压缩区域位于闪存 `0x00400400`，解压得到 5585920 字节，证书描述的装载起点为 `0x088FF000`。公开实机刷写记录在独立的 `RAPIDOv11_2nd.fg` 装载前读取芯片 ROM 标识。仍未找到可核对身份的 RAPIDO 芯片 ROM 转储，或 N97 零售固件支持的 AP-only 离线启动方式。普通 VM 仍在原始 ROM 服务入口保留该依赖。[RM-505 实机刷写记录](https://forum.gsmhosting.com/vbb/f528/nokia-n97-rm-505-flash-ok-817598/)
+
 ```sh
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --boot-rom <local-dump>
@@ -114,12 +116,40 @@ RM-505 的 CS0 是单 die 256 MiB 的 SLC，块大小 128 KiB，页大小 2 KiB�
 | `0x09CA1000` | ROFS3 | `7ff2686472083798be88dd71c55a3952059207bbe7abcb74550741014ba64cf6` |
 | `0x0ABA0000` | UDA FAT16 BPB，逻辑字节数 `0x04917000` | `6b5f0abf82be73c4d3572cfda1098c7a148bfc3f29b40da55e9ebf1fba31f37b` |
 
-当前模型同步完成常规读、编程和单块擦除，经 INT 寄存器轮询。理想介质的读出 ECC 为零。无法读取介质数据时返回控制器失败和 ECC 不可纠正位，ECC bypass 只屏蔽 ECC 位。硬件的 ECC 编码与单比特纠正、厂级坏块资料、INT 引脚布线、完整 XSR/BML/STL 挂载仍待验证。ROFS 和 FAT16 此处均为原版读页验证。接入 OneNAND 后，正常零售引导第 1,550 步到达 `0xFFFF1208`，须通过 RAPIDO 芯片 Boot ROM 才能进入完整存储初始化。
+当前模型同步完成常规读、编程和单块擦除。理想介质的读出 ECC 为零。无法读取介质数据时返回控制器失败和 ECC 不可纠正位，ECC bypass 只屏蔽 ECC 位。硬件的 ECC 编码与单比特纠正、厂级坏块资料和完整 XSR/BML/STL 挂载仍待验证。接入 OneNAND 后，正常零售引导第 1,550 步到达 `0xFFFF1208`，须通过 RAPIDO 芯片 Boot ROM 才能进入完整存储初始化。
+
+D3000 的 INTo 经 MEMCONT[10] 接到 GENIO22。原版 `mednand.pdd` 设置 bank 0 的输入和上升沿，`egpio.dll` 给这一输入分配 IRQ 245。OneNAND 的 IOBE、INTpol 和完成位共同决定引脚电平。GPIO 保留边沿并经 ICU 提交，恢复快照时保留待处理状态。原版 PDD 另在 `0x800DF9B0` 向闪存接口配置地址 PA `0x20034094` 写入 `0x300`。当前模型保存此配置字，既有 CS0 地址解码不依赖该字。[Nokia RM-505/RM-507 板图第 2 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf) · [Samsung MuxOneNAND 2G §§2.8.19、7.1](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf)
+
+PDD 探针冷启真正的 AP 内核，在 SISA 依赖前调用原版 `mednand.pdd`。扩展向 LocDrv 注册 10 个 NAND 驱动。原版 PDD 硬件创建阶段识别 `EC/0040/0121`，扫描 44 个预留块（`0x7D4–0x7FF`），设备完成 528 次读操作，数据与 spare 均为擦除值。探针在原版异步完成回调之前停下，再调用原版 `PartitionInfo`。原版从 `0x800F085C` 获得 XSR 状态 `0x80110000`，随后返回 `KErrGeneral (-2)`。该路径使用由 FPSX 重建的同一 OneNAND 的私有副本，未编程或擦除任何页。样本中原版 ROFS 页已经存在，BML 预留区资料仍缺；未确认此处所需的出厂映射和初始化流程。[Samsung UniStore II v1.5.1](https://www.bitsavers.org/components/samsung/flash/UniStore_II_v1.5.1_Installation_Guide_200606.pdf) · [Symbian LocDrv](https://github.com/SymbianSource/oss.FCL.sf.os.kernelhwsrv/blob/master/kernel/eka/drivers/locmedia/locmedia.cpp)
+
+探针另启用芯片中断输出，经原版 PDD 确认 GPIO 并解除屏蔽，再触发一次诊断读。EKA2 实际领取 IRQ 245，经过原版 `egpio.dll` 的 `0x8009FEFC` 到达 PDD 中断入口 `0x800F6724`。这个检查在进入本地驱动请求回调前结束；前面的 528 次 BML 读取走轮询。
+
+```sh
+node tools/symbian/nand-pdd-n97.mjs <extraction-directory>
+```
 
 ```sh
 node tools/symbian/onenand-n97.mjs <output> <firmware-directory>/RM-505_22.0.110_prd.core.C00
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img
 ```
+
+### 从原版 ROFS 按路径读取文件
+
+在已提取的 `0576555` 固件上运行以下命令。需要同一套 LLVM 中的 `llvm-mc` 和 `llvm-objcopy`。工具会组装诊断用的只读驱动适配器，在临时目录复制 OneNAND，退出时清理副本。
+
+```sh
+node tools/symbian/rofs-n97.mjs <extraction-directory> <firmware-directory>/RM-505_22.0.110_prd.core.C00
+```
+
+此工具在 ARM1136 中执行零售 `erofs.fsy` 的卷头验证、目录缓存构造函数、`FileOpenL` 和 `ReadSectionL`。诊断程序提供内存中的文件服务器对象、目录缓存空间，以及向原版 RAP3NAND 读页服务转发请求的本地驱动接口。卷头、目录、文件条目和内容均从模拟 OneNAND 的物理页取得。另用独立解包的镜像及预先记录的 SHA-256 逐一核对。[Symbian ROFS 源码](https://github.com/SymbianSource/oss.FCL.sf.os.kernelhwsrv/tree/master/userlibandfileserver/fileserver/srofs)
+
+| 分区 | 原厂文件 | 字节 |
+| --- | --- | ---: |
+| ROFS1 | `\system\data\wsini.ini`、`\data\bookmarkimportsample.txt` | 2,126、17,280 |
+| ROFS2 | `\data\bookmarkimportsample.txt`、`\resource\versions\langsw.txt` | 7,772、50 |
+| ROFS3 | `\resource\versions\customersw.txt`、`\resource\versions\fwid3.txt` | 52、74 |
+
+六个文件各完成三次读取，包括改变路径大小写、从偏移 2,047 跨页读取、请求超出文件尾时返回剩余字节。18 次返回的长度和内容全部一致，输出缓冲区末尾的哨兵字节保持原值。原厂变体文件报告 `22.0.110.C01.01`。各分区均由诊断程序单独选中。正常启动时由原版文件服务器挂载合并后的 `Z:`，以及通过原厂 BML/STL 读写 `C:`，仍待验收。
 
 ## RAPIDO MMC 主机与用户存储
 

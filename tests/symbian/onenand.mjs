@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { sha256_hex } from "../../src/image/sha256.js";
 import { V86 } from "../../src/main.js";
+import { N97_NAND_IRQ } from "../../src/symbian/n97_devices.js";
 import { create_n97_onenand } from "../../src/symbian/n97_onenand.js";
 import { N97_FLASH_HEADER, N97_FLASH_IMAGE_SIZE, N97_FLASH_SLOT, n97_flash_header } from "../../src/symbian/n97_flash.js";
 
@@ -118,6 +119,78 @@ async function start(rom, filename)
     const owner = io.ranges.findIndex(range => range?.handler.name === "RM-505 OneNAND CS0");
     return { vm, ...access((at, width) => Number(io.mmio_read(owner, at, width)), (at, width, value) => io.mmio_write(owner, at, width, BigInt(value))) };
 }
+
+test("OneNAND INT follows its enable and polarity across GENIO22, ICU IRQ 245, and snapshots", async t => {
+    const directory = mkdtempSync(join(tmpdir(), "v86-n97-nand-irq-"));
+    const filename = join(directory, "flash.img"), rom = Uint32Array.of(0xEAFFFFFE).buffer;
+    make_image(filename, rom);
+    const flash = await start(rom, filename);
+    t.after(async () => {
+        await flash.vm.destroy();
+        rmSync(directory, { recursive: true, force: true });
+    });
+    const cpu = flash.vm.v86.cpu, io = cpu.io;
+    const port = (address, value, width = 4) => {
+        const owner = io.ranges.findIndex(range => range && address >= range.base && address + width <= range.base + range.size);
+        assert.ok(owner > 0);
+        const offset = address - io.ranges[owner].base;
+        return value === undefined ? Number(io.mmio_read(owner, offset, width)) : io.mmio_write(owner, offset, width, BigInt(value));
+    };
+    const gpio = (offset, value) => port(0x20031D40 + offset, value);
+    const icu = (offset, value) => port(0x20400000 + offset, value);
+    const pin = 1 << 22, no_interrupt = 0xFFFFFFFF;
+    port(0x20034094, 0x300); // stock DPhysicalDeviceMediaNand::Create
+    assert.equal(port(0x20034095, undefined, 1), 3);
+    assert.equal(gpio(8) & pin, 0, "IOBE is disabled at reset");
+    port(0x20031CE4, pin);
+    gpio(0x28, pin);
+    gpio(0x34, pin);
+    gpio(4, 1);
+    gpio(0x10, pin);
+    icu(4, 1);
+    icu(0x20, N97_NAND_IRQ);
+    icu(0x24, 2);
+    icu(0x0C, N97_NAND_IRQ);
+    flash.store(CONFIG, 0x40E0);
+    assert.equal(gpio(8) & pin, pin, "active-high ready is visible with IOBE enabled");
+    gpio(0x20, pin);
+    flash.store(INTERRUPT, 0);
+    assert.equal(gpio(8) & pin, 0);
+    assert.equal(icu(8), no_interrupt);
+    flash.select(0);
+    assert.equal(flash.command(0, false), 0);
+    assert.equal(gpio(0x0C), pin);
+    const pending = await flash.vm.save_state();
+    const legacy = cpu.get_state(true);
+    legacy[4].splice(65); // S3.2 serialized 65 slots, ending at the LoSSI controller.
+
+    function acknowledge()
+    {
+        assert.equal(icu(8), N97_NAND_IRQ);
+        gpio(0x20, pin);
+        icu(0x80); // return from the RAPIDO IRQ
+        assert.equal(icu(8), no_interrupt, "W1C clears the latched edge while INT remains high");
+    }
+    acknowledge();
+    flash.store(CONFIG, 0x40A0);
+    assert.equal(gpio(8) & pin, 0, "low-active configuration inverts the ready output");
+    flash.store(INTERRUPT, 0);
+    assert.equal(gpio(8) & pin, pin);
+    acknowledge();
+    flash.store(CONFIG, 0x4080);
+    assert.equal(gpio(8) & pin, 0);
+
+    await flash.vm.restore_state(pending);
+    assert.equal(port(0x20034094), 0x300);
+    assert.equal(gpio(8) & pin, pin);
+    acknowledge();
+    cpu.set_state(legacy);
+    assert.equal(gpio(8) & pin, pin, "the legacy snapshot derives the pin from the saved chip registers");
+    assert.equal(gpio(0x0C), 0);
+    assert.equal(port(0x20034094), 0);
+    await flash.vm.restart();
+    assert.equal(gpio(8) & pin, 0);
+});
 
 test("N97 OneNAND programs 1→0, erases a block and preserves per-VM media across cold reopen and restore", async t => {
     const directory = mkdtempSync(join(tmpdir(), "v86-n97-nand-"));

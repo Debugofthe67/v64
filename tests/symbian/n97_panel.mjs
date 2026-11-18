@@ -69,7 +69,7 @@ test("N97 LoSSI selects two timed targets and retains the ViSSI frame while the 
         dispc(0xA0, 0x2AD);
         dispc(0x40, 0x309);
         const before_panel = cpu.get_state(true);
-        before_panel[4].splice(-2); // S3.1 ends with the DISPC.
+        before_panel[4].splice(63); // S3.1 serialized 63 slots, ending at the DISPC.
         dispc(0x7C, 0x10001);
         dispc(0x40, 0x329);
         advance(17000);

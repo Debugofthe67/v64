@@ -13,13 +13,14 @@ const ERROR = 0x400, LOCK_ERROR = 0x4000;
 const LOAD_ERROR = ERROR | 0x2000, PROGRAM_ERROR = ERROR | 0x1000, ERASE_ERROR = ERROR | 0x800;
 const LOCKED = 2, UNLOCKED = 4, LOCKED_TIGHT = 1;
 const CONFIG1 = 0xF221;
+const IOBE = 0x20, INT_POLARITY = 0x40;
 const STATUS = 0xF240, INTERRUPT = 0xF241, ECC = 0xFF00;
 const REGISTERS = new Set([0xF100, 0xF101, 0xF102, 0xF103, 0xF107, 0xF200, 0xF220,
     CONFIG1, STATUS, INTERRUPT, 0xF24C, ECC]);
 const NAND_ID = [...N97_FLASH_ID, N97_FLASH_PAGE, 512, 0x0201, 0];
 
 /** @param {!VirtDeviceSpace} io @param {?} buffer @param {string} rom_digest */
-export function create_n97_onenand(io, buffer, rom_digest)
+export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () => {})
 {
     check_n97_flash(buffer, rom_digest);
     const boot = new Uint8Array(1024), boot_spare = new Uint8Array(32);
@@ -33,6 +34,10 @@ export function create_n97_onenand(io, buffer, rom_digest)
     // DFS is a die selector on DDP parts. The stock PDD still asserts it
     // for upper addresses on the single-die 0040/0121, where it is ignored.
     const selected_block = () => regs.get(0xF100) & 0x7FFF;
+    // The inactive digital input represents the undriven pin when IOBE=0.
+    const interrupt_level = () => !!(regs.get(CONFIG1) & IOBE) &&
+        !!(regs.get(CONFIG1) & INT_POLARITY) === !!(regs.get(INTERRUPT) & MASTER);
+    const update_interrupt = () => set_interrupt(interrupt_level());
 
     function page_bytes(page)
     {
@@ -75,6 +80,7 @@ export function create_n97_onenand(io, buffer, rom_digest)
             regs.set(STATUS, LOAD_ERROR);
             regs.set(ECC, 0xAA);
         }
+        update_interrupt();
     }
 
     function transfer(command, block, page_address = regs.get(0xF107), start = regs.get(0xF200))
@@ -147,6 +153,8 @@ export function create_n97_onenand(io, buffer, rom_digest)
 
     function run_command(command)
     {
+        regs.set(INTERRUPT, 0);
+        update_interrupt();
         if(command === 0xF0 || command === 0xF3)
         {
             if(command === 0xF3) reset_registers(RESET, 0x4000 | regs.get(CONFIG1) & 0xE0);
@@ -210,6 +218,7 @@ export function create_n97_onenand(io, buffer, rom_digest)
             regs.set(0xF107, (page + 4) & 0xFC);
             regs.set(INTERRUPT, MASTER | READ);
         }
+        update_interrupt();
     }
     function read_half(offset)
     {
@@ -224,8 +233,9 @@ export function create_n97_onenand(io, buffer, rom_digest)
         const address = offset >> 1;
         switch(address)
         {
-            case 0xF220: run_command(value); break;
-            case INTERRUPT: regs.set(address, regs.get(address) & value); break;
+            case 0xF220: run_command(value); update_interrupt(); break;
+            case INTERRUPT: regs.set(address, regs.get(address) & value); update_interrupt(); break;
+            case CONFIG1: regs.set(address, value); update_interrupt(); break;
             case STATUS: case ECC: break;
             default: if(REGISTERS.has(address)) regs.set(address, value);
         }
@@ -271,7 +281,7 @@ export function create_n97_onenand(io, buffer, rom_digest)
     });
     reset();
     return {
-        buffer, reset,
+        buffer, reset, interrupt_level,
         status: () => ({ "capacity": N97_FLASH_SIZE, "manufacturer": NAND_ID[0], "device": NAND_ID[1],
             "revision": NAND_ID[2], "reads": reads, "programs": programs, "erases": erases }),
         get_state: () => [buffer.get_state(), Array.from(regs), boot.slice(), boot_spare.slice(), data.slice(), spare.slice(), locks.slice(),

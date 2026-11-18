@@ -122,6 +122,7 @@ function latches(io, base, name, offsets, on_write = undefined)
 export const N97_KEYBOARD_IRQ = 249;
 export const N97_SLIDER_IRQ = 248;
 export const N97_PANEL_IRQ = 234;
+export const N97_NAND_IRQ = 245;
 const N97_DISPC_IRQ = 131;
 const ICU_BASE = 0x20400000;
 const NO_INTERRUPT = 0xFFFFFFFF;
@@ -138,7 +139,7 @@ export function create_n97_interrupts(io, set_lines)
     const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C]);
     const priority = new Uint8Array(256);
     const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ,
-        ...N97_DMA_IRQS, N97_PANEL_IRQ, N97_DISPC_IRQ];
+        ...N97_DMA_IRQS, N97_PANEL_IRQ, N97_DISPC_IRQ, N97_NAND_IRQ];
     const unmasked = new Set(), asserted = new Set();
     let enabled = 0, selected = 0, active = NO_INTERRUPT;
     const pending = () => {
@@ -197,8 +198,6 @@ export function create_n97_interrupts(io, set_lines)
         update();
         return 0;
     }, () => {});
-    word(io, 0x20031D54, "RAPIDO GPIO IRQ clear", () => 0, () => {});
-    word(io, 0x20031D7C, "RAPIDO GPIO IRQ claim", () => NO_INTERRUPT, () => {});
     function line(id, level)
     {
         if(level) asserted.add(id);
@@ -214,6 +213,7 @@ export function create_n97_interrupts(io, set_lines)
         set_slider(level) { line(N97_SLIDER_IRQ, level); },
         set_panel(level) { line(N97_PANEL_IRQ, level); },
         set_dispc(level) { line(N97_DISPC_IRQ, level); },
+        set_nand(level) { line(N97_NAND_IRQ, level); },
         reset()
         {
             configuration.reset();
@@ -319,6 +319,21 @@ export function create_n97_gpio_input(io, base, direction_set, pin, initial_high
         };
     }
     return connect(pin, initial_high, set_irq);
+}
+
+export function create_n97_nand_bus(io, set_irq)
+{
+    // mednand.pdd 0x800DF9B0 programs this flash-bus word before opening
+    // the device. Retain its configuration without changing address decode.
+    const timing = latches(io, 0x20034094, "RAPIDO OneNAND bus configuration", [0]);
+    // RM-505 board p.2: combo memory D3000 INTo goes to GENIO22.
+    const gpio = create_n97_gpio_input(io, 0x20031D40, 0x20031CE4, 22, false, set_irq);
+    return {
+        set_input: gpio.set_input,
+        reset() { timing.reset(); gpio.reset(); gpio.set_input(false); },
+        get_state() { return [timing.get_state(), gpio.get_state()]; },
+        set_state(state) { timing.set_state(state[0]); gpio.set_state(state[1]); },
+    };
 }
 
 export function create_n97_os_timer(io, clock, set_irq)

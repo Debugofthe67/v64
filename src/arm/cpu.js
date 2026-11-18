@@ -34,7 +34,7 @@ import { BackdoorA32, BACKDOOR_NOT_HANDLED } from "./backdoor_a32.js";
 import { IOSInstallService } from "../ios/install_service.js";
 import { IOSNetwork } from "../ios/network.js";
 import { create_n97_boot_timer, create_n97_sram, load_n97_rom, n97_boot_files, N97_DEVICE_MEMORY, N97_LAYOUT_VERSION, N97_RAM_BASE } from "../symbian/n97_board.js";
-import { create_n97_board_config, create_n97_clocks, create_n97_gpio_input, create_n97_interrupts, create_n97_l2, create_n97_os_timer,
+import { create_n97_board_config, create_n97_clocks, create_n97_gpio_input, create_n97_interrupts, create_n97_l2, create_n97_nand_bus, create_n97_os_timer,
     create_n97_rapido_id, create_n97_xti } from "../symbian/n97_devices.js";
 import { create_n97_onenand } from "../symbian/n97_onenand.js";
 import { create_n97_mmc } from "../symbian/n97_mmc.js";
@@ -70,7 +70,7 @@ const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldf
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
     "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
     "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma", "n97_touch_gpio", "n97_touch",
-    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi"];
+    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -298,7 +298,8 @@ A64CPU.prototype.init = function(settings, device_bus)
         this.devices = { "n97_sram": create_n97_sram(this, this.boot_files, settings.symbian?.["rom_sha256"]) };
         if(settings.symbian_nand)
         {
-            this.devices.n97_onenand = create_n97_onenand(this.io, settings.symbian_nand, n97_boot.rom_digest);
+            this.devices.n97_onenand = create_n97_onenand(this.io, settings.symbian_nand, n97_boot.rom_digest,
+                level => this.devices.n97_nand_bus?.set_input(level));
         }
         if(this.boot_files?.tags)
         {
@@ -310,6 +311,7 @@ A64CPU.prototype.init = function(settings, device_bus)
             this.devices.n97_board_config = create_n97_board_config(this.io, () => this.devices.n97_mmc);
             const interrupts = this.devices.n97_interrupts = create_n97_interrupts(this.io,
                 (irq, fiq) => this.wm.exports["a32_set_interrupt_lines"](irq, fiq));
+            this.devices.n97_nand_bus = create_n97_nand_bus(this.io, level => interrupts.set_nand(level));
             this.devices.display = new DisplayHub(device_bus, settings.screen);
             const panel = this.devices.n97_panel = create_n97_panel(() => this.devices.n97_dispc?.invalidate());
             const dispc = this.devices.n97_dispc = create_n97_dispc(this, this.devices.display, level => interrupts.set_dispc(level), panel);
@@ -1458,6 +1460,8 @@ A64CPU.prototype.set_state = function(state, skip_memory = false)
     for(const name of DEVICE_ORDER.slice(device_states.length)) this.devices[name]?.reset?.();
     if(this.devices.n97_touch && !device_states[DEVICE_ORDER.indexOf("n97_touch")])
         this.devices.n97_touch.restore_reset(this.devices.n97_keyboard.touch_reset_high());
+    if(this.devices.n97_onenand && !device_states[DEVICE_ORDER.indexOf("n97_nand_bus")])
+        this.devices.n97_nand_bus?.set_input(this.devices.n97_onenand.interrupt_level());
     // Host fingers and keyboard focus cannot be restored from a VM snapshot.
     // Release any contacts that were closed in the saved machine.
     this.devices.n97_keyboard?.release();
