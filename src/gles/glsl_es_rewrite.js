@@ -502,6 +502,13 @@ export function glsl_version(source)
     return m ? +m[1] : 100;
 }
 
+/** Accept the trailing semicolon that legacy GLSL ES 1.00 drivers allow on #endif. */
+export function glslang_source(source, version = glsl_version(source))
+{
+    if(version !== 100) return source;
+    return source.replace(/^([ \t]*#[ \t]*endif[ \t]*);(?=[ \t]*(?:\/\/[^\r\n]*)?\r?$)/gm, "$1");
+}
+
 /**
  * @param {string} source a shader the check pass compiled
  * @param {string} stage "vertex", "fragment", "compute", ...

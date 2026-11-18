@@ -16,7 +16,7 @@
 
 import { GL_STATE } from "./gles_caps.js";
 import { STAGE } from "./glslang.js";
-import { BLEND_DESTINATION, blend_support, block_packings, glsl_version, rewrite_for_spirv, std_blocks } from "./glsl_es_rewrite.js";
+import { BLEND_DESTINATION, blend_support, block_packings, glsl_version, glslang_source, rewrite_for_spirv, std_blocks } from "./glsl_es_rewrite.js";
 import { DECORATION, EXECUTION_MODEL, OP, STORAGE, add_xfb, array_length, block_layout, get_decoration, innermost, is_builtin, location_count, parse_spirv,
     set_decoration, variable_name } from "./spirv_patch.js";
 
@@ -98,6 +98,7 @@ export function link_glslang_program(glslang, shaders, options)
     }
     // (shared and packed blocks as std140 and std430: the reflection's offsets, the code's and the page's agree; the check
     // pass's buffer blocks as they are, so that a shared one nothing uses stays active)
+    shaders = shaders.map(s => ({ ...s, source: glslang_source(s.source) }));
     const check_sources = shaders.map(s => std_blocks(s.source, false));
     shaders = shaders.map(s => Object.assign({}, s, { source: std_blocks(s.source) }));
     let check;

@@ -518,6 +518,17 @@ void main() { gl_Position = p + vec4(d.mC.mA[2][3], float(d.mC.mB.x), e) + vec4(
         "uniform lowp sampler3D volume; void main() { gl_FragColor = texture3D(volume, vec3(0.5)); }");
     assert.ok(volume.ok, "a GLSL ES 1.00 3D texture links: " + volume.log);
     assert.deepEqual(volume.uniforms.map(u => [u.name, u.type]), [["volume", 0x8B5F]]);
+    const legacy_endif = "precision mediump float;\r\n#ifdef unused\r\n\t#endif;\r\n" +
+        "void main() { gl_FragColor = vec4(1.0); }";
+    const shadow = new GLESShadow();
+    shadow.glslang = glslang;
+    const compiled = shadow.compile(legacy_endif, 0x8B30, true, true);
+    assert.ok(compiled.ok, compiled.log);
+    const legacy = link("attribute vec4 p; void main() { gl_Position = p; }", legacy_endif);
+    assert.ok(legacy.ok, legacy.log);
+    const strict = "#version 300 es\nprecision mediump float;\nout vec4 color;\n#ifdef unused\n#endif;\n" +
+        "void main() { color = vec4(1.0); }";
+    assert.equal(shadow.compile(strict, 0x8B30, true, false).ok, false);
     // (unused attributes: locations of their own, not one glBindAttribLocation gave a used one)
     const unused = link("attribute vec4 a_coords; attribute vec4 a_position; attribute mat2 a_m; void main() { gl_Position = a_position; }",
         "precision mediump float; void main() { gl_FragColor = vec4(1.0); }", new Map([["a_position", 1]]));

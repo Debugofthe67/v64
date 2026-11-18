@@ -24,7 +24,7 @@ import { GL, CAPS_1, CAPS_2, RENDERBUFFER_FORMATS, etc1_bytes, image_bytes, texe
 import { CONFIG_ATTRIBUTES, COMPRESSED_TEXTURE_FORMATS, COMPRESSED_TEXTURE_FORMATS_1, EGL, GL_STATE, MAX_SIZE } from "./gles_caps.js";
 import { compile_shader, link_program } from "./glsl_es.js";
 import { STAGE_OF_GL_TYPE } from "./glslang.js";
-import { es3_rules, glsl_version } from "./glsl_es_rewrite.js";
+import { es3_rules, glsl_version, glslang_source } from "./glsl_es_rewrite.js";
 import { link_glslang_program } from "./glsl_program.js";
 import { ADVANCED_EQUATIONS, INT64_STATE, extend_context3, extend_group3, gles3_handlers, new_framebuffer3, pad_context3, state_value3 } from "./gles3_state.js";
 import { FLOAT_STATE32, extend_context31, gles31_handlers, glslang_limits, pad_context31, state_value31 } from "./gles31_state.js";
@@ -343,7 +343,7 @@ GLESShadow.prototype.compile = function(source, type, es100, es2)
     {
         if(!this.glslang) return { ok: true, log: "", glslang: true, stage };
         this.glslang.set_limits(glslang_limits(version, es2));
-        const checked = this.glslang.check_shader(STAGE_OF_GL_TYPE.get(type), source);
+        const checked = this.glslang.check_shader(STAGE_OF_GL_TYPE.get(type), glslang_source(source, version));
         // (what GLSL ES refuses and glslang's relaxed check does not: an #extension after the code, reserved words)
         const refused = checked.ok ? es3_rules(source) : null;
         if(refused) return { ok: false, log: refused, glslang: true, stage };
