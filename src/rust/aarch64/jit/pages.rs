@@ -22,6 +22,7 @@
 //! Device memory) or SCTLR_EL1.A set, with a breakpoint or watchpoint
 //! enabled, while software step is active, with PSTATE.IL set.
 
+use crate::aarch64::a32;
 use crate::aarch64::bus::{self, Lookup};
 use crate::aarch64::cpu::{self, PSTATE_IL};
 use crate::aarch64::execute::{self, Flow};
@@ -773,10 +774,12 @@ fn code_page(pc: u64, mode: u32) -> Option<u32> {
 pub fn run(budget: u32) -> Ran {
     // (AArch32's code with a64_page_aarch32, docs/plan/aarch32-plan.md Q6, R5.3; not
     // from inside an IT block: compiled code enters at ITSTATE 0, little-endian)
+    // A pending ARM1136 opcode must be consumed before compiling from the new mapping.
     if !allowed()
         || budget == 0
         || cpu::aarch32()
             && !(unsafe { AARCH32 }
+                && !a32::prefetch_pending()
                 && crate::aarch64::t32::itstate() == 0
                 && cpu::get_pstate() & cpu::PSTATE_E == 0)
     {

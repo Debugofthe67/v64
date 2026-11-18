@@ -100,7 +100,7 @@ try
         assert.equal(value(40), 0xAA);
         assert.equal(registers.getUint32(STATE_OFFSETS.a32_fpinst2, true), 0x98);
         assert.deepEqual(saved_remap(), encoded);
-        const pre_remap = cpu.save_core_state().subarray(0, -16);
+        const pre_remap = cpu.save_core_state().subarray(0, -28);
         cpu.load_core_state(pre_remap);
         assert.deepEqual(saved_remap(), [0, 0, 0, 0]);
         assert.equal(registers.getUint32(STATE_OFFSETS.a32_fpinst2, true), 0x98);

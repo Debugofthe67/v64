@@ -199,6 +199,18 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
             assert.equal(handoff.irq_callback.table, irq.payload[0]);
         }
         if(pc === handoff.isa_entry?.lr && !handoff.isa_return) handoff.isa_return = { pc, step, r0: register(0) };
+        if(thumb && (pc === 0xC6371454 || pc === 0xC666B72C))
+        {
+            handoff.rom_dispatch ??= [];
+            if(!handoff.rom_dispatch.some(event => event.pc === pc))
+            {
+                const args = [0, 1, 2, 3].map(register);
+                const descriptor = [0, 4, 8, 12].map(offset => word(args[0] + offset));
+                handoff.rom_dispatch.push({ pc, step, args, descriptor, lr: register(14) });
+            }
+        }
+        if(pc === handoff.mmu_branch?.target && !handoff.rom_entry)
+            handoff.rom_entry = { pc, step, args: [0, 1, 2, 3].map(register), lr: register(14), thumb, sctlr: field("sctlr_el1") };
         if(pc === 0xC666B6A4) handoff.cp15.push({ pc, step, write: "peripheral_remap", value: register(0) });
         if(pc === 0xC666B6F0 && (field("sctlr_el1") & 1))
         {
@@ -215,6 +227,8 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
             handoff.cp15.push({ pc, step, read: name, value: register(reg) });
         }
         if(pc === handoff.mmu_off?.pc) Object.assign(handoff.mmu_off, { after: field("sctlr_el1"), next_pc: vector });
+        if(pc === handoff.mmu_off?.next_pc && vector === handoff.mmu_off.target)
+            handoff.mmu_branch ??= { pc, step, target: vector };
         if(vector === 4 || vector === 0xFFFF0004)
         {
             const event = { pc, step: step + 1, vector, lr: register(14) };
@@ -232,7 +246,8 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
         }
         if([12, 16, 0xFFFF000C, 0xFFFF0010].includes(vector))
         {
-            const far = field("far_el1"), fsr = field(vector % 0x100 === 0xC ? "a32_ifsr" : "esr_el1");
+            const prefetch = vector % 0x100 === 0xC;
+            const far = field("far_el1", prefetch ? 4 : 0), fsr = field(prefetch ? "a32_ifsr" : "esr_el1");
             const physical = vector % 0x100 === 0x10 && (fsr & 0x40F) === 8 && (field("sctlr_el1") & 1) ?
                 supervisor_physical(far, field, word) : undefined;
             handoff.abort = { pc, step: step + 1, vector, far, fsr, physical, lr: register(14) };
@@ -256,6 +271,9 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
     assert.ok(handoff.cp15.some(access => access.read === "data_remap" && access.value === 0x01C97CC8));
     assert.ok(handoff.cp15.some(access => access.write === "peripheral_remap" && access.value === 0x20000013));
     assert.ok(handoff.mmu_off && !(handoff.mmu_off.after & 1), "original ISASW must reach the MMU disable");
+    assert.equal(handoff.mmu_off.branch_opcode, 0xE1A0F001);
+    assert.equal(handoff.rom_entry?.pc, 0xFFFF8A94, "original MOV PC,R1 must reach the second RAPIDO ROM entry");
+    assert.equal(handoff.rom_entry.thumb, false);
     return handoff;
 }
 
@@ -392,7 +410,7 @@ try
     const wasm = cpu.wm.exports;
     const state = new DataView(cpu.wasm_memory.buffer, cpu.state_base);
     const pc_now = () => Number(cpu.read_pc());
-    const field = name => state.getUint32(STATE_OFFSETS[name], true);
+    const field = (name, offset = 0) => state.getUint32(STATE_OFFSETS[name] + offset, true);
     const register = n => state.getUint32(STATE_OFFSETS.x + n * 8, true);
     const word = address => {
         const offset = cpu.ram_offset(address, 4);

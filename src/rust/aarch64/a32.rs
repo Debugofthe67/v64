@@ -14,7 +14,7 @@ use crate::aarch64::cpu::*;
 use crate::aarch64::decode::Inst;
 use crate::aarch64::execute::{self, Flow};
 use crate::aarch64::memory::{self, Syndrome};
-use crate::aarch64::state::{event_register, excl_valid, tpidr_el0, tpidrro_el0};
+use crate::aarch64::state::{a32_prefetch, event_register, excl_valid, tpidr_el0, tpidrro_el0};
 
 /// The length of the instruction being executed (2 for a 16-bit T32 one):
 /// its exception's return address and ESR.IL
@@ -1307,6 +1307,41 @@ fn fetch(address: u64, thumb: bool) -> Result<(u32, u32), Exception> {
     }
 }
 
+const PREFETCH_THUMB: u32 = 1 << 8;
+
+#[inline(always)]
+pub fn prefetch_pending() -> bool { unsafe { *a32_prefetch.add(2) != 0 } }
+
+pub fn clear_prefetch() { unsafe { *a32_prefetch.add(2) = 0 }; }
+
+/// Keep the sequential opcode already in the ARM1136 pipeline when SCTLR.M
+/// changes without a pipeline flush (DDI 0211I §§1.5–1.6, 6.7.6).
+pub fn prefetch_before_mmu_switch() {
+    let address = (get_pc() as u32).wrapping_add(instruction_length());
+    let thumb = thumb();
+    if let Ok((word, length)) = fetch(address as u64, thumb) {
+        unsafe {
+            *a32_prefetch = address;
+            *a32_prefetch.add(1) = word;
+            *a32_prefetch.add(2) = length | if thumb { PREFETCH_THUMB } else { 0 };
+        }
+    }
+}
+
+fn take_prefetch(address: u64, thumb: bool) -> Option<(u32, u32)> {
+    unsafe {
+        let info = *a32_prefetch.add(2);
+        if info == 0 {
+            return None;
+        }
+        clear_prefetch();
+        if address == *a32_prefetch as u64 && thumb == (info & PREFETCH_THUMB != 0) {
+            return Some((*a32_prefetch.add(1), info & !PREFETCH_THUMB));
+        }
+    }
+    None
+}
+
 // ---- one instruction
 
 /// (diagnostics: crate::aarch64::jit::pages' step and helper counts) an
@@ -1344,7 +1379,8 @@ pub fn interpret_one(address: u64) -> Flow {
     let thumb = thumb();
     unsafe { INSTRUCTION_LENGTH = if thumb { 2 } else { 4 } };
     let mut fetched = 0;
-    let result = fetch(address, thumb).and_then(|(word, length)| {
+    let opcode = take_prefetch(address, thumb).map_or_else(|| fetch(address, thumb), Ok);
+    let result = opcode.and_then(|(word, length)| {
         fetched = word;
         unsafe { INSTRUCTION_LENGTH = length };
         if unsafe { crate::aarch64::jit::pages::A32_TRACE } && crate::aarch64::cpu::el() == 0 {

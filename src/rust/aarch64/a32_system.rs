@@ -9,7 +9,7 @@
 //! MRS and MSR of CPSR and SPSR, SRS, RFE, LDM and STM of the user
 //! registers), and CP15 at PL1, most of it the AArch64 registers' views.
 
-use crate::aarch64::a32::{instruction_length, reg, set_reg, thumb};
+use crate::aarch64::a32::{self, instruction_length, reg, set_reg, thumb};
 use crate::aarch64::cpu::{self, *};
 use crate::aarch64::execute::Flow;
 use crate::aarch64::state::*;
@@ -409,6 +409,7 @@ pub fn vfp_system(register: u32, rt: u32, to_core: bool) -> Result<Flow, Excepti
 /// Take an exception to `new_mode` at vector `offset`: SPSR := CPSR, LR := `lr`,
 /// the masks `mask` set, T and E as SCTLR says
 fn enter(offset: u32, new_mode: u32, lr: u32, mask: u32) {
+    a32::clear_prefetch();
     let old = cpsr();
     crate::aarch64::jit::pages::a32_trace(6, cpu::get_pc() as u32, old);
     let sctlr = cpu::sctlr() as u32;
@@ -565,6 +566,7 @@ pub fn reset(entry: u64, context: u64) {
         *a32_dacr = 0;
         *a32_ifsr = 0;
         core::ptr::write_bytes(a32_mem_remap, 0, 4);
+        core::ptr::write_bytes(a32_prefetch, 0, 3);
     }
 }
 
@@ -764,6 +766,9 @@ pub fn cp15(
                 set_reg(rt, cpu::sctlr() as u32);
             }
             else {
+                if arm1136 && (cpu::sctlr() ^ u64::from(value)) & SCTLR_M != 0 {
+                    a32::prefetch_before_mmu_switch();
+                }
                 unsafe { *sctlr_el1 = value as u64 };
                 crate::aarch64::mmu::regime_changed();
             }
