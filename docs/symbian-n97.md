@@ -224,7 +224,7 @@ node --test tests/symbian/mmc.mjs tests/symbian/arm1136.mjs
 
 ## 浏览器导入与重新打开
 
-在新建虚拟机的 **Source** 页选择 **Symbian → S60v5 · Nokia N97**，再选择本地固件目录或多选 VPL 和配套文件。若目录有多个 RM-505 变体，选中一个后才开始完整预检。目录缺件可在该变体下用文件多选框补入，同目录已有的文件优先。真实 0576555 样本的 ROFS 语言清单识别为 Arabic、English（默认）及 Farsi。[Nokia S60 SDK 语言枚举](https://docs.huihoo.com/symbian/s60-5th-edition-cpp-developers-library-v2.1/GUID-35228542-8C95-4849-A73F-2B4F082F0C44/sdk/doc_source/ToolsAndUtilities94/Installing-ref/PKG_format/PKG_languages_table.html)
+在新建虚拟机的 **Source** 页选择 **Symbian → S60v5 · Nokia N97**，再用 **Choose firmware folder…** 选择本地固件目录。若目录包含多个 RM-505 变体，选中一个后才开始完整预检。向导会列出缺少的文件。将文件补到所选变体的 VPL 旁，再用 **Change firmware folder…** 重选整个固件目录。真实 0576555 样本的 ROFS 语言清单识别为 Arabic、English（默认）及 Farsi。[Nokia S60 SDK 语言枚举](https://docs.huihoo.com/symbian/s60-5th-edition-cpp-developers-library-v2.1/GUID-35228542-8C95-4849-A73F-2B4F082F0C44/sdk/doc_source/ToolsAndUtilities94/Installing-ref/PKG_format/PKG_languages_table.html)
 
 导入 Worker 核对清单和 FPSX 分组，重建 XIP、ROFS1–3、UDA、OneNAND 和适用的调制解调器映像。写入浏览器私有存储后读回核对 SHA-256。每台 VM 有独立的 OneNAND 和 eMMC。导入取消或页面刷新留下的未提交文件按导入记录回收。重新打开时，CPU Worker 在装载前核对 XIP、调制解调器映像以及所选芯片 ROM 的摘要。
 

@@ -9,8 +9,6 @@ const IMPORT_LOCK = "v86-symbian-firmware-import";
 const IMPORT_DIR = "symbian-imports";
 const VM_ID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 
-export const firmware_path = file => file.webkitRelativePath || file.name;
-
 function worker_request(message, options)
 {
     options.signal?.throwIfAborted();
@@ -36,8 +34,8 @@ function worker_request(message, options)
         worker.onmessageerror = () => fail(new Error("The Symbian firmware worker returned unreadable data"));
         try
         {
-            const describe = file => ({ name: file.name, size: file.size, path: firmware_path(file), file });
-            worker.postMessage({ ...message, files: message.files.map(describe), supplements: (options.supplements || []).map(describe) });
+            const files = message.files.map(file => ({ name: file.name, size: file.size, path: file.webkitRelativePath || file.name, file }));
+            worker.postMessage({ ...message, files });
         }
         catch(error) { fail(error); }
     });

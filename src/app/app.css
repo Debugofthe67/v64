@@ -150,6 +150,8 @@ label.check { display: flex; gap: 4px; align-items: baseline; }
 .wizard-steps li.done::after { content: " ✓"; }
 .wizard-body { flex: 1; overflow: auto; padding: 8px 18px; display: flex; flex-direction: column; gap: 10px; }
 .wizard-body fieldset { border: 1px solid var(--line); border-radius: 4px; display: flex; flex-direction: column; gap: 6px; }
+.wizard-body .symbian-source { min-inline-size: 0; }
+.symbian-source select { min-inline-size: 0; max-inline-size: 100%; }
 .preset-pane { display: grid; grid-template-columns: 230px 1fr; gap: 16px; min-height: 0; }
 .preset-list { list-style: none; margin: 0; padding: 0; overflow: auto; }
 .preset-list li { padding: 6px 10px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between; gap: 6px; }
@@ -158,6 +160,7 @@ label.check { display: flex; gap: 4px; align-items: baseline; }
 .badge { font-size: 0.78em; color: #ffcc80; border: 1px solid #6b5a36; border-radius: 3px; padding: 0 4px; white-space: nowrap; }
 .preset-detail h4 { margin: 10px 0 4px; }
 .indent { margin-left: 22px; display: flex; flex-direction: column; gap: 8px; }
+.symbian-folder-button { align-self: flex-start; }
 details.checklist { margin: 10px 0; }
 
 /* the console */

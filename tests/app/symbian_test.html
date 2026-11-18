@@ -367,6 +367,36 @@ async function open_library()
     await until(() => library.contentDocument?.querySelector("#new_vm"), "library");
     return library.contentDocument;
 }
+function firmware_controls(wizard, has_folder = false)
+{
+    const [folder, extra] = wizard.querySelectorAll('input[type="file"]');
+    const folder_button = button(wizard, has_folder ? "Change firmware folder…" : "Choose firmware folder…");
+    check(folder?.webkitdirectory && folder.hidden && !extra && !folder.getClientRects().length,
+        "the only file input is a hidden native directory picker");
+    check(folder_button?.classList.contains("primary") && folder_button.type === "button" && folder_button.tabIndex === 0 &&
+        !button(wizard, "Select individual files…") && !button(wizard, "Add missing files…"),
+        "a single keyboard-accessible button selects the firmware folder");
+    const body = wizard.querySelector(".wizard-body"), bounds = body.getBoundingClientRect();
+    check(body.scrollWidth <= body.clientWidth + 1 && [folder_button, ...body.querySelectorAll("select")].every(control => {
+        const box = control.getBoundingClientRect();
+        return box.width > 0 && box.left >= bounds.left && box.right <= bounds.right;
+    }), "firmware button and dropdowns fit inside the wizard without horizontal scrolling");
+    return { folder, folder_button };
+}
+function files_in_folder(files, directory = "Firmware")
+{
+    return files.map(file => {
+        const copy = new File([file], file.name);
+        Object.defineProperty(copy, "webkitRelativePath", { value: directory + "/" + file.name });
+        return copy;
+    });
+}
+function choose_firmware_folder(wizard, files)
+{
+    const folder = wizard.querySelector("input[webkitdirectory]");
+    Object.defineProperty(folder, "files", { value: files });
+    folder.dispatchEvent(new folder.ownerDocument.defaultView.Event("change", { bubbles: true }));
+}
 function start_wizard(doc)
 {
     doc.querySelector("#new_vm").click();
@@ -375,8 +405,10 @@ function start_wizard(doc)
     check(!wizard.querySelector('input[type="file"]'), "firmware picker is hidden until a device is selected");
     const select = wizard.querySelector('select[aria-label="Symbian device"]');
     check(select.options.length === 2 && select.options[1].textContent === "S60v5 · Nokia N97", "N97 is the implemented Symbian device");
+    select.focus();
     change(select, "nokia-n97");
-    check(wizard.querySelector('input[webkitdirectory]') && wizard.querySelector('input[multiple]:not([webkitdirectory])'), "folder and multi-select inputs");
+    check(doc.activeElement === wizard.querySelector('select[aria-label="Symbian device"]'), "device selection keeps focus through rerendering");
+    firmware_controls(wizard);
     return wizard;
 }
 async function to_summary(wizard, name)
@@ -404,18 +436,28 @@ try
     if(local)
     {
         log("Waiting for Chrome to choose the original RM-505 folder");
-        window.local_firmware_input = wizard.querySelector('input[webkitdirectory]');
+        const { folder, folder_button } = firmware_controls(wizard);
+        window.local_firmware_input = folder;
+        window.local_firmware_button = folder_button;
     }
     else
     {
         const all = await Promise.all((await (await fetch(fixture + "fixtures.json")).json()).map(async name =>
             new File([await (await fetch(fixture + name)).blob()], name)));
-        const files = () => wizard.querySelector('input[multiple]:not([webkitdirectory])');
+        const pick = firmware_controls(wizard);
+        let opened = false;
+        pick.folder.addEventListener("click", event => { event.preventDefault(); opened = true; }, { once: true });
+        pick.folder_button.focus();
+        pick.folder_button.click();
+        check(opened, "the folder action activates the native picker");
         const manifest = all.find(file => file.name === "RM505-test.vpl");
-        choose(files(), [manifest]);
-        await until(() => wizard.textContent.includes("core.C00 — missing"), "filename-specific error for VPL alone");
-        check(!button(wizard, "Next"), "VPL alone cannot advance");
-        choose(files(), all.filter(file => file !== manifest));
+        choose_firmware_folder(wizard, files_in_folder([manifest]));
+        await until(() => wizard.textContent.includes("core.C00 — missing"), "filename-specific error for a folder with only the VPL");
+        const missing = firmware_controls(wizard, true);
+        check(doc.activeElement === missing.folder_button, "the folder action keeps keyboard focus as its label changes");
+        check(!button(wizard, "Next") && wizard.textContent.includes("then select the folder again"),
+            "the VPL alone cannot advance and the wizard explains how to complete the folder");
+        choose_firmware_folder(wizard, files_in_folder(all));
         const variants = await until(() => {
             const selector = wizard.querySelector('select[aria-label="Firmware variant"]');
             return selector?.options.length === 3 && selector;
@@ -443,7 +485,7 @@ try
 
         const first = (await store.list())[0];
         wizard = start_wizard(doc);
-        choose(files(), all.filter(file => file.name !== "RM505-other.vpl"));
+        choose_firmware_folder(wizard, files_in_folder(all.filter(file => file.name !== "RM505-other.vpl")));
         await save(wizard, "Second N97");
         const second = (await store.list()).find(config => config.name === "Second N97");
         check(first.symbian.media.phone.path !== second.symbian.media.phone.path, "phone data paths are isolated");
@@ -452,30 +494,29 @@ try
         check(first.symbian.emmc.path !== second.symbian.emmc.path, "sparse eMMC paths are isolated");
         check(expected_assets(first).length === 8 && expected_assets(second).length === 8, "all assets participate in VM lifecycle");
         wizard = start_wizard(doc);
-        // Native folder input sets these paths. Each variant is in a
-        // separate folder and both are missing the same CORE basename.
-        const folder = dir => all.filter(file => file.name !== "core.C00" && (!file.name.endsWith(".vpl") ||
-            file.name === (dir === "A" ? "RM505-test.vpl" : "RM505-other.vpl"))).map(file => {
-                const copy = new File([file], file.name);
-                Object.defineProperty(copy, "webkitRelativePath", { value: "Firmware/" + dir + "/" + file.name });
-                return copy;
-            });
-        const input = wizard.querySelector("input[webkitdirectory]");
-        Object.defineProperty(input, "files", { value: [...folder("A"), ...folder("B")] });
-        input.dispatchEvent(new doc.defaultView.Event("change", { bubbles: true }));
+        // Each variant is in its own subdirectory and refers to the same CORE basename.
+        const variant_files = (dir, complete = false) => files_in_folder(all.filter(file => (complete || file.name !== "core.C00") &&
+            (!file.name.endsWith(".vpl") || file.name === (dir === "A" ? "RM505-test.vpl" : "RM505-other.vpl"))), "Firmware/" + dir);
+        choose_firmware_folder(wizard, [...variant_files("A"), ...variant_files("B")]);
         await until(() => wizard.querySelector('select[aria-label="Firmware variant"]'), "folder variants");
         select_variant();
         await until(() => wizard.textContent.includes("core.C00 — missing"), "folder's missing CORE");
-        choose(files(), [all.find(file => file.name === "core.C00")]);
-        await until(() => button(wizard, "Next"), "explicit loose file fills the selected folder's missing CORE");
+        choose_firmware_folder(wizard, [...variant_files("A", true), ...variant_files("B")]);
+        await until(() => wizard.querySelector('select[aria-label="Firmware variant"]'), "variants in the updated folder");
+        select_variant();
+        await until(() => button(wizard, "Next"), "reselecting the completed directory verifies variant A");
+        const { folder } = firmware_controls(wizard, true);
+        folder.dispatchEvent(new doc.defaultView.Event("cancel"));
+        check(button(wizard, "Next"), "cancelling the folder picker keeps the verified selection");
+        check(wizard.textContent.includes("firmware files verified."), "successful preflight displays its verified file count");
         const selector = wizard.querySelector('select[aria-label="Firmware variant"]');
         change(selector, [...selector.options].find(option => option.textContent.includes("059OTHER")).value);
         await until(() => wizard.textContent.includes("core.C00 — missing"), "other folder still lacks its same-named CORE");
-        check(!button(wizard, "Next"), "the loose file is scoped to one variant");
+        check(!button(wizard, "Next"), "a variant uses files next to its own VPL");
         select_variant();
-        await until(() => button(wizard, "Next"), "the original selection retains its loose file");
+        await until(() => button(wizard, "Next"), "switching back verifies the completed variant again");
         button(wizard, "Cancel").click();
-        log("Folder supplement fills only the selected variant's missing basename");
+        log("A reselected folder resolves missing files only where they accompany the VPL");
         const root = await navigator.storage.getDirectory();
         const v86 = await root.getDirectoryHandle("v86");
         const journal = await v86.getDirectoryHandle("symbian-imports");
@@ -492,7 +533,16 @@ try
         check(recovered && (await list_disks()).length === 16, "reopen reclaimed only abandoned output");
         check((await disk_file(disk_id(first.symbian.media.rom.path))).size > 0, "completed files survived recovery");
     }
-    if(local) await save(wizard, "Original RM-505");
+    if(local)
+    {
+        await until(() => button(wizard, "Change firmware folder…") && button(wizard, "Next"), "verified original firmware folder");
+        const width = library.style.width;
+        library.style.width = "380px";
+        try { firmware_controls(wizard, true); }
+        finally { library.style.width = width; }
+        check(wizard.textContent.includes("firmware files verified."), "the original firmware has a visible verified file count");
+        await save(wizard, "Original RM-505");
+    }
     const config = (await store.list()).find(entry => entry.name === (local ? "Original RM-505" : "Fixture N97"));
     check(config && expected_assets(config).length === 8, "stored configuration");
     const rom = config.symbian.media.rom;

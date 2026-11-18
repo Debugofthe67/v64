@@ -51,7 +51,7 @@ function progress(text)
     self.postMessage({ progress: text });
 }
 
-async function read_package(files, selection, supplements)
+async function read_package(files, selection)
 {
     const manifests = files.filter(file => path(file) === selection.manifest);
     if(manifests.length !== 1 || manifests[0].size > VPL_MAX_BYTES) throw new Error("Select the variant's VPL again");
@@ -65,14 +65,6 @@ async function read_package(files, selection, supplements)
     }
 
     const siblings = files.filter(file => manifest_directory(file) === manifest_directory(manifest));
-    // A loose file supplied for this choice can fill a missing basename. An
-    // existing sibling keeps priority and duplicate loose names stay visible
-    // to check_vpl's ambiguity check.
-    const sibling_names = new Set(siblings.map(file => file.name.toLowerCase()));
-    for(const supplement of supplements)
-    {
-        if(!sibling_names.has(supplement.name.toLowerCase())) siblings.push(supplement);
-    }
     const by_name = new Map(siblings.map(file => [file.name.toLowerCase(), file]));
     const sources = siblings.map(file => ({
         name: file.name,
@@ -195,7 +187,7 @@ self.onmessage = async ({ data }) =>
             return;
         }
         if(data.op !== "check" && data.op !== "import") throw new Error("Unknown firmware import operation");
-        const { check, images, languages, stl } = await read_package(data.files, data.selection, data.supplements);
+        const { check, images, languages, stl } = await read_package(data.files, data.selection);
         const result = result_of(check, images, languages, stl);
         if(data.op === "import")
         {

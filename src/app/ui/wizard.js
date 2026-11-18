@@ -22,7 +22,7 @@ import { inspect_android_package, import_android_package, import_android_package
 import { ANDROID_CATALOG } from "../android_catalog.js";
 import { N90_RESTORE, import_ios_package, inspect_ios_package, verify_ios_keys } from "../ios_import.js";
 import { new_ios_config } from "../vm_config.js";
-import { check_symbian_package, firmware_path, import_symbian_package, scan_symbian_packages } from "../symbian_import.js";
+import { check_symbian_package, import_symbian_package, scan_symbian_packages } from "../symbian_import.js";
 import { firmware_languages, N97_DEVICE, SYMBIAN_DEVICES } from "../../symbian/catalog.js";
 import { N97_EMMC_INITIAL_BYTES } from "../../symbian/n97_emmc_format.js";
 import { MAX_ARRAY_BUFFER_SIZE_MB } from "../../browser/vm_options.js";
@@ -78,7 +78,6 @@ export function open_wizard(options)
                 checked: false, keys: "", key_file: "", keys_ok: false, acceleration: true, network: true, checking: /** @type {AbortController | null} */ (null),
                 results: /** @type {Array<[string, boolean, string]>} */ ([]) },
             symbian: { device: "", name: unique(N97_DEVICE.name), files: /** @type {File[]} */ ([]),
-                supplements: /** @type {Map<string, File[]>} */ (new Map()),
                 variants: /** @type {any[]} */ ([]), selected: -1, messages: /** @type {string[]} */ ([]),
                 report: /** @type {any} */ (null), checking: /** @type {AbortController | null} */ (null) },
             progress: "",
@@ -177,7 +176,7 @@ export function open_wizard(options)
                 try
                 {
                     const config = await import_symbian_package(s.files, s.variants[s.selected], s.report, s.name.trim(), state.notes,
-                        { store: options.store, signal: abort.signal, progress: symbian_progress, supplements: symbian_supplements() });
+                        { store: options.store, signal: abort.signal, progress: symbian_progress });
                     close(config);
                 }
                 catch(error)
@@ -342,7 +341,8 @@ export function open_wizard(options)
                     image_picker({ label: "The system's CD (optional)", role: "cdrom", optional: true, image: state.image, store: options.store,
                         on_change: image => { state.image = image; render(); } }));
             }
-            return [h("fieldset", null, h("legend", null, "Where does the system come from?"), radios), pickers];
+            return [h(state.source === "symbian" ? "fieldset.symbian-source" : "fieldset", null,
+                h("legend", null, "Where does the system come from?"), radios), pickers];
         };
 
         function symbian_progress(text)
@@ -376,7 +376,7 @@ export function open_wizard(options)
                     if(variant.type_designator !== N97_DEVICE.model)
                         s.messages.push(variant.manifest + " is for " + variant.type_designator + ". Choose an RM-505 package.");
                 }
-                if(!s.variants.length && !s.messages.length) s.messages = ["Choose an RM-505 .vpl and its companion files."];
+                if(!s.variants.length && !s.messages.length) s.messages = ["Choose a folder containing an RM-505 VPL and its companion files."];
             }
             catch(error)
             {
@@ -414,7 +414,7 @@ export function open_wizard(options)
             try
             {
                 const report = await check_symbian_package(s.files, s.variants[index], { signal: checking.signal,
-                    progress: symbian_progress, supplements: symbian_supplements() });
+                    progress: symbian_progress });
                 if(s.checking === checking) s.report = report;
             }
             catch(error)
@@ -432,26 +432,14 @@ export function open_wizard(options)
             }
         }
 
-        function symbian_variant_key()
-        {
-            const variant = state.symbian.variants[state.symbian.selected];
-            return variant ? JSON.stringify([variant.manifest, variant.index, variant.manifest_sha256]) : "";
-        }
-
-        function symbian_supplements()
-        {
-            return state.symbian.supplements.get(symbian_variant_key()) || [];
-        }
-
         function symbian_picker()
         {
             const s = state.symbian;
-            const device = h("select", { "aria-label": "Symbian device", onchange: e => {
+            const device = h("select", { "aria-label": "Symbian device", "data-symbian-focus": "device", onchange: e => {
                 s.checking?.abort();
                 s.checking = null;
                 s.device = e.currentTarget.value;
                 s.files = [];
-                s.supplements.clear();
                 s.variants = [];
                 s.selected = -1;
                 s.report = null;
@@ -462,49 +450,30 @@ export function open_wizard(options)
             } }, h("option", { value: "", selected: !s.device }, "Choose a device…"),
             SYMBIAN_DEVICES.map(device => h("option", { value: device.id, selected: s.device === device.id }, device.family + " · " + device.name)));
             if(!s.device) return h("div.indent", null, device);
-            const picker = (directory, label) => h("label.field", null, h("span", null, label),
-                h("input", { type: "file", multiple: true, ...(directory ? { webkitdirectory: "" } : {}), "aria-label": label,
-                    onchange: e => {
-                        const files = Array.from(/** @type {FileList} */ (e.currentTarget.files));
-                        if(!files.length) return;
-                        const folder_selected = s.files.some(file => !!file.webkitRelativePath);
-                        if(!directory && folder_selected && !files.some(file => /\.vpl$/i.test(file.name)))
-                        {
-                            const key = symbian_variant_key();
-                            if(!key)
-                            {
-                                state.error = "Choose the variant that needs these files";
-                                render();
-                                return;
-                            }
-                            const supplements = new Map(symbian_supplements().map(file => [file.name, file]));
-                            for(const file of files) supplements.set(file.name, file);
-                            s.supplements.set(key, [...supplements.values()]);
-                            void select_symbian_variant(s.selected);
-                            return;
-                        }
-                        if(directory || folder_selected) s.supplements.clear();
-                        const selected = new Map((directory || folder_selected ? [] : s.files).map(file => [firmware_path(file), file]));
-                        for(const file of files) selected.set(firmware_path(file), file);
-                        void scan_symbian_files([...selected.values()]);
-                    } }));
+            const folder = h("input", { type: "file", multiple: true, hidden: true, webkitdirectory: "", onchange: e => {
+                const files = Array.from(/** @type {FileList} */ (e.currentTarget.files));
+                if(files.length) void scan_symbian_files(files);
+            } });
             const report = s.report;
+            const missing = report?.check.files.some(file => file.status === "missing");
             const languages = firmware_languages(report?.languages);
             const problems = report ? [...report.check.issues, ...report.check.files
                 .filter(file => !["ok", "optional-missing"].includes(file.status))
                 .map(file => file.name + " — " + (file.status === "mismatch" ?
                     file.mismatches.map(issue => ({ size: "size mismatch", crc32: "CRC-32 mismatch", flash_version: "firmware version mismatch" })[issue]).join(", ") :
                     file.error || file.status))] : [];
-            return h("div.indent", null, device,
-                h("p.note", null, "Choose a local RM-505 folder, or select the VPL and its companion files. You can add missing files to a selection."),
-                picker(true, "Nokia N97 firmware folder"), picker(false, "Nokia N97 firmware files"),
+            return h("div.indent", null, device, folder,
+                h("button.primary.symbian-folder-button", { type: "button", "data-symbian-focus": "folder", onclick: () => folder.click() },
+                    s.files.length ? "Change firmware folder…" : "Choose firmware folder…"),
                 s.variants.length ? h("label.field", null, h("span", null, "Firmware variant"),
-                    h("select", { "aria-label": "Firmware variant", onchange: e => void select_symbian_variant(Number(e.currentTarget.value)) },
+                    h("select", { "aria-label": "Firmware variant", "data-symbian-focus": "variant",
+                        onchange: e => void select_symbian_variant(Number(e.currentTarget.value)) },
                         h("option", { value: "-1", selected: s.selected < 0 }, "Choose a variant…"),
                         s.variants.map((variant, i) => h("option", { value: String(i), selected: s.selected === i },
                             [variant.type_designator, variant.sw_version, variant.product_code, variant.variant_version, variant.description, variant.manifest]
                                 .filter(Boolean).join(" · "))))) : null,
                 s.messages.concat(problems).length ? h("ul.error", null, s.messages.concat(problems).map(message => h("li", null, message))) : null,
+                missing ? h("p.note", null, "Put the missing files next to the VPL, then select the folder again.") : null,
                 report?.media ? h("p.note", null, report.check.files.filter(file => file.status === "ok").length + " firmware files verified.") : null,
                 languages ? h("p.note", null, languages) : null);
         }
@@ -939,7 +908,7 @@ export function open_wizard(options)
                     const s = state.symbian;
                     if(!s.device) return "Choose a Symbian device";
                     if(s.checking) return "Checking the firmware…";
-                    if(s.selected < 0) return s.files.length ? "Choose an RM-505 variant" : "Choose the firmware files";
+                    if(s.selected < 0) return s.variants.length ? "Choose an RM-505 variant" : "Choose the folder containing the VPL and its companion files";
                     return s.report?.media ? "" : "Complete firmware preflight";
                 }
                 if(state.source === "ios") return state.ios.checked ? "" : state.ios.checking ? "Checking the IPSW…" : "Choose the supported IPSW";
@@ -972,6 +941,7 @@ export function open_wizard(options)
 
         function render()
         {
+            const symbian_focus = element.querySelector("[data-symbian-focus]:focus")?.getAttribute("data-symbian-focus");
             const steps = step_titles();
             const body = (state.source === "symbian" ? [source_step, name_step, summary_step] :
                 [source_step, system_step, name_step, disk_step, summary_step])[state.step]();
@@ -990,6 +960,8 @@ export function open_wizard(options)
                         last ? [["ios", "symbian"].includes(state.source) ? null : h("button", { type: "button", onclick: () => finish(true) }, "Customize hardware…"),
                             h("button.primary", { type: "button", onclick: () => finish(false) }, "Finish")] :
                             h("button.primary", { type: "button", disabled: !!blocked, onclick: () => { state.step++; render(); } }, "Next")])));
+            if(symbian_focus)
+                /** @type {HTMLElement | null} */ (element.querySelector(`[data-symbian-focus="${symbian_focus}"]`))?.focus({ preventScroll: true });
         }
 
         document.body.append(element);

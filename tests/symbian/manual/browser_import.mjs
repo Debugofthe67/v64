@@ -64,7 +64,32 @@ try
         if(!input) await pause();
     }
     if(!input) throw new Error("The N97 folder input did not appear");
-    await request("DOM.setFileInputFiles", { objectId: input, files: [directory] });
+    const { result: action } = await request("Runtime.evaluate", { expression: "window.local_firmware_button" });
+    await request("Page.enable", {});
+    await request("Runtime.callFunctionOn", { objectId: action.objectId, functionDeclaration: "function () { this.focus(); }" });
+    await request("Page.setInterceptFileChooserDialog", { enabled: true });
+    const opened = new Promise((done, reject) => {
+        const timer = setTimeout(() => {
+            socket.removeEventListener("message", receive);
+            reject(new Error("Pressing Enter on the firmware folder button did not open the native picker"));
+        }, 5000);
+        function receive(event)
+        {
+            const message = JSON.parse(event.data);
+            if(message.method !== "Page.fileChooserOpened") return;
+            socket.removeEventListener("message", receive);
+            clearTimeout(timer);
+            done(message.params);
+        }
+        socket.addEventListener("message", receive);
+    });
+    const enter = { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 };
+    await request("Input.dispatchKeyEvent", { ...enter, type: "keyDown", text: "\r", unmodifiedText: "\r" });
+    await request("Input.dispatchKeyEvent", { ...enter, type: "keyUp" });
+    const { backendNodeId } = await opened;
+    const { node } = await request("DOM.describeNode", { objectId: input });
+    if(backendNodeId !== node.backendNodeId) throw new Error("The folder action opened a different picker");
+    await request("DOM.setFileInputFiles", { backendNodeId, files: [directory] });
     const result = await finished;
     if(result.code !== 0) throw new Error("Browser import test failed: " + (result.signal || result.code));
 }
