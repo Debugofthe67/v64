@@ -1,5 +1,6 @@
 .syntax unified
 .arch armv6k
+.fpu vfp
 .text
 .arm
 .global _start
@@ -24,6 +25,20 @@ startup:
     str r0, [r10, #8]
     mrc p15, 0, r0, c0, c0, 1
     str r0, [r10, #44]
+
+    @ VFPv2 saves two exception instruction registers in a thread context.
+    mov r0, #0x00f00000
+    mcr p15, 0, r0, c1, c0, 2
+    mov r0, #0x40000000
+    vmsr fpexc, r0
+    mov r0, #0x44
+    vmsr fpinst, r0
+    mov r0, #0x98
+    vmsr fpinst2, r0
+    vmrs r0, fpinst
+    str r0, [r10, #48]
+    vmrs r0, fpinst2
+    str r0, [r10, #52]
 
     adr r0, thumb_step
     orr r0, r0, #1

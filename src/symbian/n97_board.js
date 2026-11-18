@@ -3,7 +3,7 @@
 
 import { sha256_hex } from "../image/sha256.js";
 
-export const N97_LAYOUT_VERSION = 3;
+export const N97_LAYOUT_VERSION = 4;
 export const N97_RAM_BASE = 0x08000000;
 export const N97_RAM_SIZE = 128 * 1024 * 1024;
 export const N97_SRAM_BASE = 0x30000000;
@@ -52,13 +52,16 @@ function cold_boot_tags()
     return bytes;
 }
 
+// RAP3NAND names the whole SOS+CORE segment MCUSW. Its offset is relative to
+// the TOC and points at the preamble, a page before the XIP entry. The ROM
+// reserves this preamble separately at XIP+0x26D0.
 function rom_toc(size)
 {
     const bytes = new Uint8Array(64);
     const view = new DataView(bytes.buffer);
-    view.setInt32(0, N97_ROM_ADDRESS - N97_BOOT_TOC, true);
-    view.setUint32(4, size, true);
-    view.setUint32(16, N97_ROM_ADDRESS, true);
+    view.setInt32(0, N97_CORE_ADDRESS - N97_BOOT_TOC, true);
+    view.setUint32(4, N97_CORE_HEADER_OFFSET + size, true);
+    view.setUint32(16, N97_CORE_ADDRESS, true);
     bytes.set([0x4D, 0x43, 0x55, 0x53, 0x57], 20); // MCUSW
     bytes.fill(0xFF, 32);
     return bytes;

@@ -34,7 +34,8 @@ import { BackdoorA32, BACKDOOR_NOT_HANDLED } from "./backdoor_a32.js";
 import { IOSInstallService } from "../ios/install_service.js";
 import { IOSNetwork } from "../ios/network.js";
 import { create_n97_boot_timer, create_n97_sram, load_n97_rom, n97_boot_files, N97_DEVICE_MEMORY, N97_LAYOUT_VERSION, N97_RAM_BASE } from "../symbian/n97_board.js";
-import { create_n97_clocks, create_n97_l2, create_n97_rapido_id, create_n97_xti } from "../symbian/n97_devices.js";
+import { create_n97_board_config, create_n97_clocks, create_n97_interrupts, create_n97_l2, create_n97_os_timer,
+    create_n97_rapido_id, create_n97_xti } from "../symbian/n97_devices.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -57,7 +58,8 @@ import { COMMAND_RELOAD, COMMAND_RESET } from "../parallel/control.js";
 
 /** The devices in a snapshot's state[4], in this order */
 const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe",
-    ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram"];
+    ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
+    "n97_board_config", "n97_interrupts", "n97_os_timer"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -285,6 +287,10 @@ A64CPU.prototype.init = function(settings, device_bus)
             this.devices.n97_l2 = create_n97_l2(this.io);
             this.devices.n97_xti = create_n97_xti(this.io);
             this.devices.n97_clocks = create_n97_clocks(this.io);
+            this.devices.n97_board_config = create_n97_board_config(this.io);
+            const interrupts = this.devices.n97_interrupts = create_n97_interrupts(this.io,
+                (irq, fiq) => this.wm.exports["a32_set_interrupt_lines"](irq, fiq));
+            this.devices.n97_os_timer = create_n97_os_timer(this.io, this.clock, level => interrupts.set_timer(level));
         }
         this.virtio_devices = [];
         this.shared_spi_sources = new Map();
@@ -825,6 +831,7 @@ A64CPU.prototype.state_block_of = function(core)
 /** (env.run_hardware_timers) the virt machine's device timers (the PL031's alarm, the display's); the cores' timers are their own */
 A64CPU.prototype.run_hardware_timers = function(acpi, now)
 {
+    if(this.devices.n97_os_timer) return this.devices.n97_os_timer.poll(now);
     const display = this.devices.display ? this.devices.display.timer(now) : 100;
     if(this.devices.apple_timer) return Math.min(display, this.devices.apple_timer.timer(), this.devices.apple_gpio.timer(now),
         this.devices.apple_accelerometer?.timer(now) ?? 100, this.devices.apple_gyroscope?.timer(now) ?? 100,
@@ -1188,7 +1195,10 @@ A64CPU.prototype.load_core_state = function(saved, core = 0)
     let at = 0;
     for(const [a, b] of CORE_STATE_RANGES)
     {
-        block.set(saved.subarray(at, at + b - a), a);
+        const bytes = saved.subarray(at, at + b - a);
+        block.set(bytes, a);
+        // Older snapshots end before the added VFPv2 instruction registers.
+        if(bytes.length < b - a) block.fill(0, a + bytes.length, b);
         at += b - a;
     }
 };

@@ -70,6 +70,187 @@ function merge(old, value, mask)
     return ((old & ~mask) | (value & mask)) >>> 0;
 }
 
+export function create_n97_board_config(io)
+{
+    // These are the board settings written by the variant at XIP+0x974A4.
+    // Adjacent offsets also host active devices; only map the actual words.
+    const words = [0x1C10, 0x1C20, 0x1C30, 0x1C40, 0x1C50, 0x1C60, 0x1C70,
+        0x1C90, 0x1CA0, 0x1CB0, 0x1CC0, 0x1CD0, 0x1CE0, 0x1CF0, 0x1D00, 0x1D10, 0x1D20, 0x1D30];
+    return latches(io, 0x20030000, "RAPIDO board configuration", words);
+}
+
+function latches(io, base, name, offsets)
+{
+    const reset = () => offsets.map(() => 0);
+    let registers = reset();
+    for(const [index, offset] of offsets.entries())
+    {
+        word(io, base + offset, name, () => registers[index], (value, mask) => {
+            registers[index] = merge(registers[index], value, mask);
+        });
+    }
+    return {
+        reset() { registers = reset(); },
+        get_state() { return registers.slice(); },
+        set_state(state) { registers = state.slice(); },
+    };
+}
+
+const ICU_BASE = 0x20400000;
+const NO_INTERRUPT = 0xFFFFFFFF;
+const MS_TICK_INTERRUPT = 35;
+const TIMER_BASE = 0x20040100;
+const MS_TICK_INITIAL_COUNT = 0x200401A4;
+const MS_TICK_COUNT = 0x200401C4;
+const MS_TICK_COUNTS_PER_MS = 9600;
+
+export function create_n97_interrupts(io, set_lines)
+{
+    // RM-505 dispatches IRQ from +0x08 (XIP+0x8CFF8) and FIQ
+    // from +0x48 (+0x8D178), with -1 as the empty ID on either port.
+    const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C]);
+    const priority = new Uint8Array(256);
+    let enabled = 0, selected = 0, active = NO_INTERRUPT, timer_unmasked = false;
+    let timer_level = false;
+    const pending = () => enabled && timer_unmasked && timer_level && priority[MS_TICK_INTERRUPT] && active === NO_INTERRUPT ?
+        MS_TICK_INTERRUPT : NO_INTERRUPT;
+    const update = () => set_lines(pending() !== NO_INTERRUPT, false);
+    const reg = (offset, name, read, write) => word(io, ICU_BASE + offset, name, read, write);
+    reg(0x04, "RAPIDO interrupt enable", () => enabled, (value, mask) => { enabled = merge(enabled, value, mask & 1); update(); });
+    reg(0x08, "RAPIDO IRQ claim", () => {
+        const id = pending();
+        if(id !== NO_INTERRUPT) { active = id; update(); }
+        return id;
+    }, () => {});
+    // The firmware calls the +0x0C command with the bound tick ID
+    // immediately after programming the first interval.
+    reg(0x0C, "RAPIDO IRQ unmask", () => 0, (value, mask) => {
+        if((value & mask) === MS_TICK_INTERRUPT)
+        {
+            timer_unmasked = true;
+            active = NO_INTERRUPT;
+            update();
+        }
+    });
+    reg(0x10, "RAPIDO IRQ mask", () => 0, (value, mask) => {
+        const id = (value & mask) >>> 0;
+        if(id === NO_INTERRUPT || id === MS_TICK_INTERRUPT)
+        {
+            timer_unmasked = false;
+            active = NO_INTERRUPT;
+            update();
+        }
+    });
+    reg(0x20, "RAPIDO interrupt select", () => selected, (value, mask) => { selected = merge(selected, value, mask & 0xFF); });
+    reg(0x24, "RAPIDO interrupt priority", () => priority[selected], (value, mask) => {
+        priority[selected] = merge(priority[selected], value, mask & 7);
+        update();
+    });
+    // FIQ and GPIO have no connected sources at this stage. The original
+    // init clears each of these banks and waits for the empty ID.
+    reg(0x48, "RAPIDO FIQ claim", () => NO_INTERRUPT, () => {});
+    reg(0x50, "RAPIDO FIQ clear", () => 0, () => {});
+    reg(0x40, "RAPIDO FIQ mux status", () => 0, () => {});
+    reg(0x80, "RAPIDO IRQ completion", () => {
+        active = NO_INTERRUPT;
+        update();
+        return 0;
+    }, () => {});
+    for(const clear of [0x20031D54, 0x20031D94, 0x20031DD4])
+    {
+        word(io, clear, "RAPIDO GPIO IRQ clear", () => 0, () => {});
+        word(io, clear + 0x28, "RAPIDO GPIO IRQ claim", () => NO_INTERRUPT, () => {});
+    }
+    return {
+        set_timer(level) { timer_level = level; update(); },
+        reset()
+        {
+            configuration.reset();
+            priority.fill(0);
+            enabled = selected = 0;
+            active = NO_INTERRUPT;
+            timer_unmasked = false;
+            timer_level = false;
+            update();
+        },
+        get_state() { return [configuration.get_state(), Array.from(priority), enabled, selected, active, timer_unmasked, timer_level]; },
+        set_state(state)
+        {
+            configuration.set_state(state[0]);
+            priority.set(state[1]);
+            [, , enabled, selected, active, timer_unmasked, timer_level] = state;
+            update();
+        },
+    };
+}
+
+export function create_n97_os_timer(io, clock, set_irq)
+{
+    const other = latches(io, TIMER_BASE, "RAPIDO timer configuration", [0x04, 0x08, 0x20, 0x24, 0x28, 0x2C, 0x30, 0x504]);
+    let control = 0, mode = 0, count = 0, deadline = null, expired = false;
+    function start(now)
+    {
+        deadline = control & 1 && mode === 3 && count ? now + count / MS_TICK_COUNTS_PER_MS : null;
+    }
+    function poll(now)
+    {
+        if(deadline === null) return 100;
+        if(now < deadline) return deadline - now;
+        count = 0;
+        deadline = null;
+        expired = true;
+        set_irq(true);
+        return 0;
+    }
+    function remaining(now)
+    {
+        poll(now);
+        return deadline === null ? count : Math.ceil((deadline - now) * MS_TICK_COUNTS_PER_MS);
+    }
+    word(io, TIMER_BASE + 0x84, "RAPIDO millisecond timer control", () => control, (value, mask) => {
+        const now = clock.now();
+        count = remaining(now);
+        control = merge(control, value, mask);
+        start(now);
+    });
+    word(io, TIMER_BASE + 0x88, "RAPIDO millisecond timer mode", () => mode, (value, mask) => {
+        const now = clock.now();
+        count = remaining(now);
+        mode = merge(mode, value, mask);
+        start(now);
+    });
+    function reload(value, mask)
+    {
+        const now = clock.now();
+        count = merge(remaining(now), value, mask);
+        expired = false;
+        set_irq(false);
+        start(now);
+    }
+    // XIP+0x8E4B0 loads the first interval. The ISR at XIP+0x8DE88
+    // uses the separate read/reload port to wait for zero and schedule the next millisecond.
+    word(io, MS_TICK_INITIAL_COUNT, "RAPIDO millisecond timer initial count", () => remaining(clock.now()), reload);
+    word(io, MS_TICK_COUNT, "RAPIDO millisecond timer count", () => remaining(clock.now()), reload);
+    return {
+        poll,
+        reset()
+        {
+            other.reset();
+            control = mode = count = 0;
+            deadline = null;
+            expired = false;
+            set_irq(false);
+        },
+        get_state() { return [other.get_state(), control, mode, count, deadline, expired]; },
+        set_state(state)
+        {
+            other.set_state(state[0]);
+            [, control, mode, count, deadline, expired] = state;
+            set_irq(expired);
+        },
+    };
+}
+
 export function create_n97_rapido_id(io)
 {
     // Representative RAPIDO3G 1.13. ROM+0x1978 selects 0xA and combines

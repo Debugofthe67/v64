@@ -363,8 +363,8 @@ const FPEXC_EN: u32 = 1 << 30;
 #[inline(always)]
 pub fn fp_enabled() -> bool { (unsafe { *a32_fpexc }) & FPEXC_EN != 0 }
 
-/// VMRS, VMSR of FPSID (0), MVFR2 (5), MVFR1 (6), MVFR0 (7), FPEXC (8) at
-/// PL1: CPACR's access, whatever FPEXC.EN says
+/// Privileged VMRS and VMSR. The ARM1136's VFPv2 exception instruction
+/// registers (9, 10) require FPEXC.EN; the ID and control registers do not.
 pub fn vfp_system(register: u32, rt: u32, to_core: bool) -> Result<Flow, Exception> {
     let fpen = unsafe { *cpacr_el1 } >> 20 & 3;
     if !privileged() || fpen != 3 && fpen != 1 || rt == 15 {
@@ -385,6 +385,8 @@ pub fn vfp_system(register: u32, rt: u32, to_core: bool) -> Result<Flow, Excepti
         6 => id(1),
         7 => id(0),
         8 => unsafe { *a32_fpexc },
+        9 if cpu::arm1136() && fp_enabled() => unsafe { *a32_fpinst },
+        10 if cpu::arm1136() && fp_enabled() => unsafe { *a32_fpinst2 },
         _ => return Err(Exception::Undefined),
     };
     if to_core {
@@ -393,6 +395,8 @@ pub fn vfp_system(register: u32, rt: u32, to_core: bool) -> Result<Flow, Excepti
     else {
         match register {
             8 => unsafe { *a32_fpexc = reg(rt) & FPEXC_EN },
+            9 => unsafe { *a32_fpinst = reg(rt) },
+            10 => unsafe { *a32_fpinst2 = reg(rt) },
             0 => {},
             _ => return Err(Exception::Undefined),
         }

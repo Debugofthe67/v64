@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
 import { check_machine_options } from "../../src/machine_options.js";
 import { N97_SRAM_SIZE } from "../../src/symbian/n97_board.js";
 import { V86 } from "../../src/main.js";
@@ -51,7 +52,8 @@ try
         assert.equal(cpu.ram_offset(0, 4), 0);
         assert.equal(cpu.ram_offset(0x40000000, 4), -1);
         assert.deepEqual([...cpu.mem8.subarray(0, 4)], [...readFileSync(binary).subarray(0, 4)]);
-        const result = new DataView(cpu.wasm_memory.buffer, cpu.mem8.byteOffset + 0x800, 48);
+        const result = new DataView(cpu.wasm_memory.buffer, cpu.mem8.byteOffset + 0x800, 56);
+        const registers = new DataView(cpu.wasm_memory.buffer, cpu.state_base);
         const value = offset => result.getUint32(offset, true);
         const step = until => {
             for(let i = 0; i < 250 && !until(); i++) a64_worker_slice(1);
@@ -62,8 +64,8 @@ try
         step(() => value(24) === 3);
         a32_set_interrupt_lines(false, false);
         step(() => value(40) !== 0);
-        assert.deepEqual(Array.from({ length: 12 }, (_, i) => value(i * 4)),
-            [0x4117B363, 0x00050078, 7, 73, 0x1D3, 1, 3, 0x4117B363, 5, 0x01000000, 0xAA, 0x1D152152]);
+        assert.deepEqual(Array.from({ length: 14 }, (_, i) => value(i * 4)),
+            [0x4117B363, 0x00050078, 7, 73, 0x1D3, 1, 3, 0x4117B363, 5, 0x01000000, 0xAA, 0x1D152152, 0x44, 0x98]);
         const wrong = cpu.get_state(true);
         wrong[4].find(device => device?.[1] instanceof Uint8Array && device[1].length === N97_SRAM_SIZE)[0] = "other ROM or handoff";
         assert.throws(() => cpu.validate_state(wrong), /same ROM and loader handoff/);
@@ -75,10 +77,14 @@ try
         assert.equal(cpu.devices.n97_sram.get_state()[1][0x10], 0);
         assert.equal(value(40), 0);
         assert.equal(Number(cpu.read_pc()), 0);
+        assert.equal(registers.getUint32(STATE_OFFSETS.a32_fpinst2, true), 0);
         await emulator.restore_state(state);
         assert.equal(cpu.devices.n97_sram.get_state()[1][0x10], 45);
         assert.equal(value(40), 0xAA);
-        console.log("PASS: ARM1136 identity, ARM/Thumb interworking, exceptions and MMU");
+        assert.equal(registers.getUint32(STATE_OFFSETS.a32_fpinst2, true), 0x98);
+        cpu.load_core_state(cpu.save_core_state().subarray(0, -8));
+        assert.equal(registers.getUint32(STATE_OFFSETS.a32_fpinst2, true), 0);
+        console.log("PASS: ARM1136 identity, VFPv2 context, ARM/Thumb interworking, exceptions and MMU");
     }
     finally
     {

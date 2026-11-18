@@ -23,11 +23,11 @@ pub const SLICE: u32 = 50_000;
 const QUANTUM: u32 = 4096;
 
 /// The per-core part of the state block, from its offset 64 to the end of the last field
-/// (src/arm/state_layout.js: a32_fpexc at 1480, cpu_type arm32's; the
+/// (src/arm/state_layout.js: a32_fpinst2 at 1488, cpu_type arm32's; the
 /// page tier's scratch fields before the a32 range come along, unused
 /// between activations)
 const STATE_START: usize = 64;
-const STATE_END: usize = 1484;
+const STATE_END: usize = 1492;
 const STATE_BYTES: usize = STATE_END - STATE_START;
 
 #[repr(C, align(16))]
@@ -778,9 +778,9 @@ pub fn a64_state_base() -> u32 { crate::state_block::state_base() }
 mod tests {
     #[test]
     fn saved_range_covers_the_layout() {
-        use crate::aarch64::state::{a32_fpexc, x};
+        use crate::aarch64::state::{a32_fpinst2, x};
         let base = crate::state_block::state_base() as usize;
         assert_eq!(x as usize - base, super::STATE_START);
-        assert_eq!(a32_fpexc as usize + 4 - base, super::STATE_END);
+        assert_eq!(a32_fpinst2 as usize + 4 - base, super::STATE_END);
     }
 }

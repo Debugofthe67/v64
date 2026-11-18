@@ -16,8 +16,9 @@ const sha256 = createHash("sha256").update(rom).digest("hex");
 assert.equal(sha256, "9c0863e379d243f953d3cfcd87d11c98231f2d0469e69244d9ee059472c99194", "expected RM-505 22.0.110 XIP");
 const wasm_path = fileURLToPath(new URL("../../build/v86-arm64.wasm", import.meta.url));
 
+const instructions_per_ms = 8000;
 const vm = new V86({ machine_type: "nokia-n97", graphics_adapter: "none", disable_jit: true,
-    autostart: false, log_level: 0, wasm_path, cpu_clock: { mode: "deterministic" },
+    autostart: false, log_level: 0, wasm_path, cpu_clock: { mode: "deterministic", instructions_per_ms },
     symbian: { rom: { buffer: Uint8Array.from(rom).buffer }, rom_sha256: sha256 } });
 try
 {
@@ -35,6 +36,8 @@ try
     assert.equal(cpu.profile, "arm1136");
     assert.equal(pc_now(), N97_ROM_ADDRESS);
     const boot_registers = Array.from({ length: 4 }, (_, i) => register(i));
+    const toc_entry = { start: N97_BOOT_TOC + (word(N97_BOOT_TOC) | 0), bytes: word(N97_BOOT_TOC + 4) };
+    assert.deepEqual(toc_entry, { start: 0x088FF000, bytes: 4096 + rom.length });
 
     const mmio = [];
     let step = 0;
@@ -57,11 +60,20 @@ try
     const entry = 0x8004F110;
     const variant_start = 0x800973C4;
     const variant_clock_exit = 0x8009746C;
-    let configuration, mmu_enabled_at, first_linked_pc, ekern, variant, fault;
-    let first_instructions = [];
-    for(; step < 1400000; step++)
+    let configuration, mmu_enabled_at, first_linked_pc, ekern, variant, irq, variant_fault, fault_packet;
+    const first_instructions = [];
+    const init_poll_interval = 32;
+    cpu.clock.resume();
+    for(; step < 3500000; step++)
     {
+        // This tool single-steps with the VM stopped. Let the normal
+        // clock and device scheduler advance for the instructions just run.
+        if(step && step % init_poll_interval === 0)
+        {
+            cpu.run_hardware_timers(null, cpu.clock.advance_instructions(init_poll_interval));
+        }
         const pc = pc_now();
+        const pstate = field("pstate");
         const sctlr = field("sctlr_el1");
         if(first_instructions.length < 4) first_instructions.push(pc - N97_ROM_ADDRESS);
         if(!mmu_enabled_at && (sctlr & 1)) mmu_enabled_at = { pc, step, sctlr };
@@ -75,13 +87,27 @@ try
         if(pc === entry) ekern = { pc, step, sctlr, registers: [register(0), register(1)] };
         if(pc === variant_start) variant = { pc, step };
         if(pc === variant_clock_exit) variant.clocks_returned_at = step;
-        wasm["a64_worker_slice"](1);
-        if(pc === entry) ekern.pc_after_first_instruction = pc_now();
-        if([0x4, 0xC, 0x10, 0xFFFF0004, 0xFFFF000C, 0xFFFF0010].includes(pc_now()))
+        if(!irq && pc === 0xFFFF0018)
         {
-            fault = { pc, exception_vector: pc_now(), instructions_to_fault: step + 1,
-                address: field("far_el1"), dfsr: field("esr_el1"), sctlr: field("sctlr_el1") };
-            break;
+            irq = { pc, step, mode: pstate & 31, lr: register(14),
+                spsr: state.getUint32(STATE_OFFSETS.a32_spsr + 4, true) };
+        }
+        if(irq && !irq.scheduler && pc === 0x8004F31C) irq.scheduler = { pc, step, mode: pstate & 31 };
+        if(pc === 0x80096144 && register(0) === 0x200002C0) variant_fault = { pc, step, code: register(0) };
+        wasm["a64_worker_slice"](1);
+        if(irq && !irq.returned && (pstate & 31) === 0x12 && [0x8004F354, 0x8004F370, 0x8008D120].includes(pc))
+        {
+            irq.returned = { instruction: pc, pc: pc_now(), step: step + 1, cpsr: (field("pstate") | field("nzcv")) >>> 0 };
+        }
+        if(pc === entry) ekern.pc_after_first_instruction = pc_now();
+        if([0xC, 0x10, 0xFFFF000C, 0xFFFF0010].includes(pc_now()))
+        {
+            assert.fail(`Unexpected abort after PC 0x${pc.toString(16)} at VA 0x${field("far_el1").toString(16)}`);
+        }
+        if(variant_fault)
+        {
+            fault_packet = cpu.devices.n97_xti.packets().find(packet => packet.data.includes("FAULT: RapidoVariant"));
+            if(fault_packet) break;
         }
     }
 
@@ -101,22 +127,47 @@ try
     {
         assert.ok(mmio.some(read => read.direction === "read" && read.address === address && read.width === 4 && read.value === value));
     }
-    assert.deepEqual(fault, { pc: 0x800974C4, exception_vector: 0xFFFF0010, instructions_to_fault: 1360196,
-        address: 0xC6031C10, dfsr: 0x808, sctlr: 0x00C5387D });
+    assert.equal(irq?.mode, 0x12, "the board timer must enter the original IRQ vector");
+    assert.equal(irq.scheduler?.mode, 0x13, "the original IRQ path must enter the SVC scheduler");
+    assert.equal(irq.returned?.pc, irq.lr - 4, "the exception return must resume the interrupted instruction");
+    assert.equal(irq.returned.cpsr, irq.spsr, "the exception return must restore the interrupted CPSR");
+    const board_init = mmio.filter(access => access.pc >= 0x800974A4 && access.pc < 0x8009759C &&
+        access.direction === "write" && access.address >= 0x20031C10 && access.address <= 0x20031D30);
+    assert.equal(board_init.length, 18);
+    assert.equal(new Set(board_init.map(access => access.address)).size, board_init.length);
+    const tick_ports = new Set([0x200401A4, 0x200401C4, 0x20400008, 0x2040000C, 0x20400080]);
+    const first_interval = mmio.find(access => access.pc === 0x8008E4B0 && access.address === 0x200401A4);
+    assert.ok(first_interval, "the original variant must arm the millisecond timer");
+    const tick_bus = mmio.filter(access => access.step >= first_interval.step && access.step <= irq.returned.step &&
+        tick_ports.has(access.address));
+    assert.deepEqual(tick_bus.map(({ direction, address, value }) => [direction, address, value]), [
+        ["write", 0x200401A4, 9600], ["write", 0x2040000C, 35], ["read", 0x20400008, 35],
+        ["read", 0x200401C4, 0], ["write", 0x200401C4, 9600], ["read", 0x20400008, 0xFFFFFFFF],
+        ["read", 0x20400080, 0],
+    ]);
+    assert.ok(variant_fault && variant_fault.step > irq.returned.step);
+    assert.match(fault_packet?.data, /FAULT: RapidoVariant 0x200002c0/);
     const devices = cpu.get_diagnostics().symbian;
     assert.equal(devices.l2_enabled, true);
     assert.deepEqual(devices.clocks, { configured_cpu_hz: 433920000, pll3_locked: true });
+    const stop_pc = pc_now();
+    const tick_state = cpu.devices.n97_os_timer.get_state();
+    const interrupt_state = cpu.devices.n97_interrupts.get_state();
     const snapshot = await vm.save_state();
     await vm.restart("power-on");
     assert.equal(pc_now(), N97_ROM_ADDRESS);
     const reset_devices = cpu.get_diagnostics().symbian;
     assert.equal(reset_devices.l2_enabled, false);
     assert.equal(reset_devices.clocks.pll3_locked, false);
+    assert.equal(cpu.devices.n97_os_timer.get_state()[4], null);
     await vm.restore_state(snapshot);
-    assert.equal(pc_now(), fault.exception_vector);
+    assert.equal(pc_now(), stop_pc);
     assert.deepEqual(cpu.get_diagnostics().symbian, devices);
+    assert.deepEqual(cpu.devices.n97_os_timer.get_state(), tick_state);
+    assert.deepEqual(cpu.devices.n97_interrupts.get_state(), interrupt_state);
     console.log(JSON.stringify({ sha256, load_address: N97_ROM_ADDRESS, boot_registers, first_instructions,
-        configuration, mmu_enabled_at, first_linked_pc, ekern, variant, fault, devices, reset_devices, mmio }, null, 2));
+        configuration, toc_entry, mmu_enabled_at, first_linked_pc, ekern, variant, instructions_per_ms,
+        irq, tick_bus, variant_fault, fault_packet, devices, reset_devices, mmio }, null, 2));
 }
 finally
 {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { create_n97_clocks, create_n97_l2, create_n97_rapido_id, create_n97_xti,
+import { create_n97_board_config, create_n97_clocks, create_n97_interrupts, create_n97_l2, create_n97_os_timer,
+    create_n97_rapido_id, create_n97_xti,
     N97_CPU_PLL, N97_L2_BASE, N97_PLL3, N97_PLL3_CONTROL, N97_PLL_POWER, N97_RAPIDO_SELECT,
     N97_XTI_CONTROL, N97_XTI_DATA, N97_XTI_DOORBELL } from "../../src/symbian/n97_devices.js";
 
@@ -8,6 +9,7 @@ function bus()
 {
     const registers = new Map();
     return {
+        has: address => registers.has(address),
         register_mmio(address, size, handler)
         {
             assert.ok(!registers.has(address));
@@ -27,6 +29,65 @@ function bus()
         },
     };
 }
+
+test("the RAPIDO board settings retain guest writes without shadowing adjacent hardware", () => {
+    const io = bus(), config = create_n97_board_config(io);
+    assert.equal(io.has(0x20031C80), false);
+    assert.equal(io.has(0x20031D54), false);
+    assert.equal(io.read(0x20031C10), 0);
+    io.write(0x20031C10, 0xAAAAAAAA);
+    io.write(0x20031C10, 0x55, 1, 1);
+    assert.equal(io.read(0x20031C10), 0xAAAA55AA);
+    const saved = config.get_state();
+    config.reset();
+    assert.equal(io.read(0x20031C10), 0);
+    config.set_state(saved);
+    assert.equal(io.read(0x20031C10), 0xAAAA55AA);
+});
+
+test("the RAPIDO tick counts down, drives only an unmasked IRQ, and resumes an in-flight interval", () => {
+    const io = bus(), base = 0x20400000, timer_base = 0x20040180;
+    let now = 0, lines;
+    const irq = create_n97_interrupts(io, (...levels) => { lines = levels; });
+    const timer = create_n97_os_timer(io, { now: () => now }, level => irq.set_timer(level));
+    assert.equal(io.has(base + 0x28), false);
+    assert.equal(io.has(timer_base + 0x38), false);
+    io.write(base + 4, 1);
+    io.write(base + 0x20, 35);
+    io.write(base + 0x24, 2);
+    io.write(timer_base + 4, 1);
+    io.write(timer_base + 8, 3);
+    io.write(timer_base + 0x24, 9600);
+    assert.equal(timer.poll(now), 1);
+    now = 0.25;
+    assert.equal(io.read(timer_base + 0x44), 7200);
+    const armed = timer.get_state();
+    now = 1;
+    timer.poll(now);
+    assert.deepEqual(lines, [false, false]);
+    assert.equal(io.read(base + 8), 0xFFFFFFFF);
+    io.write(base + 0xC, 35);
+    assert.deepEqual(lines, [true, false]);
+    assert.equal(io.read(base + 8), 35);
+    assert.deepEqual(lines, [false, false]);
+    assert.equal(io.read(timer_base + 0x44), 0);
+    io.write(timer_base + 0x44, 9600);
+    assert.equal(io.read(base + 0x80), 0);
+    assert.equal(io.read(base + 8), 0xFFFFFFFF);
+    const unmasked = irq.get_state();
+    irq.reset();
+    timer.reset();
+    now = 0.5;
+    irq.set_state(unmasked);
+    timer.set_state(armed);
+    assert.equal(io.read(timer_base + 0x44), 4800);
+    now = 1;
+    assert.equal(timer.poll(now), 0);
+    assert.deepEqual(lines, [true, false]);
+    io.write(base + 0x10, 35);
+    assert.deepEqual(lines, [false, false]);
+    assert.equal(io.read(base + 8), 0xFFFFFFFF);
+});
 
 test("RAPIDO identity follows the documented firmware selector and retains reset state", () => {
     const io = bus(), id = create_n97_rapido_id(io);
