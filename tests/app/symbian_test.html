@@ -113,8 +113,15 @@ async function check_n97_keyboard(frame, emulator)
     await panel_contact("send", true);
     pointer("Send", "pointercancel", 4);
     await panel_contact(null, true);
+    if(!local)
+    {
+        await check_n97_display(doc, false, true);
+        const { panel } = await read();
+        check(panel.managed && !panel.display_on && panel.pixels_received === 640 * 360, "guest switches off the TFT with all pixels still in GRAM");
+    }
     pointer("Lock", "lostpointercapture", 5);
     await panel_contact(null, false);
+    if(!local) await check_n97_display(doc, false);
     keys("keydown", "End");
     await panel_contact("end", false);
     keys("keyup", "End");
@@ -191,7 +198,7 @@ async function running_worker(frame)
     return console_state;
 }
 
-async function check_n97_display(doc, landscape)
+async function check_n97_display(doc, landscape, black = false)
 {
     const width = landscape ? 640 : 360, height = landscape ? 360 : 640;
     const color_corners = landscape ? [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF] : [0x0000FF, 0xFF0000, 0xFFFFFF, 0x00FF00];
@@ -199,11 +206,12 @@ async function check_n97_display(doc, landscape)
     await until(() => {
         if(canvas.width !== width || canvas.height !== height || !canvas.getBoundingClientRect().width) return false;
         const context = canvas.getContext("2d");
+        if(black) return context.getImageData(0, 0, width, height).data.every((byte, index) => byte === (index % 4 === 3 ? 255 : 0));
         return [[1, 1], [width - 2, 1], [1, height - 2], [width - 2, height - 2]].every(([x, y], index) => {
             const [r, g, b, a] = context.getImageData(x, y, 1, 1).data;
             return a === 255 && (r << 16 | g << 8 | b) === color_corners[index];
         });
-    }, "guest DISPC colors in the " + (landscape ? "open" : "closed") + " slider canvas");
+    }, (black ? "guest turns off the TFT in the " : "guest TFT colors in the ") + (landscape ? "open" : "closed") + " slider canvas");
 }
 
 async function check_n97_touch(frame, emulator)
@@ -663,7 +671,7 @@ try
     }
     store.close();
     result.textContent = local ? "PASS original firmware folder import with OneNAND and sparse FAT32 eMMC" :
-        "PASS public firmware fixture with guest DISPC pixels, persistent storage and byte-identical SIS transfer on the next boot";
+        "PASS public firmware fixture with guest LoSSI display and retained DISPC pixels, persistent storage and byte-identical SIS transfer";
 }
 catch(error)
 {

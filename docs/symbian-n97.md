@@ -198,7 +198,7 @@ node --test tests/symbian/n97_touch.mjs
 node tests/app/browser_runner.mjs tests/app/symbian_test.html
 ```
 
-## LCD 光栅取帧
+## LCD 光栅取帧和 LoSSI
 
 RM-505 的 RAPIDO DISPC 从 SDRAM 读像素，经 ViSSI 给 D6001 显示控制器。LoSSI 传输控制命令，D6001 负责帧缓存及到面板的 Compact DisplayPort 输出。22.0.110 XIP 的 `d_display.ldd` 含 `DispC`，另有 `lossi.dll`、`r_display_kernel.dll` 和 `r_display.dll`。原版内核页表把 VA `0xC6024800` 映射到 PA `0x20024800`，`DispC` 初始化例程 `0x801327D4` 绑定 IRQ 131。寄存器契约以原版代码及相符的 TI DISPC 文档核对。[Nokia 板图第 2、8、10 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf) · [Nokia N97 维修手册第 8–26 至 8–27 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf) · [TI SPRUF98Y §15.4 与 §15.7.2.2](https://www.ti.com/lit/ug/spruf98y/spruf98y.pdf)
 
@@ -206,11 +206,16 @@ RM-505 的 RAPIDO DISPC 从 SDRAM 读像素，经 ViSSI 给 D6001 显示控制�
 
 本地探针为未改动的 0576555 XIP 提供最小 MMU 和光栅模式的调用者对象，由原版 `0x80132758` 构造控制器，再经 `0x80132950` 编程和启用主图层。原版 `0x80132B24` 与 `0x80133178` 随后提交硬件旋转的扫描配置。RGB565 和 XRGB8888 的四象限图案在 640×360 与 360×640 下逐像素吻合。独立的原版 AP 内核探针运行 `0x801327D4` 初始化，在诊断开启 VSYNC 中断后，实测 IRQ 131 经原版分派到 `0x8013333C`、确认状态并返回被中断的指令。公开 Chrome 夹具由 ARM 客体先写图案再编程 DISPC，核对两种方向的画布颜色及挂起恢复。
 
-原版 `0x80132DEC` 还会选择单次传输的 stall 模式。该路径涉及 `TControllerDifPlatform` 的 PA `0x20024080/0x20024100` 以及命令 D6001 的 LoSSI 端口 PA `0x20032100`。DIF、面板电源、LoSSI 序列和视频叠层仍待接入。完整 S60 桌面仍待验证。
+原版 `lossi.dll` 驱动通过 PA `0x20032100` 的两组端口发送命令和数据，经发送就绪、发送空闲及接收确认完成传输。维修手册的 Figure 76 显示 CS0 接 D6001（UPD809400），CS1 经 ASIP 接 TFT。原版两个构造函数与该走线一致。D6001 的行列窗口使用两个 24 位大端端点，TFT 的窗口端点为 16 位。D6001 在退出休眠、选择 24 位 ViSSI 和收到 `0x2C` 后，按窗口从光栅帧接收像素。TFT 的 `0x28/0x29` 和 `0x10/0x11` 控制关屏、开屏、休眠与唤醒，画面隐藏时保留帧缓存。快照保留缓存、窗口、命令及未完成的传输。S3.1 的旧快照仍可显示直接光栅。串行节拍采用板载 38.4 MHz 参考，休眠退出采用 DCS 的 5 ms 稳定时间。[Nokia 维修手册第 8–26 至 8–27 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf) · [MIPI Display Command Set](https://www.mipi.org/specifications/display-command-set)
+
+`panel-n97.mjs` 冷启 0576555 原版 AP 内核，以原版 `lossi.dll` 初始化 DFC 队列，再由 `DisplayControllerHw` 和 `WhiteDwarf` 原版构造函数创建两条命令路径。原版 `DispC` 经 ViSSI 向缓存提交全屏 230400 像素。原版窗口回调 `0x8013C5A8` 从带行步进的 SDRAM 更新 (304, 30) 起的 180×25 矩形，保留剩余 225900 像素。探针清空原始 SDRAM 后逐像素核对黑屏和唤醒前后两种方向的 RGBA。公开 Chrome 夹具用普通 CPU Worker 跑 ARM 客体，核对画布上的两种方向、关屏再开屏及挂起后的保存画面。
+
+原版 `0x80132DEC` 的 stall 模式仍需单独验收。已观测到 `TControllerDifPlatform` 编程 PA `0x20024080/0x20024100`，其在手机主屏完整引导中的作用仍待确认。面板物理复位及电源、LoSSI 像素 PIO、私有面板命令及视频叠层待接入。私有读取当前为总线高电平，缺少实机读数。完整 S60 桌面仍待验证。
 
 ```sh
 node tools/symbian/display-n97.mjs <output>/rom.xip.bin
-node --test tests/symbian/n97_dispc.mjs
+node tools/symbian/panel-n97.mjs <output>/rom.xip.bin
+node --test tests/symbian/n97_dispc.mjs tests/symbian/n97_panel.mjs
 node tests/symbian/fixtures/make_package.mjs
 node tests/app/browser_runner.mjs tests/app/symbian_test.html
 ```

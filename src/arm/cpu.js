@@ -43,6 +43,8 @@ import { create_n97_i2c } from "../symbian/n97_i2c.js";
 import { create_n97_dma } from "../symbian/n97_dma.js";
 import { create_n97_touch, n97_control, N97_TOUCH_ADDRESS } from "../symbian/n97_touch.js";
 import { create_n97_dispc } from "../symbian/n97_dispc.js";
+import { create_n97_panel } from "../symbian/n97_panel.js";
+import { create_n97_lossi } from "../symbian/n97_lossi.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -68,7 +70,7 @@ const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldf
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
     "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
     "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma", "n97_touch_gpio", "n97_touch",
-    "n97_lock_gpio", "n97_dispc"];
+    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -309,7 +311,9 @@ A64CPU.prototype.init = function(settings, device_bus)
             const interrupts = this.devices.n97_interrupts = create_n97_interrupts(this.io,
                 (irq, fiq) => this.wm.exports["a32_set_interrupt_lines"](irq, fiq));
             this.devices.display = new DisplayHub(device_bus, settings.screen);
-            const dispc = this.devices.n97_dispc = create_n97_dispc(this, this.devices.display, level => interrupts.set_dispc(level));
+            const panel = this.devices.n97_panel = create_n97_panel(() => this.devices.n97_dispc?.invalidate());
+            const dispc = this.devices.n97_dispc = create_n97_dispc(this, this.devices.display, level => interrupts.set_dispc(level), panel);
+            this.devices.n97_lossi = create_n97_lossi(this.io, this.clock, panel);
             this.devices.n97_os_timer = create_n97_os_timer(this.io, this.clock, level => interrupts.set_timer(level));
             const keypad_irq = this.devices.n97_keyboard_gpio = create_n97_gpio_input(this.io, 0x20031DC0, 0x20031D04, 2, true,
                 level => interrupts.set_keyboard(level));
@@ -884,7 +888,7 @@ A64CPU.prototype.run_hardware_timers = function(acpi, now)
 {
     if(this.devices.n97_os_timer)
         return Math.min(this.devices.n97_os_timer.poll(now), this.devices.n97_dma.poll(), this.devices.n97_touch.poll(now),
-            this.devices.n97_dispc.poll(now));
+            this.devices.n97_lossi.poll(now), this.devices.n97_panel.poll(now), this.devices.n97_dispc.poll(now));
     const display = this.devices.display ? this.devices.display.timer(now) : 100;
     if(this.devices.apple_timer) return Math.min(display, this.devices.apple_timer.timer(), this.devices.apple_gpio.timer(now),
         this.devices.apple_accelerometer?.timer(now) ?? 100, this.devices.apple_gyroscope?.timer(now) ?? 100,
@@ -1599,6 +1603,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
             "keyboard": this.devices.n97_keyboard.status(), "slider_open": this.devices.n97_slider_gpio.read_input(),
             "touch": this.devices.n97_touch.status(), "lock_pressed": !this.devices.n97_lock_gpio.read_input(),
             "display": this.devices.n97_dispc.status(),
+            "panel": this.devices.n97_panel.status(), "lossi": this.devices.n97_lossi.status(),
             "dma": this.devices.n97_dma.status(),
             ...(this.devices.n97_onenand ? { "onenand": this.devices.n97_onenand.status() } : {}),
             ...(this.devices.n97_mmc ? { "mmc": this.devices.n97_mmc.status() } : {}),

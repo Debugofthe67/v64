@@ -211,7 +211,7 @@ test("N97 screen, call keys and lock share the original buses and restore withou
         assert.equal(gpio(8), hall | pen | lock | absent_sd);
         assert.ok(send(0x42, [0x86, 0, 0]));
         const legacy = cpu.get_state(true);
-        legacy[4].splice(-4); // the earlier layout ends before the touch pin, controller, lock and display.
+        legacy[4].splice(-6); // the earlier layout ends before the touch pin and controller.
         assert.ok(send(0x42, [0x86, 0, 1]));
         vm.symbian_send_control("lock", true);
         cpu.set_state(legacy);
@@ -227,7 +227,7 @@ test("N97 screen, call keys and lock share the original buses and restore withou
         bus(0x1C, 0x86);
         bus(0x2C, 0x4A);
         const legacy_tx = cpu.get_state(true);
-        legacy_tx[4].splice(-4);
+        legacy_tx[4].splice(-6);
         legacy_tx[4].find(device => device?.[5] === "tx").pop();
         bus(0x24, 0);
         cpu.set_state(legacy_tx);

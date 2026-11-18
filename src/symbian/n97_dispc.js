@@ -22,13 +22,14 @@ const SHADOW = [CONFIG, BG_COLOR, LINE_NUMBER, TIMING_H, TIMING_V, POL_FREQ, DIV
 const PIXEL_BYTES = new Map([[6, 2], [8, 4]]);
 const size = word => [1 + (word & 0x7FF), 1 + (word >>> 16 & 0x7FF)];
 
-export function create_n97_dispc(cpu, hub, set_irq)
+export function create_n97_dispc(cpu, hub, set_irq, panel)
 {
     const regs = new Uint32Array((VID2_FIFO_THRESHOLD + 4) / 4), active = regs.slice();
     const rgba = new Uint8ClampedArray(PANEL_WIDTH * PANEL_HEIGHT * 4);
     const pixels = new Uint32Array(rgba.buffer), next_pixels = new Uint32Array(pixels.length);
     let landscape = false, width = PANEL_HEIGHT, height = PANEL_WIDTH;
     let frame_at = 0, line_signalled = false, draining = false, scan_pending = true, dirty = true, scanouts = 0;
+    let wire_pixels = null;
     const get = offset => regs[offset >>> 2];
     const raster_running = () => (get(CONTROL) & (LCD_ENABLE | STALL_MODE)) === LCD_ENABLE;
     const reg = (offset, name, read, write = () => {}) => word(cpu.io, N97_DISPC_BASE + offset, "RAPIDO DISPC " + name, read, write);
@@ -136,6 +137,19 @@ export function create_n97_dispc(cpu, hub, set_irq)
     }
     function on_vblank()
     {
+        if((raster_running() || draining) && panel.expecting_pixels())
+        {
+            const layout = fetch_layout();
+            const { lcd_width, lcd_height } = layout;
+            const count = lcd_width * lcd_height;
+            if((lcd_width <= PANEL_WIDTH && lcd_height <= PANEL_HEIGHT || lcd_width <= PANEL_HEIGHT && lcd_height <= PANEL_WIDTH) &&
+                (!layout.enabled || layout.start >= 0))
+            {
+                if(!wire_pixels) wire_pixels = new Uint32Array(PANEL_WIDTH * PANEL_HEIGHT);
+                draw_raster(wire_pixels, layout, lcd_width, lcd_height);
+                panel.receive(wire_pixels, count);
+            }
+        }
         if(raster_running())
         {
             frame_at = hub.last_vblank;
@@ -146,7 +160,7 @@ export function create_n97_dispc(cpu, hub, set_irq)
         }
         else if(draining) set_flags(FRAMEDONE);
         draining = false;
-        scan_pending = true;
+        if(!panel.managed()) scan_pending = true;
     }
     function poll_line(now)
     {
@@ -166,28 +180,23 @@ export function create_n97_dispc(cpu, hub, set_irq)
         const next = hub.timer(now);
         return raster_running() || draining ? Math.min(next, poll_line(now)) : next;
     }
-    function render()
+    function draw_raster(target, layout, view_width, view_height)
     {
-        if(!scan_pending) return;
-        scan_pending = false;
-        const layout = fetch_layout();
         const { lcd_width, lcd_height, plane_width, plane_height, x, y, format, start, dx, dy, replicate } = layout;
-        const native = lcd_width === PANEL_WIDTH && lcd_height === PANEL_HEIGHT;
-        const portrait = lcd_width === PANEL_HEIGHT && lcd_height === PANEL_WIDTH;
-        const valid_mode = (raster_running() || draining) && (native || portrait);
-        const color = valid_mode ? active[BG_COLOR >>> 2] : 0;
-        next_pixels.fill(0xFF000000 | (color & 255) << 16 | color & 0xFF00 | color >>> 16 & 255);
-        if(valid_mode && start >= 0)
+        const color = active[BG_COLOR >>> 2];
+        target.fill(0xFF000000 | (color & 255) << 16 | color & 0xFF00 | color >>> 16 & 255, 0, view_width * view_height);
+        if(start >= 0)
         {
             const mem = cpu.mem8;
             const cols = Math.min(plane_width, lcd_width - x), rows = Math.min(plane_height, lcd_height - y);
-            const direct = lcd_width === width;
-            const walk_pixel = direct ? 1 : native ? width : -width;
+            const direct = lcd_width === view_width;
+            const native = lcd_width === PANEL_WIDTH;
+            const walk_pixel = direct ? 1 : native ? view_width : -view_width;
             for(let row = 0; row < rows; row++)
             {
                 const sy = y + row;
-                let dest = direct ? sy * width + x :
-                    native ? x * width + PANEL_HEIGHT - 1 - sy : (PANEL_HEIGHT - 1 - x) * width + sy;
+                let dest = direct ? sy * view_width + x :
+                    native ? x * view_width + PANEL_HEIGHT - 1 - sy : (PANEL_HEIGHT - 1 - x) * view_width + sy;
                 for(let col = 0, at = start + row * dy; col < cols; col++, at += dx, dest += walk_pixel)
                 {
                     const lo = mem[at], mid = mem[at + 1];
@@ -195,11 +204,37 @@ export function create_n97_dispc(cpu, hub, set_irq)
                     {
                         const b = lo & 31, g = mid << 3 & 56 | lo >>> 5, r = mid >>> 3;
                         const extension = replicate ? (b >>> 2) << 16 | (g >>> 4) << 8 | r >>> 2 : 0;
-                        next_pixels[dest] = 0xFF000000 | b << 19 | g << 10 | r << 3 | extension;
+                        target[dest] = 0xFF000000 | b << 19 | g << 10 | r << 3 | extension;
                     }
-                    else next_pixels[dest] = 0xFF000000 | lo << 16 | mid << 8 | mem[at + 2];
+                    else target[dest] = 0xFF000000 | lo << 16 | mid << 8 | mem[at + 2];
                 }
             }
+        }
+    }
+    function render()
+    {
+        if(!scan_pending) return;
+        scan_pending = false;
+        if(panel.managed())
+        {
+            const gram = panel.frame();
+            if(!gram) next_pixels.fill(0xFF000000);
+            else if(landscape) next_pixels.set(gram);
+            else
+            {
+                for(let y = 0; y < PANEL_HEIGHT; y++)
+                    for(let x = 0; x < PANEL_WIDTH; x++)
+                        next_pixels[x * PANEL_HEIGHT + PANEL_HEIGHT - 1 - y] = gram[y * PANEL_WIDTH + x];
+            }
+        }
+        else
+        {
+            const layout = fetch_layout();
+            const { lcd_width, lcd_height } = layout;
+            const native = lcd_width === PANEL_WIDTH && lcd_height === PANEL_HEIGHT;
+            const portrait = lcd_width === PANEL_HEIGHT && lcd_height === PANEL_WIDTH;
+            if((raster_running() || draining) && (native || portrait)) draw_raster(next_pixels, layout, width, height);
+            else next_pixels.fill(0xFF000000);
         }
         if(!dirty && next_pixels.every((pixel, index) => pixel === pixels[index])) return;
         dirty = false;
