@@ -27,7 +27,7 @@ const QUANTUM: u32 = 4096;
 /// page tier's scratch fields before the a32 range come along, unused
 /// between activations)
 const STATE_START: usize = 64;
-const STATE_END: usize = 1520;
+const STATE_END: usize = 1532;
 const STATE_BYTES: usize = STATE_END - STATE_START;
 
 #[repr(C, align(16))]
@@ -781,6 +781,6 @@ mod tests {
         use crate::aarch64::state::{a32_prefetch, x};
         let base = crate::state_block::state_base() as usize;
         assert_eq!(x as usize - base, super::STATE_START);
-        assert_eq!(a32_prefetch as usize + 12 - base, super::STATE_END);
+        assert_eq!(a32_prefetch as usize + 24 - base, super::STATE_END);
     }
 }

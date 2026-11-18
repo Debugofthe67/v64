@@ -566,7 +566,7 @@ pub fn reset(entry: u64, context: u64) {
         *a32_dacr = 0;
         *a32_ifsr = 0;
         core::ptr::write_bytes(a32_mem_remap, 0, 4);
-        core::ptr::write_bytes(a32_prefetch, 0, 3);
+        core::ptr::write_bytes(a32_prefetch, 0, 6);
     }
 }
 
@@ -818,6 +818,11 @@ pub fn cp15(
         // DFAR, IFAR (FAR_EL1's halves)
         (0, 6, 0, 0) => half(far_el1, false),
         (0, 6, 0, 2) => half(far_el1, true),
+        // Flush Prefetch Buffer (DDI 0211I §6.7.6).
+        (0, 7, 5, 4) if arm1136 && !read => {
+            a32::clear_prefetch();
+            Ok(Flow::Next)
+        },
         // cache maintenance and the CP15 barriers; the branch predictor
         (0, 7, 5, 4) | (0, 7, 10, 4) | (0, 7, 10, 5) if !read => Ok(Flow::Next),
         (0, 7, 1 | 5 | 6 | 10 | 11 | 14, _) if !read => Ok(Flow::Next),

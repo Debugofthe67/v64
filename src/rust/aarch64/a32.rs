@@ -1193,7 +1193,7 @@ pub fn cp15(
     cond: u32,
 ) -> Result<Flow, Exception> {
     if crate::aarch64::a32_system::privileged() ||
-        arm1136() && matches!((opc1, crn, crm, opc2), (0, 7, 12, 4 | 5))
+        arm1136() && matches!((opc1, crn, crm, opc2), (0, 7, 5, 4) | (0, 7, 12, 4 | 5))
     {
         return crate::aarch64::a32_system::cp15(read, opc1, crn, crm, opc2, rt, value);
     }
@@ -1312,19 +1312,28 @@ const PREFETCH_THUMB: u32 = 1 << 8;
 #[inline(always)]
 pub fn prefetch_pending() -> bool { unsafe { *a32_prefetch.add(2) != 0 } }
 
-pub fn clear_prefetch() { unsafe { *a32_prefetch.add(2) = 0 }; }
+pub fn clear_prefetch() {
+    unsafe {
+        *a32_prefetch.add(2) = 0;
+        *a32_prefetch.add(5) = 0;
+    }
+}
 
-/// Keep the sequential opcode already in the ARM1136 pipeline when SCTLR.M
-/// changes without a pipeline flush (DDI 0211I §§1.5–1.6, 6.7.6).
+/// Retain up to two sequential instructions from the ARM1136 fetch stream when
+/// SCTLR.M changes (DDI 0211I §§1.5–1.6, 5.1, 6.7.6). Speculative faults do not
+/// retire here. A branch or prefetch flush starts a fresh fetch stream.
 pub fn prefetch_before_mmu_switch() {
-    let address = (get_pc() as u32).wrapping_add(instruction_length());
+    clear_prefetch();
+    let mut address = (get_pc() as u32).wrapping_add(instruction_length());
     let thumb = thumb();
-    if let Ok((word, length)) = fetch(address as u64, thumb) {
+    for index in [0, 3] {
+        let Ok((word, length)) = fetch(address as u64, thumb) else { break };
         unsafe {
-            *a32_prefetch = address;
-            *a32_prefetch.add(1) = word;
-            *a32_prefetch.add(2) = length | if thumb { PREFETCH_THUMB } else { 0 };
+            *a32_prefetch.add(index) = address;
+            *a32_prefetch.add(index + 1) = word;
+            *a32_prefetch.add(index + 2) = length | if thumb { PREFETCH_THUMB } else { 0 };
         }
+        address = address.wrapping_add(length);
     }
 }
 
@@ -1334,10 +1343,13 @@ fn take_prefetch(address: u64, thumb: bool) -> Option<(u32, u32)> {
         if info == 0 {
             return None;
         }
-        clear_prefetch();
         if address == *a32_prefetch as u64 && thumb == (info & PREFETCH_THUMB != 0) {
-            return Some((*a32_prefetch.add(1), info & !PREFETCH_THUMB));
+            let word = *a32_prefetch.add(1);
+            core::ptr::copy_nonoverlapping(a32_prefetch.add(3), a32_prefetch, 3);
+            *a32_prefetch.add(5) = 0;
+            return Some((word, info & !PREFETCH_THUMB));
         }
+        clear_prefetch();
     }
     None
 }
@@ -1405,8 +1417,16 @@ pub fn interpret_one(address: u64) -> Flow {
                 Flow::Next | Flow::Yield | Flow::Wait(_) | Flow::Off => {
                     set_pc((address as u32).wrapping_add(length) as u64)
                 },
-                Flow::Jump(target) => set_pc(target),
-                Flow::Set | Flow::Retry => {},
+                Flow::Jump(target) => {
+                    if prefetch_pending() {
+                        clear_prefetch();
+                    }
+                    set_pc(target);
+                },
+                Flow::Set => clear_prefetch(),
+                // A barrier retries only while another core acknowledges TLB
+                // maintenance. The ARM1136 machine that queues fetches is single-core.
+                Flow::Retry => {},
             }
             // (the IT block goes on: T32's instructions, executed or not)
             if thumb && !matches!(flow, Flow::Set | Flow::Retry) {

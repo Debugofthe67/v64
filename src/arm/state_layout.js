@@ -93,7 +93,7 @@ export const CORE_STATE_RANGES = [
     [1208, 1248],
     [1248, 1312],
     [1312, 1320],
-    [1360, 1520],
+    [1360, 1532],
 ];
 
 /** [offset, size] of the core state that INIT keeps (the rest takes its reset value) */

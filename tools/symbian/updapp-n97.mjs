@@ -81,6 +81,7 @@ try
     const cpu = vm.v86.cpu, wasm = cpu.wm.exports, io = cpu.io;
     const { display, n97_dispc: controller, n97_panel: panel } = cpu.devices;
     const state = new DataView(cpu.wasm_memory.buffer, cpu.state_base);
+    const xip = new DataView(rom.buffer, rom.byteOffset, rom.byteLength);
     const field = (name, offset = 0) => state.getUint32(STATE_OFFSETS[name] + offset, true);
     const pc = () => Number(cpu.read_pc());
     const word = pa => cpu.read32_physical(pa) >>> 0;
@@ -95,7 +96,7 @@ try
         return ((second & 0xFFFFF000) | (va & 0xFFF)) >>> 0;
     }
     const watched = new Set([N97_SDRC_POWER, N97_POWER_REQUEST + 8, N97_POWER_INIT, N97_CPU_PLL_CONTROL, N97_BOOT_TIMER + 0x18]);
-    const accesses = [];
+    const accesses = [], relocation = [];
     let display_accesses = 0, step = 0, fault, mmu_off;
     function record(owner, offset, width, direction, value)
     {
@@ -130,12 +131,20 @@ try
         if(here === 0xCA1040CC && (field("sctlr_el1") & 1) && !mmu_off)
         {
             const pa = small_page(here);
+            const xip_offset = 0x5C190;
+            const instructions = [0, 4, 8].map(offset => word(pa + offset));
+            assert.deepEqual(instructions, [0, 4, 8].map(offset => xip.getUint32(xip_offset + offset, true)),
+                "relocated instructions match original SecLdd.LDD XIP");
             mmu_off = { step, pc: here, pa, before: field("sctlr_el1"), target: field("x", 8),
-                instructions: [0, 4, 8].map(offset => word(pa + offset)) };
+                xip_offset, instructions };
         }
+        const in_relocation = mmu_off && relocation.length < 32 &&
+            (here >= 0xCA1040CC && here < 0xCA104100 || here >= mmu_off.target && here < mmu_off.target + 0x40);
+        const sctlr = in_relocation ? field("sctlr_el1") : undefined;
         wasm["a64_worker_slice"](1);
         const vector = pc();
-        if(here === mmu_off?.pc) mmu_off.after = field("sctlr_el1");
+        if(in_relocation) relocation.push({ step, pc: here, sctlr, next_pc: vector, next_sctlr: field("sctlr_el1") });
+        if(step === mmu_off?.step) mmu_off.after = field("sctlr_el1");
         if([0xC, 0x10, 0xFFFF000C, 0xFFFF0010].includes(vector))
         {
             const fetch = (vector & 0xFF) === 0xC;
@@ -146,7 +155,7 @@ try
     }
     display.request_frame(true);
     assert.ok(frame, "display source must publish a frame");
-    console.log(JSON.stringify({ source, handoff: "standalone AP diagnostic", accesses, mmu_off, fault, last: { step, pc: pc() },
+    console.log(JSON.stringify({ source, handoff: "standalone AP diagnostic", accesses, mmu_off, relocation, fault, last: { step, pc: pc() },
         display: { controller: controller.status(), panel: panel.status(), mmio: display_accesses, frame } }, null, 2));
 }
 finally
