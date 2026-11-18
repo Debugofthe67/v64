@@ -990,6 +990,10 @@ export interface V86Options {
     symbian?: { rom: V86Image; rom_sha256?: string; boot_media?: V86Image; boot_media_sha256?: string;
         /** RM-505 OneNAND image from tools/symbian/vpl.mjs, in memory or in a writable local/OPFS file. */
         nand?: V86BufferImage | { url: string; disk_option: "read_write"; size?: number };
+        /** Sparse 32 GB internal disk in the N97 format, in a writable local or OPFS file. */
+        emmc?: { url: string; disk_option: "read_write"; size?: number };
+        /** User's removable raw SD or SDHC image. */
+        sd?: V86BufferImage | { url: string; disk_option: "read_write"; size?: number };
         bootrom?: V86Image; bootrom_id?: string; bootrom_sha256?: string; application_processor_only?: boolean } &
         ({ load_address?: undefined; boot_registers?: undefined } |
         { load_address: number; boot_registers: [number, number, number, number] });

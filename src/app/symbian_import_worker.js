@@ -4,6 +4,8 @@ import { parse_vpl, VPL_MAX_BYTES } from "../symbian/vpl.js";
 import { check_n97_firmware } from "../symbian/n97_firmware.js";
 import { extract_n97_images } from "../symbian/n97_images.js";
 import { N97_DEVICE, N97_MEDIA } from "../symbian/catalog.js";
+import { open_n97_emmc } from "../symbian/n97_mmc_media.js";
+import { format_n97_emmc } from "../symbian/n97_emmc_format.js";
 import { SHA256, sha256_hex } from "../image/sha256.js";
 
 const CHUNK = 1024 * 1024;
@@ -169,6 +171,18 @@ async function write_images(images, ids)
             store.close();
         }
     }
+    if(typeof ids.emmc !== "string" || !/^[a-f0-9-]+-symbian-emmc$/.test(ids.emmc))
+        throw new Error("Invalid eMMC import destination");
+    progress("Creating the Nokia N97's sparse eMMC…");
+    const handle = await directory.getFileHandle(ids.emmc + ".img", { create: true });
+    const store = await handle.createSyncAccessHandle();
+    try
+    {
+        format_n97_emmc(open_n97_emmc(store, true), crypto.getRandomValues(new Uint32Array(1))[0]);
+        store.flush();
+        open_n97_emmc(store);
+    }
+    finally { store.close(); }
 }
 
 self.onmessage = async ({ data }) =>

@@ -256,6 +256,16 @@ export function check_machine_options(options)
             {
                 throw new Error("Nokia N97 OneNAND needs a writable local file or an in-memory image and RAM above CS0");
             }
+            for(const name of ["emmc", "sd"])
+            {
+                const card = symbian[name];
+                if(card !== undefined && (address !== undefined || !(typeof card?.["url"] === "string" &&
+                    card["disk_option"] === "read_write" && !/^https?:/i.test(card["url"])) &&
+                    !(name === "sd" && card?.["buffer"] instanceof ArrayBuffer)))
+                {
+                    throw new Error("Nokia N97 " + name + " requires a local image and the normal board layout");
+                }
+            }
             for(const name of ["rom_sha256", "boot_media_sha256", "bootrom_sha256"])
             {
                 const digest = symbian[name];

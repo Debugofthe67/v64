@@ -18,6 +18,7 @@ import { ANDROID_DEFAULTS } from "../vm_config.js";
 import { RANCHU_DEVICES } from "../../android/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
 import { check_n97_bootrom, N97_RAPIDO_ROM_ID } from "../../symbian/n97_boot_media.js";
+import { n97_sd_capacity } from "../../symbian/n97_mmc_media.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Problem} Problem */
@@ -34,6 +35,8 @@ import { check_n97_bootrom, N97_RAPIDO_ROM_ID } from "../../symbian/n97_boot_med
  * @property {((progress: (text: string) => void) => Promise<void>) | null} erase_ios
  * @property {PendingBootRom | null} pending_bootrom
  * @property {(value: PendingBootRom) => void} stage_bootrom
+ * @property {File | null | undefined} pending_sd
+ * @property {(value: File | null) => void} stage_sd
  */
 
 /**
@@ -115,20 +118,38 @@ function symbian_panel(ctx)
     const firmware = ctx.config.symbian;
     const rows = [...hardware_rows(ctx.config), ["VPL", firmware.manifest], ["VPL SHA-256", firmware.manifest_sha256]];
     rows.push(["OneNAND", firmware.media?.nand ? "256 MiB · writable by this VM" : "Legacy import · no OneNAND image"]);
+    rows.push(["Internal eMMC", firmware.emmc ? "32 GB · uses storage as the VM writes" : "Legacy import · no eMMC image"]);
     const hardware = h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
         h("tr", null, h("th", null, label), h("td", null, value)))));
     const bootrom = firmware.bootrom;
     const heading = h("h4", null, "RAPIDO boot ROM");
     const legacy = !firmware.media?.nand ? h("p.note", null,
         "Reimport the RM-505 package in New VM to create a writable OneNAND image. Each VM keeps its own phone data.") : null;
+    const card = h("div", null, h("h4", null, "microSD"),
+        h("p", null, ctx.pending_sd === null ? "Ready to eject" : ctx.pending_sd ? ctx.pending_sd.name + " · ready to insert" :
+            firmware.sd?.name || "Empty slot"));
+    if(!ctx.config.suspended)
+    {
+        const input = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: ".img,.bin,.raw,application/octet-stream" }));
+        const status = h("p.note", { role: "status" });
+        input.onchange = () => {
+            const file = input.files?.[0];
+            if(!file) return;
+            if(n97_sd_capacity(file.size)) ctx.stage_sd(file);
+            else status.textContent = "Choose a raw SD or SDHC image with a supported capacity, up to 16 GiB.";
+        };
+        card.append(h("label.field", null, h("span", null, "Insert a microSD image"), input), status);
+        if(ctx.pending_sd || firmware.sd && ctx.pending_sd === undefined)
+            card.append(h("button", { type: "button", onclick: () => ctx.stage_sd(null) }, "Eject microSD"));
+    }
     if(!firmware.media?.boot_media)
     {
-        return [hardware, legacy, heading, h("p.note", null,
+        return [hardware, legacy, card, heading, h("p.note", null,
             "Reimport the matching RM-505 package in New VM to add the original DSP0 and ISASW images.")];
     }
     if(ctx.config.suspended)
     {
-        return [hardware, legacy, heading, h("p.note", null,
+        return [hardware, legacy, card, heading, h("p.note", null,
             "The suspended state requires its original ROM. Resume the VM and shut it down or discard the suspended state before changing the chip ROM.")];
     }
     const file = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: ".bin,.rom,.img,application/octet-stream" }));
@@ -153,7 +174,7 @@ function symbian_panel(ctx)
         catch(error) { status.textContent = String(error.message || error); }
         finally { select.disabled = false; }
     };
-    return [hardware, legacy, heading,
+    return [hardware, legacy, card, heading,
         h("p.note", null, "The RM-505 firmware package contains DSP0 and ISASW. The boot ROM is built into the RAPIDO chip and comes from a separate local dump."),
         h("p.note", null, "RM-505 service report ROM ID " + N97_RAPIDO_ROM_ID),
         h("p", null, ctx.pending_bootrom ? ctx.pending_bootrom.file.name + " · ready to save" : bootrom ?
@@ -319,7 +340,7 @@ function additions(c)
  * @param {VMConfig} config
  * @param {{store: PanelContext["store"], service?: PanelContext["service"], title?: string, save_label?: string, item?: string,
  *     erase_ios?: PanelContext["erase_ios"],
- *     persist?: (config: VMConfig, bootrom: PendingBootRom | null) => Promise<VMConfig>}} options
+ *     persist?: (config: VMConfig, bootrom: PendingBootRom | null, pending_sd?: File | null) => Promise<VMConfig>}} options
  * @return {Promise<VMConfig | null>}
  */
 export function open_settings(config, options)
@@ -333,6 +354,8 @@ export function open_settings(config, options)
         let saving_bootrom = false;
         /** @type {PendingBootRom | null} */
         let pending_bootrom = null;
+        /** @type {File | null | undefined} */
+        let pending_sd;
         /** @type {Problem[]} */
         let problems = [];
         const element = /** @type {HTMLDialogElement} */ (h("dialog.settings-dialog", { "aria-label": options.title || "Settings" }));
@@ -351,6 +374,8 @@ export function open_settings(config, options)
             get choices() { return choices(working); },
             get pending_bootrom() { return pending_bootrom; },
             stage_bootrom(value) { pending_bootrom = value; render(); },
+            get pending_sd() { return pending_sd; },
+            stage_sd(value) { pending_sd = value; render(); },
             set(path, value)
             {
                 const result = change(working, path, value);
@@ -397,11 +422,12 @@ export function open_settings(config, options)
             saving_bootrom = true;
             render();
             let saved;
-            try { saved = await options.persist(working, pending_bootrom); }
+            try { saved = await options.persist(working, pending_bootrom, pending_sd); }
             catch(error)
             {
-                if(pending_bootrom) selected = "symbian";
-                problems = [{ path: pending_bootrom ? "symbian.bootrom" : selected, message: String(error.message || error) }];
+                if(pending_bootrom || pending_sd !== undefined) selected = "symbian";
+                problems = [{ path: pending_sd !== undefined ? "symbian.sd" : pending_bootrom ? "symbian.bootrom" : selected,
+                    message: String(error.message || error) }];
             }
             finally { saving_bootrom = false; }
             if(saved) close(saved);

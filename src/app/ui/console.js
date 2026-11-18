@@ -493,6 +493,7 @@ function console_ui(layout, emulator, ctx)
     const iphone = options.machine_type === "s5l8930";
     const virt = options.cpu_type === "arm64";
     const written_back = [options.hda, options.hdb, options.fda, options.fdb, options.ios?.nand,
+        options.symbian?.nand, options.symbian?.emmc, options.symbian?.sd,
         ...(options.virtio_disks || [])].some(d => d && d.disk_option === "read_write");
     let powered_off = false;
     let running = false;

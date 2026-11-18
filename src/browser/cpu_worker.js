@@ -119,6 +119,7 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
             "boot_registers": o["symbian"]["boot_registers"], "rom_sha256": o["symbian"]["rom_sha256"],
             "boot_media": file(o["symbian"]["boot_media"]), "boot_media_sha256": o["symbian"]["boot_media_sha256"],
             "nand": file(o["symbian"]["nand"]),
+            "emmc": file(o["symbian"]["emmc"]), "sd": file(o["symbian"]["sd"]),
             "bootrom": file(o["symbian"]["bootrom"]), "bootrom_id": o["symbian"]["bootrom_id"],
             "bootrom_sha256": o["symbian"]["bootrom_sha256"], "application_processor_only": o["symbian"]["application_processor_only"] },
         "kernel": file(o.kernel), "dtb": file(o.dtb),

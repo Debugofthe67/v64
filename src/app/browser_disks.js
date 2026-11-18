@@ -89,7 +89,7 @@ export async function list_disks()
         if(!match || handle.kind !== "file") continue;
         const file = await handle.getFile();
         const record = await read_record(dir, match[1]);
-        if(/-symbian-(?:rom|rofs[123]|phone|boot_media)$/.test(match[1]) && !record.symbian) continue;
+        if(/-symbian-(?:rom|rofs[123]|phone|boot_media|nand|emmc)$/.test(match[1]) && !record.symbian) continue;
         disks.push({ id: match[1], path: disk_path(match[1]), size: file.size, label: record.label || match[1],
             created: record.created || new Date(file.lastModified).toISOString(), generation: record.generation || 1,
             ios: record.ios, symbian: record.symbian });

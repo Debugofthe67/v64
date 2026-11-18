@@ -1,6 +1,8 @@
 // The RM-505 bootstrap uses these physical registers before the variant's
 // interrupt, clock and power management drivers take over.
 
+import { N97_MMC_IRQ } from "./n97_mmc.js";
+
 export const N97_RAPIDO_SELECT = 0x20030300;
 export const N97_RAPIDO_REVISION = 0x113;
 export const N97_CPU_PLL = 0x20032D24;
@@ -70,29 +72,51 @@ function merge(old, value, mask)
     return ((old & ~mask) | (value & mask)) >>> 0;
 }
 
-export function create_n97_board_config(io)
+export function create_n97_board_config(io, mmc = () => null)
 {
     // These are the board settings written by the variant at XIP+0x974A4.
     // Adjacent offsets also host active devices; only map the actual words.
     const words = [0x1C10, 0x1C20, 0x1C30, 0x1C40, 0x1C50, 0x1C60, 0x1C70,
         0x1C90, 0x1CA0, 0x1CB0, 0x1CC0, 0x1CD0, 0x1CE0, 0x1CF0, 0x1D00, 0x1D10, 0x1D20, 0x1D30];
-    return latches(io, 0x20030000, "RAPIDO board configuration", words);
+    const platform = latches(io, 0x20030000, "RAPIDO board configuration", words, (offset, value) => {
+        if(offset === 0x1C90) mmc()?.set_clock(!!(value & 0x4000));
+        if(offset === 0x1CC0) mmc()?.select_card(value >> 12 & 1);
+    });
+    // Variant MMC clock gating and egpio bank 1's GENIO44 output set/clear.
+    for(const offset of [0x1C90, 0x1CC0])
+    {
+        word(io, 0x20030000 + offset + 4, "RAPIDO output set", () => 0,
+            (value, mask) => platform.write_word(offset, -1, value & mask));
+        word(io, 0x20030000 + offset + 8, "RAPIDO output clear", () => 0,
+            (value, mask) => platform.write_word(offset, 0, value & mask));
+    }
+    // RM-505 MMCDet is GENIO45. EPBUSMV at 0x80160F2C checks for a low input
+    // through egpio bank 1's DATAIN. Slot changes are applied at cold open.
+    word(io, 0x20031D88, "RAPIDO GENIO bank 1 inputs", () => mmc()?.sd ? 0 : 0x2000, () => {});
+    return platform;
 }
 
-function latches(io, base, name, offsets)
+function latches(io, base, name, offsets, on_write = undefined)
 {
     const reset = () => offsets.map(() => 0);
     let registers = reset();
+    function write_word(offset, value, mask)
+    {
+        const index = offsets.indexOf(offset);
+        registers[index] = merge(registers[index], value, mask);
+        on_write?.(offset, registers[index]);
+    }
     for(const [index, offset] of offsets.entries())
     {
         word(io, base + offset, name, () => registers[index], (value, mask) => {
-            registers[index] = merge(registers[index], value, mask);
+            write_word(offset, value, mask);
         });
     }
     return {
         reset() { registers = reset(); },
         get_state() { return registers.slice(); },
         set_state(state) { registers = state.slice(); },
+        write_word,
     };
 }
 
@@ -111,9 +135,14 @@ export function create_n97_interrupts(io, set_lines)
     const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C]);
     const priority = new Uint8Array(256);
     let enabled = 0, selected = 0, active = NO_INTERRUPT, timer_unmasked = false;
-    let timer_level = false;
-    const pending = () => enabled && timer_unmasked && timer_level && priority[MS_TICK_INTERRUPT] && active === NO_INTERRUPT ?
-        MS_TICK_INTERRUPT : NO_INTERRUPT;
+    let timer_level = false, mmc_unmasked = false, mmc_level = false;
+    const pending = () => {
+        if(!enabled || active !== NO_INTERRUPT) return NO_INTERRUPT;
+        const timer = timer_unmasked && timer_level && priority[MS_TICK_INTERRUPT];
+        const mmc = mmc_unmasked && mmc_level && priority[N97_MMC_IRQ];
+        if(timer && (!mmc || timer >= mmc)) return MS_TICK_INTERRUPT;
+        return mmc ? N97_MMC_IRQ : NO_INTERRUPT;
+    };
     const update = () => set_lines(pending() !== NO_INTERRUPT, false);
     const reg = (offset, name, read, write) => word(io, ICU_BASE + offset, name, read, write);
     reg(0x04, "RAPIDO interrupt enable", () => enabled, (value, mask) => { enabled = merge(enabled, value, mask & 1); update(); });
@@ -125,21 +154,18 @@ export function create_n97_interrupts(io, set_lines)
     // The firmware calls the +0x0C command with the bound tick ID
     // immediately after programming the first interval.
     reg(0x0C, "RAPIDO IRQ unmask", () => 0, (value, mask) => {
-        if((value & mask) === MS_TICK_INTERRUPT)
-        {
-            timer_unmasked = true;
-            active = NO_INTERRUPT;
-            update();
-        }
+        const id = (value & mask) >>> 0;
+        if(id === MS_TICK_INTERRUPT) timer_unmasked = true;
+        if(id === N97_MMC_IRQ) mmc_unmasked = true;
+        if(id === active) active = NO_INTERRUPT;
+        update();
     });
     reg(0x10, "RAPIDO IRQ mask", () => 0, (value, mask) => {
         const id = (value & mask) >>> 0;
-        if(id === NO_INTERRUPT || id === MS_TICK_INTERRUPT)
-        {
-            timer_unmasked = false;
-            active = NO_INTERRUPT;
-            update();
-        }
+        if(id === NO_INTERRUPT || id === MS_TICK_INTERRUPT) timer_unmasked = false;
+        if(id === NO_INTERRUPT || id === N97_MMC_IRQ) mmc_unmasked = false;
+        if(id === NO_INTERRUPT || id === active) active = NO_INTERRUPT;
+        update();
     });
     reg(0x20, "RAPIDO interrupt select", () => selected, (value, mask) => { selected = merge(selected, value, mask & 0xFF); });
     reg(0x24, "RAPIDO interrupt priority", () => priority[selected], (value, mask) => {
@@ -163,6 +189,7 @@ export function create_n97_interrupts(io, set_lines)
     }
     return {
         set_timer(level) { timer_level = level; update(); },
+        set_mmc(level) { mmc_level = level; update(); },
         reset()
         {
             configuration.reset();
@@ -171,14 +198,16 @@ export function create_n97_interrupts(io, set_lines)
             active = NO_INTERRUPT;
             timer_unmasked = false;
             timer_level = false;
+            mmc_unmasked = mmc_level = false;
             update();
         },
-        get_state() { return [configuration.get_state(), Array.from(priority), enabled, selected, active, timer_unmasked, timer_level]; },
+        get_state() { return [configuration.get_state(), Array.from(priority), enabled, selected, active, timer_unmasked, timer_level,
+            mmc_unmasked, mmc_level]; },
         set_state(state)
         {
             configuration.set_state(state[0]);
             priority.set(state[1]);
-            [, , enabled, selected, active, timer_unmasked, timer_level] = state;
+            [, , enabled, selected, active, timer_unmasked, timer_level, mmc_unmasked = false, mmc_level = false] = state;
             update();
         },
     };

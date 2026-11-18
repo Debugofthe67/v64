@@ -183,9 +183,9 @@ CORE_FILES=cjs.js const.js io.js machine_clock.js machine_options.js main.js lib
 	   elf.js kernel.js extended_memory.js \
 	   parallel/relocate.js parallel/control.js parallel/machine.js \
 	   ios/crypto.js ios/lzss.js ios/nand_boot.js ios/sparse_nand.js ios/guest_load.js ios/install_trust.js ios/install_protocol.js ios/install_service.js ios/network.js ios/runtime_trust.js ios/install_api.js apple/amc.js apple/amc_codec.js apple/audio_decode.js apple/audio.js apple/boot.js apple/n90_compat.js apple/bootlogo.js apple/cdma.js apple/uid.js apple/clcd.js apple/dart.js apple/devicetree.js apple/h2fmi.js apple/i2c.js apple/iop.js apple/macho.js apple/multitouch.js apple/nand.js apple/nand_geometry.js apple/s5l8930.js apple/sensors.js apple/spi.js apple/timer.js apple/uart.js apple/vic.js \
-	   arm/state_layout.js arm/cpu.js arm/backdoor_a32.js symbian/n97_board.js symbian/n97_boot_media.js symbian/n97_devices.js symbian/n97_flash.js symbian/n97_onenand.js virt/platform.js virt/io.js virt/pl011.js virt/pl031.js virt/inflate.js virt/dtb.js virt/ranchu.js virt/goldfish.js virt/loader.js \
+	   arm/state_layout.js arm/cpu.js arm/backdoor_a32.js symbian/n97_board.js symbian/n97_boot_media.js symbian/n97_devices.js symbian/n97_flash.js symbian/n97_onenand.js symbian/n97_mmc.js symbian/n97_mmc_card.js symbian/n97_mmc_media.js virt/platform.js virt/io.js virt/pl011.js virt/pl031.js virt/inflate.js virt/dtb.js virt/ranchu.js virt/goldfish.js virt/loader.js \
 	   android/bytes.js android/gpt.js android/avb.js android/bootimg.js android/bootconfig.js android/devices.js android/boot.js android/bootloader.js android/partition_buffer.js android/cpio.js android/ramdisk_overlay.js \
-	   image/sha256.js image/source.js image/overlay.js image/disk_image.js image/qcow2.js image/vhd.js image/vdi.js image/vmdk.js image/vhdx.js image/ova.js image/factory.js image/export.js image/qcow2_export.js
+	   image/sha256.js image/sparse_blocks.js image/source.js image/overlay.js image/disk_image.js image/qcow2.js image/vhd.js image/vdi.js image/vmdk.js image/vhdx.js image/ova.js image/factory.js image/export.js image/qcow2_export.js
 LIB_FILES=9p.js filesystem.js marshall.js
 BROWSER_FILES=screen.js keyboard.js mouse.js speaker.js serial.js \
 	      network.js starter.js wasm_paths.js worker_bus.js state_stream_transport.js cpu_worker.js dummy_screen.js ansi_screen.js \
@@ -1004,7 +1004,7 @@ build/ios-install-worker.js: src/app/ios_install_worker.js $(wildcard src/ios/*.
 	node_modules/.bin/esbuild src/app/ios_install_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
 		--outfile=build/ios-install-worker.js --log-level=warning
 
-build/symbian-import-worker.js: src/app/symbian_import_worker.js $(wildcard src/symbian/*.js) src/android/bytes.js src/image/sha256.js src/virt/inflate.js node_modules/.bin/esbuild
+build/symbian-import-worker.js: src/app/symbian_import_worker.js $(wildcard src/symbian/*.js) src/android/bytes.js src/image/sparse_blocks.js src/image/sha256.js src/virt/inflate.js node_modules/.bin/esbuild
 	mkdir -p build
 	node_modules/.bin/esbuild src/app/symbian_import_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
 		--outfile=build/symbian-import-worker.js --log-level=warning

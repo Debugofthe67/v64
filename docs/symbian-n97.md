@@ -121,15 +121,30 @@ node tools/symbian/onenand-n97.mjs <output> <firmware-directory>/RM-505_22.0.110
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img
 ```
 
+## RAPIDO MMC 主机与用户存储
+
+RM-505 的内置 eMMC 是板图第 6 页的 D5250，标称 32 GB。`ESTARTCOMP.TXT` 将本地驱动 3 映射为 E:，驱动 2 映射为 F:。`EPBUSMV.DLL` 的 `0x80160890` 使用 GENIO44 控制第 6 页的 N5252 时钟多路器。原版代码为 socket 0 写 `0x20031CC4=0x1000`，选择外置 microSD。socket 1 写 `0x20031CC8=0x1000`，选择内置 eMMC。GENIO45 是外置卡低有效检测脚，`egpio.dll` 原版输入函数 `0x800A0450` 读 `0x20031D88` 的位 13。卡槽配置在关机后更改，冷开时读取检测状态。[Nokia RM-505/RM-507 维修板图第 2、6 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf)
+
+两张卡共享 `0xC6032800`（PA `0x20032800`）的半字 MMC 主机寄存器。`EPBUSMV.DLL` 在 `0x8016085C` 将主机中断绑定到 IRQ 159，并在 `0x8016059C` 读取 IE 和 STAT。平台在 `0x20031C94/98` 置位或清除时钟控制位 14，主机另有 CON 的供电位。命令、响应顺序、FIFO、计数和中断标志按原版访问以及 TI 寄存器资料核对。内置卡使用 MMC 扇区寻址，提供 EXT_CSD。外置卡依映像大小使用 SDSC 字节寻址或 SDHC 扇区寻址。[TI MMC/SD Controller SPRU765A §2](https://www.ti.com/lit/ug/spru765a/spru765a.pdf) · [SD Physical Layer Simplified Specification](https://www.sdcard.org/cms/wp-content/themes/sdcard-org/dl.php?f=Part1_Physical_Layer_Simplified_Specification_Ver6.00.pdf)
+
+新 VM 的 E: 从一个空的 FAT32 用户卷开始。MBR 的分区从 LBA 2048 开始，卷含主备 BPB、FSInfo 和两份 FAT。32,000,000,000 字节是客体逻辑容量，每台 VM 的初始稀疏容器占 2,150,400 字节，首次写入未分配区域时以 64 KiB 增长。独立用 `fsck_msdos -n` 检查了新卷。0576555 清单列出的可选 `MemoryCardContent` 文件 `RM505_RM507_101_000_M028_32G.fpsx` 在本地样本中缺失，当前导入器跳过此角色。通过 **Settings → Symbian firmware** 选择兼容的本地 raw microSD 映像，浏览器按原始字节创建该 VM 的可写副本。卸卡后可在浏览器磁盘库找到保留的副本。先前 VM 保留原介质配置和同配置的快照；若需要新建 eMMC，可重新导入到单独的 VM。
+
+下列探针用同一份未改动的零售 XIP 运行原版选槽、检测脚、发命令及响应读取代码。原版完成 5 个 eMMC 和 7 个 microSD 命令的寄存器访问。探针用短 ARM PIO 循环读 EXT_CSD、E: 的 MBR 和 FAT32 BPB，以及 microSD 扇区 1。公开回归还验证多块读写、传输中的 CMD13、IRQ 159 的确认及清除、快照中途恢复和写盘代次隔离。目前 PIO 同步完成，RAPIDO 系统 DMA、热插拔中断以及客体文件服务器挂载仍待验证。默认零售引导仍依赖本地芯片 Boot ROM。
+
+```sh
+node tools/symbian/mmc-n97.mjs <output>/rom.xip.bin
+node --test tests/symbian/mmc.mjs
+```
+
 ## 浏览器导入与重新打开
 
 在新建虚拟机的 **Source** 页选择 **Symbian → S60v5 · Nokia N97**，再选择本地固件目录或多选 VPL 和配套文件。若目录有多个 RM-505 变体，选中一个后才开始完整预检。目录缺件可在该变体下用文件多选框补入，同目录已有的文件优先。真实 0576555 样本的 ROFS 语言清单识别为 Arabic、English（默认）及 Farsi。[Nokia S60 SDK 语言枚举](https://docs.huihoo.com/symbian/s60-5th-edition-cpp-developers-library-v2.1/GUID-35228542-8C95-4849-A73F-2B4F082F0C44/sdk/doc_source/ToolsAndUtilities94/Installing-ref/PKG_format/PKG_languages_table.html)
 
-导入 Worker 核对清单和 FPSX 分组，重建 XIP、ROFS1–3、UDA、OneNAND 和适用的调制解调器映像。写入浏览器私有存储后读回核对 SHA-256。每台 VM 有独立的 OneNAND。导入取消或页面刷新留下的未提交文件按导入记录回收。重新打开时，CPU Worker 在装载前核对 XIP、调制解调器映像以及所选芯片 ROM 的摘要。
+导入 Worker 核对清单和 FPSX 分组，重建 XIP、ROFS1–3、UDA、OneNAND 和适用的调制解调器映像。写入浏览器私有存储后读回核对 SHA-256。每台 VM 有独立的 OneNAND 和 eMMC。导入取消或页面刷新留下的未提交文件按导入记录回收。重新打开时，CPU Worker 在装载前核对 XIP、调制解调器映像以及所选芯片 ROM 的摘要。
 
 从库中选择 **Settings → Symbian firmware** 可以附加芯片 ROM。保存配置前校验并复制新转储，取消保留现有配置，保存失败回收临时副本。挂起的 VM 可以使用原有 ROM 恢复，再在关机后更换。先前导入的 VM 仍可打开和恢复同配置的快照。用 **New VM** 重新导入同款包可建立带 OneNAND 和调制解调器映像的虚拟机，每台 VM 各自保有原来的手机数据。
 
-库、向导和控制台将此机型标为 **Experimental boot**。默认运行的边界见上节。ROFS 和 UDA 的客体挂载、大容量盘、显示与输入属于后续板级与系统工作。
+库、向导和控制台将此机型标为 **Experimental boot**。ROFS、UDA 和用户存储的客体挂载以及屏幕与输入仍待验证。
 
 ```sh
 make build/v86_app.js build/symbian-import-worker.js build/libv86.mjs build/v86-arm64.wasm

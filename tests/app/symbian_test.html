@@ -7,6 +7,8 @@
 import { VMStore, config_images } from "../../src/app/vm_store.js";
 import { disk_file, disk_id, list_disks } from "../../src/app/browser_disks.js";
 import { N97_FLASH_HEADER, N97_FLASH_IMAGE_SIZE, N97_FLASH_PAGE, N97_FLASH_SLOT, N97_FLASH_SIZE } from "../../src/symbian/n97_flash.js";
+import { N97_EMMC_SIZE } from "../../src/symbian/n97_mmc_media.js";
+import { N97_EMMC_INITIAL_BYTES } from "../../src/symbian/n97_emmc_format.js";
 
 const local = new URLSearchParams(location.search).has("local");
 const fixture = "/build/symbian/test-package/";
@@ -46,7 +48,7 @@ function choose(input, files)
 }
 function button(scope, label)
 {
-    return [...scope.querySelectorAll("button")].find(button => !button.disabled && button.textContent.trim() === label);
+    return scope && [...scope.querySelectorAll("button")].find(button => !button.disabled && button.textContent.trim() === label);
 }
 function expected_assets(config)
 {
@@ -79,6 +81,38 @@ async function worker_diagnostics(emulator)
         clearTimeout(timer);
         emulator.remove_listener("emulator-error", on_error);
     }
+}
+
+async function running_worker(frame)
+{
+    function startup_failure()
+    {
+        const error = frame.contentDocument.querySelector(".console-notice .error");
+        if(error) throw new Error(error.textContent);
+    }
+    const console_state = await until(() => {
+        startup_failure();
+        return frame.contentWindow.v86_console;
+    }, "CPU Worker console");
+    await until(() => {
+        startup_failure();
+        return console_state.emulator.get_instruction_counter() > 10;
+    }, "guest instruction execution");
+    return console_state;
+}
+
+async function power_off(frame)
+{
+    const doc = frame.contentDocument;
+    doc.querySelector("#menu_power").click();
+    const item = await until(() => doc.querySelector("#menu_power_off"), "Power menu");
+    check(doc.querySelector("#menu_save_and_power_off"), "Power menu supports saving the VM and flushing the writable media");
+    item.click();
+    const dialog = await until(() => doc.querySelector("dialog[open]"), "confirm power off");
+    check(dialog.textContent.includes("disks written back"), "power-off dialog explains persistence");
+    button(dialog, "Power off").click();
+    await until(() => doc.querySelector(".console-status")?.dataset.state === "Powered off", "powered off and VM lock released");
+    frame.remove();
 }
 
 let library;
@@ -170,7 +204,8 @@ try
         check(first.symbian.media.phone.path !== second.symbian.media.phone.path, "phone data paths are isolated");
         check(first.symbian.media.nand.path !== second.symbian.media.nand.path, "OneNAND paths are isolated");
         window.second_nand = second.symbian.media.nand;
-        check(expected_assets(first).length === 7 && expected_assets(second).length === 7, "all assets participate in VM lifecycle");
+        check(first.symbian.emmc.path !== second.symbian.emmc.path, "sparse eMMC paths are isolated");
+        check(expected_assets(first).length === 8 && expected_assets(second).length === 8, "all assets participate in VM lifecycle");
         wizard = start_wizard(doc);
         // Native folder input sets these paths. Each variant is in a
         // separate folder and both are missing the same CORE basename.
@@ -209,12 +244,12 @@ try
         let recovered = false;
         try { await disks.getFileHandle(orphan); }
         catch(error) { recovered = error.name === "NotFoundError"; }
-        check(recovered && (await list_disks()).length === 14, "reopen reclaimed only abandoned output");
+        check(recovered && (await list_disks()).length === 16, "reopen reclaimed only abandoned output");
         check((await disk_file(disk_id(first.symbian.media.rom.path))).size > 0, "completed files survived recovery");
     }
     if(local) await save(wizard, "Original RM-505");
     const config = (await store.list()).find(entry => entry.name === (local ? "Original RM-505" : "Fixture N97"));
-    check(config && expected_assets(config).length === 7, "stored configuration");
+    check(config && expected_assets(config).length === 8, "stored configuration");
     const rom = config.symbian.media.rom;
     check(await hash(await disk_file(disk_id(rom.path))) === rom.sha256, "stored ROM digest");
     const boot_media = config.symbian.media.boot_media;
@@ -222,6 +257,8 @@ try
     const nand = config.symbian.media.nand;
     const nand_file = await disk_file(disk_id(nand.path));
     check(nand_file.size === N97_FLASH_IMAGE_SIZE, "stored OneNAND geometry");
+    check(config.symbian.emmc.size === N97_EMMC_SIZE && (await disk_file(disk_id(config.symbian.emmc.path))).size === N97_EMMC_INITIAL_BYTES,
+        "32 GB eMMC occupies only the sparse index and FAT32 metadata blocks");
     if(local)
     {
         check(config.symbian.product_code === "0576555" && config.symbian.sw_version === "22.0.110", "original variant identity");
@@ -243,17 +280,15 @@ try
     doc.defaultView.open = url => { window.power_on_url = url; };
     (await until(() => button(doc, "Power on"), "Power on")).click();
     const console_frame = frame(await until(() => window.power_on_url, "console URL"));
-    const console_state = await until(() => console_frame.contentWindow.v86_console, "CPU Worker console");
-    const { emulator, options } = console_state;
+    const { emulator, options } = await running_worker(console_frame);
     check(options.cpu_worker === true && options.machine_type === "nokia-n97", "the standard config selects the CPU Worker");
-    const diagnostics = await until(async () => {
-        const diagnostics = await worker_diagnostics(emulator);
-        return emulator.get_instruction_counter() > 10 && diagnostics.symbian?.rapido_boot && diagnostics;
-    }, "guest instruction execution");
+    const diagnostics = await worker_diagnostics(emulator);
     check(diagnostics.machine_type === "nokia-n97" && diagnostics.cpu_type === "arm32", "Worker ran the N97 machine");
     const chip = diagnostics.symbian.onenand;
     check(chip?.capacity === N97_FLASH_SIZE && chip.manufacturer === 0xEC && chip.device === 0x40 && chip.revision === 0x121,
         "normal Worker mapped the imported RM-505 OneNAND");
+    check(diagnostics.symbian.mmc?.emmc_bytes === N97_EMMC_SIZE && diagnostics.symbian.mmc.sd_bytes === null,
+        "normal Worker mapped the 32 GB eMMC and an empty optional slot");
     check(diagnostics.symbian.rapido_boot.media_sha256 === boot_media.sha256 &&
         diagnostics.symbian.rapido_boot.bootrom_sha256 === null, "CPU Worker loads original modem media before a chip ROM is provided");
     check(console_frame.contentDocument.body.textContent.includes("RAPIDO ROM missing"), "console explains the missing chip ROM");
@@ -263,8 +298,7 @@ try
     {
         await until(async () => (await worker_diagnostics(emulator)).symbian?.onenand?.programs === 1, "guest programs an erased page");
     }
-    await emulator.destroy();
-    console_frame.remove();
+    await power_off(console_frame);
     if(!local)
     {
         const probe_page = N97_FLASH_HEADER + (0x7FF * 64) * N97_FLASH_SLOT;
@@ -281,7 +315,8 @@ try
             return dialog;
         };
         const select_bootrom = async (dialog, file) => {
-            choose(dialog.querySelector('input[type="file"]'), [file]);
+            const label = [...dialog.querySelectorAll("label.field")].find(label => label.textContent.includes("Local RAPIDO dump"));
+            choose(label.querySelector('input[type="file"]'), [file]);
             button(dialog, "Use this dump").click();
         };
         const bytes = new Uint8Array(8192);
@@ -299,33 +334,48 @@ try
         await select_bootrom(settings, sample);
         await until(() => settings.textContent.includes("ready to save"), "stage boot ROM");
         button(settings, "Cancel").click();
-        check(!(await store.get(config.id)).symbian.bootrom && (await list_disks()).length === 14, "cancel left no boot ROM");
+        check(!(await store.get(config.id)).symbian.bootrom && (await list_disks()).length === 16, "cancel left no boot ROM");
         settings = await open_rom_settings();
         await select_bootrom(settings, sample);
         await until(() => settings.textContent.includes("ready to save"), "stage boot ROM for saving");
+        const sd_input = [...settings.querySelectorAll("label.field")].find(label => label.textContent.includes("Insert a microSD image"));
+        const sd_bytes = new Uint8Array(16 * 1024 ** 2);
+        sd_bytes.set([23, 54, 0x55, 0xAA], 508);
+        const sd = new File([sd_bytes], "fixture-sd.img");
+        choose(sd_input.querySelector("input"), [sd]);
+        await until(() => settings.textContent.includes("ready to insert"), "stage microSD");
         button(settings, "Save").click();
         const stored = await until(async () => (await store.get(config.id)).symbian.bootrom, "saved boot ROM");
         check(stored.sha256 === await hash(sample) && await hash(await disk_file(disk_id(stored.path))) === stored.sha256,
             "boot ROM is stored with its inspected digest");
+        const saved_card = (await store.get(config.id)).symbian.sd;
+        check(saved_card.sha256 === await hash(sd) && await hash(await disk_file(disk_id(saved_card.path))) === saved_card.sha256,
+            "microSD insertion preserves the local image bytes");
         doc = await open_library();
         doc.querySelector('[data-id="' + config.id + '"]').click();
         window.power_on_url = null;
         doc.defaultView.open = url => { window.power_on_url = url; };
         button(doc, "Power on").click();
         const reopened = frame(await until(() => window.power_on_url, "console with boot ROM"));
-        const worker = (await until(() => reopened.contentWindow.v86_console, "reopened CPU Worker")).emulator;
-        const loaded = await until(async () => (await worker_diagnostics(worker)).symbian?.rapido_boot, "CPU Worker validated the boot ROM");
+        const { emulator: worker } = await running_worker(reopened);
+        const { rapido_boot: loaded, mmc: media } = (await worker_diagnostics(worker)).symbian;
         check(loaded.bootrom_sha256 === stored.sha256 && loaded.media_sha256 === boot_media.sha256, "CPU Worker loaded both selected boot images");
+        check(media.emmc_bytes === N97_EMMC_SIZE && media.sd_bytes === sd.size, "cold-open Worker exposes both cards");
         const flash = await until(async () => {
             const chip = (await worker_diagnostics(worker)).symbian?.onenand;
             return chip?.reads && chip;
         }, "cold-open guest reads the same programmed page");
         check(flash.programs === 0, "cold-open guest leaves the programmed page in place");
-        await worker.destroy();
+        await power_off(reopened);
+        settings = await open_rom_settings();
+        button(settings, "Eject microSD").click();
+        button(settings, "Save").click();
+        await until(async () => !(await store.get(config.id)).symbian.sd, "ejected microSD");
+        check((await disk_file(disk_id(saved_card.path))).size === sd.size, "eject preserves the backing card image");
     }
     store.close();
-    result.textContent = local ? "PASS original firmware via Chrome folder selection with physical OneNAND pages" :
-        "PASS public firmware fixture with isolated OneNAND writes and cold reopen in the CPU Worker";
+    result.textContent = local ? "PASS original firmware folder import with OneNAND and sparse FAT32 eMMC" :
+        "PASS public firmware fixture with isolated OneNAND writes, persistent eMMC and removable microSD";
 }
 catch(error)
 {

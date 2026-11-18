@@ -24,6 +24,7 @@ import { N90_RESTORE, import_ios_package, inspect_ios_package, verify_ios_keys }
 import { new_ios_config } from "../vm_config.js";
 import { check_symbian_package, firmware_path, import_symbian_package, scan_symbian_packages } from "../symbian_import.js";
 import { firmware_languages, N97_DEVICE, SYMBIAN_DEVICES } from "../../symbian/catalog.js";
+import { N97_EMMC_INITIAL_BYTES } from "../../symbian/n97_emmc_format.js";
 import { MAX_ARRAY_BUFFER_SIZE_MB } from "../../browser/vm_options.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
@@ -898,13 +899,16 @@ export function open_wizard(options)
                     ["Firmware", [variant.type_designator, variant.sw_version, variant.product_code, variant.variant_version].join(" · ")],
                     ["System images", format_size(required - media.phone.size - (media.nand?.size || 0))],
                     ["OneNAND", "256 MiB · writable by this VM"],
+                    ["Internal eMMC", "32 GB · empty FAT32 volume"],
+                    ["microSD", "Empty slot"],
                     ["Extracted UDA", format_size(media.phone.size)],
-                    ["Estimated browser storage", format_size(required)],
+                    ["Estimated browser storage", format_size(required + N97_EMMC_INITIAL_BYTES)],
                 ];
                 const languages = firmware_languages(s.report.languages);
                 if(languages) rows.push(["Languages", languages]);
                 return [h("h3", null, s.name.trim()), h("p.note", null, "Experimental boot. This machine runs the original start-up code while board and display support are in development."),
                     media.boot_media ? h("p.note", null, "The original loader calls the RAPIDO chip ROM at 0xFFFF1208. After import, attach a local chip ROM dump in Settings → Symbian firmware. The firmware package contains the modem images separately.") : null,
+                    h("p.note", null, "The eMMC uses storage as the VM writes. Import currently skips the optional factory memory card content."),
                     h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
                         h("tr", null, h("th", null, label), h("td", null, value)))))];
             }
