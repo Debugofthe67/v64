@@ -34,10 +34,12 @@ import { BackdoorA32, BACKDOOR_NOT_HANDLED } from "./backdoor_a32.js";
 import { IOSInstallService } from "../ios/install_service.js";
 import { IOSNetwork } from "../ios/network.js";
 import { create_n97_boot_timer, create_n97_sram, load_n97_rom, n97_boot_files, N97_DEVICE_MEMORY, N97_LAYOUT_VERSION, N97_RAM_BASE } from "../symbian/n97_board.js";
-import { create_n97_board_config, create_n97_clocks, create_n97_interrupts, create_n97_l2, create_n97_os_timer,
+import { create_n97_board_config, create_n97_clocks, create_n97_gpio_input, create_n97_interrupts, create_n97_l2, create_n97_os_timer,
     create_n97_rapido_id, create_n97_xti } from "../symbian/n97_devices.js";
 import { create_n97_onenand } from "../symbian/n97_onenand.js";
 import { create_n97_mmc } from "../symbian/n97_mmc.js";
+import { create_n97_keyboard } from "../symbian/n97_keyboard.js";
+import { create_n97_i2c } from "../symbian/n97_i2c.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -61,7 +63,8 @@ import { COMMAND_RELOAD, COMMAND_RESET } from "../parallel/control.js";
 /** The devices in a snapshot's state[4], in this order */
 const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe",
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
-    "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc"];
+    "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
+    "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -302,6 +305,14 @@ A64CPU.prototype.init = function(settings, device_bus)
             const interrupts = this.devices.n97_interrupts = create_n97_interrupts(this.io,
                 (irq, fiq) => this.wm.exports["a32_set_interrupt_lines"](irq, fiq));
             this.devices.n97_os_timer = create_n97_os_timer(this.io, this.clock, level => interrupts.set_timer(level));
+            const keypad_irq = this.devices.n97_keyboard_gpio = create_n97_gpio_input(this.io, 0x20031DC0, 0x20031D04, 2, true,
+                level => interrupts.set_keyboard(level));
+            const slider = this.devices.n97_slider_gpio = create_n97_gpio_input(this.io, 0x20031D80, 0x20031CF4, 26, false,
+                level => interrupts.set_slider(level), () => this.devices.n97_mmc?.sd ? 0 : 0x2000);
+            const keypad = this.devices.n97_keyboard = create_n97_keyboard(level => keypad_irq.set_input(!level));
+            this.devices.n97_i2c = create_n97_i2c(this.io, keypad, level => interrupts.set_i2c(level));
+            device_bus.register("symbian-key", ([code, pressed]) => keypad.press(code, pressed));
+            device_bus.register("symbian-slider", open => { if(typeof open === "boolean") slider.set_input(open); });
             if(settings.symbian_emmc || settings.symbian_sd)
             {
                 this.devices.n97_mmc = create_n97_mmc(this.io, settings.symbian_emmc, settings.symbian_sd,
@@ -1412,7 +1423,11 @@ A64CPU.prototype.set_state = function(state, skip_memory = false)
     device_states.forEach((device_state, i) => { if(device_state && this.devices[DEVICE_ORDER[i]]) this.devices[DEVICE_ORDER[i]].set_state(device_state); });
     // Devices appended since this snapshot start in their reset state,
     // including when restoring over a machine that has already used them.
+    if(!device_states[DEVICE_ORDER.indexOf("n97_slider_gpio")]) this.devices.n97_slider_gpio?.set_input(false);
     for(const name of DEVICE_ORDER.slice(device_states.length)) this.devices[name]?.reset?.();
+    // Host fingers and keyboard focus cannot be restored from a VM snapshot.
+    // Deliver breaks for any contacts that were closed in the saved machine.
+    this.devices.n97_keyboard?.release();
     if(state[5]) this.machine_state_bytes(0).set(state[5]);
     if(state[6]) { this.machine_state_bytes(1).set(state[6]); this.wm.exports["a64_psci_restored"](); }
     if(state[7]) [this.booted, this.boot_entry, this.boot_x0] = state[7];
@@ -1549,6 +1564,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
         } } : {}),
         ...(this.devices.n97_xti ? { "symbian": { "xti": this.devices.n97_xti.packets(),
             "clocks": this.devices.n97_clocks.status(), "l2_enabled": this.devices.n97_l2.enabled(),
+            "keyboard": this.devices.n97_keyboard.status(), "slider_open": this.devices.n97_slider_gpio.read_input(),
             ...(this.devices.n97_onenand ? { "onenand": this.devices.n97_onenand.status() } : {}),
             ...(this.devices.n97_mmc ? { "mmc": this.devices.n97_mmc.status() } : {}),
             ...(this.boot_files.media ? { "rapido_boot": { "media_sha256": this.boot_files.media.digest,

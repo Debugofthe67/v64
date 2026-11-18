@@ -84,6 +84,70 @@ async function worker_diagnostics(emulator)
     }
 }
 
+async function check_n97_keyboard(frame, emulator)
+{
+    const doc = frame.contentDocument, win = doc.defaultView;
+    const read = () => worker_diagnostics(emulator).then(d => d.symbian);
+    const pressed = expected => until(async () => {
+        const actual = (await read()).keyboard.pressed.slice().sort((a, b) => a - b);
+        return JSON.stringify(actual) === JSON.stringify(expected.slice().sort((a, b) => a - b));
+    }, "physical keypad contacts " + expected.join(","));
+    doc.querySelector("#drawer_keyboard").click();
+    const keyboard = doc.querySelector("#n97_keyboard");
+    const slider = doc.querySelector("#n97_slider");
+    const key = name => keyboard.querySelector('[data-key="' + name + '"]');
+    const keys = (type, code, repeat = false) => keyboard.dispatchEvent(new win.KeyboardEvent(type, {
+        code, repeat, bubbles: true, cancelable: true,
+    }));
+    const pointer = (name, type, pointerId) => key(name).dispatchEvent(new win.PointerEvent(type, {
+        button: 0, bubbles: true, cancelable: true, pointerId, pointerType: "touch",
+    }));
+    check(slider.textContent === "Open slider" && key("Q").closest(".n97-slide-keys").hidden, "closed slider hides its QWERTY keys");
+    pointer("Menu", "pointerdown", 6);
+    await pressed([0x35]);
+    pointer("Menu", "pointerup", 6);
+    await pressed([]);
+    pointer("CameraShutter", "pointerdown", 6);
+    await pressed([0x0F, 0x1F]);
+    pointer("CameraShutter", "pointercancel", 6);
+    await pressed([]);
+
+    slider.click();
+    await until(async () => (await read()).slider_open, "open Hall sensor at CPU Worker");
+    check(doc.activeElement === keyboard && !key("Q").closest(".n97-slide-keys").hidden, "open slider exposes and focuses keyboard");
+    keys("keydown", "ShiftLeft");
+    keys("keydown", "ShiftRight");
+    keys("keydown", "KeyQ");
+    keys("keydown", "KeyQ", true);
+    await pressed([0x31, 1]);
+    keys("keyup", "ShiftLeft");
+    await pressed([0x31, 1]);
+    keys("keyup", "KeyQ");
+    await pressed([0x31]);
+    pointer("Q", "pointerdown", 7);
+    pointer("Fn", "pointerdown", 8);
+    await pressed([1, 0x31, 0x39]);
+    pointer("Q", "lostpointercapture", 7);
+    await pressed([0x31, 0x39]);
+    doc.querySelector("#drawer_keyboard").focus();
+    await pressed([]);
+    keyboard.focus();
+    keys("keydown", "KeyN");
+    await pressed([0x37]);
+    win.dispatchEvent(new win.Event("blur"));
+    await pressed([]);
+    pointer("VolumeUp", "pointerdown", 12);
+    keys("keydown", "KeyQ");
+    await pressed([1, 0x38]);
+    slider.click();
+    await until(async () => !(await read()).slider_open, "closed Hall sensor at CPU Worker");
+    await pressed([0x38]);
+    pointer("VolumeUp", "pointerup", 12);
+    await pressed([]);
+    doc.querySelector("#drawer_keyboard").click();
+    check(keyboard.closest("[hidden]"), "normal keyboard drawer closes");
+}
+
 async function running_worker(frame)
 {
     function startup_failure()
@@ -100,6 +164,31 @@ async function running_worker(frame)
         return console_state.emulator.get_instruction_counter() > 10;
     }, "guest instruction execution");
     return console_state;
+}
+
+async function check_n97_keyboard_resume(first, store, id)
+{
+    const doc = first.contentDocument;
+    doc.querySelector("#drawer_keyboard").click();
+    doc.querySelector("#n97_slider").click();
+    await until(async () => (await worker_diagnostics(first.contentWindow.v86_console.emulator)).symbian.slider_open,
+        "open slider before suspend");
+    doc.querySelector("#menu_power").click();
+    (await until(() => doc.querySelector("#menu_suspend"), "Suspend menu")).click();
+    await until(() => doc.querySelector(".console-status")?.dataset.state === "Suspended", "suspended Nokia N97");
+    check((await store.get(id)).suspended, "N97 snapshot registered in the library");
+    first.remove();
+
+    const resumed = frame("/index.html?vm=" + id);
+    const { emulator } = await running_worker(resumed);
+    const reopened = resumed.contentDocument;
+    await until(async () => !(await store.get(id)).suspended, "library consumes the suspended N97 state");
+    reopened.querySelector("#drawer_keyboard").click();
+    await until(() => reopened.querySelector("#n97_slider")?.textContent === "Close slider", "open slider in resumed console");
+    const current = (await worker_diagnostics(emulator)).symbian;
+    check(current.slider_open && !current.keyboard.pressed.length &&
+        !reopened.querySelector(".n97-slide-keys").hidden, "restored Hall level and keyboard drawer agree");
+    return resumed;
 }
 
 async function power_off(frame)
@@ -295,11 +384,12 @@ try
     check(console_frame.contentDocument.body.textContent.includes("RAPIDO ROM missing"), "console explains the missing chip ROM");
     check(console_frame.contentDocument.body.textContent.includes("Experimental boot"), "console names its boot milestone");
     check(!console_frame.contentDocument.querySelector("#menu_keys, #menu_devices, #iphone_install_ipa"), "no unsupported phone controls");
+    await check_n97_keyboard(console_frame, emulator);
     if(!local)
     {
         await until(async () => (await worker_diagnostics(emulator)).symbian?.onenand?.programs === 1, "guest programs an erased page");
     }
-    await power_off(console_frame);
+    await power_off(local ? console_frame : await check_n97_keyboard_resume(console_frame, store, config.id));
     if(!local)
     {
         const probe_page = N97_FLASH_HEADER + (0x7FF * 64) * N97_FLASH_SLOT;

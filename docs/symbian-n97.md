@@ -144,13 +144,28 @@ node --test tests/symbian/mmc.mjs
 
 从库中选择 **Settings → Symbian firmware** 可以附加芯片 ROM。保存配置前校验并复制新转储，取消保留现有配置，保存失败回收临时副本。挂起的 VM 可以使用原有 ROM 恢复，再在关机后更换。先前导入的 VM 仍可打开和恢复同配置的快照。用 **New VM** 重新导入同款包可建立带 OneNAND 和调制解调器映像的虚拟机，每台 VM 各自保有原来的手机数据。
 
-库、向导和控制台将此机型标为 **Experimental boot**。ROFS、UDA 和用户存储的客体挂载以及屏幕与输入仍待验证。
+库、向导和控制台将此机型标为 **Experimental boot**。ROFS、UDA 和用户存储的客体挂载、屏幕与触摸仍待验证。键盘和滑盖的原版驱动验收见下节。
 
 ```sh
 make build/v86_app.js build/symbian-import-worker.js build/libv86.mjs build/v86-arm64.wasm
 node tests/symbian/fixtures/make_package.mjs
 node tests/app/browser_runner.mjs tests/app/symbian_test.html
 node tests/symbian/manual/browser_import.mjs <firmware-directory>
+```
+
+## 滑盖键盘和机身按键
+
+在 N97 控制台选择 **Keyboard**。模拟器冷开时滑盖关闭，Menu、音量和两段式快门仍可操作。选择 **Open slider** 展开 QWERTY 和五向键。面板获焦后可用实体键盘输入，F2 对应 Fn，F3 对应 Chr，反引号对应五向键中央的 Select。Shift、Chr 和 Fn 各闭合自己的触点，字符组合和长按重复由原版客体决定。指针取消、失去捕获或失焦释放相应触点。快门全按先闭合对焦触点，再闭合快门触点。快照保存滑盖位置和进行中的硬件事务，恢复时释放没有现实输入源的触点。
+
+RM-505 的 N2850 键盘扩展器由 RAPIDO 的 I²C 总线访问。原版 `keypad_exp.dll` 的 NSC 探测在 `0x800FC140` 向从地址 `0x42` 发送 `0x80`，检查制造商字节 0。模拟器提供这一兼容身份，芯片的物理修订仍待实物确认。原版设置 `0x59`（5 行 9 列），用 `0x82` 确认中断，用 `0x89` 读取 14 字节的键盘 FIFO。每个按下事件置位 bit 7，松开时清除。相机的两个触点使用同一芯片的 SF 接线，分别接地 ROW0 和 ROW1。原厂手册图 21 列出 43 个触点，ROM 表还确认 Select 和 Enter 对应不同扫描码。RAPIDO 主机位于 PA `0x20032200`、IRQ 135，原版 I²C 例程按小端半字收发。当前只连接 N2850；访问其他地址会收到 NACK。[Nokia N97 维修手册图 21](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf) · [TI LM8323 SNLS273A](https://www.ti.com/lit/ds/symlink/lm8323.pdf) · [TI OMAP5912 外设手册 SPRU760C](https://www.ti.com/lit/ug/spru760c/spru760c.pdf)
+
+N2850 的低有效 IRQ 接到 GENIO66（bank 2，IRQ 249）。`egpio.dll` 读取 PA `0x20031DD8` 和 `0x20031DCC`，再向 `0x20031DE0` 写 bit 2 确认。滑盖 Hall 传感器走 GENIO58（bank 1，IRQ 248），与同一输入寄存器中的 GENIO45 microSD 检测脚各自独立。原版 `switch.dll` 采到高电平后输出 `0xBB`（QwertyOn），采到低电平后输出 `0xBC`（QwertyOff），每次重新配置为检测相反边沿。接听与挂断触控、触摸屏、电源及锁定开关走各自的硬件路径，仍待接入。[Nokia RM-505/RM-507 维修板图第 2、8、9 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf)
+
+本地探针用未改动的 22.0.110 ROM 执行原版 `i2c.dll` 的传输和接收片段、`egpio.dll` 的中断接收和确认、`keypad_exp.dll` 的扫描码读取，以及 `switch.dll` 的滑盖读取和事件构造。43 个触点的按下与松开、两次滑盖切换均抵达原版 `Kern::AddEvent` 调用处。探针为这些例程提供最小 MMU、调用者对象和事件观测点，截在完整系统事件队列之前。Chrome 从常规控制台经过 CPU Worker 验证输入和失焦释放，并从库中挂起、恢复同一台机器，核对 Hall 电平和键盘显示一致。I²C 传输和矩阵扫描采用同步模型，机械抖动、模拟电气鬼键、LM8323 PWM 与低功耗时序尚未模拟。默认零售启动仍停在芯片 Boot ROM 依赖处，客体桌面上的交互尚未验证。
+
+```sh
+node tools/symbian/keyboard-n97.mjs <output>/rom.xip.bin
+node --test tests/symbian/n97_keyboard.mjs
 ```
 
 ## 原生 SIS/SISX 递送与 v86 Notes

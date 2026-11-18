@@ -1,3 +1,4 @@
+import { N97_MATRIX_CODES } from "../symbian/n97_keymap.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
 import { instantiate_v86, memory_import } from "../parallel/relocate.js";
 import { default_worker_url, parallel_unsupported_reason } from "../parallel/machine.js";
@@ -2787,6 +2788,34 @@ V86.prototype.ios_send_button = function(button, pressed)
 };
 // eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
 V86.prototype["ios_send_button"] = V86.prototype.ios_send_button;
+
+/**
+ * Close or open one Nokia N97 keypad switch by its LM8323 matrix code.
+ * @param {number} code
+ * @param {boolean} pressed
+ */
+V86.prototype.symbian_send_key = function(code, pressed)
+{
+    if(this.machine_type !== "nokia-n97" || !N97_MATRIX_CODES.has(code) || typeof pressed !== "boolean")
+    {
+        throw new Error("symbian_send_key: expected a Nokia N97 matrix code and a boolean state");
+    }
+    this.bus.send("symbian-key", [code, pressed]);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_send_key"] = V86.prototype.symbian_send_key;
+
+/** @param {boolean} open */
+V86.prototype.symbian_set_slider = function(open)
+{
+    if(this.machine_type !== "nokia-n97" || typeof open !== "boolean")
+    {
+        throw new Error("symbian_set_slider: expected a Nokia N97 slider state");
+    }
+    this.bus.send("symbian-slider", open);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_set_slider"] = V86.prototype.symbian_set_slider;
 
 /**
  * Rotate the simulated N90's gravity vector, in clockwise degrees from portrait.

@@ -1758,6 +1758,10 @@ export class V86 {
 
     /** Press or release one of the simulated iPhone's physical buttons. */
     ios_send_button(button: "home" | "power" | "volume-up" | "volume-down" | "mute", pressed: boolean): void;
+    /** Close or open a Nokia N97 LM8323 matrix contact. */
+    symbian_send_key(code: number, pressed: boolean): void;
+    /** Set the Nokia N97 Hall sensor to its slider-open or slider-closed state. */
+    symbian_set_slider(open: boolean): void;
 
     /** Install an unencrypted ARMv7 IPA using the native iOS 6 helper. */
     ios_install_status(): Promise<IOSInstallStatus>;

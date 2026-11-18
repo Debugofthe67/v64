@@ -24,6 +24,7 @@ import { IOSInstallController } from "../ios_install.js";
 import { show_ios_install } from "./ios_install.js";
 import { package_paths, show_sis_transfer } from "./symbian_packages.js";
 import { make_sis_card } from "../../symbian/sis_card.js";
+import { n97_keyboard_panel } from "./n97_keyboard.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Image} Image */
@@ -641,6 +642,25 @@ function console_ui(layout, emulator, ctx)
 
     const ipa_installer = ios ? new IOSInstallController(emulator, { graphics: !!options.gles_backdoor,
         storage_key: ctx.config?.id || location.href }) : null;
+    let slider_changes = 0;
+    const n97_keyboard = symbian ? n97_keyboard_panel((code, pressed) => emulator.symbian_send_key(code, pressed), open => {
+        slider_changes++;
+        emulator.symbian_set_slider(open);
+    }) : null;
+    async function refresh_slider()
+    {
+        if(!n97_keyboard) return;
+        const changes = slider_changes;
+        const diagnostics = await emulator.get_diagnostics();
+        if(changes === slider_changes) n97_keyboard.set_slider(!!diagnostics?.symbian?.slider_open);
+    }
+    if(n97_keyboard)
+    {
+        const sync_slider = () => refresh_slider().catch(() => {});
+        emulator.add_listener("emulator-loaded", sync_slider);
+        // A library resume restores the saved Hall level after emulator-loaded.
+        emulator.add_listener("emulator-started", sync_slider);
+    }
 
     // ---- power
     /** @param {boolean} ask @param {() => Promise<void>} [after_destroy] */
@@ -649,11 +669,13 @@ function console_ui(layout, emulator, ctx)
         if(ask && !await confirm("Power off?", "The virtual machine stops as if its power were cut. What is only in its memory is lost." +
             (written_back ? " Its disks written back keep what they completed." : ""), "Power off", true)) return;
         powered_off = true;
+        n97_keyboard?.release();
         ipa_installer?.dispose();
         clearInterval(interval);
         await emulator.destroy();
         try
         {
+            if(drawer === "keyboard") open_drawer("");
             await after_destroy?.();
         }
         finally
@@ -788,8 +810,10 @@ function console_ui(layout, emulator, ctx)
             const stream = header.byteLength === 8 && header.getUint32(0, true) === 0x86768676 && header.getUint32(4, true) % 2 === 1;
             const was_running = emulator.is_running();
             if(was_running) await emulator.stop();
+            n97_keyboard?.release();
             if(stream) await emulator.restore_state_stream(file);
             else await emulator.restore_state(await file.arrayBuffer());
+            await refresh_slider().catch(() => {});
             if(was_running) emulator.run();
         }
         catch(error)
@@ -1191,18 +1215,22 @@ function console_ui(layout, emulator, ctx)
     };
     const open_drawer = name =>
     {
+        if(drawer === "keyboard") n97_keyboard?.release();
         drawer = drawer === name ? "" : name;
         layout.drawer.hidden = !drawer;
+        layout.drawer.classList.toggle("n97-keyboard-drawer", drawer === "keyboard");
         layout.root.classList.toggle("with-drawer", !!drawer);
         if(!drawer) { update_toolbar(); return; }
-        const title = { terminal: "Serial terminal", kernel: "Kernel console", files: "Shared folder", details: "Details" }[drawer];
+        const title = { terminal: "Serial terminal", kernel: "Kernel console", files: "Shared folder", details: "Details", keyboard: "Nokia N97 keyboard" }[drawer];
         replace(layout.drawer, h("header", null, h("h2", null, title), h("button", { type: "button", "aria-label": "Close", onclick: () => open_drawer("") }, "×")),
-            drawer === "terminal" ? terminal : drawer === "kernel" ? kernel : drawer === "files" ? files_panel() : details);
+            drawer === "terminal" ? terminal : drawer === "kernel" ? kernel : drawer === "files" ? files_panel() :
+                drawer === "keyboard" ? n97_keyboard?.panel : details);
         // (the serial port takes bytes: the keys' UTF-8 as characters 0-255)
         if(drawer === "terminal") open_terminal(terminal, serial_output, data => emulator.serial0_send(String.fromCharCode(...new TextEncoder().encode(data))));
         if(drawer === "kernel") open_terminal(kernel, kernel_output, data => emulator.virtio_console_send(data));
         if(drawer === "details") render_details();
         update_toolbar();
+        if(drawer === "keyboard") n97_keyboard?.panel.focus();
     };
     const show_files_tab = () =>
     {
@@ -1311,7 +1339,10 @@ function console_ui(layout, emulator, ctx)
     const items = {
         power: () => [
             { label: running ? "Pause" : "Run", id: "menu_run", disabled: ipa_installer?.active(), action: () => running ? emulator.stop() : emulator.run() },
-            { label: "Reset", id: "menu_reset", disabled: !!options.initial_state || ipa_installer?.active(), title: options.initial_state ? "Started from a saved state" : "", action: () => emulator.restart() },
+            { label: "Reset", id: "menu_reset", disabled: !!options.initial_state || ipa_installer?.active(), title: options.initial_state ? "Started from a saved state" : "", action: () => {
+                n97_keyboard?.release();
+                return emulator.restart();
+            } },
             ...(iphone ? [{ label: "Shut down iPhone…", id: "menu_iphone_shutdown", disabled: !running || ipa_installer?.active(), action: shutdown_iphone }] : []),
             { label: iphone ? "Force power off…" : "Power off…", id: "menu_power_off", disabled: ipa_installer?.active(), action: () => power_off() },
             ...(ctx.config ? [{ label: "Suspend", id: "menu_suspend", disabled: ipa_installer?.active(), action: suspend }] : []),
@@ -1381,6 +1412,7 @@ function console_ui(layout, emulator, ctx)
             symbian ? null : mute,
             ios || symbian ? null : menu_button("Tools", items.tools, "menu_tools"),
             h("span.toolbar-gap"),
+            n97_keyboard ? drawer_button("keyboard", "Keyboard") : null,
             !symbian && (!ios || ctx.config.serial.some(serial => serial.attach === "terminal")) ? drawer_button("terminal", "Terminal") : null,
             kernel_console ? drawer_button("kernel", "Kernel console") : null,
             files_tab ? drawer_button("files", "Files") : null,

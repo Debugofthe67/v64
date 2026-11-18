@@ -2,6 +2,7 @@
 // interrupt, clock and power management drivers take over.
 
 import { N97_MMC_IRQ } from "./n97_mmc.js";
+import { N97_I2C_IRQ } from "./n97_i2c.js";
 
 export const N97_RAPIDO_SELECT = 0x20030300;
 export const N97_RAPIDO_REVISION = 0x113;
@@ -90,9 +91,6 @@ export function create_n97_board_config(io, mmc = () => null)
         word(io, 0x20030000 + offset + 8, "RAPIDO output clear", () => 0,
             (value, mask) => platform.write_word(offset, 0, value & mask));
     }
-    // RM-505 MMCDet is GENIO45. EPBUSMV at 0x80160F2C checks for a low input
-    // through egpio bank 1's DATAIN. Slot changes are applied at cold open.
-    word(io, 0x20031D88, "RAPIDO GENIO bank 1 inputs", () => mmc()?.sd ? 0 : 0x2000, () => {});
     return platform;
 }
 
@@ -120,6 +118,8 @@ function latches(io, base, name, offsets, on_write = undefined)
     };
 }
 
+export const N97_KEYBOARD_IRQ = 249;
+export const N97_SLIDER_IRQ = 248;
 const ICU_BASE = 0x20400000;
 const NO_INTERRUPT = 0xFFFFFFFF;
 const MS_TICK_INTERRUPT = 35;
@@ -134,14 +134,21 @@ export function create_n97_interrupts(io, set_lines)
     // from +0x48 (+0x8D178), with -1 as the empty ID on either port.
     const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C]);
     const priority = new Uint8Array(256);
-    let enabled = 0, selected = 0, active = NO_INTERRUPT, timer_unmasked = false;
-    let timer_level = false, mmc_unmasked = false, mmc_level = false;
+    const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ];
+    const unmasked = new Set(), asserted = new Set();
+    let enabled = 0, selected = 0, active = NO_INTERRUPT;
     const pending = () => {
         if(!enabled || active !== NO_INTERRUPT) return NO_INTERRUPT;
-        const timer = timer_unmasked && timer_level && priority[MS_TICK_INTERRUPT];
-        const mmc = mmc_unmasked && mmc_level && priority[N97_MMC_IRQ];
-        if(timer && (!mmc || timer >= mmc)) return MS_TICK_INTERRUPT;
-        return mmc ? N97_MMC_IRQ : NO_INTERRUPT;
+        let id = NO_INTERRUPT, best = 0;
+        for(const source of sources)
+        {
+            if(priority[source] > best && unmasked.has(source) && asserted.has(source))
+            {
+                id = source;
+                best = priority[id];
+            }
+        }
+        return id;
     };
     const update = () => set_lines(pending() !== NO_INTERRUPT, false);
     const reg = (offset, name, read, write) => word(io, ICU_BASE + offset, name, read, write);
@@ -155,15 +162,14 @@ export function create_n97_interrupts(io, set_lines)
     // immediately after programming the first interval.
     reg(0x0C, "RAPIDO IRQ unmask", () => 0, (value, mask) => {
         const id = (value & mask) >>> 0;
-        if(id === MS_TICK_INTERRUPT) timer_unmasked = true;
-        if(id === N97_MMC_IRQ) mmc_unmasked = true;
+        if(sources.includes(id)) unmasked.add(id);
         if(id === active) active = NO_INTERRUPT;
         update();
     });
     reg(0x10, "RAPIDO IRQ mask", () => 0, (value, mask) => {
         const id = (value & mask) >>> 0;
-        if(id === NO_INTERRUPT || id === MS_TICK_INTERRUPT) timer_unmasked = false;
-        if(id === NO_INTERRUPT || id === N97_MMC_IRQ) mmc_unmasked = false;
+        if(id === NO_INTERRUPT) unmasked.clear();
+        else unmasked.delete(id);
         if(id === NO_INTERRUPT || id === active) active = NO_INTERRUPT;
         update();
     });
@@ -172,8 +178,8 @@ export function create_n97_interrupts(io, set_lines)
         priority[selected] = merge(priority[selected], value, mask & 7);
         update();
     });
-    // FIQ and GPIO have no connected sources at this stage. The original
-    // init clears each of these banks and waits for the empty ID.
+    // FIQ has no connected sources. Bootstrap reads the GPIO claim ports
+    // with all banks disabled, before egpio.dll binds the active inputs.
     reg(0x48, "RAPIDO FIQ claim", () => NO_INTERRUPT, () => {});
     reg(0x50, "RAPIDO FIQ clear", () => 0, () => {});
     reg(0x40, "RAPIDO FIQ mux status", () => 0, () => {});
@@ -182,34 +188,105 @@ export function create_n97_interrupts(io, set_lines)
         update();
         return 0;
     }, () => {});
-    for(const clear of [0x20031D54, 0x20031D94, 0x20031DD4])
+    word(io, 0x20031D54, "RAPIDO GPIO IRQ clear", () => 0, () => {});
+    word(io, 0x20031D7C, "RAPIDO GPIO IRQ claim", () => NO_INTERRUPT, () => {});
+    function line(id, level)
     {
-        word(io, clear, "RAPIDO GPIO IRQ clear", () => 0, () => {});
-        word(io, clear + 0x28, "RAPIDO GPIO IRQ claim", () => NO_INTERRUPT, () => {});
+        if(level) asserted.add(id);
+        else asserted.delete(id);
+        update();
     }
     return {
-        set_timer(level) { timer_level = level; update(); },
-        set_mmc(level) { mmc_level = level; update(); },
+        set_timer(level) { line(MS_TICK_INTERRUPT, level); },
+        set_mmc(level) { line(N97_MMC_IRQ, level); },
+        set_i2c(level) { line(N97_I2C_IRQ, level); },
+        set_keyboard(level) { line(N97_KEYBOARD_IRQ, level); },
+        set_slider(level) { line(N97_SLIDER_IRQ, level); },
         reset()
         {
             configuration.reset();
             priority.fill(0);
             enabled = selected = 0;
             active = NO_INTERRUPT;
-            timer_unmasked = false;
-            timer_level = false;
-            mmc_unmasked = mmc_level = false;
+            unmasked.clear();
+            asserted.clear();
             update();
         },
-        get_state() { return [configuration.get_state(), Array.from(priority), enabled, selected, active, timer_unmasked, timer_level,
-            mmc_unmasked, mmc_level]; },
+        get_state()
+        {
+            // Preserve the timer/MMC pairs in older N97 snapshots.
+            return [configuration.get_state(), Array.from(priority), enabled, selected, active,
+                ...sources.flatMap(id => [unmasked.has(id), asserted.has(id)])];
+        },
         set_state(state)
         {
             configuration.set_state(state[0]);
             priority.set(state[1]);
-            [, , enabled, selected, active, timer_unmasked, timer_level, mmc_unmasked = false, mmc_level = false] = state;
+            [, , enabled, selected, active] = state;
+            unmasked.clear();
+            asserted.clear();
+            sources.forEach((id, index) => {
+                if(state[5 + index * 2]) unmasked.add(id);
+                if(state[6 + index * 2]) asserted.add(id);
+            });
             update();
         },
+    };
+}
+
+// egpio.dll's real bank layout for GENIO66 (N2850 IRQ) and GENIO58 (Hall).
+// Bank 1 also exposes the active-low GENIO45 cold-insert microSD detector.
+export function create_n97_gpio_input(io, base, direction_set, pin, initial_high, set_irq, other_inputs = () => 0)
+{
+    const bit = 1 << pin;
+    let high = initial_high, input = true, bank_enabled = false, enabled = 0, pending = 0, edge = false, trigger = 0;
+    const update = () => set_irq(!!(bank_enabled && (enabled & pending)));
+    const reg = (offset, name, read, write = () => {}) => word(io, base + offset, name, read, write);
+    reg(0x04, "RAPIDO GENIO IRQ gate", () => +bank_enabled, (value, mask) => {
+        if(mask & 1) bank_enabled = !!(value & 1);
+        update();
+    });
+    word(io, direction_set, "RAPIDO GENIO direction input", () => 0, (value, mask) => { if(value & mask & bit) input = true; });
+    word(io, direction_set + 4, "RAPIDO GENIO direction output", () => 0, (value, mask) => { if(value & mask & bit) input = false; });
+    reg(0x08, "RAPIDO GENIO inputs", () => other_inputs() | (high && input ? bit : 0));
+    reg(0x0C, "RAPIDO GENIO IRQ pending", () => pending);
+    reg(0x10, "RAPIDO GENIO IRQ enable", () => 0, (value, mask) => {
+        enabled |= value & mask & bit;
+        update();
+    });
+    reg(0x14, "RAPIDO GENIO IRQ disable", () => 0, (value, mask) => {
+        enabled &= ~(value & mask);
+        update();
+    });
+    reg(0x18, "RAPIDO GENIO IRQ enabled", () => enabled);
+    // Original ISR uses the enable/pending bitmaps and W1C, whereas the
+    // bootstrap probes the empty claim port with the bank disabled.
+    reg(0x20, "RAPIDO GENIO IRQ acknowledge", () => 0, (value, mask) => {
+        pending &= ~(value & mask);
+        update();
+    });
+    for(const [offset, detect_edge] of [[0x28, true], [0x2C, false]])
+        reg(offset, "RAPIDO GENIO IRQ detection", () => 0, (value, mask) => { if(value & mask & bit) edge = detect_edge; });
+    for(const [offset, mode] of [[0x34, 2], [0x38, 1]])
+        reg(offset, "RAPIDO GENIO IRQ trigger", () => 0, (value, mask) => { if(value & mask & bit) trigger = mode; });
+    reg(0x3C, "RAPIDO GENIO IRQ claim", () => NO_INTERRUPT);
+    return {
+        set_input(level)
+        {
+            if(input && edge && high !== level && trigger === (level ? 2 : 1)) pending |= bit;
+            high = level;
+            update();
+        },
+        read_input() { return high; },
+        reset()
+        {
+            input = true;
+            edge = bank_enabled = false;
+            enabled = pending = trigger = 0;
+            update();
+        },
+        get_state() { return [high, bank_enabled, enabled, pending, edge, trigger, input]; },
+        set_state(state) { [high, bank_enabled, enabled, pending, edge, trigger, input] = state; update(); },
     };
 }
 
