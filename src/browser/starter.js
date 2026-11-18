@@ -1005,6 +1005,9 @@ V86.prototype.continue_init = async function(emulator, options)
             case "symbian_bootrom":
                 settings.symbian_bootrom = buffer.buffer;
                 break;
+            case "symbian_nand":
+                settings.symbian_nand = buffer;
+                break;
             case "kernel":
                 settings.kernel = buffer.buffer;
                 break;
@@ -1177,6 +1180,7 @@ V86.prototype.continue_init = async function(emulator, options)
         if(!options["symbian"]) throw new Error("Nokia N97 boot requires symbian.rom");
         add_file("symbian_rom", options["symbian"]["rom"]);
         add_file("symbian_boot_media", options["symbian"]["boot_media"]);
+        add_file("symbian_nand", options["symbian"]["nand"]);
         add_file("symbian_bootrom", options["symbian"]["bootrom"]);
     }
     add_file("initrd", options.ios ? options.ios.ramdisk : options.initrd);

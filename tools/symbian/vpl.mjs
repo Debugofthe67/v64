@@ -120,15 +120,26 @@ async function save_extraction(directory, files, report)
     try
     {
         const metadata = Buffer.from(JSON.stringify(report, null, 2) + "\n");
-        for(const { name, bytes, size } of [...files, { name: "firmware.json", bytes: metadata, size: metadata.length }])
+        for(const { name, bytes, size, chunks } of [...files, { name: "firmware.json", bytes: metadata, size: metadata.length }])
         {
             const filename = join(directory, name);
             const fd = await open(filename, "wx", 0o600);
             written.push(filename);
             try
             {
-                await fd.writeFile(bytes);
-                if(bytes.length < size) await fd.truncate(size);
+                if(chunks)
+                {
+                    for(const { at, bytes: part } of chunks())
+                    {
+                        if((await fd.write(part, 0, part.length, at)).bytesWritten !== part.length) throw new Error("Short write to " + name);
+                    }
+                    await fd.truncate(size);
+                }
+                else
+                {
+                    await fd.writeFile(bytes);
+                    if(bytes.length < size) await fd.truncate(size);
+                }
             }
             finally
             {
@@ -201,7 +212,7 @@ async function main()
     if(command === "extract" && checked.ok)
     {
         const result = extract_n97_images(await read_images(directory, names, checked.files));
-        const images = result.files.map(({ name, bytes, size, sha256 }) => ({ name, size, source_bytes: bytes.length, sha256 }));
+        const images = result.files.map(({ name, bytes, size, source_bytes, sha256 }) => ({ name, size, source_bytes: source_bytes ?? bytes.length, sha256 }));
         const report = { ...identity, ...checked, ...result.report, images };
         await save_extraction(resolve(destination), result.files, report);
         print(report);

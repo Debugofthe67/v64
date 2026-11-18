@@ -249,6 +249,13 @@ export function check_machine_options(options)
             const address = symbian?.["load_address"];
             const regs = symbian?.["boot_registers"];
             if(!symbian?.["rom"]) throw new Error("Nokia N97 requires symbian.rom");
+            const nand = symbian["nand"];
+            if(nand !== undefined && (address < N97_RAM_BASE ||
+                !(nand?.["buffer"] instanceof ArrayBuffer || typeof nand?.["url"] === "string" &&
+                  nand["disk_option"] === "read_write" && !/^https?:/i.test(nand["url"]))))
+            {
+                throw new Error("Nokia N97 OneNAND needs a writable local file or an in-memory image and RAM above CS0");
+            }
             for(const name of ["rom_sha256", "boot_media_sha256", "bootrom_sha256"])
             {
                 const digest = symbian[name];

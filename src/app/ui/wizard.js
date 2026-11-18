@@ -896,8 +896,9 @@ export function open_wizard(options)
                 const rows = [
                     ["Device", N97_DEVICE.family + " · " + N97_DEVICE.name],
                     ["Firmware", [variant.type_designator, variant.sw_version, variant.product_code, variant.variant_version].join(" · ")],
-                    ["System images", format_size(required - media.phone.size)],
-                    ["Phone data", format_size(media.phone.size) + " · private to this VM"],
+                    ["System images", format_size(required - media.phone.size - (media.nand?.size || 0))],
+                    ["OneNAND", "256 MiB · writable by this VM"],
+                    ["Extracted UDA", format_size(media.phone.size)],
                     ["Estimated browser storage", format_size(required)],
                 ];
                 const languages = firmware_languages(s.report.languages);

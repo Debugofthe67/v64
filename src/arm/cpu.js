@@ -36,6 +36,7 @@ import { IOSNetwork } from "../ios/network.js";
 import { create_n97_boot_timer, create_n97_sram, load_n97_rom, n97_boot_files, N97_DEVICE_MEMORY, N97_LAYOUT_VERSION, N97_RAM_BASE } from "../symbian/n97_board.js";
 import { create_n97_board_config, create_n97_clocks, create_n97_interrupts, create_n97_l2, create_n97_os_timer,
     create_n97_rapido_id, create_n97_xti } from "../symbian/n97_devices.js";
+import { create_n97_onenand } from "../symbian/n97_onenand.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -59,7 +60,7 @@ import { COMMAND_RELOAD, COMMAND_RESET } from "../parallel/control.js";
 /** The devices in a snapshot's state[4], in this order */
 const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe",
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
-    "n97_board_config", "n97_interrupts", "n97_os_timer"];
+    "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -250,7 +251,7 @@ A64CPU.prototype.init = function(settings, device_bus)
     const n97_boot = n97 && settings.symbian_rom ? n97_boot_files(settings.symbian_rom, n97_address, settings.symbian["boot_registers"], {
         media: settings.symbian_boot_media, media_digest: settings.symbian["boot_media_sha256"],
         bootrom: settings.symbian_bootrom, bootrom_id: settings.symbian["bootrom_id"], bootrom_digest: settings.symbian["bootrom_sha256"],
-        ap_only: settings.symbian["application_processor_only"],
+        ap_only: settings.symbian["application_processor_only"], nand: !!settings.symbian_nand,
     }) : null;
     const { cores, memory_size } = virt_machine(settings);
     this.cores = cores;
@@ -285,6 +286,10 @@ A64CPU.prototype.init = function(settings, device_bus)
     {
         this.boot_files = n97_boot;
         this.devices = { "n97_sram": create_n97_sram(this, this.boot_files, settings.symbian?.["rom_sha256"]) };
+        if(settings.symbian_nand)
+        {
+            this.devices.n97_onenand = create_n97_onenand(this.io, settings.symbian_nand, n97_boot.rom_digest);
+        }
         if(this.boot_files?.tags)
         {
             this.devices.n97_boot_timer = create_n97_boot_timer(this);
@@ -1333,6 +1338,9 @@ A64CPU.prototype.validate_state = function(state)
     }
     if(this.devices.n97_sram)
     {
+        const nand = state[4]?.[DEVICE_ORDER.indexOf("n97_onenand")];
+        if(!!nand !== !!this.devices.n97_onenand) throw new Error("Snapshot and machine must use the same Nokia N97 OneNAND configuration");
+        this.devices.n97_onenand?.check_state(nand);
         this.devices.n97_sram.check_state(state[4]?.[DEVICE_ORDER.indexOf("n97_sram")], legacy_n97);
     }
     if(this.machine_type === "s5l8930" && !!state[4]?.[DEVICE_ORDER.indexOf("apple_nand")] !== !!this.devices.apple_nand)
@@ -1532,6 +1540,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
         } } : {}),
         ...(this.devices.n97_xti ? { "symbian": { "xti": this.devices.n97_xti.packets(),
             "clocks": this.devices.n97_clocks.status(), "l2_enabled": this.devices.n97_l2.enabled(),
+            ...(this.devices.n97_onenand ? { "onenand": this.devices.n97_onenand.status() } : {}),
             ...(this.boot_files.media ? { "rapido_boot": { "media_sha256": this.boot_files.media.digest,
                 "bootrom_sha256": this.boot_files.bootrom_digest || null } } : {}) } } : {}),
         ...(include_steps ? { "steps": this.step_stats(25) } : {}),

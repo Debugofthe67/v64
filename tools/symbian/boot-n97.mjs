@@ -12,11 +12,11 @@ import { N97_BOOT_TOC, N97_RAM_BASE, N97_RAM_SIZE, N97_ROM_ADDRESS } from "../..
 import { N97_CPU_PLL, N97_L2_BASE, N97_PLL3_CONTROL, N97_RAPIDO_SELECT } from "../../src/symbian/n97_devices.js";
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    "ap-only": { type: "boolean" }, "boot-media": { type: "string" }, "boot-rom": { type: "string" },
+    "ap-only": { type: "boolean" }, "boot-media": { type: "string" }, "boot-rom": { type: "string" }, "nand": { type: "string" },
 } });
 if(positionals.length !== 1 || values["boot-rom"] && !values["boot-media"] || values["ap-only"] && values["boot-media"])
 {
-    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--ap-only | --boot-media <rapido-boot.bin> [--boot-rom <dump>]]");
+    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--nand <onenand.img>] [--ap-only | --boot-media <rapido-boot.bin> [--boot-rom <dump>]]");
 }
 const rom = await readFile(positionals[0]);
 const sha256 = createHash("sha256").update(rom).digest("hex");
@@ -28,7 +28,8 @@ const image = async path => path ? { buffer: Uint8Array.from(await readFile(path
 const vm = new V86({ machine_type: "nokia-n97", graphics_adapter: "none", disable_jit: true,
     autostart: false, log_level: 0, wasm_path, cpu_clock: { mode: "deterministic", instructions_per_ms },
     symbian: { rom: { buffer: Uint8Array.from(rom).buffer }, rom_sha256: sha256, application_processor_only: values["ap-only"],
-        boot_media: await image(values["boot-media"]), bootrom: await image(values["boot-rom"]) } });
+        boot_media: await image(values["boot-media"]), bootrom: await image(values["boot-rom"]),
+        nand: values.nand ? { url: values.nand, disk_option: "read_write" } : undefined } });
 
 function observe_rapido_service(cpu, pc_now, field, register, word)
 {
@@ -63,7 +64,8 @@ function observe_rapido_service(cpu, pc_now, field, register, word)
     assert.ok(service && result, "the retail bootstrap should reach the RAPIDO ROM service");
     if(!cpu.boot_files.bootrom) assert.deepEqual(result, { step: service.step + 1, pc: 0x0C, ifsr: 8 });
     if(result.return_value !== undefined) assert.equal(result.next_branch, result.return_value === 1 ? 0x0890289C : 0x08902898);
-    return { sha256, boot_media_sha256: media.digest, bootrom_sha256: cpu.boot_files.bootrom_digest || null, service, result };
+    return { sha256, boot_media_sha256: media.digest, bootrom_sha256: cpu.boot_files.bootrom_digest || null,
+        onenand: cpu.devices.n97_onenand?.status(), service, result };
 }
 
 try

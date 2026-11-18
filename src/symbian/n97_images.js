@@ -2,6 +2,7 @@ import { c_string, equals, u16, u32 } from "../android/bytes.js";
 import { SHA256, sha256_hex } from "../image/sha256.js";
 import { fpsx_group_data, parse_fpsx, validate_fpsx_layout } from "./fpsx.js";
 import { N97_CORE_ADDRESS, N97_CORE_HEADER_OFFSET, usable_n97_modem_address, write_n97_boot_media } from "./n97_boot_media.js";
+import { seed_n97_flash } from "./n97_flash.js";
 import { inflate } from "../virt/inflate.js";
 import { rebuild_eka2_rom } from "./rom.js";
 
@@ -21,22 +22,43 @@ function invalid_boot_media(message)
 }
 
 /** @param {ReturnType<typeof parse_fpsx>} core @param {ReturnType<typeof parse_fpsx>["groups"][number]} group */
-export function select_n97_boot_certificate(core, group)
+function rm505_certificate(core, group)
 {
     // The type-27 FPSX record's 20-byte target key distinguishes its
     // alternatives. The retail RM-505 reports the CAEEBB65… root key.
-    const matches = group.certificates.filter(cert => cert.type === 0x27 &&
+    const matches = group.certificates.filter(cert =>
         Array.from(core.bytes.subarray(cert.offset + 4, cert.offset + 24),
             byte => byte.toString(16).padStart(2, "0")).join("") === RM505_ROOT_KEY);
     if(matches.length !== 1) invalid_boot_media("expected one RM-505 root-key certificate for " + group.label);
-    const cert = matches[0];
+    return matches[0];
+}
+
+/** @param {ReturnType<typeof parse_fpsx>} core @param {ReturnType<typeof parse_fpsx>["groups"][number]} group */
+export function select_n97_boot_certificate(core, group)
+{
+    const cert = rm505_certificate(core, group);
     const bytes = core.bytes.subarray(cert.data_offset, cert.data_offset + cert.size);
-    if(bytes.length !== CERT_SIZE || u32(bytes, 0) !== 0x809795A3 || u32(bytes, 0x3D0) !== 0x31DEEAE8)
+    if(cert.type !== 0x27 || bytes.length !== CERT_SIZE || u32(bytes, 0) !== 0x809795A3 || u32(bytes, 0x3D0) !== 0x31DEEAE8)
     {
         invalid_boot_media("invalid RM-505 certificate for " + group.label);
     }
     // RAP3NAND+0x600–0x624 retains the entire certificate in SDRAM.
     return { bytes, input_size: u32(bytes, 0x3D4), output_size: u32(bytes, 0x3D8), address: u32(bytes, 0x3DC) };
+}
+
+/** @param {!Array<ReturnType<typeof parse_fpsx>>} containers @param {string} rom_digest */
+function extract_n97_flash(containers, rom_digest)
+{
+    // Only the outer streams' application OneNAND destination (0,3,0).
+    // Toolbox records and other target spaces are not physical CS0 data.
+    const extents = containers.flatMap(container => container.groups.filter(group =>
+        group.space[0] === 0 && group.space[1] === 3 && group.space[2] === 0).flatMap(group => {
+        const certificates = group.certificates.length ? [rm505_certificate(container, group)] : [];
+        return [...certificates, ...group.data].map(record => ({ address: record.start,
+            bytes: container.bytes.subarray(record.data_offset, record.data_offset + record.size) }));
+    }));
+    if(!extents.length) throw new Error("No RM-505 application OneNAND records");
+    return seed_n97_flash(extents, rom_digest);
 }
 
 function flash_toc_record(toc, label)
@@ -332,10 +354,11 @@ export function extract_n97_images(inputs)
     const core_data = fpsx_group_data(core, core_group);
     const packed = core_data.subarray(SOS_PREFIX_SIZE);
     const rom = rebuild_eka2_rom(packed);
+    const xip = image("rom.xip.bin", rom.bytes);
     const files = [
         image("core-prefix.bin", core_data.subarray(0, SOS_PREFIX_SIZE)),
         image("rom.packed.bin", packed.subarray(0, rom.header.stored_size)),
-        image("rom.xip.bin", rom.bytes),
+        xip,
     ];
     const boot_media = extract_n97_boot_media(core, core_data.subarray(0, SOS_PREFIX_SIZE), rom.bytes);
     if(boot_media) files.push(image("rapido-boot.bin", boot_media.bytes));
@@ -354,6 +377,7 @@ export function extract_n97_images(inputs)
     const uda_data = fpsx_group_data(uda, uda_group);
     const uda_header = inspect_n97_uda(uda_data);
     files.push(image("uda.fat", uda_data, uda_header.logical_size));
+    files.push(extract_n97_flash(Object.values(containers), xip.sha256));
 
     return {
         files,

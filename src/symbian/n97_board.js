@@ -2,6 +2,7 @@
 // and 0x30001000 as its initial stack top. See docs/symbian-n97.md.
 
 import { sha256_hex } from "../image/sha256.js";
+import { N97_FLASH_BLOCK, N97_FLASH_SIZE, N97_FLASH_ID } from "./n97_flash.js";
 import { check_n97_bootrom, read_n97_boot_media, N97_BOOTROM_BASE, N97_CORE_ADDRESS, N97_CORE_HEADER_OFFSET,
     N97_MDI_BASE, N97_MDI_SIZE, N97_ROM_ADDRESS } from "./n97_boot_media.js";
 export { N97_ROM_ADDRESS };
@@ -21,7 +22,7 @@ const RAPIDO_ROM_JUMP_TABLE = 0xFFFF1200;
 
 // The POR configuration uses the loader's tag sizes and reverse insertion
 // order. RAP3NAND stores the resulting R2 pointer in SRAM at 0x30003EF8.
-function cold_boot_tags(ap_only)
+function cold_boot_tags(ap_only, nand)
 {
     const clock = new DataView(new ArrayBuffer(8));
     clock.setFloat64(0, 433.92, true);
@@ -36,6 +37,8 @@ function cold_boot_tags(ap_only)
         [21, 235200000, 0],
         [7, clock.getUint32(0, true), clock.getUint32(4, true)],
         [22, 433920000, 0],
+        // RAP3NAND+0x3212..0x3242 publishes the detected CS0 geometry.
+        ...(nand ? [[19, N97_FLASH_SIZE, 0, N97_FLASH_BLOCK, ...N97_FLASH_ID.slice(0, 2), 0, 0, N97_FLASH_ID[2]]] : []),
         [4, N97_RAM_SIZE, N97_RAM_BASE],
         [2],
     ];
@@ -89,16 +92,17 @@ function rom_toc(size, media)
  */
 export function n97_boot_files(rom, address, registers, options)
 {
+    const rom_digest = sha256_hex(new Uint8Array(rom));
     if(address !== undefined)
     {
-        return { rom, address, registers: registers.slice(), tags: null, media: null, bootrom: null, bootrom_digest: "", ap_only: false };
+        return { rom, rom_digest, address, registers: registers.slice(), tags: null, media: null, bootrom: null, bootrom_digest: "", ap_only: false };
     }
-    const media = options?.media ? read_n97_boot_media(new Uint8Array(options.media), sha256_hex(new Uint8Array(rom))) : null;
+    const media = options?.media ? read_n97_boot_media(new Uint8Array(options.media), rom_digest) : null;
     if(options?.media_digest && media?.digest !== options.media_digest) throw new Error("Nokia N97 boot media SHA-256 mismatch");
     const bootrom = options?.bootrom ? new Uint8Array(options.bootrom) : null;
     const bootrom_digest = bootrom ? check_n97_bootrom(bootrom, options.bootrom_id, options.bootrom_digest).sha256 : "";
-    const tags = cold_boot_tags(options?.ap_only);
-    return { rom, address: N97_ROM_ADDRESS, registers: [0, 0, N97_RAM_BASE + N97_RAM_SIZE - tags.length, 0],
+    const tags = cold_boot_tags(options?.ap_only, options?.nand);
+    return { rom, rom_digest, address: N97_ROM_ADDRESS, registers: [0, 0, N97_RAM_BASE + N97_RAM_SIZE - tags.length, 0],
         tags, media, bootrom, bootrom_digest, ap_only: !!options?.ap_only };
 }
 
@@ -179,7 +183,7 @@ export function create_n97_sram(cpu, boot, expected_sha256)
         wasm["a64_bus_written"](bootrom_at, boot.bootrom.length);
     };
     load_bootrom();
-    const digest = boot ? sha256_hex(new Uint8Array(boot.rom)) : null;
+    const digest = boot?.rom_digest ?? null;
     if(expected_sha256 !== undefined && digest !== expected_sha256) throw new Error("Nokia N97 firmware SHA-256 mismatch");
     const identity = boot ? [digest, boot.address, ...boot.registers, !!boot.tags, boot.media?.digest || "",
         boot.bootrom_digest].join(":") : null;

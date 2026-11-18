@@ -138,3 +138,11 @@ Chrome 的公开夹具与原厂目录均通过导入、持久化和重开验收�
 从同一 XIP 的 ROM 目录提取 `Sys/Data/ESTARTCOMP.TXT`（1,465 字节，SHA-256 `2db34d7e03f78b4faaff112ccfb49439c0e80990c89ffada325ad6ba0ecfde4a`）。它指定 `Z:` 把本地驱动 9、10、11 的 ROFS 叠加到 ROM 文件系统，`C:` 采用驱动 6 的 FAT，`E:` 对应驱动 3 的内置 eMMC，`F:` 对应驱动 2 的可移除卡，`D:` 是驱动 0 的 RAM 盘。后续客体挂载和软件包递送均可用这个对应关系验收。ROM 目录同样包含 `mednand.pdd`、`MEDMMC.PDD` 和 `erofs.fsy`；原厂 CORE 外容器声明 `XSR 1.5`。在 RM-505 实机读取记录中，系统闪存返回三星 MuxOneNAND `00EC 0040`，版本 `0121`。[RM-505 实机识别记录](https://forum.gsmhosting.com/vbb/6948033-post1.html)
 
 该版 CORE 的 `0xEE` 字段位于文件偏移 `0x110`。其中四个区段的闪存起址和长度分别为 `0x00080000 / 0x019A0000`、`0x01A20000 / 0x09180000`、`0x0ABA0000 / 0x04B80000`、`0x0F8C0000 / 0x00160000`。第二段从 ROFS1 的证书起算，镜像头位于 `0x01A21000`。第三段与 UDA 的 FAT16 卷同起于 `0x0ABA0000`。该分区长 79,167,488 字节，FAT16 的 BPB 声明卷长 76,640,256 字节，卷尾到分区尾相差 2,527,232 字节。OneNAND 的器件寄存器使用 16 位字地址，型号寄存器字地址 `0xF001` 对应字节偏移 `0x1E002`。[三星 OneNAND 寄存器定义](https://codebrowser.dev/linux/linux/include/linux/mtd/onenand_regs.h.html)
+
+### S2.3　OneNAND 实物布局、原厂驱动与持久写入（2026-11-18 通过）
+
+同一套 `0576555` 固件的 CORE、ENO、ROFS2、ROFS3 和 UDA 共提供 560 条适用于 CS0 的记录。独立解包逐页核对了全部 131,072 个 2 KiB 主区页，主区 SHA-256 为 `c073f0fe88ad3a31a027c864e4ec8ccefcb2a71f273dd2d92dbefca939d7c656`。新建 VM 保存完整 256 MiB 地址空间，固件未提供的备用区以擦除值初始化。
+
+在 V86 中单独调用原厂 RAP3NAND 的识别与读页函数，分别读出闪存目录、三个 ROFS 页头和 UDA 的 FAT 引导扇区，五页与独立解包逐字节一致。原版 `mednand.pdd` 选中了三星对应的设备记录及解锁函数。复核时发现驱动访问高编号块还会设置片选位。修正单 die 地址译码后，原函数连续解锁 `0x7FA` 到 `0x7FC`，返回 0。
+
+浏览器的 ARM 测试程序在一台虚拟机上写入 `0xA55A`，关机重开后从同一页读回，另一台机器对应位置仍为擦除值。Node 回归另覆盖主区与备用区编程、块擦除、快照恢复及介质写入后的旧快照拒绝。零售启动仍需 RAPIDO 片上 ROM，客体文件服务器挂载 `Z:`、`C:` 和 `E:` 仍待验收。[复现命令与原始页摘要](../symbian-n97.md#samsung-muxonenand-物理介质)

@@ -6,6 +6,7 @@
 <script type="module">
 import { VMStore, config_images } from "../../src/app/vm_store.js";
 import { disk_file, disk_id, list_disks } from "../../src/app/browser_disks.js";
+import { N97_FLASH_HEADER, N97_FLASH_IMAGE_SIZE, N97_FLASH_PAGE, N97_FLASH_SLOT, N97_FLASH_SIZE } from "../../src/symbian/n97_flash.js";
 
 const local = new URLSearchParams(location.search).has("local");
 const fixture = "/build/symbian/test-package/";
@@ -50,7 +51,7 @@ function button(scope, label)
 function expected_assets(config)
 {
     const roles = Object.keys(config.symbian.media).sort().join(",");
-    check(roles === "boot_media,phone,rofs1,rofs2,rofs3,rom", "all six outputs are registered");
+    check(roles === "boot_media,nand,phone,rofs1,rofs2,rofs3,rom", "all seven outputs are registered");
     return config_images(config);
 }
 async function hash(file)
@@ -167,7 +168,9 @@ try
         await save(wizard, "Second N97");
         const second = (await store.list()).find(config => config.name === "Second N97");
         check(first.symbian.media.phone.path !== second.symbian.media.phone.path, "phone data paths are isolated");
-        check(expected_assets(first).length === 6 && expected_assets(second).length === 6, "all assets participate in VM lifecycle");
+        check(first.symbian.media.nand.path !== second.symbian.media.nand.path, "OneNAND paths are isolated");
+        window.second_nand = second.symbian.media.nand;
+        check(expected_assets(first).length === 7 && expected_assets(second).length === 7, "all assets participate in VM lifecycle");
         wizard = start_wizard(doc);
         // Native folder input sets these paths. Each variant is in a
         // separate folder and both are missing the same CORE basename.
@@ -206,21 +209,29 @@ try
         let recovered = false;
         try { await disks.getFileHandle(orphan); }
         catch(error) { recovered = error.name === "NotFoundError"; }
-        check(recovered && (await list_disks()).length === 12, "reopen reclaimed only abandoned output");
+        check(recovered && (await list_disks()).length === 14, "reopen reclaimed only abandoned output");
         check((await disk_file(disk_id(first.symbian.media.rom.path))).size > 0, "completed files survived recovery");
     }
     if(local) await save(wizard, "Original RM-505");
     const config = (await store.list()).find(entry => entry.name === (local ? "Original RM-505" : "Fixture N97"));
-    check(config && expected_assets(config).length === 6, "stored configuration");
+    check(config && expected_assets(config).length === 7, "stored configuration");
     const rom = config.symbian.media.rom;
     check(await hash(await disk_file(disk_id(rom.path))) === rom.sha256, "stored ROM digest");
     const boot_media = config.symbian.media.boot_media;
     check(await hash(await disk_file(disk_id(boot_media.path))) === boot_media.sha256, "stored DSP0/ISASW digest");
+    const nand = config.symbian.media.nand;
+    const nand_file = await disk_file(disk_id(nand.path));
+    check(nand_file.size === N97_FLASH_IMAGE_SIZE, "stored OneNAND geometry");
     if(local)
     {
         check(config.symbian.product_code === "0576555" && config.symbian.sw_version === "22.0.110", "original variant identity");
         check(rom.sha256 === "9c0863e379d243f953d3cfcd87d11c98231f2d0469e69244d9ee059472c99194", "original XIP digest");
         check(boot_media.sha256 === "de16da82ffe3a83fc376fefaa494470850648d5b0aec6d4507c931ada1075e74", "original DSP0/ISASW digest");
+        const toc_page = N97_FLASH_HEADER + (0x80000 / N97_FLASH_PAGE) * N97_FLASH_SLOT;
+        const bytes = new Uint8Array(await nand_file.slice(toc_page, toc_page + N97_FLASH_PAGE).arrayBuffer());
+        bytes.forEach((byte, i) => { bytes[i] = byte ^ 0xFF; });
+        check(await hash(new Blob([bytes])) === "7d205c7846a817f407f667ebb6d5e887e24fcb390561982b7850abc62acc06a1",
+            "OneNAND retains the full original TOC page");
         check(JSON.stringify(config.symbian.languages) === JSON.stringify([
             { id: 37, default: false }, { id: 1, default: true }, { id: 50, default: false },
         ]), "language list read from the original ROFS overlay");
@@ -240,15 +251,29 @@ try
         return emulator.get_instruction_counter() > 10 && diagnostics.symbian?.rapido_boot && diagnostics;
     }, "guest instruction execution");
     check(diagnostics.machine_type === "nokia-n97" && diagnostics.cpu_type === "arm32", "Worker ran the N97 machine");
+    const chip = diagnostics.symbian.onenand;
+    check(chip?.capacity === N97_FLASH_SIZE && chip.manufacturer === 0xEC && chip.device === 0x40 && chip.revision === 0x121,
+        "normal Worker mapped the imported RM-505 OneNAND");
     check(diagnostics.symbian.rapido_boot.media_sha256 === boot_media.sha256 &&
         diagnostics.symbian.rapido_boot.bootrom_sha256 === null, "CPU Worker loads original modem media before a chip ROM is provided");
     check(console_frame.contentDocument.body.textContent.includes("RAPIDO ROM missing"), "console explains the missing chip ROM");
     check(console_frame.contentDocument.body.textContent.includes("Experimental boot"), "console names its boot milestone");
     check(!console_frame.contentDocument.querySelector("#menu_keys, #menu_devices, #iphone_install_ipa"), "no unsupported phone controls");
+    if(!local)
+    {
+        await until(async () => (await worker_diagnostics(emulator)).symbian?.onenand?.programs === 1, "guest programs an erased page");
+    }
     await emulator.destroy();
     console_frame.remove();
     if(!local)
     {
+        const probe_page = N97_FLASH_HEADER + (0x7FF * 64) * N97_FLASH_SLOT;
+        const word = async image => {
+            const file = await disk_file(disk_id(image.path));
+            return new DataView(await file.slice(probe_page, probe_page + 2).arrayBuffer()).getUint16(0, true) ^ 0xFFFF;
+        };
+        check(await word(nand) === 0xA55A && await word(window.second_nand) === 0xFFFF,
+            "CPU Worker flushes the programmed cells to this VM only");
         const open_rom_settings = async () => {
             (await until(() => button(doc, "Edit settings…"), "edit settings")).click();
             const dialog = await until(() => doc.querySelector("dialog.settings-dialog"), "settings dialog");
@@ -274,7 +299,7 @@ try
         await select_bootrom(settings, sample);
         await until(() => settings.textContent.includes("ready to save"), "stage boot ROM");
         button(settings, "Cancel").click();
-        check(!(await store.get(config.id)).symbian.bootrom && (await list_disks()).length === 12, "cancel left no boot ROM");
+        check(!(await store.get(config.id)).symbian.bootrom && (await list_disks()).length === 14, "cancel left no boot ROM");
         settings = await open_rom_settings();
         await select_bootrom(settings, sample);
         await until(() => settings.textContent.includes("ready to save"), "stage boot ROM for saving");
@@ -291,11 +316,16 @@ try
         const worker = (await until(() => reopened.contentWindow.v86_console, "reopened CPU Worker")).emulator;
         const loaded = await until(async () => (await worker_diagnostics(worker)).symbian?.rapido_boot, "CPU Worker validated the boot ROM");
         check(loaded.bootrom_sha256 === stored.sha256 && loaded.media_sha256 === boot_media.sha256, "CPU Worker loaded both selected boot images");
+        const flash = await until(async () => {
+            const chip = (await worker_diagnostics(worker)).symbian?.onenand;
+            return chip?.reads && chip;
+        }, "cold-open guest reads the same programmed page");
+        check(flash.programs === 0, "cold-open guest leaves the programmed page in place");
         await worker.destroy();
     }
     store.close();
-    result.textContent = "PASS " + (local ? "original firmware via Chrome folder selection" : "public firmware fixture") +
-        "; OPFS assets retained after reopening; CPU Worker ran the XIP";
+    result.textContent = local ? "PASS original firmware via Chrome folder selection with physical OneNAND pages" :
+        "PASS public firmware fixture with isolated OneNAND writes and cold reopen in the CPU Worker";
 }
 catch(error)
 {

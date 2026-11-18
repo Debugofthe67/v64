@@ -25,7 +25,7 @@ FPSX 的程序、证书和擦除范围以闪存地址记录。`SOS+CORE` 中 ROM
 
 | 交接项 | 固件证据与当前实现 |
 | --- | --- |
-| ROM 物理地址 | CORE 的应用处理器闪存 TOC 位于 `0x80000`，SHA-256 为 `482b607a6113162e95a984b6d26bb2af30d08afbe8d338dc00f8fa34dec696d1`。原始 `SOS+CORE` 记录从闪存 `0xD60000` 载入 `0x088FF000`，ROM 头在该范围偏移 `0x1000`。 |
+| ROM 物理地址 | CORE 的应用处理器闪存 TOC 位于 `0x80000`，首 1 KiB 的 SHA-256 为 `482b607a6113162e95a984b6d26bb2af30d08afbe8d338dc00f8fa34dec696d1`。原始 `SOS+CORE` 记录从闪存 `0xD60000` 载入 `0x088FF000`，ROM 头在该范围偏移 `0x1000`。 |
 | 主内存和 SRAM | RAP3NAND `+0x314C–0x3174` 以 `0x08000000` 为 SDRAM 基址并写入 type 4。主内存范围是 `0x08000000–0x0FFFFFFF`。RAP3NAND 的 SRAM 交接地址 `0x30003EF0` 和 type 5 给出 16 KiB 的 SRAM。原版 ROM 在 `0x30000010` 保存 R0–R3，并以 `0x30001000` 为初始栈顶。 |
 | 配置记录 | 原版标签用小端 `type, byte_length, payload`，从 SDRAM 顶部向下建立。R2 指向表首，本机型用连续表并为 ROM 在 type 2 结尾的三字读取预留一个字。原版查找和复制函数在 ROM `+0x1C04`、`+0x1BC4` 识别 type 3 续表地址。R0、R1、R3 目前采用零作为默认交接。 |
 | 频率、启动原因和保留区 | RAP3NAND `+0x3254–0x3266` 写入 type 22 的 433,920,000 Hz 和 type 7 的 433.92 MHz。仿真采用 `0x00012400` 作为代表启动原因。type 16 对应加载器 `+0x331A` 的 MDI 缓冲区，原版据此在 SDRAM 顶部预留 3 MiB。 |
@@ -98,13 +98,36 @@ node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapid
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --ap-only
 ```
 
+## Samsung MuxOneNAND 物理介质
+
+RM-505 的 CS0 是单 die 256 MiB 的 SLC，块大小 128 KiB，页大小 2 KiB，另有每页 64 字节 spare。原版 RAP3NAND 在 `+0x2EB4` 读取物理 `0x1E000/2/4`，得到制造商 `00EC`、器件 `0040` 和修订 `0121`。有 OneNAND 的 VM 随正常冷启动发布 type 19，payload 为 `[0x10000000, 0, 0x20000, 0xEC, 0x40, 0, 0, 0x121]`。`mednand.pdd` 用这组 ID 选中 `XIP+0xF7A4C` 的第 50 条设备记录。记录 `+0x11` 为零，故 `0x800F6490–0x800F64C0` 选择 `0x800F3724` 的逐块解锁入口，经 F24C 和 `0x23` 解锁。原版解锁块 `0x7FA` 时在 SA1 写 `0x87FA`，在 SA2 写 `0x8000`。单 die 忽略 DDP 选择位 15，块地址仍使用 bits 10:0。[Samsung MuxOneNAND 手册 §2.8、§3.1 与 §3.4](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf) · [Samsung 向 Linux 提交的寄存器头](https://kernel.googlesource.com/pub/scm/linux/kernel/git/bp/bp/+/refs/heads/for-next/include/linux/mtd/onenand_regs.h)
+
+新导入的 VM 有独立的 `onenand.img`。提取器按原厂 `(0,3,0)` 目标空间，写入 CORE、ENO、两个 ROFS 覆盖层和 UDA 的外层记录。证书组按 RM-505 根键选用单个交付记录，包括 type 28 的 `PAPUBKEYS`。物理主区保留压缩的原始字节和记录间的擦除值。FPSX 未提供的 spare 初始化为 `FF`。磁盘文件由绑定 XIP 摘要的 512 字节头及交错的主区和 spare 构成。每个存储字节取反，使文件空洞从客体读取为 `FF`。0576555 的初始文件为 276,824,576 字节，SHA-256 `e41fe3a84fa2b8d0546ca9eda3cab73a677469b921dfdf4d45d56ef8835be5fc`。导入时校验完整的初始摘要。开机核对头和配套 XIP；快照绑定可写文件的标识、大小和代次，客体再次编程或擦除后拒绝恢复旧代次。
+
+原版 RAP3NAND `+0x2CE8` 在 V86 中通过真实 CS0 读出以下整页。第一页的后半包含相邻的 ADA 证书。原版读 `F241h` 的完成位，核对 `FF00h`，再从 DataRAM0 复制 1024 个半字。验收工具另用最小 MMU 映射执行原版 `mednand.pdd` 的识别和解锁函数，`0x7FA–0x7FC` 三块解锁后返回 0。公开夹具在 Chrome CPU Worker 中用 ARM 指令编程末块，关机后仅本 VM 的 OPFS 文件保留该值，冷开再读取同一页。Node 侧另验证主区与 spare 的 `1→0`、擦除、冷复位、快照恢复，以及相同 XIP 的另一介质无法套用快照。
+
+| 物理主区页地址 | 内容 | 整页 SHA-256 |
+| --- | --- | --- |
+| `0x00080000` | TOC 和 ADA 证书 | `7d205c7846a817f407f667ebb6d5e887e24fcb390561982b7850abc62acc06a1` |
+| `0x01A21000` | ROFS1 | `d7ae3de957f38a94bf6d1adf7651dfa5ea570c10ae727806629a763bbd8e5b3d` |
+| `0x079A1000` | ROFS2 | `337c98a4d956116b8e799428b35895474fc810ab97604c514bb58168afa468e8` |
+| `0x09CA1000` | ROFS3 | `7ff2686472083798be88dd71c55a3952059207bbe7abcb74550741014ba64cf6` |
+| `0x0ABA0000` | UDA FAT16 BPB，逻辑字节数 `0x04917000` | `6b5f0abf82be73c4d3572cfda1098c7a148bfc3f29b40da55e9ebf1fba31f37b` |
+
+当前模型同步完成常规读、编程和单块擦除，经 INT 寄存器轮询。理想介质的读出 ECC 为零。无法读取介质数据时返回控制器失败和 ECC 不可纠正位，ECC bypass 只屏蔽 ECC 位。硬件的 ECC 编码与单比特纠正、厂级坏块资料、INT 引脚布线、完整 XSR/BML/STL 挂载仍待验证。ROFS 和 FAT16 此处均为原版读页验证。接入 OneNAND 后，正常零售引导第 1,550 步到达 `0xFFFF1208`，须通过 RAPIDO 芯片 Boot ROM 才能进入完整存储初始化。
+
+```sh
+node tools/symbian/onenand-n97.mjs <output> <firmware-directory>/RM-505_22.0.110_prd.core.C00
+node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img
+```
+
 ## 浏览器导入与重新打开
 
 在新建虚拟机的 **Source** 页选择 **Symbian → S60v5 · Nokia N97**，再选择本地固件目录或多选 VPL 和配套文件。若目录有多个 RM-505 变体，选中一个后才开始完整预检。目录缺件可在该变体下用文件多选框补入，同目录已有的文件优先。真实 0576555 样本的 ROFS 语言清单识别为 Arabic、English（默认）及 Farsi。[Nokia S60 SDK 语言枚举](https://docs.huihoo.com/symbian/s60-5th-edition-cpp-developers-library-v2.1/GUID-35228542-8C95-4849-A73F-2B4F082F0C44/sdk/doc_source/ToolsAndUtilities94/Installing-ref/PKG_format/PKG_languages_table.html)
 
-导入 Worker 核对清单和 FPSX 分组，重建 XIP、ROFS1–3、UDA 和适用的调制解调器映像。写入浏览器私有存储后读回核对 SHA-256。每台 VM 有独立的手机数据图像。导入取消或页面刷新留下的未提交文件按导入记录回收。重新打开时，CPU Worker 在装载前核对 XIP、调制解调器映像以及所选芯片 ROM 的摘要。
+导入 Worker 核对清单和 FPSX 分组，重建 XIP、ROFS1–3、UDA、OneNAND 和适用的调制解调器映像。写入浏览器私有存储后读回核对 SHA-256。每台 VM 有独立的 OneNAND。导入取消或页面刷新留下的未提交文件按导入记录回收。重新打开时，CPU Worker 在装载前核对 XIP、调制解调器映像以及所选芯片 ROM 的摘要。
 
-从库中选择 **Settings → Symbian firmware** 可以附加芯片 ROM。保存配置前校验并复制新转储，取消保留现有配置，保存失败回收临时副本。挂起的 VM 可以使用原有 ROM 恢复，再在关机后更换。旧的仅 XIP VM 仍可打开和恢复上一阶段的同 ROM 快照。用 **New VM** 重新导入同款包可建立带 DSP0 和 ISASW 的虚拟机，原 VM 的 Phone data 映像仍归原 VM 使用。
+从库中选择 **Settings → Symbian firmware** 可以附加芯片 ROM。保存配置前校验并复制新转储，取消保留现有配置，保存失败回收临时副本。挂起的 VM 可以使用原有 ROM 恢复，再在关机后更换。先前导入的 VM 仍可打开和恢复同配置的快照。用 **New VM** 重新导入同款包可建立带 OneNAND 和调制解调器映像的虚拟机，每台 VM 各自保有原来的手机数据。
 
 库、向导和控制台将此机型标为 **Experimental boot**。默认运行的边界见上节。ROFS 和 UDA 的客体挂载、大容量盘、显示与输入属于后续板级与系统工作。
 

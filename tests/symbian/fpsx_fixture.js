@@ -84,7 +84,7 @@ export function fat_payload()
 }
 
 export const valid_page = Buffer.concat([Buffer.from([2, 0xFC, 0x81, 0x11, 0x12, 0x82, 0x81, 0x81]), Buffer.alloc(1024, 0x82)]);
-export const cert = (start, label, fill = 1) => block(Buffer.alloc(512, fill), start, label);
+export const cert = (start, label, fill = 1) => block(Buffer.alloc(512, fill), start, label, fixture_root_key);
 
 export const fixture_root_key = Buffer.from("caeebb65d3c48e6dc73b49dc5063a2ee5867d611", "hex");
 
@@ -111,11 +111,12 @@ function boot_group(start, label, address, payload, deflated)
     ];
 }
 
-export function firmware_fixture()
+export function firmware_fixture(bootstrap)
 {
     const core_data = Buffer.alloc(0x2200, 0xFF);
     core_data.fill(0xDA, 0, 0xC00);
     rom_page(valid_page).copy(core_data, 0xC00);
+    if(bootstrap) bootstrap.copy(core_data, 0xC00 + 0x200);
     const modem = [
         [0x90000, "SOS*DSP0", 0x08200000, Buffer.alloc(600, 0x77), true],
         [0x92000, "SOS*ISASW", 0x08480000, Buffer.alloc(900, 0x9D), true],

@@ -13,6 +13,7 @@ import { N90_RESTORE } from "../ios/catalog.js";
 import { IOS_NETWORK_RELAY } from "../ios/network.js";
 import { N97_DEVICE, N97_MEDIA, N97_REQUIRED_MEDIA } from "../symbian/catalog.js";
 import { N97_RAPIDO_ROM_ID } from "../symbian/n97_boot_media.js";
+import { N97_FLASH_IMAGE_SIZE } from "../symbian/n97_flash.js";
 import { DISK_OPTIONS, DISK_ERRORS, check_disk_options } from "../disk_options.js";
 import { DEFAULT_FORM, DEFAULT_MEMORY_SIZE, MAX_MEMORY_SIZE, MAX_HEAP_MEMORY_SIZE, MAX_ARRAY_BUFFER_SIZE_MB, DEFAULT_VGA_MEMORY_SIZE,
     DEFAULT_MTU, apply_form, settings_to_options } from "../browser/vm_options.js";
@@ -465,7 +466,7 @@ export function validate_config(config)
             {
                 problem("symbian.languages", "Invalid language list");
             }
-            const roles = firmware.media?.boot_media ? [...N97_REQUIRED_MEDIA, "boot_media"] : N97_REQUIRED_MEDIA;
+            const roles = [...N97_REQUIRED_MEDIA, ...["boot_media", "nand"].filter(role => firmware.media?.[role])];
             for(const role of roles)
             {
                 const image = firmware.media?.[role];
@@ -475,6 +476,8 @@ export function validate_config(config)
                     problem("symbian.media." + role, "Choose the firmware again to create storage for this Nokia N97");
                 }
             }
+            if(firmware.media?.nand && firmware.media.nand.size !== N97_FLASH_IMAGE_SIZE)
+                problem("symbian.media.nand", "Choose the firmware again to create the required Nokia N97 OneNAND image");
             if(Object.keys(firmware.media || {}).some(role => !Object.hasOwn(N97_MEDIA, role))) problem("symbian.media", "Unknown firmware image");
             const bootrom = firmware.bootrom;
             if(bootrom)
@@ -974,14 +977,16 @@ export function config_to_options(config, env)
     const machine = config.machine, cpu = config.cpu, display = config.display, advanced = config.advanced;
     if(machine.type === N97_DEVICE.id && config.symbian)
     {
-        const { rom, boot_media } = config.symbian.media;
+        const { rom, boot_media, nand } = config.symbian.media;
         const bootrom = config.symbian.bootrom;
         return {
             machine_type: N97_DEVICE.id, cpu_type: "arm32", cpu_profile: "arm1136", cpu_cores: 1, memory_size: 128 * MB,
             cpu_worker: true, disable_jit: true, cpu_worker_url: "build/cpu-worker.js" + env.query_append,
             wasm_path: "build/" + (env.debug ? "v86-arm64-debug.wasm" : "v86-arm64.wasm") + env.query_append,
             screen: { container: env.screen_container }, graphics_adapter: "none", net_device: { type: "none" },
-            symbian: { rom: image(rom), rom_sha256: rom.sha256, ...(boot_media ? {
+            symbian: { rom: image(rom), rom_sha256: rom.sha256, ...(nand ? {
+                nand: { ...image(nand), disk_option: "read_write" },
+            } : {}), ...(boot_media ? {
                 boot_media: image(boot_media), boot_media_sha256: boot_media.sha256,
             } : {}), ...(bootrom ? {
                 bootrom: image(bootrom),

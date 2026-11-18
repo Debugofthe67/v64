@@ -114,18 +114,21 @@ function symbian_panel(ctx)
 {
     const firmware = ctx.config.symbian;
     const rows = [...hardware_rows(ctx.config), ["VPL", firmware.manifest], ["VPL SHA-256", firmware.manifest_sha256]];
+    rows.push(["OneNAND", firmware.media?.nand ? "256 MiB · writable by this VM" : "Legacy import · no OneNAND image"]);
     const hardware = h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
         h("tr", null, h("th", null, label), h("td", null, value)))));
     const bootrom = firmware.bootrom;
     const heading = h("h4", null, "RAPIDO boot ROM");
+    const legacy = !firmware.media?.nand ? h("p.note", null,
+        "Reimport the RM-505 package in New VM to create a writable OneNAND image. Each VM keeps its own phone data.") : null;
     if(!firmware.media?.boot_media)
     {
-        return [hardware, heading, h("p.note", null,
-            "This VM lacks the original DSP0 and ISASW images. Reimport the matching RM-505 package in New VM to add them. This VM keeps its own Phone data image.")];
+        return [hardware, legacy, heading, h("p.note", null,
+            "Reimport the matching RM-505 package in New VM to add the original DSP0 and ISASW images.")];
     }
     if(ctx.config.suspended)
     {
-        return [hardware, heading, h("p.note", null,
+        return [hardware, legacy, heading, h("p.note", null,
             "The suspended state requires its original ROM. Resume the VM and shut it down or discard the suspended state before changing the chip ROM.")];
     }
     const file = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: ".bin,.rom,.img,application/octet-stream" }));
@@ -150,7 +153,7 @@ function symbian_panel(ctx)
         catch(error) { status.textContent = String(error.message || error); }
         finally { select.disabled = false; }
     };
-    return [hardware, heading,
+    return [hardware, legacy, heading,
         h("p.note", null, "The RM-505 firmware package contains DSP0 and ISASW. The boot ROM is built into the RAPIDO chip and comes from a separate local dump."),
         h("p.note", null, "RM-505 service report ROM ID " + N97_RAPIDO_ROM_ID),
         h("p", null, ctx.pending_bootrom ? ctx.pending_bootrom.file.name + " · ready to save" : bootrom ?

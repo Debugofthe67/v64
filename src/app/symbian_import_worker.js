@@ -126,7 +126,7 @@ async function write_images(images, ids)
     for(const [role, image] of Object.entries(images))
     {
         const id = ids[role];
-        if(typeof id !== "string" || !/^[a-f0-9-]+-symbian-(?:rom|rofs[123]|phone|boot_media)$/.test(id))
+        if(typeof id !== "string" || !/^[a-f0-9-]+-symbian-(?:rom|rofs[123]|phone|boot_media|nand)$/.test(id))
         {
             throw new Error("Invalid firmware import destination");
         }
@@ -136,10 +136,20 @@ async function write_images(images, ids)
         {
             progress("Writing " + image.name + "…");
             store.truncate(0);
-            for(let at = 0; at < image.bytes.length; at += CHUNK)
+            if(image.chunks)
             {
-                const bytes = image.bytes.subarray(at, at + CHUNK);
-                if(store.write(bytes, { at }) !== bytes.length) throw new Error("Short write to " + image.name);
+                for(const { at, bytes } of image.chunks())
+                {
+                    if(store.write(bytes, { at }) !== bytes.length) throw new Error("Short write to " + image.name);
+                }
+            }
+            else
+            {
+                for(let at = 0; at < image.bytes.length; at += CHUNK)
+                {
+                    const bytes = image.bytes.subarray(at, at + CHUNK);
+                    if(store.write(bytes, { at }) !== bytes.length) throw new Error("Short write to " + image.name);
+                }
             }
             store.truncate(image.size);
             store.flush();
