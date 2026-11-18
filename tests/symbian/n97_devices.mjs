@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { create_n97_board_config, create_n97_boot_source, create_n97_clocks, create_n97_interrupts, create_n97_l2, create_n97_os_timer,
     create_n97_rapido_id, create_n97_xti,
-    N97_BOOT_SOURCE, N97_CPU_PLL, N97_L2_BASE, N97_PLL3, N97_PLL3_CONTROL, N97_PLL_POWER, N97_RAPIDO_SELECT, N97_RESET_STATUS, N97_SHARED_CONTROL,
+    N97_BOOT_SOURCE, N97_CPU_PLL, N97_CPU_PLL_CONTROL, N97_L2_BASE, N97_PLL3, N97_PLL3_CONTROL, N97_PLL_POWER, N97_POWER_INIT, N97_POWER_REQUEST,
+    N97_RAPIDO_SELECT, N97_RESET_STATUS, N97_SDRC_POWER, N97_SHARED_CONTROL,
     N97_XTI_CONTROL, N97_XTI_DATA, N97_XTI_DOORBELL } from "../../src/symbian/n97_devices.js";
 
 function bus()
@@ -43,6 +44,64 @@ test("the RAPIDO board settings retain guest writes without shadowing adjacent h
     assert.equal(io.read(0x20031C10), 0);
     config.set_state(saved);
     assert.equal(io.read(0x20031C10), 0xAAAA55AA);
+});
+
+test("RAPIDO SDRC power preserves idle self-refresh policy and keeps nearby addresses unmapped", () => {
+    const io = bus(), config = create_n97_board_config(io);
+    assert.equal(io.has(N97_SDRC_POWER - 4), false);
+    assert.equal(io.has(N97_SDRC_POWER + 4), false);
+    assert.equal(io.read(N97_SDRC_POWER), 0x85);
+    const legacy = config.get_state().slice(0, -1);
+    io.write(N97_SDRC_POWER, io.read(N97_SDRC_POWER) | 0x40);
+    assert.equal(io.read(N97_SDRC_POWER), 0xC5);
+    io.write(N97_SDRC_POWER, 0xFFFF, 2, 2);
+    const saved = config.get_state();
+    assert.equal(io.read(N97_SDRC_POWER), 0x00FF00C5);
+    config.reset();
+    assert.equal(io.read(N97_SDRC_POWER), 0x85);
+    config.set_state(saved);
+    assert.equal(io.read(N97_SDRC_POWER), 0x00FF00C5);
+    config.set_state(legacy);
+    assert.equal(io.read(N97_SDRC_POWER), 0x85);
+});
+
+test("RAPIDO power initialization accepts the stock writes at their exact ports", () => {
+    const io = bus(), clocks = create_n97_clocks(io);
+    assert.equal(io.has(N97_POWER_REQUEST + 4), false);
+    assert.equal(io.has(N97_POWER_INIT + 4), false);
+    assert.equal(io.read(N97_POWER_REQUEST), 0);
+    const saved = clocks.get_state();
+    saved[saved.length - 1] = 0x1800;
+    clocks.set_state(saved);
+    io.write(N97_POWER_REQUEST + 8, 0x800);
+    assert.equal(io.read(N97_POWER_REQUEST), 0x1000);
+    assert.throws(() => io.write(N97_POWER_REQUEST + 8, 0x1000), /unsupported/);
+    assert.doesNotThrow(() => io.write(N97_POWER_INIT, 0));
+    assert.throws(() => io.write(N97_POWER_INIT, 1), /unsupported/);
+    assert.throws(() => io.read(N97_POWER_INIT), /unmodeled/);
+    clocks.reset();
+    assert.equal(io.read(N97_POWER_REQUEST), 0);
+});
+
+test("the CPU PLL control follows halfword enable and multiplier without changing ACCPLL", () => {
+    const io = bus(), clocks = create_n97_clocks(io);
+    const old_state = clocks.get_state().slice(0, -2);
+    assert.equal(io.read(N97_CPU_PLL_CONTROL), 0);
+    io.write(N97_CPU_PLL_CONTROL, 0xD480, 2);
+    assert.equal(io.read(N97_CPU_PLL_CONTROL, 2), 0xD490);
+    io.write(N97_CPU_PLL_CONTROL, 0x9480, 2);
+    assert.equal(io.read(N97_CPU_PLL_CONTROL, 2), 0x9480);
+    io.write(N97_CPU_PLL_CONTROL, 0x9410, 2);
+    assert.equal(io.read(N97_CPU_PLL_CONTROL, 2), 0x9400);
+    io.write(N97_CPU_PLL_CONTROL, 0xD480, 2);
+    const saved = clocks.get_state();
+    io.write(N97_CPU_PLL, 0);
+    assert.equal(io.read(N97_CPU_PLL_CONTROL, 2), 0xD480);
+    assert.equal(io.read(N97_PLL3_CONTROL, 2), 0);
+    clocks.set_state(saved);
+    assert.equal(io.read(N97_CPU_PLL_CONTROL, 2), 0xD490);
+    clocks.set_state(old_state);
+    assert.equal(io.read(N97_CPU_PLL_CONTROL, 2), 0);
 });
 
 test("the RAPIDO boot source and shared control retain their SET/CLR lanes across reset and restore", () => {

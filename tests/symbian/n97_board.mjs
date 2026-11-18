@@ -57,6 +57,9 @@ test("the boot timer advances at 32768 Hz and holds a counter snapshot until the
     assert.equal(read(), 4096);
     now += 125;
     assert.equal(read(), 4096);
+    write(N97_BOOT_TIMER + 0x18, 0);
+    assert.equal(read(), 4096);
+    assert.throws(() => write(N97_BOOT_TIMER + 0x18, 1), /unsupported boot timer/);
     capture();
     assert.equal(read(), 8192);
     const saved = device.get_state();

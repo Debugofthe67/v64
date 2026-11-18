@@ -169,6 +169,20 @@ node tools/symbian/boot-n97.mjs <output>/rom.xip.bin \
 node --test tests/symbian/arm1136_prefetch.mjs
 ```
 
+### 原厂维护 UPDAPP 的低功耗初始化
+
+`SOS*UPDAPP` 是同一份 0576555 CORE 的原厂更新组件。探针查验 CORE 摘要、KEYS 根签名和基带公钥签名，核对 1,250,135 字节压缩输入、2,366,464 字节展开数据及其签名摘要，然后从展开数据的 `+0xC00` 重建原版 XIP。此诊断走 v86 的独立 AP 交接，VM 没有持久磁盘或网络。
+
+原版 `power.dll` 经 `0x800421D0` 对 VA `0xC6010070`（PA `0x18000070`）执行读改写。该地址与 SDRC_POWER 的偏移相符，原版设置位 6，与 TI 所描述的硬件空闲自刷新字段一致。模型采用参考复位值 `0x85`，保留来宾配置及快照中的定义位。真实 UPDAPP 在此读到 `0x85` 并写回 `0xC5`，模拟 SDRAM 在空闲期间保持一致性。[TI SWPU087C 表 13–99](https://www.ti.com/lit/ug/swpu087c/swpu087c.pdf)
+
+随后原版向 `0x20032DC8` 写 `0x800`，同一驱动的电源记录读取 `0x20032DC0`。模型在清位端口清除对应位，保留其余位。该驱动还向 `0x20032C4C` 和启动计时器 `0x20040498` 写零。这两个地址目前仅支持已观察的零值初始化访问。CPU PLL 控制在 `0x20032D2C` 收到原版半字序列 `D480 → 9480 → 9400 → D480`，最终以 `D490` 报告锁定。锁定位根据使能与有效乘数导出，CPU PLL 与 ACCPLL 的控制状态各自保存。
+
+原版随后在 `0xCA1040CC` 关闭 MMU。旧映射 PA `0x0804F0CC` 处的三条机器字为 `EE012F10 E1A00000 E1A0F001`。CPU 执行预取的 `NOP`，接着首次取 `0xCA1040D4` 时触发外部预取异常（IFSR `8`）。该处原版 `MOV PC,R1` 的物理目标是 `0x0804F0DC`。当前 CPU 的预取保留窗口为一条，还未执行这次跳转。独立 AP 探针至此没有显示控制寄存器访问，面板仍休眠，实际 360×640 输出全黑。零售 S60 的 `0xFFFF8A94` 片上 ROM 边界另有独立记录。
+
+```sh
+node tools/symbian/updapp-n97.mjs <firmware-directory>/RM-505_22.0.110_prd.core.C00
+```
+
 ## Samsung MuxOneNAND 物理介质
 
 RM-505 的 CS0 是单 die 256 MiB 的 SLC，块大小 128 KiB，页大小 2 KiB，另有每页 64 字节 spare。原版 RAP3NAND 在 `+0x2EB4` 读取物理 `0x1E000/2/4`，得到制造商 `00EC`、器件 `0040` 和修订 `0121`。有 OneNAND 的 VM 随正常冷启动发布 type 19，payload 为 `[0x10000000, 0, 0x20000, 0xEC, 0x40, 0, 0, 0x121]`。`mednand.pdd` 用这组 ID 选中 `XIP+0xF7A4C` 的第 50 条设备记录。记录 `+0x11` 为零，故 `0x800F6490–0x800F64C0` 选择 `0x800F3724` 的逐块解锁入口，经 F24C 和 `0x23` 解锁。原版解锁块 `0x7FA` 时在 SA1 写 `0x87FA`，在 SA2 写 `0x8000`。单 die 忽略 DDP 选择位 15，块地址仍使用 bits 10:0。[Samsung MuxOneNAND 手册 §2.8、§3.1 与 §3.4](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf) · [Samsung 向 Linux 提交的寄存器头](https://kernel.googlesource.com/pub/scm/linux/kernel/git/bp/bp/+/refs/heads/for-next/include/linux/mtd/onenand_regs.h)

@@ -9,8 +9,12 @@ export const N97_RAPIDO_SELECT = 0x20030300;
 export const N97_RAPIDO_REVISION = 0x113;
 export const N97_BOOT_SOURCE = 0x20040400;
 export const N97_RESET_STATUS = 0x20032C18;
+export const N97_SDRC_POWER = 0x18000070;
 export const N97_SHARED_CONTROL = 0x20040380;
 export const N97_CPU_PLL = 0x20032D24;
+export const N97_CPU_PLL_CONTROL = 0x20032D2C;
+export const N97_POWER_INIT = 0x20032C4C;
+export const N97_POWER_REQUEST = 0x20032DC0;
 export const N97_CLOCK_DIVIDERS = 0x20032C04;
 export const N97_PLL3 = 0x20032D84;
 export const N97_PLL3_CONTROL = 0x20032D8C;
@@ -48,7 +52,7 @@ function set_clear_word(io, address, name, read, write)
 }
 
 const CLOCK_WORDS = [N97_CPU_PLL, N97_CLOCK_DIVIDERS, N97_PLL_POWER, N97_PLL_POWER + 4, 0x20032CD8, 0x20032C10, 0x20032C34,
-    0x20032CB8, N97_PLL3, N97_PLL3_CONTROL, 0x20032CA8, 0x20032C44];
+    0x20032CB8, N97_PLL3, N97_PLL3_CONTROL, 0x20032CA8, 0x20032C44, N97_CPU_PLL_CONTROL, N97_POWER_REQUEST];
 // ROM+0x8D948 calculates 38.4 MHz * M / (N+1) / (postdiv+1).
 // Match the RAP3NAND handoff's 433.92 MHz with M=113, N=9 and postdiv=0.
 const CPU_PLL_RESET = (113 << 5) | 9;
@@ -60,8 +64,9 @@ export function create_n97_clocks(io)
     const reset_values = () => CLOCK_WORDS.map(address => address === N97_CPU_PLL ? CPU_PLL_RESET : 0);
     let registers = reset_values();
     const clock_value = address => registers[CLOCK_WORDS.indexOf(address)];
-    const pll_locked = () => (clock_value(N97_PLL_POWER) & PLL_ENABLE) &&
-        (clock_value(N97_PLL3_CONTROL) & PLL_ENABLE) && ((clock_value(N97_PLL3) >> 5) & 0x7FF) ? PLL_LOCKED : 0;
+    const lock = (config, control) => (clock_value(control) & PLL_ENABLE) &&
+        ((clock_value(config) >> 5) & 0x7FF) ? PLL_LOCKED : 0;
+    const pll3_locked = () => (clock_value(N97_PLL_POWER) & PLL_ENABLE) ? lock(N97_PLL3, N97_PLL3_CONTROL) : 0;
     // XIP+0x9A3EC reads the base word; +0x9A410/+0x9A418 use its set and
     // clear ports. ISASW sets bit 15 without clearing the AP's bit 14.
     // Retain the old +4 slot as the shared latch in existing snapshots.
@@ -69,12 +74,34 @@ export function create_n97_clocks(io)
     set_clear_word(io, PLL_POWER_BASE, "RAPIDO PLL power", () => registers[power_index], (value, mask) => {
         registers[power_index] = merge(registers[power_index], value, mask);
     });
+    // The CPU multiplier is at +0x124. The stock updater programs control
+    // at +0x12C with STRH. It clears and re-enables bit 14, then
+    // polls bit 4 just as the ACCPLL driver does.
+    const locks = new Map([[N97_CPU_PLL_CONTROL, () => lock(N97_CPU_PLL, N97_CPU_PLL_CONTROL)], [N97_PLL3_CONTROL, pll3_locked]]);
     for(const [index, address] of CLOCK_WORDS.entries())
     {
-        if(address === N97_PLL_POWER || address === N97_PLL_POWER + 4) continue;
-        word(io, address, "RAPIDO clock control", () => registers[index] | (address === N97_PLL3_CONTROL ? pll_locked() : 0),
-            (value, mask) => { registers[index] = merge(registers[index], value, address === N97_PLL3_CONTROL ? mask & ~PLL_LOCKED : mask); });
+        if([N97_PLL_POWER, N97_PLL_POWER + 4, N97_POWER_REQUEST].includes(address)) continue;
+        const locked = locks.get(address);
+        word(io, address, "RAPIDO clock control", () => registers[index] | (locked?.() ?? 0),
+            (value, mask) => { registers[index] = merge(registers[index], value, locked ? mask & ~PLL_LOCKED : mask); });
     }
+
+    // UPDAPP power.dll reads the base at +0x55AC4. Its initialization and
+    // sleep handlers write bit 11 to the +8 clear port.
+    const request_index = CLOCK_WORDS.indexOf(N97_POWER_REQUEST);
+    word(io, N97_POWER_REQUEST, "RAPIDO power request", () => registers[request_index],
+        () => { throw new Error("Nokia N97: unsupported power request write"); });
+    word(io, N97_POWER_REQUEST + 8, "RAPIDO power request clear", () => 0, (value, mask) => {
+        if(value & mask & ~0x800) throw new Error("Nokia N97: unsupported power request clear bits");
+        registers[request_index] = (registers[request_index] & ~(value & mask)) >>> 0;
+    });
+    // The same routine only writes zero to this control word. Preserve the
+    // supported access while leaving its other values and effects undefined.
+    word(io, N97_POWER_INIT, "RAPIDO power initialization",
+        () => { throw new Error("Nokia N97: unmodeled power initialization read"); },
+        (value, mask) => {
+            if(value || mask !== -1) throw new Error("Nokia N97: unsupported power initialization write");
+        });
     return {
         reset() { registers = reset_values(); },
         get_state() { return registers.slice(); },
@@ -83,7 +110,7 @@ export function create_n97_clocks(io)
         {
             const pll = clock_value(N97_CPU_PLL);
             const divisor = ((pll & 31) + 1) * ((clock_value(N97_CLOCK_DIVIDERS) & 3) + 1);
-            return { "configured_cpu_hz": Math.floor(38400000 * ((pll >>> 5) & 0x7FF) / divisor), "pll3_locked": !!pll_locked() };
+            return { "configured_cpu_hz": Math.floor(38400000 * ((pll >>> 5) & 0x7FF) / divisor), "pll3_locked": !!pll3_locked() };
         },
     };
 }
@@ -136,7 +163,24 @@ export function create_n97_board_config(io, mmc = () => null)
         word(io, 0x20030000 + offset + 8, "RAPIDO output clear", () => 0,
             (value, mask) => platform.write_word(offset, 0, value & mask));
     }
-    return platform;
+    // All three stock XIPs map this SDRC word at VA 0xC6010070.
+    // UPDAPP power.dll enables idle self-refresh via bit 6. Keep the
+    // SDRC_POWER policy fields (TI SWPU087C Table 13-99) while RAM remains
+    // coherent through idle in v86.
+    const sdrc_reset = 0x85, sdrc_fields = 0x00FFFFFD;
+    let sdrc_power = sdrc_reset;
+    word(io, N97_SDRC_POWER, "RAPIDO SDRC power", () => sdrc_power, (value, mask) => {
+        sdrc_power = merge(sdrc_power, value, mask & sdrc_fields);
+    });
+    return {
+        reset() { platform.reset(); sdrc_power = sdrc_reset; },
+        get_state() { return [...platform.get_state(), sdrc_power]; },
+        set_state(state)
+        {
+            platform.set_state(state.slice(0, words.length));
+            sdrc_power = (state[words.length] ?? sdrc_reset) & sdrc_fields;
+        },
+    };
 }
 
 function latches(io, base, name, offsets, on_write = undefined)

@@ -142,6 +142,11 @@ export function create_n97_boot_timer(cpu)
     write_register(N97_BOOT_TIMER + 0x14, value => {
         if(value === 0) captured = ticks + elapsed_ticks() >>> 0;
     });
+    // The stock updater clears +0x18 after power initialization. Its
+    // behavior for other values is separate from the capture counter.
+    write_register(N97_BOOT_TIMER + 0x18, value => {
+        if(value !== 0) throw new Error("Nokia N97: unsupported boot timer initialization write");
+    });
     cpu.io.register_mmio(N97_BOOT_TIMER + 0x10, 4, {
         name: "RM-505 boot timer capture",
         read(offset, width)
