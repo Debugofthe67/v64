@@ -513,6 +513,11 @@ void main() { gl_Position = p + vec4(d.mC.mA[2][3], float(d.mC.mB.x), e) + vec4(
     const global_call = link("attribute vec4 p; float b = exp(log2((float(5))) - 1.0); const float c = sqrt((4.0));\n" +
         "void main() { gl_Position = p * b * c; }", "precision mediump float; void main() { gl_FragColor = vec4(1.0); }");
     assert.ok(global_call.ok, "built-ins called in globals' initializers: " + global_call.log);
+    const volume = link("attribute vec4 p; void main() { gl_Position = p; }",
+        "#extension GL_OES_texture_3D : require\nprecision mediump float;\n" +
+        "uniform lowp sampler3D volume; void main() { gl_FragColor = texture3D(volume, vec3(0.5)); }");
+    assert.ok(volume.ok, "a GLSL ES 1.00 3D texture links: " + volume.log);
+    assert.deepEqual(volume.uniforms.map(u => [u.name, u.type]), [["volume", 0x8B5F]]);
     // (unused attributes: locations of their own, not one glBindAttribLocation gave a used one)
     const unused = link("attribute vec4 a_coords; attribute vec4 a_position; attribute mat2 a_m; void main() { gl_Position = a_position; }",
         "precision mediump float; void main() { gl_FragColor = vec4(1.0); }", new Map([["a_position", 1]]));
@@ -569,6 +574,6 @@ void main() { gl_Position = p + vec4(d.mC.mA[2][3], float(d.mC.mB.x), e) + vec4(
     assert.equal(await compiles(0x8B31, sized("#version 300 es\n", "gl_MaxDrawBuffers == 4 && gl_MaxVertexOutputVectors == 16 && " +
         "gl_MaxFragmentInputVectors == 15 && gl_MinProgramTexelOffset == -8 && gl_MaxProgramTexelOffset == 7")), 1, "GLSL ES 3.00's");
     assert.equal(await compiles(0x8B31, sized("", "gl_MaxVertexTextureImageUnits == 32")), 0, "glslang's own default is not");
-    console.log("PASS: GLSL ES 1.00 through glslang: overloads of built-ins, unused attributes, a one-element array; a late #extension; " +
+    console.log("PASS: GLSL ES 1.00 through glslang: overloads of built-ins, 3D samplers, unused attributes, a one-element array; a late #extension; " +
         "the built-in constants");
 }
