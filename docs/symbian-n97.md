@@ -349,7 +349,23 @@ RM-505 的 RAPIDO DISPC 从 SDRAM 读像素，经 ViSSI 给 D6001 显示控制�
 
 原版 `lossi.dll` 驱动通过 PA `0x20032100` 的两组端口发送命令和数据，经发送就绪、发送空闲及接收确认完成传输。维修手册的 Figure 76 显示 CS0 接 D6001（UPD809400），CS1 经 ASIP 接 TFT。原版两个构造函数与该走线一致。D6001 的行列窗口使用两个 24 位大端端点，TFT 的窗口端点为 16 位。D6001 在退出休眠、选择 24 位 ViSSI 和收到 `0x2C` 后，按窗口从光栅帧接收像素。TFT 的 `0x28/0x29` 和 `0x10/0x11` 控制关屏、开屏、休眠与唤醒，画面隐藏时保留帧缓存。快照保留缓存、窗口、命令及未完成的传输。S3.1 的旧快照仍可显示直接光栅。串行节拍采用板载 38.4 MHz 参考，休眠退出采用 DCS 的 5 ms 稳定时间。[Nokia 维修手册第 8–26 至 8–27 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf) · [MIPI Display Command Set](https://www.mipi.org/specifications/display-command-set)
 
-`panel-n97.mjs` 冷启 0576555 原版 AP 内核，以原版 `lossi.dll` 初始化 DFC 队列，再由 `DisplayControllerHw` 和 `WhiteDwarf` 原版构造函数创建两条命令路径。原版 `DispC` 经 ViSSI 向缓存提交全屏 230400 像素。探针执行原版软件复位，确认复位期间两个方向的画面完整保留。原版 `0x801327D4` 重新初始化寄存器并绑定 IRQ 131。复位后原版窗口回调 `0x8013C5A8` 从带行步进的 SDRAM 更新 (304, 30) 起的 180×25 矩形，保留剩余 225900 像素，并执行原版显示中断处理例程。探针清空原始 SDRAM 后逐像素核对黑屏和唤醒前后两种方向的 RGBA。公开 Chrome 夹具通过正常 CPU Worker 由 ARM 客体发起复位，核对两种方向的画布、关屏复位再开屏及挂起后的保存画面。
+### 零售冷启动的显示进度
+
+`--display-evidence` 从 v86 提供的 XIP 加载器交接开始跟踪 0576555 原版模块入口及硬件访问，直到兼容冷启中 `0xFFFF8A94` 首次取指异常。原版内核分别在第 1,491,596 和 1,492,275 步调用 `lossi.dll`（`0x80114038`）和 `d_display.ldd`（`0x801202D8`）。两次调用的 R0 都为 −3，两模块均返回 −6。原版在 `0x80114568` 和 `0x80120728` 判别入口参数，本次尚未进入参数 −1 的初始化分支。`r_display_kernel.dll`、`r_display.dll` 和两个受跟踪的照明驱动未执行。
+
+截至第 4,357,413 步，DISPC 和 LoSSI 的寄存器读写次数均为零，光栅输出未启用，TFT 与 D6001 缓冲仍为休眠状态，面板接收像素数为零。由同一 VM 的 DisplayHub 采样得到 360×640 的全黑 RGBA 帧，`non_black_pixels` 为零。维修手册中的 LCD 背光由面板 CABC 信号控制。静态反汇编显示，更早的原版 RAP3NAND 在 `+0x1EDC`、`+0x1EDE` 有对 DISPC SYSCONFIG 和 CONFIG 的配置写入。该加载器位于本次 XIP 跟踪窗口之前，上述零访问计数只覆盖 v86 的 XIP 交接之后。[Nokia N97 维修手册第 8–26 至 8–29 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf)
+
+Nokia 用户指南将 Offline 描述为开机后短按电源键选择的网络配置。它支持无 SIM 使用，指南没有给出跳过原版基带交接的冷启动流程。同套固件中的原厂维护 ENO 已独立查验签名。在独立 AP 诊断中，未修改的 ENO XIP 引导至 EKA2，随后在 `0x8009B4F0` 的原版 SISA 包装器内读空指针。该次诊断中光栅输出仍未开启，面板保持黑色。此结果仅覆盖当前模拟器的 AP 诊断交接。[Nokia N97 用户指南，第 17 和 27 页](https://fcc.report/FCC-ID/QVVRM-505/1223966.pdf)
+
+```sh
+node tools/symbian/boot-n97.mjs <output>/rom.xip.bin \
+  --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img \
+  --rapido-compat-rom --display-evidence
+```
+
+### 原版驱动的独立像素对照
+
+`panel-n97.mjs` 冷启 0576555 原版 AP 内核，以原版 `lossi.dll` 初始化 DFC 队列，再由 `DisplayControllerHw` 和 `WhiteDwarf` 原版构造函数创建两条命令路径。原版 `DispC` 经 ViSSI 向缓存提交全屏 230400 像素。探针执行原版软件复位，确认复位期间两个方向的画面完整保留。原版 `0x801327D4` 重新初始化寄存器并绑定 IRQ 131。复位后原版窗口回调 `0x8013C5A8` 从带行步进的 SDRAM 更新 (304, 30) 起的 180×25 矩形，保留剩余 225900 像素，并执行原版显示中断处理例程。探针清空原始 SDRAM 后逐像素核对黑屏和唤醒前后两种方向的 RGBA。当前再次运行该探针，得到 234900 个像素和 74 次 LoSSI 传输，并处理两次显示中断。公开 Chrome 夹具通过正常 CPU Worker 由 ARM 客体发起复位，核对两种方向的画布、关屏复位再开屏及挂起后的保存画面。
 
 原版 `0x80132DEC` 的 stall 模式仍需单独验收。已观测到 `TControllerDifPlatform` 编程 PA `0x20024080/0x20024100`，其在手机主屏完整引导中的作用仍待确认。面板物理复位及电源、LoSSI 像素 PIO、私有面板命令及视频叠层待接入。私有读取当前为总线高电平，缺少实机读数。完整 S60 桌面仍待验证。
 

@@ -14,26 +14,29 @@ import { N97_BOOT_TOC, N97_RAM_BASE, N97_RAM_SIZE, N97_ROM_ADDRESS } from "../..
 import { read_n97_boot_media } from "../../src/symbian/n97_boot_media.js";
 import { N97_BOOT_SOURCE, N97_CPU_PLL, N97_L2_BASE, N97_PLL3, N97_PLL3_CONTROL, N97_PLL_POWER, N97_RAPIDO_SELECT, N97_RESET_STATUS,
     N97_SHARED_CONTROL } from "../../src/symbian/n97_devices.js";
+import { N97_DISPC_BASE } from "../../src/symbian/n97_dispc.js";
 import { N97_FLASH_IMAGE_SIZE } from "../../src/symbian/n97_flash.js";
+import { N97_LOSSI_BASE } from "../../src/symbian/n97_lossi.js";
 import { N97_COMPAT_XIP } from "../../src/symbian/n97_rapido_compat.js";
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     "ap-only": { type: "boolean" }, "boot-media": { type: "string" }, "boot-rom": { type: "string" }, "reject-probe": { type: "boolean" },
     "nand": { type: "string" }, "isa-probe": { type: "string" }, "rapido-compat-rom": { type: "boolean" },
-    "compat-negative": { type: "string" }, "original-core": { type: "string" },
+    "compat-negative": { type: "string" }, "original-core": { type: "string" }, "display-evidence": { type: "boolean" },
 } });
 const compat = values["rapido-compat-rom"];
 const negative = values["compat-negative"];
 const original_core = values["original-core"];
+const display_evidence = values["display-evidence"];
 const negative_outcome = new Map([["descriptor", "request"], ["toc-size", "request"], ["toc-name", "request"], ["root", "keys"], ["keys-signature", "keys"],
     ["modem-key", "keys"], ["certificate", "isasw"], ["certificate-trailer", "isasw"], ["isasw-payload", "isasw"], ["dsp0-payload", "dsp0"]]);
 if(positionals.length !== 1 || (values["boot-rom"] || values["reject-probe"]) && !values["boot-media"] ||
     values["ap-only"] && values["boot-media"] || values["boot-rom"] && values["reject-probe"] || values["isa-probe"] && !values["ap-only"] ||
     compat && (!values["boot-media"] || !values.nand || values["boot-rom"] || values["reject-probe"]) ||
     negative !== undefined && (!compat || !negative_outcome.has(negative)) ||
-    original_core !== undefined && (!original_core || !compat || negative !== undefined))
+    original_core !== undefined && !original_core || (original_core || display_evidence) && (!compat || negative !== undefined))
 {
-    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--nand <onenand.img>] [--ap-only [--isa-probe <rapido-boot.bin>] | --boot-media <rapido-boot.bin> [--boot-rom <dump> | --reject-probe | --rapido-compat-rom [--compat-negative <" + [...negative_outcome.keys()].join("|") + ">] [--original-core <RM-505_22.0.110_prd.core.C00>]]]");
+    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--nand <onenand.img>] [--ap-only [--isa-probe <rapido-boot.bin>] | --boot-media <rapido-boot.bin> [--boot-rom <dump> | --reject-probe | --rapido-compat-rom [--compat-negative <" + [...negative_outcome.keys()].join("|") + ">] [--original-core <RM-505_22.0.110_prd.core.C00>] [--display-evidence]]]");
 }
 const rom = await readFile(positionals[0]);
 const sha256 = digest(rom);
@@ -128,7 +131,7 @@ function apply_compat_negative(cpu, media, descriptor)
     };
 }
 
-function observe_rapido_service(cpu, pc_now, field, register, word)
+function observe_rapido_service(cpu, pc_now, field, register, word, display_visit)
 {
     const wasm = cpu.wm.exports;
     const media = cpu.boot_files.media;
@@ -137,6 +140,7 @@ function observe_rapido_service(cpu, pc_now, field, register, word)
     for(let step = 0; step < 500000; step++)
     {
         const pc = pc_now();
+        display_visit?.(pc, step);
         observe_isasw_record(isasw_record, pc, step, register, word);
         if(pc === 0xFFFF1208 && !service)
         {
@@ -156,6 +160,7 @@ function observe_rapido_service(cpu, pc_now, field, register, word)
         {
             result = { step, pc, return_value: register(0) };
             wasm["a64_worker_slice"](1);
+            display_visit?.(pc_now(), step + 1);
             wasm["a64_worker_slice"](1);
             result.next_branch = pc_now();
             break;
@@ -179,13 +184,13 @@ function observe_rapido_service(cpu, pc_now, field, register, word)
         assert.equal(verification, negative ? negative_outcome.get(negative) : "verified");
         assert.equal(result.return_value, negative ? 0 : 1);
     }
-    const handoff = compat && !negative && observe_retail_handoff(cpu, result.step + 2, isasw_record, pc_now, field, register, word);
+    const handoff = compat && !negative && observe_retail_handoff(cpu, result.step + 2, isasw_record, pc_now, field, register, word, display_visit);
     return { sha256, boot_media_sha256: media.digest, bootrom_sha256: !compat && cpu.boot_files.bootrom_digest || null,
         diagnostic_rejection: !!values["reject-probe"], onenand: cpu.devices.n97_onenand?.status(),
         isasw_record, service, result, verification, negative, handoff: handoff || undefined };
 }
 
-function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, register, word)
+function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, register, word, display_visit)
 {
     const wasm = cpu.wm.exports;
     const handoff = { boot_registers: [], cp15: [] };
@@ -216,6 +221,7 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
         if(elapsed && elapsed % 32 === 0) cpu.run_hardware_timers(null, cpu.clock.advance_instructions(32));
         const pc = pc_now(), thumb = !!(field("pstate") & 32);
         step = service_step + elapsed;
+        display_visit?.(pc, step);
         if((pc === N97_ROM_ADDRESS + 0x2394 || pc === 0x80002394) && !handoff.mapped)
         {
             const record = field("sctlr_el1") & 1 ? supervisor_physical(register(7), field, word) : register(7);
@@ -359,6 +365,94 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
     assert.equal(handoff.rom_entry.r8, handoff.rom_selection.thumb);
     assert.ok(handoff.secldd_selection.masked_ids.includes(handoff.rom_selection.masked_id));
     return handoff;
+}
+
+// Observe the retail cold start from the XIP handoff, without invoking
+// any display routine or changing the guest. The XIP digest guards these TRomImageHeader addresses.
+function observe_retail_display(cpu, register)
+{
+    const xip_base = 0x80000000;
+    const xip_end = N97_ROM_ADDRESS + rom.length;
+    const modules = [
+        ["LightPdd.Pdd", 0x800DA050],
+        ["LightLdd.Ldd", 0x800DD2E0],
+        ["lossi.dll", 0x80113FC0],
+        ["d_display.ldd", 0x80120260],
+        ["r_display_kernel.dll", 0x80144620],
+        ["r_display.dll", 0x8073DAD0],
+    ].map(([name, header]) => {
+        const code = rom.readUInt32LE(header - xip_base + 20);
+        const entry = (rom.readUInt32LE(header - xip_base + 16) & ~1) >>> 0;
+        return { name, code, end: code + rom.readUInt32LE(header - xip_base + 32), entry, visits: 0, entry_calls: [] };
+    });
+    const mmio = { dispc: { reads: 0, writes: 0 }, lossi: { reads: 0, writes: 0 } };
+    const { display: hub, n97_dispc: controller, n97_lossi: lossi, n97_panel: panel } = cpu.devices;
+    const { io } = cpu;
+    const read = io.mmio_read, write = io.mmio_write, update_buffer = hub.sink.update_buffer;
+    let frame = null, output_frames = 0, non_black_frames = 0;
+    const active_calls = [];
+    function count_mmio(owner, offset, direction)
+    {
+        const address = io.ranges[owner].base + Number(offset);
+        if(address >= N97_DISPC_BASE && address < N97_DISPC_BASE + 0x200) mmio.dispc[direction]++;
+        if(address >= N97_LOSSI_BASE && address < N97_LOSSI_BASE + 0x30) mmio.lossi[direction]++;
+    }
+    io.mmio_read = function(owner, offset, width) {
+        count_mmio(owner, offset, "reads");
+        return read.call(io, owner, offset, width);
+    };
+    io.mmio_write = function(owner, offset, width, value) {
+        count_mmio(owner, offset, "writes");
+        return write.call(io, owner, offset, width, value);
+    };
+    hub.sink.update_buffer = function(layers) {
+        // DISPC presents a single opaque RGBA layer.
+        const { width, height, data } = layers[0].pixels;
+        let non_black_pixels = 0;
+        for(let i = 0; i < data.length; i += 4)
+            if(data[i] || data[i + 1] || data[i + 2]) non_black_pixels++;
+        frame = { width, height, non_black_pixels, rgba_sha256: digest(data) };
+        output_frames++;
+        if(non_black_pixels) non_black_frames++;
+        update_buffer.call(hub.sink, layers);
+    };
+    return {
+        visit(pc, step)
+        {
+            const active = active_calls.at(-1);
+            if(active && pc === ((active.lr & ~1) >>> 0))
+            {
+                active.returned = { step, result: register(0) | 0 };
+                active_calls.pop();
+            }
+            const address = pc >= N97_ROM_ADDRESS && pc < xip_end ? pc - N97_ROM_ADDRESS + xip_base : pc;
+            if(address < modules[0].code || address >= modules.at(-1).end) return;
+            const module = modules.find(item => address >= item.code && address < item.end);
+            if(module)
+            {
+                module.visits++;
+                if(address === module.entry)
+                {
+                    const called = { pc, step, reason: register(0) | 0, lr: register(14) };
+                    module.entry_calls.push(called);
+                    active_calls.push(called);
+                }
+            }
+        },
+        report()
+        {
+            const state = { controller: controller.status(), lossi: lossi.status(), panel: panel.status() };
+            hub.request_frame(true);
+            assert.ok(frame, "the N97 display source must publish its current frame");
+            return { modules, mmio, ...state, output_frames, non_black_frames, frame };
+        },
+        close()
+        {
+            io.mmio_read = read;
+            io.mmio_write = write;
+            hub.sink.update_buffer = update_buffer;
+        },
+    };
 }
 
 // Inventory the exact RM-505 CORE from the original VPL. Matches are byte
@@ -536,9 +630,18 @@ try
     assert.equal(pc_now(), N97_ROM_ADDRESS);
     if(values["boot-media"])
     {
-        const boot = observe_rapido_service(cpu, pc_now, field, register, word);
-        if(original_core) boot.original_core = await inventory_original_core(original_core, boot.handoff.rom_dispatch[0].descriptor);
-        console.log(JSON.stringify(boot, null, 2));
+        const display = display_evidence ? observe_retail_display(cpu, register) : null;
+        try
+        {
+            const boot = observe_rapido_service(cpu, pc_now, field, register, word, display?.visit);
+            if(display) boot.display = display.report();
+            if(original_core) boot.original_core = await inventory_original_core(original_core, boot.handoff.rom_dispatch[0].descriptor);
+            console.log(JSON.stringify(boot, null, 2));
+        }
+        finally
+        {
+            display?.close();
+        }
     }
     else
     {
