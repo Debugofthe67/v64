@@ -14,3 +14,8 @@ export const N97_KEY_CODES = new Map([
     ["CameraShutter", 0x1F],
 ]);
 export const N97_MATRIX_CODES = new Set(N97_KEY_CODES.values());
+
+export function n97_control(control, pressed)
+{
+    return typeof pressed === "boolean" && (control === "lock" || control === "power" || control === "send" || control === "end");
+}

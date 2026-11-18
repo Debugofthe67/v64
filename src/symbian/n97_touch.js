@@ -13,11 +13,6 @@ const CONVERSION_CHANNELS = [0xF, 3, 1, 2, 0xC]; // XYZ, XY, X, Y, Z1/Z2
 // exyin.dll sees X = 1008, outside the LCD calibration and inside both regions.
 const TOUCH_KEY_X = new Map([["send", 720], ["end", 293]]);
 
-export function n97_control(control, pressed)
-{
-    return typeof pressed === "boolean" && (control === "lock" || TOUCH_KEY_X.has(control));
-}
-
 export function n97_touch_point(x, y, down)
 {
     return Number.isInteger(x) && x >= 0 && x < N97_TOUCH_WIDTH &&

@@ -87,7 +87,7 @@ test("N97 screen, call keys and lock share the original buses and restore withou
         assert.deepEqual(read_adc(0x63), [0x4A2B]);
         assert.deepEqual(read_adc(0x6B, 2), [0x104, 0xF81C]);
 
-        assert.throws(() => vm.symbian_send_control("power", true), /expected a Nokia N97 control/);
+        assert.throws(() => vm.symbian_send_control("unknown", true), /expected a Nokia N97 control/);
         assert.throws(() => vm.symbian_send_control("lock", 1), /boolean state/);
         const pen = 1 << 6, lock = 1 << 8, hall = 1 << 26, absent_sd = 1 << 13;
         gpio(0x2C, pen); // exyin configures a low-level GPIO interrupt.

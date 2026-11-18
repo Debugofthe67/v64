@@ -120,6 +120,7 @@ function latches(io, base, name, offsets, on_write = undefined)
 }
 
 export const N97_KEYBOARD_IRQ = 249;
+export const N97_AVILMA_IRQ = 250;
 export const N97_SLIDER_IRQ = 248;
 export const N97_PANEL_IRQ = 234;
 export const N97_NAND_IRQ = 245;
@@ -136,10 +137,10 @@ export function create_n97_interrupts(io, set_lines)
 {
     // RM-505 dispatches IRQ from +0x08 (XIP+0x8CFF8) and FIQ
     // from +0x48 (+0x8D178), with -1 as the empty ID on either port.
-    const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C]);
+    const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C, 0x94]);
     const priority = new Uint8Array(256);
     const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ,
-        ...N97_DMA_IRQS, N97_PANEL_IRQ, N97_DISPC_IRQ, N97_NAND_IRQ];
+        ...N97_DMA_IRQS, N97_PANEL_IRQ, N97_DISPC_IRQ, N97_NAND_IRQ, N97_AVILMA_IRQ];
     const unmasked = new Set(), asserted = new Set();
     let enabled = 0, selected = 0, active = NO_INTERRUPT;
     const pending = () => {
@@ -198,6 +199,12 @@ export function create_n97_interrupts(io, set_lines)
         update();
         return 0;
     }, () => {});
+    // ISASW's hw_irq_1.c brackets CBUS and interrupt registration using
+    // +0x88/+0x8C and +0x94/+0x98. These command pairs retain separate state
+    // from the AP's IRQ claim path.
+    for(const offset of [0x88, 0x94])
+        reg(offset + 4, "RAPIDO interrupt critical-section release", () => 0,
+            (value, mask) => configuration.write_word(offset, 0, value & mask));
     function line(id, level)
     {
         if(level) asserted.add(id);
@@ -210,6 +217,7 @@ export function create_n97_interrupts(io, set_lines)
         set_dma(source, level) { line(source, level); },
         set_i2c(level) { line(N97_I2C_IRQ, level); },
         set_keyboard(level) { line(N97_KEYBOARD_IRQ, level); },
+        set_avilma(level) { line(N97_AVILMA_IRQ, level); },
         set_slider(level) { line(N97_SLIDER_IRQ, level); },
         set_panel(level) { line(N97_PANEL_IRQ, level); },
         set_dispc(level) { line(N97_DISPC_IRQ, level); },

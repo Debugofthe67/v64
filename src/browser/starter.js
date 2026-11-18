@@ -1,5 +1,5 @@
-import { N97_MATRIX_CODES } from "../symbian/n97_keymap.js";
-import { n97_control, n97_touch_point } from "../symbian/n97_touch.js";
+import { N97_MATRIX_CODES, n97_control } from "../symbian/n97_keymap.js";
+import { n97_touch_point } from "../symbian/n97_touch.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
 import { instantiate_v86, memory_import } from "../parallel/relocate.js";
 import { default_worker_url, parallel_unsupported_reason } from "../parallel/machine.js";
@@ -2836,8 +2836,8 @@ V86.prototype.symbian_set_touch = function(x, y, pressed)
 V86.prototype["symbian_set_touch"] = V86.prototype.symbian_set_touch;
 
 /**
- * Move a Nokia N97 call touch key or the side lock switch.
- * @param {string} control "send", "end", or "lock"
+ * Move a Nokia N97 call touch key, side lock switch, or physical power button.
+ * @param {string} control "send", "end", "lock", or "power"
  * @param {boolean} pressed
  */
 V86.prototype.symbian_send_control = function(control, pressed)

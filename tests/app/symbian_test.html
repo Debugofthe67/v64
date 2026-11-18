@@ -108,6 +108,23 @@ async function check_n97_keyboard(frame, emulator)
         return state.touch.contact === contact && state.lock_pressed === lock_pressed;
     }, "front contact " + contact + " and side lock " + lock_pressed);
     check(slider.textContent === "Open slider" && key("Q").closest(".n97-slide-keys").hidden, "closed slider hides its QWERTY keys");
+    const power_state = async pressed => {
+        await until(async () => (await read()).power_pressed === pressed, "AVILMA power key " + pressed);
+        check(key("Power").getAttribute("aria-pressed") === String(pressed), "phone power key exposes its held state");
+    };
+    check(key("Power").getAttribute("aria-label") === "Phone power key", "phone power key has a distinct control");
+    pointer("Power", "pointerdown", 3);
+    await power_state(true);
+    keys("keydown", "F9");
+    keys("keydown", "F9", true);
+    pointer("Power", "pointercancel", 3);
+    await power_state(true);
+    keys("keyup", "F9");
+    await power_state(false);
+    keys("keydown", "F9");
+    await power_state(true);
+    win.dispatchEvent(new win.Event("blur"));
+    await power_state(false);
     pointer("Send", "pointerdown", 4);
     await panel_contact("send", false);
     pointer("Lock", "pointerdown", 5);
@@ -294,6 +311,11 @@ async function check_n97_keyboard_resume(first, store, id)
     }));
     await until(async () => (await worker_diagnostics(first.contentWindow.v86_console.emulator)).symbian.lock_pressed,
         "held side lock before suspend");
+    doc.querySelector('[data-key="Power"]').dispatchEvent(new first.contentWindow.PointerEvent("pointerdown", {
+        bubbles: true, cancelable: true, button: 0, pointerId: 28, pointerType: "touch",
+    }));
+    await until(async () => (await worker_diagnostics(first.contentWindow.v86_console.emulator)).symbian.power_pressed,
+        "held phone power key before suspend");
     doc.querySelector("#menu_power").click();
     (await until(() => doc.querySelector("#menu_suspend"), "Suspend menu")).click();
     await until(() => doc.querySelector(".console-status")?.dataset.state === "Suspended", "suspended Nokia N97");
@@ -309,7 +331,8 @@ async function check_n97_keyboard_resume(first, store, id)
     const current = (await worker_diagnostics(emulator)).symbian;
     check(current.slider_open && !current.keyboard.pressed.length &&
         !reopened.querySelector(".n97-slide-keys").hidden, "restored Hall level and keyboard drawer agree");
-    check(!current.touch.pressed && !current.lock_pressed && reopened.querySelector(".n97-touch-screen").dataset.landscape === "true",
+    check(!current.touch.pressed && !current.lock_pressed && !current.power_pressed &&
+        reopened.querySelector(".n97-touch-screen").dataset.landscape === "true",
         "restored screen orientation follows Hall and has no stale contact");
     await check_n97_display(reopened, true);
     return resumed;

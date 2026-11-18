@@ -10,10 +10,10 @@ const rows = [
 ];
 const rocker = ["Up", "Left", "Select", "Right", "Down"];
 const front_keys = ["Send", "Menu", "End"];
-const side_keys = ["Lock", "VolumeDown", "VolumeUp", "CameraFocus", "CameraShutter"];
+const side_keys = ["Power", "Lock", "VolumeDown", "VolumeUp", "CameraFocus", "CameraShutter"];
 const outer_keys = [...front_keys, ...side_keys];
-/** @type {Map<string, "send" | "end" | "lock">} */
-const panel_controls = new Map([["Send", "send"], ["End", "end"], ["Lock", "lock"]]);
+/** @type {Map<string, "send" | "end" | "lock" | "power">} */
+const panel_controls = new Map([["Send", "send"], ["End", "end"], ["Lock", "lock"], ["Power", "power"]]);
 const labels = {
     Backspace: "⌫", Comma: ",", Left: "←", Up: "↑", Down: "↓", Right: "→", Select: "●",
     Shift: "⇧", Enter: "↵", VolumeDown: "Vol −", VolumeUp: "Vol +", CameraFocus: "Focus", CameraShutter: "Shutter",
@@ -25,12 +25,12 @@ const shortcuts = {
     ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down",
     F2: "Fn", F3: "Chr", ContextMenu: "Menu", AudioVolumeDown: "VolumeDown",
     AudioVolumeUp: "VolumeUp", F7: "CameraFocus", F8: "CameraShutter",
-    Home: "Send", End: "End", F4: "Lock",
+    Home: "Send", End: "End", F4: "Lock", F9: "Power",
 };
 
 /**
  * @param {(code: number, pressed: boolean) => void} send
- * @param {(control: "send" | "end" | "lock", pressed: boolean) => void} send_control
+ * @param {(control: "send" | "end" | "lock" | "power", pressed: boolean) => void} send_control
  * @param {(open: boolean) => void} move_slider
  */
 export function n97_keyboard_panel(send, send_control, move_slider)
@@ -106,7 +106,8 @@ export function n97_keyboard_panel(send, send_control, move_slider)
         const host_key = Object.keys(shortcuts).find(code => shortcuts[code] === key);
         const label = key === "CameraFocus" ? "Camera focus" : key === "CameraShutter" ? "Camera shutter" :
             key === "VolumeUp" ? "Volume up" : key === "VolumeDown" ? "Volume down" :
-            key === "Send" ? "Answer call" : key === "End" ? "End call" : key === "Lock" ? "Side lock switch" : key;
+            key === "Send" ? "Answer call" : key === "End" ? "End call" : key === "Lock" ? "Side lock switch" :
+            key === "Power" ? "Phone power key" : key;
         const button = h("button", { type: "button", dataset: { key }, "aria-label": label, "aria-pressed": "false",
             title: host_key ? label + " · " + host_key : label }, labels[key] || key);
         button.addEventListener("pointerdown", event => {
@@ -133,7 +134,7 @@ export function n97_keyboard_panel(send, send_control, move_slider)
         h("div", null, rows.map(row => h("div.n97-key-row", null, row.map(make_button))))));
     panel.append(
         h("div.n97-key-row.n97-outer-keys", { role: "group", "aria-label": "Front controls" }, front_keys.map(make_button)),
-        h("div.n97-key-row.n97-outer-keys", { role: "group", "aria-label": "Side controls" }, side_keys.map(make_button)));
+        h("div.n97-key-row.n97-outer-keys", { role: "group", "aria-label": "Top and side controls" }, side_keys.map(make_button)));
     panel.addEventListener("keydown", event => {
         if(event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
         if(event.target instanceof HTMLButtonElement && (event.code === "Space" || event.code === "Enter")) return;
