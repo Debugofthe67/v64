@@ -85,8 +85,13 @@ export function rm505_bml_partitions(core)
     return partitions;
 }
 
-/** @param {!Array<ReturnType<typeof parse_fpsx>>} containers @param {string} rom_digest */
-function extract_n97_flash(containers, rom_digest, partitions)
+/**
+ * @param {!Array<ReturnType<typeof parse_fpsx>>} containers
+ * @param {string} rom_digest
+ * @param {?} partitions
+ * @param {?} factory_uda
+ */
+function extract_n97_flash(containers, rom_digest, partitions, factory_uda)
 {
     // Only the outer streams' application OneNAND destination (0,3,0).
     // Toolbox records and other target spaces are not physical CS0 data.
@@ -94,10 +99,11 @@ function extract_n97_flash(containers, rom_digest, partitions)
         group.space[0] === 0 && group.space[1] === 3 && group.space[2] === 0).flatMap(group => {
         const certificates = group.certificates.length ? [rm505_certificate(container, group)] : [];
         return [...certificates, ...group.data].map(record => ({ address: record.start,
-            bytes: container.bytes.subarray(record.data_offset, record.data_offset + record.size) }));
+            bytes: container.bytes.subarray(record.data_offset, record.data_offset + record.size),
+            uda: group === factory_uda?.group && record.type === 0x17 }));
     }));
     if(!extents.length) throw new Error("No RM-505 application OneNAND records");
-    return seed_n97_flash(extents, rom_digest, partitions);
+    return seed_n97_flash(extents, rom_digest, partitions, factory_uda);
 }
 
 function flash_toc_record(toc, label)
@@ -378,7 +384,7 @@ function image(name, bytes, size = bytes.length)
 }
 
 /** @param {{core: !Uint8Array, rofs2: !Uint8Array, rofs3: !Uint8Array, uda: !Uint8Array, eno?: !Uint8Array}} inputs */
-export function extract_n97_images(inputs, { initialize_bml = true } = {})
+export function extract_n97_images(inputs, { initialize_bml = true, initialize_stl = initialize_bml } = {})
 {
     const core = parse_fpsx(inputs.core);
     const rofs2 = parse_fpsx(inputs.rofs2);
@@ -415,8 +421,11 @@ export function extract_n97_images(inputs, { initialize_bml = true } = {})
     const uda_group = selected_group(uda, null);
     const uda_data = fpsx_group_data(uda, uda_group);
     const uda_header = inspect_n97_uda(uda_data);
-    files.push(image("uda.fat", uda_data, uda_header.logical_size));
-    const nand = extract_n97_flash(Object.values(containers), xip.sha256, initialize_bml ? rm505_bml_partitions(core) : null);
+    const uda_image = image("uda.fat", uda_data, uda_header.logical_size);
+    files.push(uda_image);
+    const factory_uda = initialize_stl ? { group: uda_group, address: uda_group.data[0].start, bytes: uda_image.bytes,
+        size: uda_image.size, sector_size: uda_header.sector_size } : null;
+    const nand = extract_n97_flash(Object.values(containers), xip.sha256, initialize_bml ? rm505_bml_partitions(core) : null, factory_uda);
     files.push(nand);
 
     return {
@@ -425,7 +434,7 @@ export function extract_n97_images(inputs, { initialize_bml = true } = {})
             containers: Object.fromEntries(Object.entries(containers).map(([key, parsed]) => [key, describe_fpsx(parsed)])),
             rom: { ...rom.header, pages: rom.page_counts, flash_address: core_group.data[0].start + SOS_PREFIX_SIZE,
                 core_flash_group_sha256: sha256_hex(core_data), rom_flash_span_sha256: sha256_hex(packed) },
-            rofs: rofs_headers, languages, nand: { bml: nand.bml }, ...(boot_media ? { boot_media: boot_media.report } : {}),
+            rofs: rofs_headers, languages, nand: { bml: nand.bml, stl: nand.stl }, ...(boot_media ? { boot_media: boot_media.report } : {}),
             uda: { ...uda_header, flash_address: uda_group.data[0].start },
         },
     };

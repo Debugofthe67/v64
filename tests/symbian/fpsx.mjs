@@ -59,7 +59,7 @@ test("extends a trimmed FAT16 volume only when the rest of its data area is free
     const uda = inspect_n97_uda(data);
     assert.equal(uda.last_used_cluster, 2);
     assert.equal(uda.last_used_end, data.length);
-    assert.equal(uda.logical_size, 4200 * 512);
+    assert.equal(uda.logical_size, 4284 * 512);
     data.writeUInt16LE(0xFFFF, 518);
     assert.throws(() => inspect_n97_uda(data), /cluster in use lies beyond/);
 });
@@ -82,6 +82,7 @@ test("CLI exports separate certified DSP0 and ISASW regions bound to the selecte
     const report = JSON.parse(readFileSync(join(output, "firmware.json"), "utf8"));
     assert.deepEqual(report.containers.core.groups.map(group => group.label), [null, "SOS*DSP0", "SOS*ISASW", "SOS+CORE", "SOS+ROFS1"]);
     assert.equal(report.nand.bml.state, "initialized");
+    assert.equal(report.nand.stl.state, "initialized");
     assert.equal(readFileSync(join(output, "core-prefix.bin"))[0], 0xDA);
     const digest = report.images.find(image => image.name === "rom.xip.bin").sha256;
     const bytes = readFileSync(join(output, "rapido-boot.bin"));
@@ -139,7 +140,7 @@ test("adds stock BML mirrors from the application TLV and preserves supplied res
     const raw = (chunk, from, to) => Buffer.from(chunk.bytes.subarray(from, to).map(byte => byte ^ 0xFF));
     const page_slot = block => N97_FLASH_HEADER + block * (N97_FLASH_BLOCK / N97_FLASH_PAGE) * N97_FLASH_SLOT;
     const unlocked = page_slot(N97_BML_RESERVOIR), locked = page_slot(0x7FF);
-    const fresh = nand(fixture);
+    const fresh = nand(fixture, { initialize_stl: false });
     const fresh_chunks = [...fresh.chunks()];
     assert.deepEqual(fresh_chunks.slice(-2).map(chunk => chunk.at), [unlocked, locked]);
     const [unlock, lock] = fresh_chunks.slice(-2);
@@ -159,9 +160,65 @@ test("adds stock BML mirrors from the application TLV and preserves supplied res
     const start = N97_BML_USER_BLOCKS * N97_FLASH_BLOCK;
     const supplied = nand({ ...fixture, eno: fpsx([block(Buffer.alloc(512, 0xA6), start)]) });
     assert.equal(supplied.bml.state, "supplied");
+    assert.match(supplied.stl.reason, /already supplies/);
     const supplied_chunks = [...supplied.chunks()];
     assert.equal(supplied_chunks.at(-1).at, page_slot(N97_BML_USER_BLOCKS));
     assert.deepEqual(raw(supplied_chunks.at(-1), 0, 512), Buffer.alloc(512, 0xA6));
+});
+
+test("seeds a translated factory UDA and empty STL service volume only over authorized flash extents", () => {
+    const fixture = firmware_fixture();
+    const image = inputs => extract_n97_images(inputs).files.find(file => file.name === "onenand.img");
+    const slot = block => N97_FLASH_HEADER + block * (N97_FLASH_BLOCK / N97_FLASH_PAGE) * N97_FLASH_SLOT;
+    const find = (chunks, block, page = 0) => {
+        const start = slot(block);
+        const chunk = chunks.find(chunk => chunk.at === start);
+        return Buffer.from(chunk.bytes.subarray(page * N97_FLASH_SLOT, (page + 1) * N97_FLASH_SLOT).map(byte => byte ^ 0xFF));
+    };
+    const nand = image(fixture);
+    assert.equal(nand.stl.state, "initialized");
+    assert.deepEqual(nand.stl.volumes, [
+        { id: 8, reserved: 10, start_block: 6, blocks: 27, sectors: 4284 },
+        { id: 10, reserved: 3, start_block: 1984, blocks: 4, sectors: 252 },
+    ]);
+    const chunks = [...nand.chunks()];
+    assert.ok(chunks.every((chunk, i) => !i || chunk.at >= chunks[i - 1].at + chunks[i - 1].bytes.length));
+    const unit_header = find(chunks, 7);
+    assert.equal(unit_header.toString("ascii", 12, 16), "XSR2");
+    assert.equal(unit_header.readUInt32LE(16), 1);
+    assert.equal(unit_header.readUInt32LE(28), 89);
+    assert.equal(unit_header.readUInt32LE(36), 0xFFFFFFFE);
+    assert.equal(unit_header.readUInt32LE(64), 8);
+    const bpb = find(chunks, 6, 1);
+    assert.deepEqual(bpb.subarray(0, N97_FLASH_PAGE), fat_payload().subarray(0, N97_FLASH_PAGE));
+    assert.deepEqual([...bpb.subarray(N97_FLASH_PAGE + 2, N97_FLASH_PAGE + 6)], [0, 0xFF, 8, 0xF0]);
+    assert.deepEqual([...bpb.subarray(N97_FLASH_PAGE + 0x32, N97_FLASH_PAGE + 0x36)], [3, 0xFC, 8, 0]);
+    const last = find(chunks, 6 + 16, 63);
+    assert.ok(last.subarray(0, N97_FLASH_PAGE).every(byte => byte === 0));
+    assert.ok(find(chunks, 6 + 17).subarray(N97_FLASH_PAGE + 8, N97_FLASH_PAGE + 11).some(byte => byte !== 0xFF));
+    const service = find(chunks, 1984);
+    assert.equal(service.readUInt32LE(64), 10);
+    assert.equal(service.readUInt32LE(4), 3);
+    assert.equal(chunks.find(chunk => chunk.at === slot(1984)).bytes.length, N97_FLASH_SLOT);
+    const erase_log = find(chunks, N97_BML_USER_BLOCKS);
+    assert.equal(erase_log.toString("ascii", 0, 6), "ERLSIG");
+    assert.deepEqual(erase_log.subarray(512, 520), erase_log.subarray(0, 8).map(byte => byte ^ 0xFF));
+
+    const record = Buffer.alloc(512, 0xB5);
+    const supplied = image({ ...fixture, eno: fpsx([block(record, 7 * N97_FLASH_BLOCK),
+        block(record, 1984 * N97_FLASH_BLOCK)]) });
+    assert.match(supplied.stl.reason, /other flash records/);
+    assert.equal(supplied.bml.state, "unformatted", "a conflicting source keeps its original physical layout");
+    const supplied_chunks = [...supplied.chunks()];
+    assert.deepEqual(find(supplied_chunks, 7).subarray(0, 512), record);
+    assert.deepEqual(find(supplied_chunks, 1984).subarray(0, 512), record);
+    assert.deepEqual(find(supplied_chunks, 6).subarray(0, 512), fat_payload().subarray(0, 512));
+
+    const smaller = fat_payload();
+    smaller.writeUInt16LE(4200, 19);
+    const mismatched = image({ ...fixture, uda: fpsx([block(smaller, 6 * N97_FLASH_BLOCK)]) });
+    assert.match(mismatched.stl.reason, /address or geometry/);
+    assert.deepEqual(find([...mismatched.chunks()], 6).subarray(0, 512), smaller.subarray(0, 512));
 });
 
 test("selects the RM-505 certificate key independently of its order", () => {

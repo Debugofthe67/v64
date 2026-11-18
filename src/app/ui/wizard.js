@@ -901,13 +901,15 @@ export function open_wizard(options)
                     ["OneNAND", "256 MiB · writable by this VM"],
                     ["Internal eMMC", "32 GB · empty FAT32 volume"],
                     ["microSD", "Empty slot"],
-                    ["Extracted UDA", format_size(media.phone.size)],
+                    ["Phone memory", s.report.stl?.state === "initialized" ?
+                        format_size(media.phone.size) + " · factory C: prepared" : format_size(media.phone.size) + " · UDA extracted"],
                     ["Estimated browser storage", format_size(required + N97_EMMC_INITIAL_BYTES)],
                 ];
                 const languages = firmware_languages(s.report.languages);
                 if(languages) rows.push(["Languages", languages]);
                 return [h("h3", null, s.name.trim()), h("p.note", null, "Experimental boot. This machine runs the original start-up code while board and display support are in development."),
                     media.boot_media ? h("p.note", null, "The original loader calls the RAPIDO chip ROM at 0xFFFF1208. After import, attach a local chip ROM dump in Settings → Symbian firmware. The firmware package contains the modem images separately.") : null,
+                    s.report.stl?.reason ? h("p.note", null, "OneNAND keeps the source layout. " + s.report.stl.reason) : null,
                     h("p.note", null, "The eMMC uses storage as the VM writes. Import currently skips the optional factory memory card content."),
                     h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
                         h("tr", null, h("th", null, label), h("td", null, value)))))];

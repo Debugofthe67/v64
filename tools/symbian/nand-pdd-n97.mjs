@@ -3,7 +3,7 @@
 // RM-505 AP kernel, using a disposable copy of an FPSX-derived OneNAND.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { closeSync, constants, copyFileSync, createReadStream, mkdtempSync, openSync, readSync, rmSync } from "node:fs";
+import { closeSync, constants, copyFileSync, createReadStream, fstatSync, mkdtempSync, openSync, readFileSync, readSync, rmSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,10 +13,10 @@ import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
 import { N97_BML_USER_BLOCKS, N97_FLASH_BLOCK, N97_FLASH_HEADER, N97_FLASH_NAME, N97_FLASH_PAGE, N97_FLASH_SLOT } from "../../src/symbian/n97_flash.js";
 
 const { positionals: [directory, ...extra], values } = parseArgs({
-    allowPositionals: true, options: { bml: { type: "boolean" }, "stl-erase": { type: "boolean" } },
+    allowPositionals: true, options: { bml: { type: "boolean" }, "stl-erase": { type: "boolean" }, "stl-volume": { type: "boolean" } },
 });
-if(!directory || extra.length || values.bml && values["stl-erase"])
-    throw new Error("Usage: node tools/symbian/nand-pdd-n97.mjs <extraction-directory> [--bml | --stl-erase]");
+if(!directory || extra.length || Object.keys(values).length > 1)
+    throw new Error("Usage: node tools/symbian/nand-pdd-n97.mjs <extraction-directory> [--bml | --stl-erase | --stl-volume]");
 const scratch = mkdtempSync(join(tmpdir(), "v86-n97-pdd-"));
 const nand = join(scratch, N97_FLASH_NAME);
 
@@ -223,11 +223,22 @@ async function probe(mode, samples = [])
                 [0x09CA1000, "ROFS3", "7ff2686472083798be88dd71c55a3952059207bbe7abcb74550741014ba64cf6"],
                 [0x0ABA0000, "UDA", "6b5f0abf82be73c4d3572cfda1098c7a148bfc3f29b40da55e9ebf1fba31f37b"],
             ];
-            const pages = reference.map(([address, label, expected]) => {
+            function read_bml_page(address)
+            {
                 // BML_Read(volume, sector, count, destination, OOB, flags).
                 put(stack, 0, 6);
                 assert.equal(call(0x800F10C8, [0, address / 512, N97_FLASH_PAGE / 512, buffer]), 0);
-                const content = read_guest(buffer, N97_FLASH_PAGE);
+                return read_guest(buffer, N97_FLASH_PAGE);
+            }
+            const pages = reference.map(([address, label, expected]) => {
+                let content = read_bml_page(address);
+                if(label === "UDA" && content.toString("ascii", 12, 16) === "XSR2")
+                {
+                    // The factory image adds an STL header before the original FAT sectors.
+                    assert.equal(content.readUInt32LE(64), 8, "factory C: owner");
+                    address += N97_FLASH_PAGE;
+                    content = read_bml_page(address);
+                }
                 const sha256 = createHash("sha256").update(content).digest("hex");
                 assert.equal(sha256, expected, label);
                 return { address: hex(address), label, sha256 };
@@ -244,6 +255,62 @@ async function probe(mode, samples = [])
         const driver = read(slot), info = allocate(0x800), partition_info = read(read(driver) + 20);
         assert.equal(partition_info, 0x800E0458); // DMediaDriverNand::PartitionInfo
         const result = call(partition_info, [driver, info]) | 0;
+        if(mode === "stl-volume")
+        {
+            assert.deepEqual(ids, identity);
+            assert.equal(result, -17, "LocDrv treats KErrCompletion as a successful PartitionInfo");
+            const { nand: { stl } } = JSON.parse(readFileSync(join(directory, "firmware.json"), "utf8"));
+            assert.equal(stl?.state, "initialized", "use a fresh extraction with factory STL");
+            const block_sectors = 32;
+            const buffer = allocate(block_sectors * 512);
+            const source = Buffer.alloc(block_sectors * 512);
+            const terminal = 0x800BD53C;
+            assert.equal(read(terminal), 0xEAFFFFFE, "original self-branch");
+            const read_sectors = (id, sector, count) => {
+                put(stack, buffer);
+                [0, id, sector, count].forEach((value, i) => set_reg(i, value));
+                set_reg(13, stack);
+                // The stock self-branch makes it safe to run instruction batches
+                // without executing unrelated guest code after returning.
+                set_reg(14, terminal);
+                jump(0x800E2724);
+                for(let tick = 0; pc() !== terminal && tick < 10000; tick++)
+                {
+                    wasm["a64_worker_slice"](512);
+                    cpu.run_hardware_timers(null, cpu.clock.advance_instructions(512));
+                }
+                assert.equal(pc(), terminal, "stock STL_Read returned");
+                assert.equal(register(0), 0, "stock STL_Read succeeded");
+                return read_guest(buffer, count * 512);
+            };
+            const hash = createHash("sha256");
+            const phone = stl.volumes.find(volume => volume.id === 8);
+            const service = stl.volumes.find(volume => volume.id === 10);
+            const fd = openSync(join(directory, "uda.fat"), "r");
+            try
+            {
+                assert.equal(fstatSync(fd).size, phone.sectors * 512, "UDA covers the factory C: volume");
+                for(let sector = 0; sector < phone.sectors; sector += block_sectors)
+                {
+                    const count = Math.min(block_sectors, phone.sectors - sector);
+                    const bytes = read_sectors(phone.id, sector, count);
+                    assert.equal(readSync(fd, source, 0, bytes.length, sector * 512), bytes.length);
+                    assert.ok(bytes.equals(source.subarray(0, bytes.length)), "C: sectors at " + sector);
+                    hash.update(bytes);
+                }
+            }
+            finally { closeSync(fd); }
+            for(let sector = 0; sector < service.sectors; sector += block_sectors)
+            {
+                const count = Math.min(block_sectors, service.sectors - sector);
+                assert.ok(read_sectors(service.id, sector, count).every(byte => byte === 0xFF), "empty service volume " + sector);
+            }
+            const status = cpu.devices.n97_onenand.status();
+            assert.equal(status.programs + status.erases, 0, "cold stock PDD and STL reads need no user or management writes");
+            return { firmware, identity, partition_info: result,
+                phone: { sectors: phone.sectors, sha256: hash.digest("hex") },
+                service: { sectors: service.sectors, erased: true }, ...status };
+        }
         if(mode === "stl-write" || mode === "stl-cold")
         {
             assert.deepEqual(ids, identity);
@@ -348,7 +415,8 @@ try
 {
     copyFileSync(join(directory, N97_FLASH_NAME), nand, constants.COPYFILE_FICLONE);
     let result;
-    if(values["stl-erase"])
+    if(values["stl-volume"]) result = await probe("stl-volume");
+    else if(values["stl-erase"])
     {
         const samples = sample_uda_sectors();
         const format = await probe("stl-format");

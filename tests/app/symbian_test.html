@@ -357,6 +357,7 @@ async function to_summary(wizard, name)
     input.dispatchEvent(new input.ownerDocument.defaultView.Event("input", { bubbles: true }));
     button(wizard, "Next").click();
     check(wizard.textContent.includes("Experimental boot") && wizard.textContent.includes("Estimated browser storage"), "honest firmware summary");
+    check(wizard.textContent.includes("factory C: prepared"), "wizard reports prepared phone memory");
 }
 async function save(wizard, name)
 {
@@ -471,13 +472,40 @@ try
     const nand = config.symbian.media.nand;
     const nand_file = await disk_file(disk_id(nand.path));
     check(nand_file.size === N97_FLASH_IMAGE_SIZE, "stored OneNAND geometry");
-    const last_block = N97_FLASH_HEADER + (N97_FLASH_SIZE - N97_FLASH_BLOCK) / N97_FLASH_PAGE * N97_FLASH_SLOT;
-    const first_metadata_page = new Uint8Array(await nand_file.slice(last_block, last_block + N97_FLASH_SLOT).arrayBuffer()).map(byte => byte ^ 0xFF);
+    const nand_page = async (block, page = 0) => {
+        const at = N97_FLASH_HEADER + (block * N97_FLASH_BLOCK / N97_FLASH_PAGE + page) * N97_FLASH_SLOT;
+        return new Uint8Array(await nand_file.slice(at, at + N97_FLASH_SLOT).arrayBuffer()).map(byte => byte ^ 0xFF);
+    };
+    const first_metadata_page = await nand_page(N97_FLASH_SIZE / N97_FLASH_BLOCK - 1);
     const pia = first_metadata_page.subarray(1024, 1536);
     const pia_words = new DataView(pia.buffer, pia.byteOffset, pia.byteLength);
     check(new TextDecoder().decode(pia.subarray(0, 8)) === "XSRPART5" && pia_words.getUint32(12, true) === 4 &&
         pia_words.getUint32(24, true) === 4, "new OPFS OneNAND has the RM-505 BML partitions from CORE");
     check(first_metadata_page[N97_FLASH_PAGE + 5] === 0xFE, "BML confirmation mark is stored in the spare area");
+    const stl = ([id, reserve]) => {
+        for(let offset = 16; offset < 80; offset += 16)
+        {
+            if(pia_words.getUint32(offset, true) === id)
+                return { id, reserve, start: pia_words.getUint32(offset + 8, true), blocks: pia_words.getUint32(offset + 12, true) };
+        }
+        throw new Error("missing STL partition " + id);
+    };
+    const [phone, service] = [[8, 10], [10, 3]].map(stl);
+    for(const volume of [phone, service])
+    {
+        const header = await nand_page(volume.start);
+        const fields = new DataView(header.buffer);
+        check(new TextDecoder().decode(header.subarray(12, 16)) === "XSR2" && fields.getUint32(4, true) === volume.reserve &&
+            fields.getUint32(64, true) === volume.id && header[N97_FLASH_PAGE + 14] === 0,
+            "factory STL header preserves the original partition owner, reserve, and confirmation");
+    }
+    const original_fat = await disk_file(disk_id(config.symbian.media.phone.path));
+    const phone_page = await nand_page(phone.start, 1);
+    check(await hash(new Blob([phone_page.subarray(0, N97_FLASH_PAGE)])) === await hash(original_fat.slice(0, N97_FLASH_PAGE)),
+        "the first programmed phone page contains the factory FAT16 BPB and sectors");
+    check((await nand_page(phone.start + phone.blocks - phone.reserve - 1, 63)).subarray(0, N97_FLASH_PAGE).every(byte => byte === 0),
+        "the phone volume keeps zero-filled FAT16 sectors at its logical end");
+    check((await nand_page(service.start, 1)).every(byte => byte === 0xFF), "the factory service volume is empty");
     check(config.symbian.emmc.size === N97_EMMC_SIZE && (await disk_file(disk_id(config.symbian.emmc.path))).size === N97_EMMC_INITIAL_BYTES,
         "32 GB eMMC occupies only the sparse index and FAT32 metadata blocks");
     if(local)
@@ -485,7 +513,7 @@ try
         check(config.symbian.product_code === "0576555" && config.symbian.sw_version === "22.0.110", "original variant identity");
         check(rom.sha256 === "9c0863e379d243f953d3cfcd87d11c98231f2d0469e69244d9ee059472c99194", "original XIP digest");
         check(boot_media.sha256 === "de16da82ffe3a83fc376fefaa494470850648d5b0aec6d4507c931ada1075e74", "original DSP0/ISASW digest");
-        check(nand.sha256 === "ca92e711e6126d042bf8831b83567678f2232b8a416f76702378f0cbc8963f84", "OneNAND matches the original BML formatter");
+        check(nand.sha256 === "cea8bcae23f346696114c4ad88cbd037f6cae69a4706d1fced7233eb22227fcf", "factory OneNAND matches the stock-validated CLI image");
         const toc_page = N97_FLASH_HEADER + (0x80000 / N97_FLASH_PAGE) * N97_FLASH_SLOT;
         const bytes = new Uint8Array(await nand_file.slice(toc_page, toc_page + N97_FLASH_PAGE).arrayBuffer());
         bytes.forEach((byte, i) => { bytes[i] = byte ^ 0xFF; });

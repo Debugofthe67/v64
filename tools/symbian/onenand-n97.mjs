@@ -141,14 +141,16 @@ try
     assert.deepEqual(registers.slice(0, 3), [["read", 0x1E000, 2, 0xEC], ["read", 0x1E002, 2, 0x40], ["read", 0x1E004, 2, 0x121]]);
     const identification = registers.splice(0, 3);
     const pages = [];
-    for(const address of [0x80000, 0x1A21000, 0x79A1000, 0x9CA1000, 0xABA0000])
+    const uda = 0xABA0000;
+    const addresses = [0x80000, 0x1A21000, 0x79A1000, 0x9CA1000, uda];
+    for(const address of addresses)
     {
         destinations.length = 0;
         registers.length = 0;
         data_reads = 0;
         assert.equal(call(0x2CE8, 0, address / N97_FLASH_PAGE, dest), 0);
         assert.equal(data_reads, 1024);
-        const copied = cpu.mem8.subarray(cpu.ram_offset(dest, N97_FLASH_PAGE), cpu.ram_offset(dest, N97_FLASH_PAGE) + N97_FLASH_PAGE);
+        const copied = Buffer.from(cpu.mem8.subarray(cpu.ram_offset(dest, N97_FLASH_PAGE), cpu.ram_offset(dest, N97_FLASH_PAGE) + N97_FLASH_PAGE));
         assert.equal(copied.length, N97_FLASH_PAGE);
         assert.ok(registers.some(([, offset, width, value]) => offset === 0x1E482 && width === 2 && value === 0x8080));
         assert.ok(registers.some(([, offset, width, value]) => offset === 0x1FE00 && width === 2 && value === 0));
@@ -159,8 +161,17 @@ try
             assert.equal(sha256(copied), "7d205c7846a817f407f667ebb6d5e887e24fcb390561982b7850abc62acc06a1");
         }
         if(address === 0x1A21000 || address === 0x79A1000 || address === 0x9CA1000)
-            assert.match(Buffer.from(copied.subarray(0, 4)).toString(), /^ROF[SxX]$/);
-        pages.push({ address, sha256: sha256(copied), prefix: Buffer.from(copied.subarray(0, 8)).toString("hex") });
+            assert.match(copied.toString("ascii", 0, 4), /^ROF[SxX]$/);
+        if(address === uda || address === uda + N97_FLASH_PAGE)
+        {
+            if(address === uda && copied.toString("ascii", 12, 16) === "XSR2")
+            {
+                assert.equal(copied.readUInt32LE(64), 8, "factory C: owner");
+                addresses.push(uda + N97_FLASH_PAGE);
+            }
+            else assert.equal(sha256(copied), "6b5f0abf82be73c4d3572cfda1098c7a148bfc3f29b40da55e9ebf1fba31f37b");
+        }
+        pages.push({ address, sha256: sha256(copied), prefix: copied.toString("hex", 0, 8) });
     }
     const pdd = observe_pdd(cpu, next_pc, state, write_register, destinations);
     const device = cpu.devices.n97_onenand.status();

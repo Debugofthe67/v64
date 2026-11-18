@@ -44,7 +44,7 @@ export function rm505_partition_tlv(entries, space = [0, 3, 0])
 }
 
 export const fixture_partitions = [
-    [3, 2, 0x80000, 0x20000], [4, 2, 0xA0000, 0x20000], [8, 1, 0xC0000, 0x280000], [10, 1, 0xFA00000, 0x20000],
+    [3, 2, 0x80000, 0x20000], [4, 2, 0xA0000, 0x20000], [8, 1, 0xC0000, 0x360000], [10, 1, 0xF800000, 0x80000],
 ];
 
 export function rom_page(encoded)
@@ -91,7 +91,7 @@ export function fat_payload()
     data.writeUInt16LE(1, 14);
     data[16] = 1;
     data.writeUInt16LE(16, 17);
-    data.writeUInt16LE(4200, 19);
+    data.writeUInt16LE((27 - 10) * 252, 19);
     data[21] = 0xF8;
     data.writeUInt16LE(20, 22);
     data.writeUInt16LE(0xAA55, 510);

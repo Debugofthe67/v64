@@ -108,13 +108,13 @@ async function read_package(files, selection, supplements)
         const file = extracted.files.find(file => file.name === name);
         return file ? [[role, file]] : [];
     }));
-    return { check, images, languages: extracted.report.languages };
+    return { check, images, languages: extracted.report.languages, stl: extracted.report.nand.stl };
 }
 
-function result_of(check, images, languages)
+function result_of(check, images, languages, stl)
 {
     return {
-        check, languages,
+        check, languages, stl,
         media: images && Object.fromEntries(Object.entries(images).map(([role, { size, sha256 }]) =>
             [role, { size, sha256 }])),
     };
@@ -195,8 +195,8 @@ self.onmessage = async ({ data }) =>
             return;
         }
         if(data.op !== "check" && data.op !== "import") throw new Error("Unknown firmware import operation");
-        const { check, images, languages } = await read_package(data.files, data.selection, data.supplements);
-        const result = result_of(check, images, languages);
+        const { check, images, languages, stl } = await read_package(data.files, data.selection, data.supplements);
+        const result = result_of(check, images, languages, stl);
         if(data.op === "import")
         {
             if(!check.ok) throw new Error("The required firmware files no longer pass preflight");

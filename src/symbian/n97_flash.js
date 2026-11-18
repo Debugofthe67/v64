@@ -20,6 +20,9 @@ export const N97_BML_RESERVOIR = LAST_BLOCK + 1 - 44;
 // management blocks precede the 44 blocks scanned for PCB metadata.
 export const N97_BML_USER_BLOCKS = N97_BML_RESERVOIR - 2;
 const BML_SECTOR = 512, BML_SPARE = 16;
+const STL_SECTORS_PER_UNIT = (N97_FLASH_BLOCK - N97_FLASH_PAGE) / BML_SECTOR;
+const STL_SIGNATURE = 0x32525358; // XSR2
+const STL_VERSION = 0x00010064;
 
 // Samsung's published 512-byte ECC format. Each pair contains inverted
 // parity for the zero and one groups of an address bit, in that order.
@@ -117,6 +120,176 @@ function* initial_bml_blocks(partitions)
     }
 }
 
+/** @typedef {{id: number, attributes: number, start_block: number, blocks: number}} */
+let N97BmlPartition;
+/** @typedef {{address: number, bytes: !Uint8Array, uda: boolean}} */
+let N97FlashExtent;
+/** @typedef {{address: number, bytes: !Uint8Array, size: number, sector_size: number}} */
+let N97FactoryUda;
+/** @typedef {{id: number, start_block: number, blocks: number, reserved: number, sectors: number}} */
+let N97StlVolume;
+
+/**
+ * @param {!Array<!N97FlashExtent>} extents
+ * @param {?Array<!N97BmlPartition>} partitions
+ * @param {?N97FactoryUda} uda
+ * @param {boolean} has_reservoir
+ */
+function plan_stl(extents, partitions, uda, has_reservoir)
+{
+    if(!uda) return { state: "disabled" };
+    if(has_reservoir) return { state: "preserved", reason: "The package already supplies flash management records." };
+    if(!partitions) return { state: "preserved", reason: "The partition table is outside the supported RM-505 layout." };
+    // The stock mednand.pdd configurations reserve 10 units for writable
+    // partition 8 and 3 for the service partition 10.
+    const volumes = [];
+    for(const [id, reserved] of [[8, 10], [10, 3]])
+    {
+        const part = partitions.find(partition => partition.id === id);
+        if(!part || part.attributes !== 1 || part.blocks <= reserved)
+        {
+            return { state: "preserved", reason: "The writable STL partitions are missing or use a different layout." };
+        }
+        volumes.push({ id, reserved, start_block: part.start_block, blocks: part.blocks,
+            sectors: (part.blocks - reserved) * STL_SECTORS_PER_UNIT });
+    }
+    const phone = volumes[0];
+    const payload_size = extents.filter(extent => extent.uda).reduce((total, { bytes }) => total + bytes.length, 0);
+    if(uda.address !== phone.start_block * N97_FLASH_BLOCK || uda.sector_size !== BML_SECTOR ||
+        uda.size !== phone.sectors * BML_SECTOR || payload_size !== uda.bytes.length)
+    {
+        return { state: "preserved", reason: "The UDA address or geometry differs from the writable C: partition." };
+    }
+    for(const volume of volumes)
+    {
+        const start = volume.start_block * N97_FLASH_BLOCK;
+        const end = start + volume.blocks * N97_FLASH_BLOCK;
+        if(extents.some(extent => !extent.uda && extent.address < end && extent.address + extent.bytes.length > start))
+        {
+            return { state: "preserved", reason: "The package contains other flash records in an STL partition." };
+        }
+    }
+    volumes.sort((a, b) => a.start_block - b.start_block);
+    return { state: "initialized", volumes };
+}
+
+/** @param {!Uint8Array} raw @param {number} start @param {number} spare */
+function write_stl_ecc(raw, start, spare)
+{
+    const main = n97_main_ecc(raw, start);
+    const oob = n97_spare_ecc(raw, spare);
+    raw[spare + 8] = main;
+    raw[spare + 9] = main >>> 8;
+    raw[spare + 10] = main >>> 16;
+    raw[spare + 11] = oob;
+    raw[spare + 12] = oob >>> 8;
+}
+
+/**
+ * Reconstruct the first page of an empty or owned STL unit. The stock driver
+ * programs the first sector with ECC enabled and confirms with ECC bypassed.
+ * @param {!Uint8Array} raw
+ * @param {!N97StlVolume} volume
+ * @param {number} unit
+ * @param {boolean} used
+ */
+function write_stl_header(raw, volume, unit, used)
+{
+    if(!used) raw.fill(0, 0, BML_SECTOR);
+    const header = new DataView(raw.buffer);
+    header.setUint32(0x00, STL_VERSION, true);
+    header.setUint32(0x04, volume.reserved, true);
+    header.setUint32(0x08, 1, true);
+    header.setUint32(0x0C, STL_SIGNATURE, true);
+    header.setUint32(0x40, volume.id, true);
+    header.setUint32(0x44, ~volume.id, true);
+    raw[N97_FLASH_PAGE + 14] = 0;
+    if(used)
+    {
+        const pattern = 0xA5A5A5A5;
+        // Original mednand.pdd at 0x800E6240 counts cleared bits in the
+        // first 12 config bytes and the 256-byte link table (erased here).
+        let cleared_bits = 0;
+        for(let i = 0; i < 12; i++)
+        {
+            for(let bits = raw[i] ^ 0xFF; bits; bits &= bits - 1) cleared_bits++;
+        }
+        header.setUint32(0x10, unit, true);
+        header.setUint32(0x14, 0, true);
+        header.setUint32(0x18, pattern, true);
+        header.setUint32(0x1C, cleared_bits, true);
+        header.setUint32(0x20, 1, true);
+        header.setUint32(0x24, ~unit, true);
+        header.setUint32(0x2C, ~1, true);
+        header.setUint32(0x30, ~STL_SIGNATURE, true);
+        header.setUint32(0x34, ~cleared_bits, true);
+        header.setUint32(0x38, ~pattern, true);
+        if(!(cleared_bits & 1)) raw[0x3C] = 1;
+        raw.set([1, 0, 0], N97_FLASH_PAGE + 2);
+    }
+    else
+    {
+        header.setUint32(0x2C, 0xFFFFFFFF, true);
+        header.setUint32(0x3C, 1, true);
+        raw.set([0, 0, 0, 0xFF, 0], N97_FLASH_PAGE + 2);
+    }
+    write_stl_ecc(raw, 0, N97_FLASH_PAGE);
+}
+
+/** @param {!Array<!N97StlVolume>} volumes @param {!N97FactoryUda} uda */
+function* initial_stl_blocks(volumes, uda)
+{
+    const sectors_per_page = N97_FLASH_PAGE / BML_SECTOR;
+    for(const volume of volumes)
+    {
+        const written_units = volume.id === 8 ? volume.blocks - volume.reserved : 0;
+        for(let unit = 0; unit < volume.blocks; unit++)
+        {
+            const used = unit < written_units;
+            const raw = new Uint8Array(used ? BLOCK_SLOT : N97_FLASH_SLOT).fill(0xFF);
+            write_stl_header(raw, volume, unit, used);
+            if(used)
+            {
+                for(let sector = 0; sector < STL_SECTORS_PER_UNIT; sector += sectors_per_page)
+                {
+                    const at = (1 + sector / sectors_per_page) * N97_FLASH_SLOT;
+                    const offset = (unit * STL_SECTORS_PER_UNIT + sector) * BML_SECTOR;
+                    raw.fill(0, at, at + N97_FLASH_PAGE);
+                    raw.set(uda.bytes.subarray(offset, offset + N97_FLASH_PAGE), at);
+                    for(let i = 0; i < sectors_per_page; i++)
+                    {
+                        const spare = at + N97_FLASH_PAGE + i * BML_SPARE;
+                        const logical = sector + i;
+                        raw.set([logical, logical ^ 0xFF, volume.id, i === sectors_per_page - 1 ? 0 : 0xF0], spare + 2);
+                        write_stl_ecc(raw, at + i * BML_SECTOR, spare);
+                    }
+                }
+            }
+            for(let i = 0; i < raw.length; i++) raw[i] ^= 0xFF;
+            yield { at: N97_FLASH_HEADER + (volume.start_block + unit) * BLOCK_SLOT, bytes: raw };
+        }
+    }
+}
+
+function initial_erase_signature()
+{
+    // The native formatter leaves BML's erase-log signature and its inverted
+    // copy in the first reserved block before the 44-block reservoir.
+    const raw = new Uint8Array(N97_FLASH_SLOT).fill(0xFF);
+    raw.set(new TextEncoder().encode("ERLSIG"));
+    raw[6] = 0;
+    raw[7] = 1;
+    for(let i = 0; i < 8; i++) raw[BML_SECTOR + i] = raw[i] ^ 0xFF;
+    for(let sector = 0; sector < 2; sector++)
+    {
+        const spare = N97_FLASH_PAGE + sector * BML_SPARE;
+        raw[spare + 5] = 0;
+        write_stl_ecc(raw, sector * BML_SECTOR, spare);
+    }
+    for(let i = 0; i < raw.length; i++) raw[i] ^= 0xFF;
+    return { at: N97_FLASH_HEADER + N97_BML_USER_BLOCKS * BLOCK_SLOT, bytes: raw };
+}
+
 export function n97_flash_header(rom_digest)
 {
     if(!/^[a-f0-9]{64}$/.test(rom_digest)) throw new Error("Invalid Nokia N97 XIP digest");
@@ -141,11 +314,12 @@ export function check_n97_flash(buffer, rom_digest)
 }
 
 /**
- * @param {!Array<{address: number, bytes: !Uint8Array}>} extents
+ * @param {!Array<!N97FlashExtent>} extents
  * @param {string} rom_digest
- * @param {?Array<{id: number, attributes: number, start_block: number, blocks: number}>} partitions
+ * @param {?Array<!N97BmlPartition>} partitions
+ * @param {?N97FactoryUda} uda
  */
-export function seed_n97_flash(extents, rom_digest, partitions = null)
+export function seed_n97_flash(extents, rom_digest, partitions = null, uda = null)
 {
     extents.sort((a, b) => a.address - b.address);
     let end = 0;
@@ -158,16 +332,18 @@ export function seed_n97_flash(extents, rom_digest, partitions = null)
     // Only provision a blank reserved area in a new image. A supplied
     // reservoir always wins, including when it contains only partial records.
     const has_reservoir = end > N97_BML_USER_BLOCKS * N97_FLASH_BLOCK;
-    const seeded_bml = partitions !== null && !has_reservoir;
-    // Iterate one erase block at a time. Neither preflight nor writing into
-    // OPFS has to hold a second 264 MiB image in memory.
-    function* chunks()
+    const stl = plan_stl(extents, partitions, uda, has_reservoir);
+    const prepared = !!stl.volumes;
+    // A fallback leaves the physical source alone. Even installing only BML
+    // on a conflicting image could prompt the guest to format the old C:.
+    const bml_partitions = !has_reservoir && stl.state !== "preserved" ? partitions : null;
+    function* physical_blocks()
     {
-        yield { at: 0, bytes: header };
         let block = new Uint8Array(BLOCK_SLOT);
         let index = -1;
-        for(const { address, bytes } of extents)
+        for(const { address, bytes, uda: is_uda } of extents)
         {
+            if(prepared && is_uda) continue;
             for(let i = 0; i < bytes.length;)
             {
                 const physical = address + i;
@@ -186,7 +362,30 @@ export function seed_n97_flash(extents, rom_digest, partitions = null)
             }
         }
         if(index >= 0) yield { at: N97_FLASH_HEADER + index * BLOCK_SLOT, bytes: block };
-        if(partitions && !has_reservoir) yield* initial_bml_blocks(partitions);
+    }
+    // Merge the disjoint source and provisioned runs in physical order.
+    // Both the hash and the sink hold at most one erase block per iterator.
+    function* chunks()
+    {
+        yield { at: 0, bytes: header };
+        const formatted = stl.volumes && uda ? initial_stl_blocks(stl.volumes, uda) : null;
+        let next = formatted?.next();
+        for(const block of physical_blocks())
+        {
+            while(next && !next.done && next.value.at < block.at)
+            {
+                yield next.value;
+                next = formatted.next();
+            }
+            yield block;
+        }
+        while(next && !next.done)
+        {
+            yield next.value;
+            next = formatted.next();
+        }
+        if(prepared) yield initial_erase_signature();
+        if(bml_partitions) yield* initial_bml_blocks(bml_partitions);
     }
     const hash = new SHA256();
     const zeros = new Uint8Array(BLOCK_SLOT);
@@ -210,5 +409,5 @@ export function seed_n97_flash(extents, rom_digest, partitions = null)
         at += size;
     }
     return { name: N97_FLASH_NAME, size: N97_FLASH_IMAGE_SIZE, sha256: hash.hex(), source_bytes, chunks,
-        bml: { state: seeded_bml ? "initialized" : has_reservoir ? "supplied" : "unformatted", partitions } };
+        bml: { state: bml_partitions ? "initialized" : has_reservoir ? "supplied" : "unformatted", partitions }, stl };
 }

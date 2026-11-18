@@ -114,7 +114,7 @@ RM-505 的 CS0 是单 die 256 MiB 的 SLC，块大小 128 KiB，页大小 2 KiB�
 | `0x01A21000` | ROFS1 | `d7ae3de957f38a94bf6d1adf7651dfa5ea570c10ae727806629a763bbd8e5b3d` |
 | `0x079A1000` | ROFS2 | `337c98a4d956116b8e799428b35895474fc810ab97604c514bb58168afa468e8` |
 | `0x09CA1000` | ROFS3 | `7ff2686472083798be88dd71c55a3952059207bbe7abcb74550741014ba64cf6` |
-| `0x0ABA0000` | UDA FAT16 BPB，逻辑字节数 `0x04917000` | `6b5f0abf82be73c4d3572cfda1098c7a148bfc3f29b40da55e9ebf1fba31f37b` |
+| `0x0ABA0000` 原始布局，`0x0ABA0800` 出厂 STL 布局 | UDA FAT16 BPB，逻辑字节数 `0x04917000` | `6b5f0abf82be73c4d3572cfda1098c7a148bfc3f29b40da55e9ebf1fba31f37b` |
 
 当前模型同步完成常规读、编程和实际擦除。正常读取返回介质中的主区、spare 和已存储的 ECC 字节。介质读取失败时返回控制器错误及 ECC 不可纠正位，ECC bypass 屏蔽该 ECC 状态。读出校验和单比特纠正、厂级坏块资料仍待验证。接入 OneNAND 后，正常零售引导第 1,550 步到达 `0xFFFF1208`，须通过 RAPIDO 芯片 Boot ROM 才能进入完整存储初始化。
 
@@ -131,11 +131,11 @@ node tools/symbian/nand-pdd-n97.mjs <raw-output-directory>
 
 ### 新机的 XSR/BML 分区
 
-浏览器导入和 CLI 提取从 CORE 的 type EE 读取 `(0,3,0)` 分区表。0576555 的四条记录按 ID、属性、起始逻辑块、块数表示为 `[3,2,4,205]`、`[4,2,209,1164]`、`[8,1,1373,604]` 和 `[10,1,1990,11]`。原版校验例程允许 2002 个可用块，末块为 `0x7D1`。新建介质使用 `0x7D4` 和 `0x7FF` 的前两页存放两份池控制头、分区信息及块映射的镜像和 spare 确认标记。Nokia 的分区签名是 `XSRPART5`。源固件已有管理区记录或分区表格式无法识别时保留原始记录。该流程只在新提取时运行，已入库的磁盘和快照沿用原配置。[Samsung RFS 预编程指南 §3](https://datasheet.datasheetarchive.com/originals/library/Datasheets-SW18/DSASW00343735.pdf)
+浏览器导入和 CLI 提取从 CORE 的 type EE 读取 `(0,3,0)` 分区表。0576555 的四条记录按 ID、属性、起始逻辑块、块数表示为 `[3,2,4,205]`、`[4,2,209,1164]`、`[8,1,1373,604]` 和 `[10,1,1990,11]`。原版校验例程允许 2002 个可用块，末块为 `0x7D1`。新建介质使用 `0x7D4` 和 `0x7FF` 的前两页存放两份池控制头、分区信息及块映射的镜像和 spare 确认标记。Nokia 的分区签名是 `XSRPART5`。该流程只在新提取时运行，已入库的磁盘和快照沿用原配置。[Samsung RFS 预编程指南 §3](https://datasheet.datasheetarchive.com/originals/library/Datasheets-SW18/DSASW00343735.pdf)
 
-0576555 的初始化输出为 276824576 字节，SHA-256 `ca92e711e6126d042bf8831b83567678f2232b8a416f76702378f0cbc8963f84`，与原版 `BML_Format` 在私有副本上的输出逐字节一致。与 `--raw-onenand` 的基线摘要 `e41fe3a84fa2b8d0546ca9eda3cab73a677469b921dfdf4d45d56ef8835be5fc` 相比，只有四个管理页改变。正常浏览器导入也核对了同一初始摘要。
+`--bml-only-onenand` 提取 0576555 得到 276824576 字节，SHA-256 `ca92e711e6126d042bf8831b83567678f2232b8a416f76702378f0cbc8963f84`，与原版 `BML_Format` 在私有副本上的输出逐字节一致。与 `--raw-onenand` 的基线摘要 `e41fe3a84fa2b8d0546ca9eda3cab73a677469b921dfdf4d45d56ef8835be5fc` 相比，只有四个管理页改变。
 
-原版 `BML_Open`、`BML_Read`、`BML_Close` 在首次打开及冷重开都返回 0，表中的 TOC、三层 ROFS 和原始 UDA 头五个整页的摘要均吻合。首次打开对管理区进行两次编程和两次擦除，冷重开无需继续写入。探针在两次关闭后核对全部用户区的主区和 spare 摘要。探针运行在 AP 内核诊断中，停在 PDD 启动 STL 初始化前。零售启动仍依赖 RAPIDO 芯片 ROM，STL 中的 C: 数据初始化、完整 `PartitionInfo` 和文件服务器挂载需另行验证。
+原版 `BML_Open`、`BML_Read`、`BML_Close` 在首次打开及冷重开都返回 0，表中的 TOC、三层 ROFS 和原始 UDA 头五个整页的摘要均吻合。仅预置 BML 的基线首次打开对管理区进行两次编程和两次擦除，冷重开无需继续写入。探针在两次关闭后核对全部用户区的主区和 spare 摘要。探针运行在 AP 内核诊断中，停在 PDD 启动 STL 初始化前。
 
 ```sh
 node tools/symbian/nand-pdd-n97.mjs <extraction-directory> --bml
@@ -146,19 +146,32 @@ node tools/symbian/onenand-n97.mjs <output> <firmware-directory>/RM-505_22.0.110
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img
 ```
 
+### 新机的 C: FAT16 和服务卷
+
+默认导入依据 CORE 的分区起址，把原厂 UDA 编入分区 8 的 STL FAT16 卷，并初始化空的分区 10。每个 `XSR2` 单元首个 2 KiB 页保存归属和管理信息，后续 63 页各存 4 个逻辑扇区。页的 spare 保存单元内扇区索引、补码、分区 ID、确认标记及 ECC。分区 8 和 10 分别保留 10 和 3 个周转单元，`0x7D2` 首个管理页保存原版 BML 擦除日志标识 `ERLSIG`。工具逐块生成 OneNAND，按 UDA 的 BPB 补齐原厂未提供的零值扇区。
+
+只有 UDA 起址、512 字节扇区和容量均与分区表一致，且两个卷及管理区都有明确写入范围时，才初始化新机。厂商已有管理记录、其他记录占据可写卷或格式超出支持范围时，导入保留源物理布局并在摘要里说明原因。此初始化仅用于新导入。
+
+```sh
+node tools/symbian/vpl.mjs extract <firmware-directory> <extraction-directory> --product-code 0576555
+node tools/symbian/nand-pdd-n97.mjs <extraction-directory> --stl-volume
+```
+
+0576555 的默认 OneNAND 摘要为 `cea8bcae23f346696114c4ad88cbd037f6cae69a4706d1fced7233eb22227fcf`。原版 AP 内核诊断中新启动的 PDD 完成硬件初始化，`PartitionInfo` 返回 LocDrv 接受的 `KErrCompletion (-17)`。原版 STL 逐扇区读完 C: 的 149,688 个扇区，SHA-256 为 `bc023d949a95ba598320d80560376be2d3429000b55fd67c1586898d5509b322`，与解包的 `uda.fat` 相同。分区 10 的 2,016 个扇区均为擦除值。整个冷开及读取完成 75,843 次设备读，零编程、零擦除。正常零售启动仍依赖 RAPIDO 芯片 ROM，文件服务器挂载未验收。
+
 ### 多块擦除与原版 STL 写入
 
 原版 `mednand.pdd` 在 `0x800F5A98` 用 `0x95` 锁存地址，在 `0x800F5B7C` 用 `0x94` 提交，批次最多 64 块。锁存完成时 `F241=0x8020`，`F240=0x8800` 保留忙状态。若最后一块受保护，先前锁存的地址可由下一次有效提交继续使用。中间块失败时，其余可擦除块继续执行。原版在 `0x800F4554` 用 `0x71` 分别检查每块。该命令以 `F241=0x8000` 通知完成，由 `F240` 的错误位反映该块结果。验证读取主区和 spare。开始其他命令或复位可取消尚未提交的批次。快照保留锁存地址及最近一次批次失败，旧快照从空批次恢复。[Samsung MuxOneNAND 2G §§2.8.21–22、3.13.2–3](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf)
 
 ```sh
-node tools/symbian/nand-pdd-n97.mjs <extraction-directory> --stl-erase
+node tools/symbian/nand-pdd-n97.mjs <bml-only-extraction-directory> --stl-erase
 ```
 
 探针使用带 BML 预置的 0576555 提取目录。它仅在一次性副本上运行原版 `STL_Format`，按原版配置准备分区 8 和 10。在新启动的 AP 内核中，原版 PDD 完成硬件创建阶段并返回 0。探针停在通知异步队列之前，随后调用原版分区查询。`PartitionInfo` 返回 `KErrCompletion (-17)`，原版 LocDrv 将其作为成功。分区 8 的原版异步写入锁存 `0x7B7–0x7B3`，提交 `0x7B8` 并逐块验证六块。
 
 启用 ECC 时，`0x80` 从每个参与编程的 BufferRAM 扇区计算两组校验码。512 字节主区的 24 位码写入该扇区 spare 的 `8–10` 字节。spare 中逻辑扇区号 `2–4` 字节的 10 位码写入 `11–12`，高六位为 1。`0x1A` 仅编程 spare，保留已有主区和主区校验码。ECC bypass 允许调用者写入这些位置。NAND 编程只允许位从 1 变 0，生成的校验码在随后读取时进入 BufferRAM。位序采用三星发布的 512 字节软件参考格式，三星指出硬件位序可能不同。此位序已通过 0576555 原版驱动校验，尚需 RM-505 实机原始页验证硬件位序。[Samsung MuxOneNAND 2G §§2.7.2、2.7.5、3.17](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf) · [Samsung 512-byte ECC Algorithm](https://www.elnec.com/sw/samsung_ecc_algorithm_for_512b.pdf)
 
-原版 `STL_Read` 从扇区 0、3377、2048 分别读回 4、2、16 个扇区。同次开机和调用 `STL_Close` 后冷开均逐字节匹配原始 UDA，五个相邻的未写扇区保持擦除值。该诊断用原版 AP 内核以及一次性副本。普通新机使用 BML 预置，生产导入时的 STL FAT16 UDA 初始化与整机文件服务器挂载仍待验收。
+原版 `STL_Read` 从扇区 0、3377、2048 分别读回 4、2、16 个扇区。同次开机和调用 `STL_Close` 后冷开均逐字节匹配原始 UDA，五个相邻的未写扇区保持擦除值。该诊断用原版 AP 内核以及一次性副本。
 
 ### 从原版 ROFS 按路径读取文件
 
