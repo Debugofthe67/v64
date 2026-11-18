@@ -16,8 +16,9 @@ const READ_DMA = 0x8000, WRITE_DMA = 0x80;
 const FIFO_WORDS = 32;
 const REGISTERS = new Set([CMD, ARGL, ARGH, CON, STAT, IE, CTO, DTO, DATA, BLEN, NBLK, BUF, SDIO]);
 
-/** @param {!VirtDeviceSpace} io @param {?} emmc @param {?} sd @param {function(boolean)} set_irq */
-export function create_n97_mmc(io, emmc, sd, set_irq)
+/** @param {!VirtDeviceSpace} io @param {?} emmc @param {?} sd @param {function(boolean)} set_irq
+ * @param {function(boolean)=} set_sd_detect */
+export function create_n97_mmc(io, emmc, sd, set_irq, set_sd_detect = () => {})
 {
     const cards = [emmc ? create_n97_mmc_card(emmc, true) : null, sd ? create_n97_mmc_card(sd, false) : null];
     const regs = new Uint16Array(24);
@@ -52,7 +53,15 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
         transfer_sequences.fill(0);
         abort();
         for(const card of cards) card?.reset();
+        set_sd_detect(!cards[1]);
         update_irq();
+    }
+
+    function insert_sd(buffer)
+    {
+        if(cards[1]) throw new Error("A Nokia N97 microSD is already inserted");
+        cards[1] = create_n97_mmc_card(buffer, false);
+        set_sd_detect(false); // GENIO45, active low
     }
 
     function start_transfer(info, fixed, word, count)
@@ -238,11 +247,11 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
     });
     reset();
     return {
-        emmc, sd, reset, select_card, set_clock, dma_request,
+        emmc, get sd() { return cards[1]?.buffer ?? null; }, reset, insert_sd, select_card, set_clock, dma_request,
         dma_generation(write) { return transfer_sequences[+write]; },
         dma_read() { return read_data(true); },
         dma_write(value) { return write_data(value); },
-        status: () => ({ "emmc_bytes": emmc?.byteLength ?? null, "sd_bytes": sd?.byteLength ?? null,
+        status: () => ({ "emmc_bytes": emmc?.byteLength ?? null, "sd_bytes": cards[1]?.buffer.byteLength ?? null,
             "slot": selected, "commands": commands, "reads": reads, "writes": writes }),
         get_state: () => [cards.map(card => card ? [card.buffer.get_state(), card.get_state()] : null),
             regs.slice(), clock, selected, transfer ? [transfer.card, transfer.sector, transfer.count,
@@ -254,7 +263,7 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
             {
                 const snapshot = saved[0][i];
                 const name = i ? "symbian_sd" : "symbian_emmc";
-                if(!!snapshot !== !!card) throw new Error("Snapshot and machine must use the same Nokia N97 " + name + " configuration");
+                if(!!snapshot !== !!card) throw new Error("Snapshot and machine must use the same Nokia N97 MMC configuration (" + name + ")");
                 if(card) check_disk_state(name, card.buffer, snapshot[0]);
             }
         },

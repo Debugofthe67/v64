@@ -261,6 +261,13 @@ export async function open_console(root, target)
                 fail(config.name + " runs in another tab. Close it there first (a machine runs in one tab at a time).");
                 return;
             }
+            // The previous console could have attached a card before releasing
+            // its lock. Use the configuration protected by the lock we hold.
+            if(config.symbian)
+            {
+                config = await store.get(target.vm);
+                if(!config) { lock.release(); fail("There is no such virtual machine in this browser's library."); return; }
+            }
             if(config.suspended)
             {
                 resume = await resume_choice(config, store, layout.notice);
@@ -496,12 +503,21 @@ function console_ui(layout, emulator, ctx)
     const symbian = ctx.config?.symbian;
     const iphone = options.machine_type === "s5l8930";
     const virt = options.cpu_type === "arm64";
-    const written_back = [options.hda, options.hdb, options.fda, options.fdb, options.ios?.nand,
+    let written_back = [options.hda, options.hdb, options.fda, options.fdb, options.ios?.nand,
         options.symbian?.nand, options.symbian?.emmc, options.symbian?.sd,
         ...(options.virtio_disks || [])].some(d => d && d.disk_option === "read_write");
     let powered_off = false;
     let running = false;
     let iphone_asleep = false;
+    let n97_operation = false;
+    /** @param {() => any} action */
+    const n97_exclusive = action => async () => {
+        if(!symbian) return action();
+        if(n97_operation || powered_off) return;
+        n97_operation = true;
+        try { return await action(); }
+        finally { n97_operation = false; }
+    };
 
     // ---- the status bar
     const stats = { started: 0, running_ms: 0, last_tick: 0, last_counter: 0, total: 0, ips: 0,
@@ -680,8 +696,7 @@ function console_ui(layout, emulator, ctx)
     }
 
     // ---- power
-    /** @param {boolean} ask @param {() => Promise<void>} [after_destroy] */
-    const power_off = async (ask = true, after_destroy) =>
+    const power_off = async (ask = true) =>
     {
         if(ask && !await confirm("Power off?", "The virtual machine stops as if its power were cut. What is only in its memory is lost." +
             (written_back ? " Its disks written back keep what they completed." : ""), "Power off", true)) return;
@@ -691,63 +706,93 @@ function console_ui(layout, emulator, ctx)
         ipa_installer?.dispose();
         clearInterval(interval);
         await emulator.destroy();
-        try
-        {
-            if(drawer === "keyboard") open_drawer("");
-            await after_destroy?.();
-        }
-        finally
-        {
-            ctx.release();
-            replace(layout.toolbar, h("a.button", { href: location.pathname }, "Library"), h("span.console-name", null, ctx.name));
-            replace(layout.notice, h("p", null, "Powered off. ", h("a", { href: location.href }, "Power on again"), " or go back to the ",
-                h("a", { href: location.pathname }, "library"), "."));
-            ctx.set_status("Powered off");
-        }
+        if(drawer === "keyboard") open_drawer("");
+        ctx.release();
+        replace(layout.toolbar, h("a.button", { href: location.pathname }, "Library"), h("span.console-name", null, ctx.name));
+        replace(layout.notice, h("p", null, "Powered off. ", h("a", { href: location.href }, "Power on again"), " or go back to the ",
+            h("a", { href: location.pathname }, "library"), "."));
+        ctx.set_status("Powered off");
     };
     const send_sis = async () =>
     {
         const { config, store } = ctx;
-        if(!config?.symbian || !store || powered_off) return;
+        if(!config?.symbian || !store) return;
         if(!navigator.locks) { await inform("SIS/SISX transfer", "This transfer needs browser Web Locks to attach the card safely."); return; }
         /** @param {VMConfig | undefined} current */
         function card_slot(current)
         {
-            if(!current?.symbian || current.suspended) throw new Error("Start the Nokia N97 from power off before sending packages.");
+            if(!current?.symbian || current.suspended) throw new Error("Finish starting or resuming the Nokia N97 before sending packages.");
             if(current.symbian.sd) throw new Error("A microSD is already inserted. Power off and eject it in Library → Settings → Symbian firmware. Its image stays in Browser disks.");
             return current;
         }
         try { card_slot(await store.get(config.id)); }
         catch(error) { await inform("SIS/SISX transfer", error.message); return; }
-        await show_sis_transfer(async packages => {
-            if(powered_off) throw new Error("Power on the Nokia N97 to begin a new transfer.");
+        /** @param {Parameters<typeof package_paths>[0]} packages */
+        const insert_sis = async packages => {
             card_slot(await store.get(config.id));
             const image = make_sis_card(packages, crypto.getRandomValues(new Uint32Array(1))[0]);
             const disk = await import_disk(image, ctx.name + " · SIS transfer card",
                 { prefs: store, symbian: { owner: config.id, role: "sd" } });
-            let stopped = false;
+            const sd = /** @type {const} */ ({ kind: "browser", path: disk.path, size: disk.size, sha256: disk.sha256, name: "SIS transfer card" });
+            let registered = false;
             try
             {
-                card_slot(await store.get(config.id));
-                await power_off(false, async () => {
-                    stopped = true;
-                    await store.update(config.id, latest => {
-                        const current = card_slot(latest);
-                        const sd = /** @type {const} */ ({ kind: "browser", path: disk.path, size: disk.size,
-                            sha256: disk.sha256, name: "SIS transfer card" });
-                        return { ...current, symbian: { ...current.symbian, sd } };
-                    });
+                // Register before signaling the guest. An IndexedDB failure can
+                // then be handled before any guest access to the new disk.
+                await store.update(config.id, latest => {
+                    const current = card_slot(latest);
+                    return { ...current, symbian: { ...current.symbian, sd } };
                 });
+                registered = true;
+                await emulator.symbian_insert_sd({ url: "opfs:" + disk.path, size: disk.size });
             }
             catch(error)
             {
-                await delete_disk(disk.id);
-                if(stopped) throw new Error("The VM powered off, but the card could not be attached. Power on again to retry. " + error.message);
+                if(registered)
+                {
+                    const actual = await emulator.get_diagnostics().catch(() => null);
+                    // A worker can exit without replying. Keep the backing
+                    // file if the guest might have seen it or written to it.
+                    if(actual?.symbian?.mmc?.sd_bytes !== null)
+                    {
+                        config.symbian.sd = sd;
+                        throw new Error("Live insertion could not be confirmed. The card is saved for the next start. " + error.message);
+                    }
+                    try
+                    {
+                        await store.update(config.id, latest => {
+                            if(latest.symbian?.sd?.path !== disk.path) return latest;
+                            const next = { ...latest.symbian };
+                            delete next.sd;
+                            return { ...latest, symbian: next };
+                        });
+                    }
+                    catch(rollback)
+                    {
+                        config.symbian.sd = sd;
+                        throw new Error("The card could not be inserted live. It is saved for the next start. " + error.message + " " + rollback.message);
+                    }
+                }
+                try { await delete_disk(disk.id); }
+                catch(cleanup) { throw new Error(error.message + " The unused transfer card is still in Browser disks. " + cleanup.message); }
                 throw error;
             }
-            replace(layout.notice, h("p", { role: "status" }, "The transfer card is ready for the next boot. Open F:\\INSTALL in the phone's file manager. ",
-                h("a", { href: location.href }, "Power on again")), package_paths(packages));
+            config.symbian.sd = sd;
+            written_back = true;
+            replace(layout.notice, h("p", { role: "status" }, "Transfer card inserted. Open F:\\INSTALL in the phone's file manager."),
+                package_paths(packages));
+        };
+        await show_sis_transfer(packages => {
+            if(n97_operation || powered_off) throw new Error("The Nokia N97 is busy. Wait for the current operation and try again.");
+            return n97_exclusive(() => insert_sis(packages))();
         });
+    };
+    let sis_dialog = false;
+    const open_sis = async () => {
+        if(sis_dialog || n97_operation || powered_off) return;
+        sis_dialog = true;
+        try { await send_sis(); }
+        finally { sis_dialog = false; }
     };
     const shutdown_iphone = async () =>
     {
@@ -795,7 +840,9 @@ function console_ui(layout, emulator, ctx)
         try
         {
             const size = await write_state(config.id, write => emulator.save_state_stream(write));
-            await store.put(Object.assign({}, config, { suspended: { size, time: new Date().toISOString(), digest: await machine_digest(config) } }));
+            const suspended = { size, time: new Date().toISOString(), digest: await machine_digest(config) };
+            if(symbian) await store.update(config.id, latest => ({ ...latest, suspended }));
+            else await store.put({ ...config, suspended });
             await power_off(false);
             replace(layout.notice, h("p", null, "Suspended (" + format_size(size) + " in this browser's storage). Power it on from the ",
                 h("a", { href: location.pathname }, "library"), " to resume it."));
@@ -1371,19 +1418,23 @@ function console_ui(layout, emulator, ctx)
     /** @type {Object<string, () => Array<import("./dom.js").MenuItem | "-">>} */
     const items = {
         power: () => [
-            { label: running ? "Pause" : "Run", id: "menu_run", disabled: ipa_installer?.active(), action: () => running ? emulator.stop() : emulator.run() },
-            { label: "Reset", id: "menu_reset", disabled: !!options.initial_state || ipa_installer?.active(), title: options.initial_state ? "Started from a saved state" : "", action: () => {
+            { label: running ? "Pause" : "Run", id: "menu_run", disabled: n97_operation || ipa_installer?.active(),
+                action: n97_exclusive(() => running ? emulator.stop() : emulator.run()) },
+            { label: "Reset", id: "menu_reset", disabled: n97_operation || !!options.initial_state || ipa_installer?.active(),
+                title: options.initial_state ? "Started from a saved state" : "", action: n97_exclusive(() => {
                 n97_keyboard?.release();
                 n97_touch?.release();
                 return emulator.restart();
-            } },
+            }) },
             ...(iphone ? [{ label: "Shut down iPhone…", id: "menu_iphone_shutdown", disabled: !running || ipa_installer?.active(), action: shutdown_iphone }] : []),
-            { label: iphone ? "Force power off…" : "Power off…", id: "menu_power_off", disabled: ipa_installer?.active(), action: () => power_off() },
-            ...(ctx.config ? [{ label: "Suspend", id: "menu_suspend", disabled: ipa_installer?.active(), action: suspend }] : []),
-            ...(written_back ? [{ label: "Save and power off", id: "menu_save_and_power_off", disabled: ipa_installer?.active(), action: save_and_power_off }] : []),
+            { label: iphone ? "Force power off…" : "Power off…", id: "menu_power_off", disabled: n97_operation || ipa_installer?.active(),
+                action: n97_exclusive(() => power_off()) },
+            ...(ctx.config ? [{ label: "Suspend", id: "menu_suspend", disabled: n97_operation || ipa_installer?.active(), action: n97_exclusive(suspend) }] : []),
+            ...(written_back ? [{ label: "Save and power off", id: "menu_save_and_power_off", disabled: n97_operation || ipa_installer?.active(),
+                action: n97_exclusive(save_and_power_off) }] : []),
             "-",
-            { label: "Save the state to a file", id: "menu_save_state", disabled: ipa_installer?.active(), action: save_state },
-            { label: "Load a state from a file…", id: "menu_load_state", disabled: ipa_installer?.active(), action: load_state },
+            { label: "Save the state to a file", id: "menu_save_state", disabled: n97_operation || ipa_installer?.active(), action: n97_exclusive(save_state) },
+            { label: "Load a state from a file…", id: "menu_load_state", disabled: n97_operation || ipa_installer?.active(), action: n97_exclusive(load_state) },
         ],
         keys: () => [
             ...COMBINATIONS.map(c => ({ label: c, id: "keys_" + c.replace(/\W+/g, "_"), action: () => send_keys(c) })),
@@ -1440,7 +1491,7 @@ function console_ui(layout, emulator, ctx)
                     " · RAPIDO ROM missing. Add a local chip dump in Library → Settings → Symbian firmware." :
                     !ctx.config.symbian.media.boot_media ? " · Legacy XIP. Reimport the RM-505 package to add its original modem images." : "") :
                 [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
-            symbian ? h("button#symbian_send_sis", { type: "button", onclick: send_sis }, "Send SIS/SISX…") : null,
+            symbian ? h("button#symbian_send_sis", { type: "button", onclick: open_sis }, "Send SIS/SISX…") : null,
             menu_button("View", items.view, "menu_view"),
             ios || symbian ? null : menu_button("Input", items.input, "menu_input"),
             symbian ? null : mute,

@@ -35,7 +35,7 @@ import { Modem } from "./modem.js";
 import { MemoryFileStorage, ServerFileStorageWrapper } from "./filestorage.js";
 import { SyncBuffer, buffer_from_object } from "../buffer.js";
 import { check_image_options, create_disk_image, import_ova, set_buffer_sector_size } from "../image/factory.js";
-import { check_disk_options, check_disk_policy, check_disk_bindings, set_disk_policy, disk_kind, is_service_url } from "../disk_options.js";
+import { check_disk_options, check_disk_policy, check_disk_bindings, set_disk_policy, disk_kind, in_node, is_service_url } from "../disk_options.js";
 import { NodeFileDisk, check_loaded_disks, disk_buffers } from "../disk_writeback.js";
 import { floppy_format_size } from "../floppy.js";
 import { DiskServiceDisk } from "../disk_service.js";
@@ -1886,6 +1886,7 @@ V86.prototype.destroy = async function()
     if(this.worker_controller) await this.worker_controller.destroy();
     else await this.stop();
     if(this.device_state_operation) await this.device_state_operation;
+    if(this.symbian_sd_opening) await this.symbian_sd_opening.catch(() => {});
     // (the disks written back: flushed, their files closed)
     if(!this.worker_controller) await this.flush_writeback_disks(true);
 
@@ -2565,8 +2566,11 @@ V86.prototype.load_attached_disk = async function(name, file, cdrom, caller)
     {
         // (written back: src/disk_writeback.js, src/disk_service.js)
         image = writeback_backend(name, /** @type {!Object} */ (file));
-        await image.load();
-        try { await check_loaded_disks([[name, image, file]].concat(this.disk_buffers())); }
+        try
+        {
+            await image.load();
+            await check_loaded_disks([[name, image, file]].concat(this.disk_buffers()));
+        }
         catch(error) { image.close_now(); throw error; }
     }
     else if(disk_image)
@@ -2850,6 +2854,53 @@ V86.prototype.symbian_send_control = function(control, pressed)
 };
 // eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
 V86.prototype["symbian_send_control"] = V86.prototype.symbian_send_control;
+
+/** Insert a local raw microSD into an empty Nokia N97 slot. Opens the image
+ * for exclusive writeback and signals card detect after it is ready.
+ * @param {{url: string, size: (number|undefined)}} file
+ * @return {!Promise<void>}
+ */
+V86.prototype.symbian_insert_sd = async function(file)
+{
+    if(this.machine_type !== "nokia-n97" || this.destroyed) throw new Error("Nokia N97 microSD insertion requires an open N97");
+    const url = file?.url;
+    if(typeof url !== "string" || !url || !is_opfs_url(url) && (!in_node() || is_service_url(url)))
+        throw new Error("Nokia N97 live insertion requires a local raw microSD image");
+    if(this.worker_controller) return this.worker_controller.rpc("symbian_insert_sd", [{ "url": url, "size": file.size }]);
+    const mmc = this.v86?.cpu.devices.n97_mmc;
+    if(!mmc) throw new Error("The Nokia N97 microSD controller is unavailable");
+    if(mmc.sd || this.symbian_sd_opening) throw new Error("The Nokia N97 microSD slot is occupied or opening");
+    const name = "symbian_sd";
+    const opening = this.symbian_sd_opening = (async () => {
+        const buffer = await this.load_attached_disk(name, { url, size: file.size, disk_option: "read_write", disk_error: "report" },
+            false, "symbian_insert_sd");
+        try
+        {
+            // Direct ARM snapshots use the core transaction even without
+            // host plugins. Wait for it without stopping a running guest.
+            let core_state, host_state;
+            do
+            {
+                core_state = this.v86.state_operation;
+                host_state = this.device_state_operation;
+                await Promise.all([core_state, host_state]);
+            }
+            while(core_state !== this.v86.state_operation || host_state !== this.device_state_operation);
+            if(this.destroyed) throw new Error("The Nokia N97 has been closed");
+            mmc.insert_sd(buffer);
+        }
+        catch(error)
+        {
+            buffer.close_now();
+            this.disk_descriptors = this.disk_descriptors.filter(([disk_name]) => disk_name !== name);
+            throw error;
+        }
+    })();
+    try { await opening; }
+    finally { this.symbian_sd_opening = null; }
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_insert_sd"] = V86.prototype.symbian_insert_sd;
 
 /**
  * Rotate the simulated N90's gravity vector, in clockwise degrees from portrait.

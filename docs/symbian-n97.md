@@ -193,13 +193,13 @@ node tools/symbian/rofs-n97.mjs <extraction-directory> <firmware-directory>/RM-5
 
 ## RAPIDO MMC 主机与用户存储
 
-RM-505 的内置 eMMC 是板图第 6 页的 D5250，标称 32 GB。`ESTARTCOMP.TXT` 将本地驱动 3 映射为 E:，驱动 2 映射为 F:。`EPBUSMV.DLL` 的 `0x80160890` 使用 GENIO44 控制第 6 页的 N5252 时钟多路器。原版代码为 socket 0 写 `0x20031CC4=0x1000`，选择外置 microSD。socket 1 写 `0x20031CC8=0x1000`，选择内置 eMMC。GENIO45 是外置卡低有效检测脚，`egpio.dll` 原版输入函数 `0x800A0450` 读 `0x20031D88` 的位 13。卡槽配置在关机后更改，冷开时读取检测状态。[Nokia RM-505/RM-507 维修板图第 2、6 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf)
+RM-505 的内置 eMMC 是板图第 6 页的 D5250，标称 32 GB。`ESTARTCOMP.TXT` 将本地驱动 3 映射为 E:，驱动 2 映射为 F:。`EPBUSMV.DLL` 的 `0x80160890` 使用 GENIO44 控制第 6 页的 N5252 时钟多路器。原版代码为 socket 0 写 `0x20031CC4=0x1000`，选择外置 microSD。socket 1 写 `0x20031CC8=0x1000`，选择内置 eMMC。GENIO45 是外置卡低有效检测脚，`egpio.dll` 原版输入函数 `0x800A0450` 读 `0x20031D88` 的位 13。插卡由 IRQ 234 通知原版驱动，与触屏和侧锁共用 GPIO 中断。[Nokia RM-505/RM-507 维修板图第 2、6 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf)
 
 两张卡共享 `0xC6032800`（PA `0x20032800`）的半字 MMC 主机寄存器。`EPBUSMV.DLL` 在 `0x8016085C` 将主机中断绑定到 IRQ 159，并在 `0x8016059C` 读取 IE 和 STAT。平台在 `0x20031C94/98` 置位或清除时钟控制位 14，主机另有 CON 的供电位。命令、响应顺序、FIFO、计数和中断标志按原版访问以及 TI 寄存器资料核对。内置卡使用 MMC 扇区寻址，提供 EXT_CSD。外置卡依映像大小使用 SDSC 字节寻址或 SDHC 扇区寻址。[TI MMC/SD Controller SPRU765A §2](https://www.ti.com/lit/ug/spru765a/spru765a.pdf) · [SD Physical Layer Simplified Specification](https://www.sdcard.org/cms/wp-content/themes/sdcard-org/dl.php?f=Part1_Physical_Layer_Simplified_Specification_Ver6.00.pdf)
 
 新 VM 的 E: 从一个空的 FAT32 用户卷开始。MBR 的分区从 LBA 2048 开始，卷含主备 BPB、FSInfo 和两份 FAT。32,000,000,000 字节是客体逻辑容量，每台 VM 的初始稀疏容器占 2,150,400 字节，首次写入未分配区域时以 64 KiB 增长。独立用 `fsck_msdos -n` 检查了新卷。0576555 清单列出的可选 `MemoryCardContent` 文件 `RM505_RM507_101_000_M028_32G.fpsx` 在本地样本中缺失，当前导入器跳过此角色。通过 **Settings → Symbian firmware** 选择兼容的本地 raw microSD 映像，浏览器按原始字节创建该 VM 的可写副本。卸卡后可在浏览器磁盘库找到保留的副本。先前 VM 保留原介质配置和同配置的快照；若需要新建 eMMC，可重新导入到单独的 VM。
 
-下列探针用同一份未改动的零售 XIP 运行原版选槽、检测脚、发命令及响应读取代码。原版完成 5 个 eMMC 和 7 个 microSD 命令的寄存器访问。探针用短 ARM PIO 循环读 EXT_CSD、E: 的 MBR 和 FAT32 BPB，以及 microSD 扇区 1。公开回归还验证多块读写、传输中的 CMD13、IRQ 159 的确认及清除、快照中途恢复和写盘代次隔离。目前 PIO 同步完成。热插拔中断以及客体文件服务器挂载仍待验证。
+下列探针用同一份未改动的零售 XIP 运行原版选槽、检测脚、发命令及响应读取代码。原版完成 5 个 eMMC 和 7 个 microSD 命令的寄存器访问。探针用短 ARM PIO 循环读 EXT_CSD、E: 的 MBR 和 FAT32 BPB，以及 microSD 扇区 1。公开回归还验证多块读写、传输中的 CMD13、IRQ 159 的确认及清除、插卡产生的 IRQ 234、快照中途恢复和写盘代次隔离。PIO 同步完成。客体文件服务器挂载仍待验证。
 
 ```sh
 node tools/symbian/mmc-n97.mjs <output>/rom.xip.bin
@@ -321,9 +321,11 @@ node tests/app/browser_runner.mjs tests/app/symbian_test.html
 
 ## 原生 SIS/SISX 递送与 v86 Notes
 
-打开一台 microSD 槽为空的 N97，选择控制台的 **Send SIS/SISX…**。文件选择器接受本地 `.sis` 和 `.sisx`。确认框会列出原始文件名和对应的手机路径，例如 `F:\INSTALL\PKG00001.SIS`。8.3 文件名按选择顺序分配，同名、长名和中文名各占一个独立文件。**Prepare card and power off** 会创建该 VM 的新 microSD 映像，关机成功后才将新卡登记为下次开机的介质。确认前可以取消。看到 **The transfer card is ready for the next boot** 后，从手机文件管理器打开 `F:\INSTALL`。若已有卡，可在关机后到 **Library → Settings → Symbian firmware** 卸下，原映像仍在 **Browser disks**。
+打开一台 microSD 槽为空的 N97，选择控制台的 **Send SIS/SISX…**。文件选择器接受本地 `.sis` 和 `.sisx`。确认框列出原始文件名和对应的手机路径，例如 `F:\INSTALL\PKG00001.SIS`。8.3 文件名按选择顺序分配，同名、长名和中文名各占一个独立文件。选择 **Insert transfer card** 后，浏览器创建该 VM 的新卡并在当前会话插入，保留客体 RAM 和运行状态。看到 **Transfer card inserted** 后，可在已启动的手机系统中从文件管理器打开 `F:\INSTALL`。挂起恢复和冷开都继续使用同一张卡。若已有卡，可在关机后到 **Library → Settings → Symbian firmware** 卸下，原映像仍在 **Browser disks**。
 
-递送工具检查 Symbian 9.x UID、UID CRC、文件及控制器边界、控制器内的包 UID 和实际提供的两个字段 CRC。高容量文件分段读取，解压控制器上限 8 MiB。新的 FAT16 卡按所选数据量采用 16 MiB 至 2 GiB 标准容量，并核对浏览器配额。包字节原样复制。签名、能力、安装和升级由客体的应用程序管理器判断。当前 N97 的零售引导仍需 RAPIDO 芯片 Boot ROM。浏览器冷开验证已附加可读写的卡，客体文件服务器挂载、原版安装与应用运行尚待验证。[Symbian OS v9.x SIS 文件格式说明](https://www.cryer.co.uk/file-types/s/sis/softwareinstallsis.pdf)
+递送工具检查 Symbian 9.x UID、UID CRC、文件及控制器边界、控制器内的包 UID 和实际提供的两个字段 CRC。高容量文件分段读取，解压控制器上限 8 MiB。新的 FAT16 卡按所选数据量采用 16 MiB 至 2 GiB 标准容量，并核对浏览器配额。包字节原样复制。写入程序先保存库里的卡配置，再向客体发出插卡通知。可确认卡未插入时，失败会回滚登记并回收尚未使用的映像。Chrome 回归由正在运行的 ARM 客体读取实装 MMC 的 FAT16 卡，核对客体 RAM、挂起和冷开。签名、能力、安装和升级由客体的应用程序管理器判断。当前零售引导仍需 RAPIDO 芯片 Boot ROM，客体文件服务器挂载、原版安装与应用运行尚待验证。[Symbian OS v9.x SIS 文件格式说明](https://www.cryer.co.uk/file-types/s/sis/softwareinstallsis.pdf)
+
+`dma-n97.mjs --live-sis` 在同一份未改动的 0576555 原版 AP 内核诊断会话插入新卡。原版 `EPBUSMV.DLL` 经 IRQ 234 和去抖回调确认插卡，原版 `ELocal.fsy` 判定 DMA 读到的 BPB 为 FAT16。探针随后由原版 DMA 驱动及 IRQ 1 读取共 27 个扇区，主机从这些扇区解析目录和 FAT 链，核对两份 v86 Notes 的全部包字节。
 
 随附的 **v86 Notes** 是可分发的 BSD-2-Clause 原创测试应用，使用测试 UID `0xE0860505` 和零额外能力。用 N97 键盘输入短文本，选 **Save** 写入私有目录 `C:\private\e0860505\note.txt`，下次打开读回。2.0 增加 **Clear**，两版继续使用同一个文本文件。应用使用真实 Window Server 和文件服务器 API。构建从原版 Nokia N97 SDK 的 ARM 导入库读取序号，用 symbian-platform v0.3.0 生成 E32，资源按原版 SDK 的格式编译，再由 Nokia MakeSIS 和 SignSIS 打包、签名。两版声明 S60v5 目标 UID `0x1028315F`。已按 RM-505 固件的导出表独立核对 v1 的 59 项和 v2 的 60 项符号。随附签名为同一测试证书，自签名有效期为 2026-11-18 至 2036-11-15，客体日期需处于有效期内。[symbian-platform v0.3.0](https://github.com/hpnkv/symbian-platform/releases/tag/v0.3.0) · [Nokia SIS 工具说明](https://devlib.symbian.slions.net/s3/GUID-AFE0238A-D6A4-5D07-BB99-85E8CF97BD26.html)
 
@@ -337,6 +339,7 @@ node tests/app/browser_runner.mjs tests/app/symbian_test.html
 ```sh
 sh tools/symbian/notes/build.sh <symbian-platform-sdk> <nokia-n97-sdk-epoc32> <makesis> <signsis> <output-directory>
 node --test tests/symbian/sis.mjs
+node tools/symbian/dma-n97.mjs <output>/rom.xip.bin --live-sis
 node tests/app/browser_runner.mjs tests/app/symbian_test.html
 mdir -i 'exported-card.img@@1048576' ::/INSTALL
 mcopy -i 'exported-card.img@@1048576' ::/INSTALL/PKG00001.SIS recovered.sis

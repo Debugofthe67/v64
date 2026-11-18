@@ -3,7 +3,7 @@
 // original EPBUSMV stack's data entry with fresh local diagnostic media.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { closeSync, fstatSync, ftruncateSync, mkdtempSync, openSync, readSync, rmSync, writeSync } from "node:fs";
+import { closeSync, fstatSync, ftruncateSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,9 +11,11 @@ import { V86 } from "../../src/main.js";
 import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
 import { format_n97_emmc } from "../../src/symbian/n97_emmc_format.js";
 import { open_n97_emmc } from "../../src/symbian/n97_mmc_media.js";
+import { make_sis_card, sis_card_files } from "../../src/symbian/sis_card.js";
 
-const [rom] = process.argv.slice(2);
-if(!rom || process.argv.length !== 3) throw new Error("Usage: node tools/symbian/dma-n97.mjs <rom.xip.bin>");
+const [rom, mode, ...extra] = process.argv.slice(2);
+if(!rom || mode && mode !== "--live-sis" || extra.length)
+    throw new Error("Usage: node tools/symbian/dma-n97.mjs <rom.xip.bin> [--live-sis]");
 const directory = mkdtempSync(join(tmpdir(), "v86-n97-dma-"));
 const emmc = join(directory, "emmc.img"), sd = join(directory, "sd.img");
 const read_payload = Uint8Array.from({ length: 512 }, (_, index) => (index * 127 ^ (index >>> 5) ^ 193) & 255);
@@ -36,12 +38,12 @@ function with_disk(file, mode, run)
     finally { closeSync(fd); }
 }
 
-async function probe(slot, write_to_card)
+async function probe(slot, write_to_card, packages)
 {
     const disk = url => ({ url, disk_option: "read_write" });
     const vm = new V86({ machine_type: "nokia-n97", disable_jit: true, graphics_adapter: "none", autostart: false, log_level: 0,
         cpu_clock: { mode: "deterministic", instructions_per_ms: 8000 }, wasm_path, symbian: {
-            rom: { url: rom }, application_processor_only: true, emmc: disk(emmc), sd: disk(sd),
+            rom: { url: rom }, application_processor_only: true, emmc: disk(emmc), ...(packages ? {} : { sd: disk(sd) }),
         } });
     try
     {
@@ -148,6 +150,34 @@ async function probe(slot, write_to_card)
             write_guest(address, new Uint8Array(size));
             return address;
         };
+        let detect = null;
+        if(packages)
+        {
+            const u32 = va => cpu.read32_physical(physical(va));
+            const detector = allocate(0x80);
+            call(0x801612D4);
+            assert.equal(u32(0xC800E8FC), 45);
+            call(0x80160FFC, detector, 0);
+            assert.equal(call(0x8016107C, detector, 0), 0);
+            assert.equal(u32(detector + 0x2C), 0x2D00);
+            call(0x801611DC, detector, 0);
+            assert.equal(call(0x80161264, detector), 1, "stock detector begins with the slot empty");
+            await vm.symbian_insert_sd({ url: sd });
+            jump(park);
+            const first_claim = claims.length, callbacks = new Set();
+            const route = [0x8009FEFC, 0x8016102C, 0x80160F74, 0x801612A0];
+            for(let n = 0; n < 1200000 && (u32(detector + 0x30) || pc() !== park); n++)
+            {
+                if(n % 32 === 0) cpu.run_hardware_timers(null, cpu.clock.advance_instructions(32));
+                if(route.includes(pc())) callbacks.add(pc());
+                step();
+            }
+            assert.equal(pc(), park);
+            assert.equal(call(0x80161264, detector), 0, "stock detector reports the inserted card after debounce");
+            assert.ok(claims.slice(first_claim).includes(234));
+            assert.deepEqual([...callbacks], route);
+            detect = { genio: 45, irq: 234, callbacks: [...callbacks].map(address => "0x" + address.toString(16)) };
+        }
         const helper = allocate(128), buffer = ((allocate(640) + 31) & ~31) >>> 0;
         const stack_driver = allocate(0x900), request = allocate(0x60);
         // The real helper sees a contiguous DMA fragment and all 512 bytes in one guest page.
@@ -157,10 +187,7 @@ async function probe(slot, write_to_card)
         const dfc_queue = cpu.read32_physical(physical(0xC8006BB8 + 0x3C));
         assert.ok(dfc_queue);
         assert.equal(call(0x80160AC0, helper, buffer, 512, dfc_queue), 0);
-        const argument = slot ? 512 : 1;
         words(stack_driver + 0x844, helper);
-        words(stack_driver + 0x884, argument);
-        words(request + 4, write_to_card ? 24 : 17, argument, 512, buffer, 512, 0, 5, write_to_card ? 1 : 2);
         words(request + 0x2C, 2); // R1
 
         mmio(0x20031C94, 0x4000, 4);
@@ -177,48 +204,119 @@ async function probe(slot, write_to_card)
         card_command(0x1202);
         card_command(slot ? 0x1603 : 0x2103, slot ? 0 : 0x10000);
         card_command(0x2907, 0x10000);
-        host(0x10, 0xFFFF);
-        host(0x2C, write_to_card ? 0x008F : 0x8F00);
-        call(0x80162484, stack_driver, request); // stock sizes, DMA queue and card command
-        assert.equal(host(0x10) & 0x40A1, 1);
-        assert.equal(cpu.devices.n97_dma.status().completed, 0);
-        for(const entry of [write_to_card ? 0x8015EF5C : 0x8015EEB0, 0x8009C0BC, 0x8009DE34, 0x80160B5C])
-            assert.ok(visited.has(entry), "stock DMA path executed 0x" + entry.toString(16));
-
-        jump(park);
-        set_reg(14, park);
-        const irq_mode = field("a32_cpsr") & 0x1F;
-        let irq_return = 0, claim_start = 0, return_instruction = 0, steps = 0;
-        for(; steps < 40000; steps++)
+        let completed = 0;
+        function transfer_sector(lba)
         {
-            if(steps % 32 === 0) cpu.run_hardware_timers(null, cpu.clock.advance_instructions(32));
-            const entry = pc();
-            if(entry === 0xFFFF0018)
+            visited.clear();
+            const first_claim = claims.length;
+            const argument = slot ? lba * 512 : lba;
+            words(stack_driver + 0x884, argument);
+            words(request + 4, write_to_card ? 24 : 17, argument, 512, buffer, 512, 0, 5, write_to_card ? 1 : 2);
+            host(0x10, 0xFFFF);
+            host(0x2C, write_to_card ? 0x008F : 0x8F00);
+            call(0x80162484, stack_driver, request); // stock sizes, DMA queue and card command
+            assert.equal(host(0x10) & 0x40A1, 1);
+            assert.equal(cpu.devices.n97_dma.status().completed, completed);
+            for(const entry of [write_to_card ? 0x8015EF5C : 0x8015EEB0, 0x8009C0BC, 0x8009DE34, 0x80160B5C])
+                assert.ok(visited.has(entry), "stock DMA path executed 0x" + entry.toString(16));
+
+            jump(park);
+            set_reg(14, park);
+            const irq_mode = field("pstate") & 0x1F;
+            let return_instruction = 0, steps = 0;
+            for(; steps < 40000; steps++)
             {
-                irq_return = register(14) - 4;
-                claim_start = claims.length;
+                if(steps % 32 === 0) cpu.run_hardware_timers(null, cpu.clock.advance_instructions(32));
+                const entry = pc();
+                step();
+                // The scheduler tick can nest during repeated transfers.
+                // Keep the IRQ 1 claim for this transfer through final return.
+                if((entry === 0x8004F354 || entry === 0x8004F370) && pc() === park &&
+                    visited.has(0x8009D8C0) && visited.has(0x8009DA0C) && claims.slice(first_claim).includes(1))
+                {
+                    return_instruction = entry;
+                    assert.equal(field("pstate") & 0x1F, irq_mode);
+                    break;
+                }
             }
-            step();
-            if((entry === 0x8004F354 || entry === 0x8004F370) && pc() === park && irq_return === park &&
-                visited.has(0x8009D8C0) && visited.has(0x8009DA0C) && claims.slice(claim_start).includes(1))
-            {
-                return_instruction = entry;
-                assert.equal(field("a32_cpsr") & 0x1F, irq_mode);
-                break;
-            }
+            assert.ok(return_instruction, "real IRQ 1 must dispatch its DMA callback and return to its caller: " +
+                JSON.stringify({ pc: pc().toString(16), claims: claims.slice(-8), visited: [...visited].map(n => n.toString(16)),
+                    dma: cpu.devices.n97_dma.status(), mmio: dma_writes.slice(-20) }));
+            assert.equal(host(0x10) & 0x18, write_to_card ? 0x18 : 0x08);
+            completed++;
+            assert.deepEqual(cpu.devices.n97_dma.status(), { physical_resets: 6, completed, bytes: completed * 512, errors: 0 });
+            return { bytes: cpu.read_blob_physical(physical(buffer), 512), irq: 1, return_instruction, returned_pc: park, steps };
         }
-        assert.ok(return_instruction, "real IRQ 1 must dispatch its DMA callback and return to its caller: " +
-            JSON.stringify({ pc: pc().toString(16), claims: claims.slice(-8), visited: [...visited].map(n => n.toString(16)),
-                dma: cpu.devices.n97_dma.status(), dma_writes: dma_writes.map(([entry, port, width, value]) =>
-                    [entry.toString(16), port.toString(16), width, value.toString(16)]) }));
-        assert.equal(host(0x10) & 0x18, write_to_card ? 0x18 : 0x08);
-        assert.deepEqual(cpu.devices.n97_dma.status(), { physical_resets: 6, completed: 1, bytes: 512, errors: 0 });
-        if(!write_to_card) assert.deepEqual(cpu.read_blob_physical(physical(buffer), 512), read_payload);
+        if(packages)
+        {
+            const sectors = new Map();
+            const sector = lba => {
+                if(!sectors.has(lba)) sectors.set(lba, Buffer.from(transfer_sector(lba).bytes));
+                return sectors.get(lba);
+            };
+            const start = sector(0).readUInt32LE(454);
+            const bpb = sector(start);
+            // The just-read boot sector is still in the real DMA buffer.
+            const geometry = allocate(256), descriptor = allocate(32);
+            words(descriptor, 0x20000200, 512, buffer);
+            function call_thumb(entry, ...args)
+            {
+                args.forEach((value, i) => set_reg(i, value));
+                set_reg(12, entry | 1);
+                set_reg(13, stack);
+                set_reg(14, park);
+                jump(0x8004F50C); // original BX r12 veneer
+                for(let n = 0; pc() !== park && n < 10000; n++) step();
+                assert.equal(pc(), park);
+                return register(0);
+            }
+            call_thumb(0x8030BDF4, geometry, descriptor);
+            assert.equal(call_thumb(0x8030BCFE, geometry), 16, "original ELocal.fsy detects FAT16");
+            assert.equal(call_thumb(0x8030BD78, geometry), 1, "original ELocal.fsy accepts the BPB");
+            return { detect, fat: 16, irq: 1, packages: await verify_fat_packages(sector, start, bpb, packages), sectors: sectors.size };
+        }
+        const { bytes, ...completion } = transfer_sector(1);
+        if(!write_to_card) assert.deepEqual(bytes, read_payload);
         return { card: slot ? "microSD" : "eMMC", direction: write_to_card ? "write" : "read", bytes: 512,
-            sha256: digest(write_to_card ? write_payload : read_payload), irq: 1,
-            return_instruction, returned_pc: park, steps, mmio: dma_writes };
+            sha256: digest(write_to_card ? write_payload : read_payload), ...completion, mmio: dma_writes };
     }
     finally { await vm.destroy(); }
+}
+
+// Decode host-visible names and FAT chains only from sectors returned by the
+// guest. This probe provides the MMC caller and doesn't start File Server.
+async function verify_fat_packages(sector, base, bpb, packages)
+{
+    assert.equal(bpb.readUInt16LE(11), 512);
+    const cluster_sectors = bpb[13], fat = base + bpb.readUInt16LE(14);
+    const root = fat + bpb[16] * bpb.readUInt16LE(22);
+    const first_cluster = root + Math.ceil(bpb.readUInt16LE(17) / 16);
+    const cluster_start = n => first_cluster + (n - 2) * cluster_sectors;
+    function find(bytes, name)
+    {
+        for(let offset = 0; offset < bytes.length && bytes[offset]; offset += 32)
+            if(bytes.subarray(offset, offset + 11).toString("ascii") === name) return bytes.subarray(offset, offset + 32);
+        throw new Error("Missing FAT entry " + name);
+    }
+    const dir = sector(cluster_start(find(sector(root), "INSTALL    ").readUInt16LE(26)));
+    const results = [];
+    for(const [index, { file, path }] of packages.entries())
+    {
+        const entry = find(dir, "PKG" + (index + 1).toString().padStart(5, "0") + "SIS");
+        const bytes = Buffer.alloc(entry.readUInt32LE(28));
+        let cluster = entry.readUInt16LE(26), at = 0;
+        while(at < bytes.length)
+        {
+            assert.ok(cluster >= 2 && cluster < 0xFFF8);
+            for(let n = 0; n < cluster_sectors && at < bytes.length; n++, at += 512)
+                sector(cluster_start(cluster) + n).copy(bytes, at);
+            cluster = sector(fat + (cluster >>> 8)).readUInt16LE((cluster & 255) * 2);
+        }
+        assert.ok(cluster >= 0xFFF8);
+        assert.deepEqual(bytes, Buffer.from(await file.arrayBuffer()));
+        results.push({ path, bytes: bytes.length, sha256: digest(bytes) });
+    }
+    return results;
 }
 
 try
@@ -228,22 +326,35 @@ try
         format_n97_emmc(media, 0x505);
         media.write(512, read_payload);
     });
-    with_disk(sd, "wx+", access => {
-        access.truncate(16 * 1024 ** 2);
-        access.write(read_payload, { at: 512 });
-    });
     const results = [];
-    for(const slot of [0, 1])
+    if(mode === "--live-sis")
     {
-        results.push(await probe(slot, false));
-        results.push(await probe(slot, true));
-        const stored = with_disk(slot ? sd : emmc, "r", access => {
-            if(!slot) return open_n97_emmc(access).read(512, 512);
-            const bytes = new Uint8Array(512);
-            assert.equal(access.read(bytes, { at: 512 }), 512);
-            return bytes;
+        const packages = await sis_card_files([1, 2].map(version => {
+            const name = "notes-v" + version + ".sisx";
+            return new File([readFileSync(new URL("../../tests/symbian/fixtures/" + name, import.meta.url))], name);
+        }));
+        const card = make_sis_card(packages, 0x505);
+        writeFileSync(sd, new Uint8Array(await card.arrayBuffer()), { flag: "wx", mode: 0o600 });
+        results.push(await probe(1, false, packages));
+    }
+    else
+    {
+        with_disk(sd, "wx+", access => {
+            access.truncate(16 * 1024 ** 2);
+            access.write(read_payload, { at: 512 });
         });
-        assert.deepEqual(stored, write_payload);
+        for(const slot of [0, 1])
+        {
+            results.push(await probe(slot, false));
+            results.push(await probe(slot, true));
+            const stored = with_disk(slot ? sd : emmc, "r", access => {
+                if(!slot) return open_n97_emmc(access).read(512, 512);
+                const bytes = new Uint8Array(512);
+                assert.equal(access.read(bytes, { at: 512 }), 512);
+                return bytes;
+            });
+            assert.deepEqual(stored, write_payload);
+        }
     }
     console.log(JSON.stringify(results, null, 2));
 }

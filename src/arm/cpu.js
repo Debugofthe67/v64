@@ -72,7 +72,7 @@ const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldf
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
     "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
     "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma", "n97_touch_gpio", "n97_touch",
-    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus", "n97_power_gpio", "n97_cbus"];
+    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus", "n97_power_gpio", "n97_cbus", "n97_sd_detect"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -324,10 +324,13 @@ A64CPU.prototype.init = function(settings, device_bus)
             const avilma_irq = this.devices.n97_power_gpio = keypad_irq.connect(10, false, level => interrupts.set_avilma(level));
             const cbus = this.devices.n97_cbus = create_n97_cbus(this.io, this.clock, level => avilma_irq.set_input(level));
             const slider = this.devices.n97_slider_gpio = create_n97_gpio_input(this.io, 0x20031D80, 0x20031CF4, 26, false,
-                level => interrupts.set_slider(level), () => this.devices.n97_mmc?.sd ? 0 : 0x2000);
+                level => interrupts.set_slider(level));
             const panel_irq = level => interrupts.set_panel(level);
             const pen = this.devices.n97_touch_gpio = slider.connect(6, true, panel_irq);
             const lock = this.devices.n97_lock_gpio = slider.connect(8, true, panel_irq);
+            const sd_detect = this.devices.n97_sd_detect = slider.connect(13, !settings.symbian_sd, panel_irq);
+            this.devices.n97_mmc = create_n97_mmc(this.io, settings.symbian_emmc, settings.symbian_sd,
+                level => interrupts.set_mmc(level), high => sd_detect.set_input(high));
             const touch = this.devices.n97_touch = create_n97_touch(this.clock, level => pen.set_input(level));
             const keypad = this.devices.n97_keyboard = create_n97_keyboard(level => keypad_irq.set_input(!level), touch.set_reset);
             this.devices.n97_i2c = create_n97_i2c(this.io, new Map([[N97_KEYBOARD_ADDRESS, keypad], [N97_TOUCH_ADDRESS, touch]]),
@@ -347,11 +350,6 @@ A64CPU.prototype.init = function(settings, device_bus)
                 else if(control === "power") cbus.set_power(pressed);
                 else touch.set_key(control, pressed);
             });
-            if(settings.symbian_emmc || settings.symbian_sd)
-            {
-                this.devices.n97_mmc = create_n97_mmc(this.io, settings.symbian_emmc, settings.symbian_sd,
-                    level => interrupts.set_mmc(level));
-            }
         }
         this.virtio_devices = [];
         this.shared_spi_sources = new Map();
@@ -1400,8 +1398,10 @@ A64CPU.prototype.validate_state = function(state)
         if(!!nand !== !!this.devices.n97_onenand) throw new Error("Snapshot and machine must use the same Nokia N97 OneNAND configuration");
         this.devices.n97_onenand?.check_state(nand);
         const mmc = state[4]?.[DEVICE_ORDER.indexOf("n97_mmc")];
-        if(!!mmc !== !!this.devices.n97_mmc) throw new Error("Snapshot and machine must use the same Nokia N97 MMC configuration");
-        this.devices.n97_mmc?.check_state(mmc);
+        const mmc_device = this.devices.n97_mmc;
+        if(mmc && !mmc_device || !mmc && (mmc_device?.emmc || mmc_device?.sd))
+            throw new Error("Snapshot and machine must use the same Nokia N97 MMC configuration");
+        if(mmc) mmc_device.check_state(mmc);
         this.devices.n97_sram.check_state(state[4]?.[DEVICE_ORDER.indexOf("n97_sram")], legacy_n97);
     }
     if(this.machine_type === "s5l8930" && !!state[4]?.[DEVICE_ORDER.indexOf("apple_nand")] !== !!this.devices.apple_nand)
@@ -1466,6 +1466,9 @@ A64CPU.prototype.set_state = function(state, skip_memory = false)
     // including when restoring over a machine that has already used them.
     if(!device_states[DEVICE_ORDER.indexOf("n97_slider_gpio")]) this.devices.n97_slider_gpio?.set_input(false);
     for(const name of DEVICE_ORDER.slice(device_states.length)) this.devices[name]?.reset?.();
+    if(this.devices.n97_mmc && !device_states[DEVICE_ORDER.indexOf("n97_mmc")]) this.devices.n97_mmc.reset();
+    if(this.devices.n97_sd_detect && !device_states[DEVICE_ORDER.indexOf("n97_sd_detect")])
+        this.devices.n97_sd_detect.set_input(!this.devices.n97_mmc.sd);
     if(this.devices.n97_touch && !device_states[DEVICE_ORDER.indexOf("n97_touch")])
         this.devices.n97_touch.restore_reset(this.devices.n97_keyboard.touch_reset_high());
     if(this.devices.n97_onenand && !device_states[DEVICE_ORDER.indexOf("n97_nand_bus")])

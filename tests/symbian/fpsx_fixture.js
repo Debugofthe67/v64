@@ -47,23 +47,25 @@ export const fixture_partitions = [
     [3, 2, 0x80000, 0x20000], [4, 2, 0xA0000, 0x20000], [8, 1, 0xC0000, 0x360000], [10, 1, 0xF800000, 0x80000],
 ];
 
-export function rom_page(encoded)
+export function rom_page(encoded, unpaged_size = 0x1000)
 {
-    const unpaged = Buffer.alloc(0x1000);
+    const unpaged = Buffer.alloc(unpaged_size);
+    const image_size = unpaged_size + 0x1000;
+    const paged_index = 0x300 + unpaged_size / 0x1000 * 8;
     unpaged.writeUInt32LE(0xEA00007E, 0);
     unpaged.writeUInt32LE(0xEA000060, 0x7C);
     unpaged.writeUInt32LE(0x80000000, 0x8C);
-    unpaged.writeUInt32LE(0x2000, 0x90);
+    unpaged.writeUInt32LE(image_size, 0x90);
     unpaged.writeUInt32LE(0x80000200, 0x94);
     unpaged.writeUInt32LE(512, 0xC0);
-    unpaged.writeUInt32LE(0x1000 + encoded.length, 0xF0);
-    unpaged.writeUInt32LE(0x2000, 0xF4);
-    unpaged.writeUInt32LE(0x1000, 0x148);
+    unpaged.writeUInt32LE(unpaged_size + encoded.length, 0xF0);
+    unpaged.writeUInt32LE(image_size, 0xF4);
+    unpaged.writeUInt32LE(unpaged_size, 0x148);
     unpaged.writeUInt32LE(0x1000, 0x14C);
     unpaged.writeUInt32LE(0x300, 0x150);
-    unpaged.writeUInt32LE(0x1000, 0x308);
-    unpaged.writeUInt16LE(encoded.length, 0x30C);
-    unpaged.set([1, 1], 0x30E);
+    unpaged.writeUInt32LE(unpaged_size, paged_index);
+    unpaged.writeUInt16LE(encoded.length, paged_index + 4);
+    unpaged.set([1, 1], paged_index + 6);
     return Buffer.concat([unpaged, encoded]);
 }
 
@@ -131,12 +133,13 @@ function boot_group(start, label, address, payload, deflated)
 
 export function firmware_fixture(bootstrap)
 {
-    const core_data = Buffer.alloc(0x2200, 0xFF);
+    const unpaged_size = Math.ceil((0x400 + (bootstrap?.length || 0)) / 0x1000) * 0x1000;
+    if(unpaged_size > 0x2000) throw new Error("Test bootstrap exceeds the unpaged ROM");
+    const core_data = Buffer.alloc(unpaged_size + 0x1200, 0xFF);
     core_data.fill(0xDA, 0, 0xC00);
-    rom_page(valid_page).copy(core_data, 0xC00);
+    rom_page(valid_page, unpaged_size).copy(core_data, 0xC00);
     if(bootstrap)
     {
-        if(bootstrap.length > 0xC00) throw new Error("Test bootstrap exceeds the unpaged ROM");
         // The XIP entry at 0x200 jumps over the byte-pair page index at 0x300.
         core_data.writeUInt32LE(0xEA00007E, 0xC00 + 0x200);
         bootstrap.copy(core_data, 0xC00 + 0x400);

@@ -64,6 +64,13 @@ async function hash(file)
     return [...digest].map(value => value.toString(16).padStart(2, "0")).join("");
 }
 
+async function notes_package(version, name = "notes-v" + version + ".sisx")
+{
+    const response = await fetch("../symbian/fixtures/notes-v" + version + ".sisx");
+    check(response.ok, "shipped SIS fixture");
+    return new File([await response.blob()], name);
+}
+
 async function worker_diagnostics(emulator)
 {
     let timer, on_error;
@@ -571,14 +578,33 @@ try
     check(!console_frame.contentDocument.querySelector("#menu_keys, #menu_devices, #iphone_install_ipa"), "no unsupported phone controls");
     await check_n97_touch(console_frame, emulator);
     await check_n97_keyboard(console_frame, emulator);
-    if(!local)
+    if(local)
+    {
+        const retail = console_frame.contentDocument, notes = await notes_package(1);
+        retail.querySelector("#symbian_send_sis").click();
+        const transfer = await until(() => retail.querySelector(".sis-transfer[open]"), "retail SIS picker");
+        choose(transfer.querySelector("input"), [notes]);
+        (await until(() => button(transfer, "Insert transfer card"), "retail transfer ready")).click();
+        await until(() => retail.querySelector(".console-notice")?.textContent.includes("Transfer card inserted"), "retail live insertion");
+        const sd = (await store.get(config.id)).symbian.sd;
+        check(emulator.is_running() && (await worker_diagnostics(emulator)).symbian.mmc.sd_bytes === sd.size,
+            "normal retail Worker continues with the persistently inserted card");
+        await power_off(console_frame);
+        const image = await disk_file(disk_id(sd.path));
+        check(await hash(new Blob([await read_sis_card(image, 1)])) === await hash(notes), "retail VM owns the unchanged package bytes");
+        const reopened = frame("/index.html?vm=" + config.id);
+        const { emulator: cold_worker } = await running_worker(reopened);
+        check((await worker_diagnostics(cold_worker)).symbian.mmc.sd_bytes === sd.size, "retail VM cold-opens with its attached card");
+        await power_off(reopened);
+    }
+    else
     {
         await until(async () => {
             const flash = (await worker_diagnostics(emulator)).symbian?.onenand;
             return flash?.programs === 3 && flash.erases === 2;
         }, "guest programs three pages and verifies the two-block erase");
+        await power_off(await check_n97_keyboard_resume(console_frame, store, config.id));
     }
-    await power_off(local ? console_frame : await check_n97_keyboard_resume(console_frame, store, config.id));
     if(!local)
     {
         const probe_page = N97_FLASH_HEADER + (N97_BML_USER_BLOCKS - 1) * N97_FLASH_BLOCK / N97_FLASH_PAGE * N97_FLASH_SLOT;
@@ -670,7 +696,19 @@ try
             await running_worker(next);
             return next;
         };
-        let sender = await open_again(), send = sender.contentDocument;
+        const sender = await open_again(), send = sender.contentDocument;
+        const { emulator: sender_worker } = await running_worker(sender);
+        const card_probe = async (emulator, offset) => {
+            const bytes = await emulator.read_memory(0x0A080000 + offset, 4);
+            return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true);
+        };
+        await until(async () => (await card_probe(sender_worker, 4)) > 0, "running ARM guest heartbeat");
+        const unsaved = new Uint8Array([0x53, 0x49, 0x53, 0x21]), unsaved_address = 0x0A080800;
+        await sender_worker.write_memory(unsaved, unsaved_address);
+        const unsaved_matches = async emulator => (await emulator.read_memory(unsaved_address, unsaved.length)).every((byte, i) => byte === unsaved[i]);
+        let stops = 0;
+        sender_worker.add_listener("emulator-stopped", () => stops++);
+        const insert = "Insert transfer card";
         const transfer_dialog = async () => {
             send.querySelector("#symbian_send_sis").click();
             return until(() => send.querySelector(".sis-transfer[open]"), "SIS picker");
@@ -679,12 +717,8 @@ try
         let transfer = await transfer_dialog();
         choose(transfer.querySelector("input"), [new File([new Uint8Array(24)], "wrong.sis")]);
         await until(() => transfer.textContent.includes("SIS header"), "invalid SIS rejection");
-        check(!button(transfer, "Prepare card and power off"), "invalid package cannot be sent");
-        const good = await Promise.all([1, 2].map(async version => {
-            const response = await fetch("../symbian/fixtures/notes-v" + version + ".sisx");
-            check(response.ok, "shipped SIS fixture");
-            return new File([await response.blob()], "同名的长文件名—Notes.sisx");
-        }));
+        check(!button(transfer, insert), "invalid package cannot be sent");
+        const good = await Promise.all([1, 2].map(version => notes_package(version, "同名的长文件名—Notes.sisx")));
         choose(transfer.querySelector("input"), good);
         await until(() => transfer.textContent.includes("F:\\INSTALL\\PKG00002.SIS"), "review package paths");
         check(transfer.textContent.includes(good[0].name) && transfer.textContent.includes("PKG00001.SIS"), "maps same-name Unicode input to distinct paths");
@@ -692,15 +726,24 @@ try
         check((await list_disks()).length === before && !(await store.get(config.id)).symbian.sd, "cancel creates no card");
         transfer = await transfer_dialog();
         choose(transfer.querySelector("input"), good);
-        await until(() => button(transfer, "Prepare card and power off"), "valid packages can be sent");
+        await until(() => button(transfer, insert), "valid packages can be sent");
+        send.querySelector("#symbian_send_sis").click();
+        check(send.querySelectorAll(".sis-transfer[open]").length === 1, "a second transfer cannot compete in the same console");
+        const duplicate = frame("/index.html?vm=" + config.id);
+        await until(() => duplicate.contentDocument?.body?.textContent.includes("runs in another tab"), "competing console rejected by its Web Lock");
+        duplicate.remove();
+        const check_empty_after_failure = async () => {
+            check(!(await store.get(config.id)).symbian.sd && (await list_disks()).length === before &&
+                (await worker_diagnostics(sender_worker)).symbian.mmc.sd_bytes === null && sender_worker.is_running() &&
+                stops === 0 && await unsaved_matches(sender_worker), "failed transfer leaves the running guest, empty slot and disks intact");
+        };
         const storage = sender.contentWindow.navigator.storage, original_directory = storage.getDirectory;
         storage.getDirectory = async () => { throw new Error("fixture write failure"); };
         try
         {
-            button(transfer, "Prepare card and power off").click();
+            button(transfer, insert).click();
             await until(() => transfer.textContent.includes("fixture write failure"), "disk write failure surfaced");
-            check(!(await store.get(config.id)).symbian.sd && (await list_disks()).length === before && !!send.querySelector("#menu_power"),
-                "failed transfer leaves the current console and disks intact");
+            await check_empty_after_failure();
         }
         finally { storage.getDirectory = original_directory; }
         const catalog = sender.contentWindow.IDBObjectStore.prototype, original_put = catalog.put;
@@ -710,36 +753,55 @@ try
         };
         try
         {
-            button(transfer, "Prepare card and power off").click();
-            await until(() => transfer.textContent.includes("fixture catalog failure"), "attachment failure surfaced");
-            check(send.querySelector(".console-status").dataset.state === "Powered off" && !(await store.get(config.id)).symbian.sd &&
-                (await list_disks()).length === before, "failed attachment reclaims the staged card and releases the VM after shutdown");
+            button(transfer, insert).click();
+            await until(() => transfer.textContent.includes("fixture catalog failure"), "catalog failure surfaced");
+            await check_empty_after_failure();
         }
         finally { catalog.put = original_put; }
-        sender.remove();
-        sender = await open_again();
-        send = sender.contentDocument;
-        transfer = await transfer_dialog();
-        choose(transfer.querySelector("input"), good);
-        await until(() => button(transfer, "Prepare card and power off"), "retry package transfer");
+        const insert_sd = sender_worker.symbian_insert_sd;
+        sender_worker.symbian_insert_sd = function(file) { return insert_sd.call(this, { ...file, size: file.size + 512 }); };
+        try
+        {
+            button(transfer, insert).click();
+            await until(() => transfer.textContent.includes("the descriptor's size says"), "real backend refusal reached the running console");
+            await check_empty_after_failure();
+        }
+        finally { sender_worker.symbian_insert_sd = insert_sd; }
         await store.update(config.id, current => ({ ...current, name: "Renamed during transfer" }));
-        button(transfer, "Prepare card and power off").click();
-        await until(() => send.querySelector(".console-notice")?.textContent.includes("ready for the next boot"), "prepared-card status");
+        const heartbeat = await card_probe(sender_worker, 4);
+        button(transfer, insert).click();
+        await until(() => send.querySelector(".console-notice")?.textContent.includes("Transfer card inserted"), "live transfer status");
         const latest = await store.get(config.id), prepared = latest.symbian.sd;
-        check(latest.name === "Renamed during transfer" && prepared && prepared.path !== saved_card.path, "power off preserves a concurrent rename and creates a new card");
+        check(latest.name === "Renamed during transfer" && prepared && prepared.path !== saved_card.path, "live insertion preserves a concurrent rename and creates a new card");
+        const wait_for_guest_sector = async emulator => {
+            await until(async () => (await card_probe(emulator, 0)) === 9, "ARM guest MMC data completion");
+            return new Blob([await emulator.read_memory(0x0A080200, 512)]);
+        };
+        const sector = await wait_for_guest_sector(sender_worker);
+        check(sender_worker.is_running() && stops === 0 && (await card_probe(sender_worker, 4)) > heartbeat && await unsaved_matches(sender_worker),
+            "live transfer keeps the same guest running and retains its unsaved RAM");
+        check((await worker_diagnostics(sender_worker)).symbian.mmc.sd_bytes === prepared.size, "live Worker attached the transfer card");
+
+        const resumed_transfer = await check_n97_keyboard_resume(sender, store, config.id);
+        const { emulator: resumed_worker } = await running_worker(resumed_transfer);
+        check(await unsaved_matches(resumed_worker) && await hash(await wait_for_guest_sector(resumed_worker)) === await hash(sector),
+            "library resume preserves RAM and the attached transfer card");
+        check((await store.get(config.id)).name === "Renamed during transfer", "suspend and resume keep the concurrent rename");
+        await power_off(resumed_transfer);
         const image = await disk_file(disk_id(prepared.path));
         check(await hash(image) === prepared.sha256 && (await list_disks()).length === before + 1, "one private verified transfer image");
+        check(await hash(sector) === await hash(image.slice(0, 512)), "live guest read the actual FAT16 boot sector over the MMC FIFO");
         for(const [index, file] of good.entries())
             check(await hash(new Blob([await read_sis_card(image, index + 1)])) === await hash(file), "byte-identical SIS on the saved card");
-        sender.remove();
         const with_transfer = await open_again();
         const { emulator: transfer_worker } = await running_worker(with_transfer);
-        check((await worker_diagnostics(transfer_worker)).symbian.mmc.sd_bytes === image.size, "transfer card attached in the next CPU Worker boot");
+        check((await worker_diagnostics(transfer_worker)).symbian.mmc.sd_bytes === image.size &&
+            await hash(await wait_for_guest_sector(transfer_worker)) === await hash(sector), "fresh CPU Worker detects and reads the same transfer card");
         await power_off(with_transfer);
     }
     store.close();
-    result.textContent = local ? "PASS original firmware folder import with OneNAND and sparse FAT32 eMMC" :
-        "PASS public firmware fixture with guest LoSSI display and retained DISPC pixels, persistent storage and byte-identical SIS transfer";
+    result.textContent = local ? "PASS original firmware import, persistent storage and live SIS transfer" :
+        "PASS public firmware fixture with LoSSI display, persistent storage and live SIS transfer to the running ARM guest";
 }
 catch(error)
 {

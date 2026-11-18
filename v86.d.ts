@@ -1766,6 +1766,8 @@ export class V86 {
     symbian_set_touch(x: number, y: number, pressed: boolean): void;
     /** Press or release a Nokia N97 call touch key, side lock switch, or physical power button. */
     symbian_send_control(control: "send" | "end" | "lock" | "power", pressed: boolean): void;
+    /** Insert a local raw image into an empty N97 microSD slot with exclusive writeback (OPFS in a CPU Worker, or a local path in Node). */
+    symbian_insert_sd(file: { url: string; size?: number }): Promise<void>;
 
     /** Install an unencrypted ARMv7 IPA using the native iOS 6 helper. */
     ios_install_status(): Promise<IOSInstallStatus>;

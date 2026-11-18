@@ -251,6 +251,98 @@ test("RAPIDO host MMC IRQ, card mux, cold reopen and snapshot generation", async
     });
 });
 
+test("live microSD signals GENIO45 and waits for an in-progress RAM restore", async t => {
+    const dir = mkdtempSync(join(tmpdir(), "v86-n97-sd-live-"));
+    const sd = join(dir, "SD.img"), other = join(dir, "other.img"), size = 16 * 1024 ** 2;
+    const opened = [];
+    t.after(async () => {
+        for(const vm of opened) await vm.destroy();
+        rmSync(dir, { recursive: true, force: true });
+    });
+    for(const path of [sd, other]) local_file(path, true, access => access.truncate(size));
+    const a = await machine();
+    opened.push(a.vm);
+    const insert = (path = sd, bytes = size) => a.vm.symbian_insert_sd({ url: path, size: bytes });
+    const gpio = 0x20031D80, pin = 0x2000, icu = 0x20400000;
+    const sd_status = async () => (await a.vm.get_diagnostics()).symbian.mmc.sd_bytes;
+    const setup_irq = () => {
+        for(const [offset, value] of [[0x04, 1], [0x28, pin], [0x38, pin], [0x20, pin], [0x10, pin]])
+            a.io_set(gpio + offset, value, 4);
+        for(const [offset, value] of [[0x20, 234], [0x24, 2], [0x0C, 234], [0x04, 1]])
+            a.io_set(icu + offset, value, 4);
+    };
+    setup_irq();
+    await assert.rejects(insert(sd, size + 512), /descriptor/);
+    assert.equal(await sd_status(), null);
+    assert.equal(a.io_get(gpio + 8, 4) & pin, pin);
+    assert.equal(a.io_get(icu + 8, 4), 0xFFFFFFFF, "a rejected image does not signal insertion");
+
+    const marker_address = 0x08070000, marker = Uint8Array.of(43, 111, 23, 243);
+    a.vm.write_memory(marker, marker_address);
+    const parts = [];
+    await a.vm.save_state_stream(bytes => { parts.push(Buffer.from(bytes)); });
+    const snapshot = Buffer.concat(parts);
+    a.vm.write_memory(new Uint8Array(4), marker_address);
+    const read_ram = new Set();
+    let pause_restore, continue_restore;
+    const reached = new Promise(resolve => { pause_restore = resolve; });
+    const gate = new Promise(resolve => { continue_restore = resolve; });
+    const restored = a.vm.restore_state_stream({ size: snapshot.length, read: async (offset, length) => {
+        const bytes = snapshot.subarray(offset, offset + length);
+        if(length > 20 && bytes.readUInt32LE(0) === 2)
+        {
+            if(read_ram.has(offset)) { pause_restore(); await gate; }
+            read_ram.add(offset);
+        }
+        return bytes;
+    } });
+    await reached;
+    const inserted = insert();
+    try
+    {
+        // Wait until the backend is open, so this observes the final commit
+        // gate rather than racing an asynchronous filesystem open.
+        for(let n = 0; n < 500 && !a.vm.disk_descriptors.some(([name]) => name === "symbian_sd"); n++)
+            await new Promise(resolve => setTimeout(resolve, 2));
+        assert.ok(a.vm.disk_descriptors.some(([name]) => name === "symbian_sd"));
+        assert.equal(await sd_status(), null, "a validated, staged image is invisible during the second RAM pass");
+    }
+    finally { continue_restore(); await Promise.all([restored, inserted]); }
+    assert.deepEqual(a.vm.read_memory(marker_address, marker.length), marker);
+    assert.equal(await sd_status(), size);
+    assert.equal(a.io_get(gpio + 8, 4) & pin, 0);
+    assert.equal(a.io_get(icu + 8, 4), 234);
+    assert.equal(a.io_get(gpio + 0x0C, 4) & pin, pin);
+    a.io_set(gpio + 0x20, pin, 4);
+    a.io_get(icu + 0x80, 4);
+    assert.equal(a.io_get(icu + 8, 4), 0xFFFFFFFF, "the insertion edge is acknowledged");
+    await assert.rejects(insert(other), /occupied/);
+
+    const rival = await machine();
+    opened.push(rival.vm);
+    await assert.rejects(rival.vm.symbian_insert_sd({ url: sd, size }), /one writer/);
+    a.clock(true);
+    a.select(true);
+    a.set(0xC, 0x801);
+    for(const [command, argument] of [[0], [0x1608, 0x1AA], [0x1137], [0x1329, 0x40FF8000],
+        [0x1202], [0x1603], [0x2907, 0x10000]]) assert.equal(a.cmd(command, argument).status & 0x40A0, 0);
+    a.blocks();
+    assert.equal(a.cmd(0x3118, 512).response, 0x900);
+    for(let n = 0; n < 256; n++) a.set(0x20, n ^ 0xD358);
+    const a_state = await a.vm.save_state();
+    await a.vm.destroy();
+    opened.splice(opened.indexOf(a.vm), 1);
+    const b = await machine(null, other);
+    opened.push(b.vm);
+    await assert.rejects(b.vm.restore_state(a_state), /snapshot's disk symbian_sd/i);
+    const c = await machine(null, sd);
+    opened.push(c.vm);
+    await c.vm.restore_state(a_state);
+    assert.equal(c.io_get(gpio + 8, 4) & pin, 0, "the original card remains present on cold reopen and resume");
+    assert.equal(c.cmd(0xB111, 512).response, 0x900);
+    for(let n = 0; n < 256; n++) assert.equal(c.get(0x20), n ^ 0xD358, "guest-written sectors persist after live insertion");
+});
+
 test("RAPIDO DMA consumes actual MMC handshakes, retains partial writes on restore and acknowledges ICU vectors", async t => {
     const dir = mkdtempSync(join(tmpdir(), "v86-n97-mmc-dma-"));
     const file = join(dir, "emmc"), sd = join(dir, "sd");

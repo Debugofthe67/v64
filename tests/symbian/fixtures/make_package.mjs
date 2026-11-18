@@ -133,9 +133,12 @@ function device_probe()
     literal(0, 0x20032100);
     literal(3, 0x20031D88);
     const idle = instructions.length;
+    const card_calls = [];
     for(const [condition, command] of [[1, 0x28], [0, 0x29]])
     {
         const poll = instructions.length;
+        card_calls.push(instructions.length);
+        emit(0); // BL check_microSD, linked below
         emit(0xE5932000, 0xE3120C01); // LDR r2, [r3]; TST r2, #0x100 (GENIO40)
         branch(condition, poll);
         loss_word(0x0C, command);
@@ -146,6 +149,42 @@ function device_probe()
         }
     }
     branch(14, idle);
+    // Scan the real active-low GENIO45. On first insertion, initialize the
+    // raw SD card and copy its boot sector through the RAPIDO MMC FIFO.
+    for(const index of card_calls) instructions[index] = 0xEB000000 | instructions.length - index - 2;
+    literal(10, 0x0A080000);
+    emit(0xE59A5004, 0xE2855001, 0xE58A5004); // Increment in-RAM guest heartbeat.
+    emit(0xE59A5000, 0xE3550000, 0x112FFF1E); // Once read, return on nonzero STAT.
+    emit(0xE5935000, 0xE3150A02, 0x112FFF1E); // TST r5, #0x2000; BXNE lr
+    for(const [address, value] of [[0x20031C94, 0x4000], [0x20031CC4, 0x1000]])
+    {
+        literal(4, address);
+        literal(5, value);
+        emit(0xE5845000); // Enable MMC clock, select removable slot.
+    }
+    literal(4, 0x20032800);
+    const mmc_word = (offset, word) => {
+        literal(5, word);
+        emit(0xE1C450B0 | (offset & 0xF0) << 4 | offset & 0x0F); // STRH r5, [r4, #offset]
+    };
+    const card_command = (cmd, argument = 0) => {
+        mmc_word(0x10, 0xFFFF);
+        mmc_word(4, argument & 0xFFFF);
+        mmc_word(8, argument >>> 16);
+        mmc_word(0, cmd);
+    };
+    mmc_word(0x0C, 0x801);
+    for(const [word, argument] of [[0], [0x1608, 0x1AA], [0x1137], [0x1329, 0x40FF8000],
+        [0x1202], [0x1603], [0x2907, 0x10000]]) card_command(word, argument);
+    mmc_word(0x24, 511);
+    mmc_word(0x28, 0);
+    card_command(0xB111); // CMD17, read sector zero.
+    literal(6, 0x0A080200);
+    emit(0xE3A07C01); // MOV r7, #256 halfwords
+    const fifo = instructions.length;
+    emit(0xE1D452B0, 0xE0C650B2, 0xE2577001); // LDRH from FIFO; STRH [r6], #2; SUBS r7, #1
+    branch(1, fifo);
+    emit(0xE1D451B0, 0xE58A5000, 0xE12FFF1E); // Publish STAT after the data is in guest RAM.
     for(const [index, register, value] of loads)
     {
         instructions[index] = 0xE59F0000 | register << 12 | (instructions.length - index - 2) * 4;

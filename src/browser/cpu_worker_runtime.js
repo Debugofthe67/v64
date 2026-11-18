@@ -286,6 +286,7 @@ export function start_cpu_worker()
         "usb_attach_disk": (id, file, options) => emulator.usb_attach_disk(id, file, options),
         "usb_devices": () => emulator.usb_devices(),
         "usb_detach_disk": id => emulator.usb_detach_disk(id),
+        "symbian_insert_sd": file => emulator.symbian_insert_sd({ url: file["url"], size: file["size"] }),
         "attach_pcie_device": port => emulator.attach_pcie_device(port),
         // (answered once the removal started: one through the attention
         // button waits for the guest, and the commands after it must not;

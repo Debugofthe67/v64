@@ -23,7 +23,7 @@ export function show_sis_transfer(attach)
         const use = /** @type {HTMLButtonElement} */ (h("button.primary", { type: "button", disabled: true, onclick: async () => {
             if(busy || !packages.length) return;
             busy = input.disabled = cancel.disabled = use.disabled = true;
-            status.textContent = "Writing the new microSD and preparing to power off…";
+            status.textContent = "Writing the new microSD…";
             try
             {
                 await attach(packages);
@@ -35,7 +35,7 @@ export function show_sis_transfer(attach)
                 busy = input.disabled = cancel.disabled = false;
                 use.disabled = false;
             }
-        } }, "Prepare card and power off"));
+        } }, "Insert transfer card"));
         input.onchange = async () => {
             controller.abort();
             const { signal } = controller = new AbortController();
@@ -62,8 +62,8 @@ export function show_sis_transfer(attach)
         element.append(h("form", { method: "dialog", onsubmit: event => event.preventDefault() },
             h("h2#sis-transfer-title", null, "Send SIS/SISX to Nokia N97"),
             h("div.dialog-body", null,
-                h("p", null, "The VM will power off and attach a new microSD for the next boot. Open the packages from F:\\INSTALL in the phone's file manager."),
-                h("p.note", null, "Powering off discards unsaved guest work. Symbian handles installation and decides whether to accept each package."),
+                h("p", null, "A new microSD will be inserted without restarting the VM. Open the packages from F:\\INSTALL in the phone's file manager."),
+                h("p.note", null, "Symbian handles installation and decides whether to accept each package."),
                 h("label.field", null, h("span", null, "Local SIS/SISX packages"), input), paths, status),
             h("div.dialog-buttons", null, cancel, use)));
         element.addEventListener("cancel", event => { event.preventDefault(); if(!busy) close(); });
