@@ -19,7 +19,7 @@ export const N97_XTI_DOORBELL = 0x401FD800;
 
 // The bus checks each four-byte region before invoking these callbacks. Byte
 // and halfword accesses select the corresponding little-endian byte lanes.
-function word(io, address, name, read, write)
+export function word(io, address, name, read, write)
 {
     io.register_mmio(address, 4, {
         name,
@@ -122,6 +122,7 @@ function latches(io, base, name, offsets, on_write = undefined)
 export const N97_KEYBOARD_IRQ = 249;
 export const N97_SLIDER_IRQ = 248;
 export const N97_PANEL_IRQ = 234;
+const N97_DISPC_IRQ = 131;
 const ICU_BASE = 0x20400000;
 const NO_INTERRUPT = 0xFFFFFFFF;
 const MS_TICK_INTERRUPT = 35;
@@ -136,7 +137,8 @@ export function create_n97_interrupts(io, set_lines)
     // from +0x48 (+0x8D178), with -1 as the empty ID on either port.
     const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C]);
     const priority = new Uint8Array(256);
-    const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ, ...N97_DMA_IRQS, N97_PANEL_IRQ];
+    const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ,
+        ...N97_DMA_IRQS, N97_PANEL_IRQ, N97_DISPC_IRQ];
     const unmasked = new Set(), asserted = new Set();
     let enabled = 0, selected = 0, active = NO_INTERRUPT;
     const pending = () => {
@@ -211,6 +213,7 @@ export function create_n97_interrupts(io, set_lines)
         set_keyboard(level) { line(N97_KEYBOARD_IRQ, level); },
         set_slider(level) { line(N97_SLIDER_IRQ, level); },
         set_panel(level) { line(N97_PANEL_IRQ, level); },
+        set_dispc(level) { line(N97_DISPC_IRQ, level); },
         reset()
         {
             configuration.reset();

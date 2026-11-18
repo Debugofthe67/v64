@@ -1003,16 +1003,16 @@ function console_ui(layout, emulator, ctx)
         else
         {
             window.removeEventListener("resize", fit);
-            emulator.screen_set_scale(scale, scale);
-            n97_touch?.set_scale(scale);
+            if(n97_touch) n97_touch.set_scale(scale);
+            else emulator.screen_set_scale(scale, scale);
         }
     };
     const set_scale = n =>
     {
         scale = n;
         if(zoom_to_fit) set_zoom_to_fit(false);
-        emulator.screen_set_scale(n, n);
-        n97_touch?.set_scale(n);
+        if(n97_touch) n97_touch.set_scale(n);
+        else emulator.screen_set_scale(n, n);
     };
     const show_ui = h("button.theatre-show-ui", { type: "button", hidden: true, onclick: () => set_theatre(false) }, "Leave theatre mode");
     layout.root.append(show_ui);

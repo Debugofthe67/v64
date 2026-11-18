@@ -116,7 +116,13 @@ export function firmware_fixture(bootstrap)
     const core_data = Buffer.alloc(0x2200, 0xFF);
     core_data.fill(0xDA, 0, 0xC00);
     rom_page(valid_page).copy(core_data, 0xC00);
-    if(bootstrap) bootstrap.copy(core_data, 0xC00 + 0x200);
+    if(bootstrap)
+    {
+        if(bootstrap.length > 0xC00) throw new Error("Test bootstrap exceeds the unpaged ROM");
+        // The XIP entry at 0x200 jumps over the byte-pair page index at 0x300.
+        core_data.writeUInt32LE(0xEA00007E, 0xC00 + 0x200);
+        bootstrap.copy(core_data, 0xC00 + 0x400);
+    }
     const modem = [
         [0x90000, "SOS*DSP0", 0x08200000, Buffer.alloc(600, 0x77), true],
         [0x92000, "SOS*ISASW", 0x08480000, Buffer.alloc(900, 0x9D), true],

@@ -160,7 +160,7 @@ node --test tests/symbian/mmc.mjs tests/symbian/arm1136.mjs
 
 从库中选择 **Settings → Symbian firmware** 可以附加芯片 ROM。保存配置前校验并复制新转储，取消保留现有配置，保存失败回收临时副本。挂起的 VM 可以使用原有 ROM 恢复，再在关机后更换。先前导入的 VM 仍可打开和恢复同配置的快照。用 **New VM** 重新导入同款包可建立带 OneNAND 和调制解调器映像的虚拟机，每台 VM 各自保有原来的手机数据。
 
-库、向导和控制台将此机型标为 **Experimental boot**。ROFS、UDA 和用户存储的客体挂载及显示输出仍待验证。键盘、滑盖、触屏、接听键、挂断键和侧锁已在原版驱动路径上验收。
+库、向导和控制台将此机型标为 **Experimental boot**。ROFS、UDA 和用户存储的客体挂载及零售显示初始化仍待验证。DISPC 的 LCD 光栅取帧、键盘、滑盖、触屏、接听键、挂断键和侧锁已在原版驱动路径上验收。
 
 ```sh
 make build/v86_app.js build/symbian-import-worker.js build/libv86.mjs build/v86-arm64.wasm
@@ -186,7 +186,7 @@ node --test tests/symbian/n97_keyboard.mjs
 
 ## 电阻触屏
 
-在 N97 控制台的设备屏幕上，可用鼠标或第一根手指按下和拖动，松开、取消、失焦、暂停或切换滑盖时释放接触。屏幕在合盖时按 360×640 竖屏计算，开盖时按 640×360 横屏计算。依据 0576555 ROFS1 的 `System/Data/Wsini.ini`，竖屏模式旋转 270°。原版窗口服务器将原生 `(x,y)` 转为 `(359−y,x)`，因此竖屏输入点 `(px,py)` 送入 `(py,359−px)`，横屏直接使用原生坐标。尺寸换算以屏幕实际显示区域为准，拖出边缘时坐标停在最近的像素。恢复挂起的 VM 时，屏幕方向跟随保存的 Hall 电平，原来手指的接触释放。显示输出尚待接入，当前区域呈黑色。[原版 `WsPointer::HandleRawEvent`](https://github.com/SymbianSource/oss.FCL.sf.os.graphics/blob/master/windowing/windowserver/nonnga/SERVER/POINTER.CPP#L429-L442)
+在 N97 控制台的设备屏幕上，可用鼠标或第一根手指按下和拖动，松开、取消、失焦、暂停或切换滑盖时释放接触。屏幕在合盖时按 360×640 竖屏计算，开盖时按 640×360 横屏计算。依据 0576555 ROFS1 的 `System/Data/Wsini.ini`，竖屏模式旋转 270°。原版窗口服务器将原生 `(x,y)` 转为 `(359−y,x)`，因此竖屏输入点 `(px,py)` 送入 `(py,359−px)`，横屏直接使用原生坐标。尺寸换算以屏幕实际显示区域为准，拖出边缘时坐标停在最近的像素。恢复挂起的 VM 时，屏幕方向跟随保存的 Hall 电平，原来手指的接触释放。零售引导到达有效扫描输出前，设备屏幕呈黑色。[原版 `WsPointer::HandleRawEvent`](https://github.com/SymbianSource/oss.FCL.sf.os.graphics/blob/master/windowing/windowserver/nonnga/SERVER/POINTER.CPP#L429-L442)
 
 板图中 N500 的 TSC2004 接到同一 RAPIDO I²C 主机，与地址 `0x42` 的键盘扩展器共存。N500 的 AD1 接 VIO、AD0 接地，七位地址 `0x4A`。`exyin.dll` 从 `0x8016E458` 取原厂配置，启用十位自动 XY、Z1、Z2 采样，并以 10 ms 批次推进。读完整组测量值后释放低有效 PINTDAV。它连到 GENIO38 的 bank 1 bit 6 和 IRQ 234，原版按低电平触发。辅助复位从 N2850 的 KP-Y11 输出，`keypad_exp.dll` 将编号 19 映射为 GPIO0，通过 `0x85` 设输出、`0x86` 驱动电平。N500 识别有效低脉冲及软件复位，短于 5 µs 的低脉冲保留现有配置。[Nokia N97 维修手册第 8–25 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf) · [Nokia 板图第 2、10 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf) · [TI TSC2004 SBAS408E，第 26–40 页](https://www.ti.com/lit/ds/symlink/tsc2004.pdf) · [TI LM8323 SNLS273A，表 6](https://www.ti.com/lit/ds/symlink/lm8323.pdf)
 
@@ -195,6 +195,23 @@ node --test tests/symbian/n97_keyboard.mjs
 ```sh
 node tools/symbian/touch-n97.mjs <output>/rom.xip.bin
 node --test tests/symbian/n97_touch.mjs
+node tests/app/browser_runner.mjs tests/app/symbian_test.html
+```
+
+## LCD 光栅取帧
+
+RM-505 的 RAPIDO DISPC 从 SDRAM 读像素，经 ViSSI 给 D6001 显示控制器。LoSSI 传输控制命令，D6001 负责帧缓存及到面板的 Compact DisplayPort 输出。22.0.110 XIP 的 `d_display.ldd` 含 `DispC`，另有 `lossi.dll`、`r_display_kernel.dll` 和 `r_display.dll`。原版内核页表把 VA `0xC6024800` 映射到 PA `0x20024800`，`DispC` 初始化例程 `0x801327D4` 绑定 IRQ 131。寄存器契约以原版代码及相符的 TI DISPC 文档核对。[Nokia 板图第 2、8、10 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf) · [Nokia N97 维修手册第 8–26 至 8–27 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf) · [TI SPRUF98Y §15.4 与 §15.7.2.2](https://www.ti.com/lit/ug/spruf98y/spruf98y.pdf)
+
+控制器的连续 LCD 光栅模式支持 RGB565 和 XRGB8888 主图层。取帧使用客体写入的物理地址、显示窗口和有符号像素／行步进。GOLCD 在帧边界切换已准备的寄存器，IRQ 131 分别反映 VSYNC、编程扫描线和关闭输出后的 FRAMEDONE。扫描节拍采用 60 Hz，IP 修订号采用与原驱动分支兼容的 3.1。CPU Worker 通过现有显示接口提交实际像素。滑盖开合后的画面转向与上节的触摸变换互为反向，挂起恢复保存正在显示的配置及待提交状态。
+
+本地探针为未改动的 0576555 XIP 提供最小 MMU 和光栅模式的调用者对象，由原版 `0x80132758` 构造控制器，再经 `0x80132950` 编程和启用主图层。原版 `0x80132B24` 与 `0x80133178` 随后提交硬件旋转的扫描配置。RGB565 和 XRGB8888 的四象限图案在 640×360 与 360×640 下逐像素吻合。独立的原版 AP 内核探针运行 `0x801327D4` 初始化，在诊断开启 VSYNC 中断后，实测 IRQ 131 经原版分派到 `0x8013333C`、确认状态并返回被中断的指令。公开 Chrome 夹具由 ARM 客体先写图案再编程 DISPC，核对两种方向的画布颜色及挂起恢复。
+
+原版 `0x80132DEC` 还会选择单次传输的 stall 模式。该路径涉及 `TControllerDifPlatform` 的 PA `0x20024080/0x20024100` 以及命令 D6001 的 LoSSI 端口 PA `0x20032100`。DIF、面板电源、LoSSI 序列和视频叠层仍待接入。完整 S60 桌面仍待验证。
+
+```sh
+node tools/symbian/display-n97.mjs <output>/rom.xip.bin
+node --test tests/symbian/n97_dispc.mjs
+node tests/symbian/fixtures/make_package.mjs
 node tests/app/browser_runner.mjs tests/app/symbian_test.html
 ```
 
