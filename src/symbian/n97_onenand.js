@@ -369,6 +369,12 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
     reset();
     return {
         buffer, reset, interrupt_level,
+        read_main_page(page)
+        {
+            if(!Number.isInteger(page) || page < 0 || page >= N97_FLASH_SIZE / N97_FLASH_PAGE)
+                throw new Error("Invalid Nokia N97 OneNAND main-area page");
+            return page_bytes(page).subarray(0, N97_FLASH_PAGE).map(byte => byte ^ 0xFF);
+        },
         status: () => ({ "capacity": N97_FLASH_SIZE, "manufacturer": NAND_ID[0], "device": NAND_ID[1],
             "revision": NAND_ID[2], "reads": reads, "programs": programs, "erases": erases }),
         get_state: () => [buffer.get_state(), Array.from(regs), boot.slice(), boot_spare.slice(), data.slice(), spare.slice(), locks.slice(),

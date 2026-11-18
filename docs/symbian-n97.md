@@ -115,7 +115,20 @@ node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --ap-only --isa-probe <outp
 
 对 0576555 的原厂 `KEYS`、ISASW 和 DSP0 用 OpenSSL 做了证书和载荷对照。`KEYS` 位于同套 OneNAND 主区偏移 `0x82A00`，占 `0x600` 字节。`KEYS[0x004:0x08C]` 的 SHA-1 对应 RM-505 的根键指纹 `CAEEBB65D3C48E6DC73B49DC5063A2EE5867D611`。原厂 RSA 公钥的指数为 3，128 字节模数为小端。根键以 PKCS#1 v1.5/SHA-1 验证 `KEYS[0:0x444]`，签名为 `[0x444:0x4C4]` 的大端数。其 `+0x21C` 的基带公钥验证两个组件各自的证书 `[0:0x168]`，签名位于 `[0x350:0x3D0]`。两个样本的扩展载荷 SHA-1 与证书 `[0x24:0x38]` 仅首字节的 `0x80` 位不同。分别改动根指纹、签名、证书字段、基带公钥或载荷后，独立校验均拒绝数据。
 
-下一步可为模拟器添加显式兼容模式，固定可信根并核对来宾实际提交的 ISASW 证书、装载范围与完整解压载荷。通过验签后，还需用原版后续指令验收变体记录、地址映射和启动源寄存器上的行为。此阶段只交付诊断和样本证据。
+### 用兼容 ROM 冷启原版基带
+
+库选项 `symbian.rapido_compat_rom: true` 或本地工具的 `--rapido-compat-rom` 可为 RM-505 22.0.110 启用 v86 自写的 Thumb ROM 服务。需要原版 XIP、`rapido-boot.bin` 与同套 OneNAND。该选项与自带芯片转储或仅 AP 诊断互斥，普通零售路径仍使用原来的 Boot ROM 选项。兼容模式的快照与原始芯片 ROM 模式分开，即使两者的 ROM 字节完全相同。
+
+`0xFFFF1208` 的 Thumb 代码将原版调用的四个参数转交 v86 私有 MMIO。验证器从实际 SDRAM 核对调用描述符、TOC 里的组件名称、地址及长度，从 OneNAND 主区读取 `KEYS`，按固定的 RM-505 根指纹、根签名和基带公钥验签。它对当前 SDRAM 中两个组件的完整展开载荷计算摘要，并核对该版本原厂证书签名未覆盖的尾部 SHA-256。通过才返回 1，校验失败返回 0。支持范围限于本次实测的 ISASW 调用及其同时装载的 DSP0。[PKCS#1 v1.5，RFC 8017 §8.2、§9.2](https://www.rfc-editor.org/rfc/rfc8017#section-8.2)
+
+带同套 OneNAND 的冷启动在第 1,559 步向原版 `0x08902890` 返回 1，原版比较后进入 `0x0890289C`。随后原版 XIP 把 `0x08480000` 映射到 `0xC6300000`，`sisa.ext` 在第 4,018,740 步自行跳到原版 ISASW 的 `0xC6301000`。原版 ISASW 把 `0xC6679028` 写入 `HW_CONF` 提供的 `0xC8008B38`，第 4,025,994 步读取 VA `0xC6040400` 时触发外部数据异常（FSR `8`）。探针到这一点未向 OneNAND 发出编程或擦除。Chrome 的发布版 CPU Worker 也用同套媒体完成了兼容 ROM 的验签。下一步需验证启动源寄存器与其后的原版基带初始化，原版 S60 主屏和手机内安装器仍待验收。
+
+以下命令使用上文提取的文件。负例在新启动的诊断实例内改动一次 RAM 或 OneNAND 读出副本，分别覆盖调用描述符、TOC 名称和长度、根键、`KEYS` 签名、基带公钥、ISASW 证书及尾部、ISASW 和 DSP0 的载荷末字节。每个负例都返回 0，原版进入 `0x08902898`。
+
+```sh
+node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img --rapido-compat-rom
+node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img --rapido-compat-rom --compat-negative isasw-payload
+```
 
 ## Samsung MuxOneNAND 物理介质
 

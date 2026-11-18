@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { constants, generateKeyPairSync, privateEncrypt, publicDecrypt, sign } from "node:crypto";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { V86 } from "../../src/main.js";
 import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
 import { check_n97_bootrom, N97_RAPIDO_ROM_ID, write_n97_boot_media } from "../../src/symbian/n97_boot_media.js";
-import { N97_ROM_ADDRESS } from "../../src/symbian/n97_board.js";
+import { N97_BOOT_TOC, N97_ROM_ADDRESS } from "../../src/symbian/n97_board.js";
+import { check_machine_options } from "../../src/machine_options.js";
+import { create_n97_rapido_compat, n97_compat_bootrom, N97_COMPAT_PORT, verify_n97_rsa_signature } from "../../src/symbian/n97_rapido_compat.js";
 
 const wasm_path = fileURLToPath(new URL("../../build/v86-arm64.wasm", import.meta.url));
 const service = 0xFFFF1208;
@@ -26,6 +29,56 @@ test("RAPIDO ROM checks size, mapped entry, independently reported chip ID and d
     assert.throws(() => check_n97_bootrom(bytes, "", "0".repeat(64)), /SHA-256 does not match/);
     assert.throws(() => check_n97_bootrom(bytes.subarray(1)), /page-aligned/);
     assert.throws(() => check_n97_bootrom(new Uint8Array(8192)), /no code at/);
+});
+
+test("the RAPIDO verifier checks canonical PKCS#1 padding and reads little-endian keys without altering a Buffer", () => {
+    const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 1024, publicExponent: 3 });
+    const modulus = Buffer.from(publicKey.export({ format: "jwk" }).n, "base64url").reverse();
+    const original = Buffer.from(modulus);
+    const message = Buffer.from("v86 RAPIDO test key and message");
+    const signature = sign("sha1", message, privateKey);
+    assert.equal(verify_n97_rsa_signature(modulus, signature, message), true);
+    assert.equal(verify_n97_rsa_signature(modulus, signature, message), true);
+    assert.deepEqual(modulus, original);
+    assert.equal(verify_n97_rsa_signature(modulus, signature, Buffer.from("different data")), false);
+    const encoded = publicDecrypt({ key: publicKey, padding: constants.RSA_NO_PADDING }, signature);
+    encoded[5] ^= 1;
+    const bad_padding = privateEncrypt({ key: privateKey, padding: constants.RSA_NO_PADDING }, encoded);
+    assert.equal(verify_n97_rsa_signature(modulus, bad_padding, message), false);
+    assert.equal(verify_n97_rsa_signature(modulus, Buffer.from(modulus).reverse(), message), false);
+});
+
+test("RAPIDO compatibility requires an explicit retail configuration and validates pending MMIO snapshots", () => {
+    const normal = { rom: {}, boot_media: {}, nand: { buffer: new ArrayBuffer(1) }, rapido_compat_rom: true };
+    const check = options => check_machine_options({ machine_type: "nokia-n97", symbian: { ...normal, ...options } });
+    assert.doesNotThrow(() => check({}));
+    assert.throws(() => check({ rapido_compat_rom: "true" }), /boolean/);
+    for(const options of [{ nand: undefined }, { boot_media: undefined }, { bootrom: {} }, { application_processor_only: true }])
+        assert.throws(() => check(options), /compatibility ROM requires/);
+    assert.throws(() => n97_compat_bootrom("0".repeat(64), null, false), /supports the RM-505 22.0.110 XIP/);
+
+    let port;
+    const cpu = { io: { register_mmio(address, length, handler) {
+        assert.equal(address, N97_COMPAT_PORT);
+        assert.equal(length, 20);
+        port = handler;
+    } } };
+    const device = create_n97_rapido_compat(cpu, null, N97_BOOT_TOC);
+    port.write(0, 4, 0);
+    port.write(4, 4, 0);
+    const saved = device.get_state();
+    assert.deepEqual(saved, [[0, 0], "idle"]);
+    port.write(12, 4, 0);
+    assert.equal(device.status(), "request");
+    assert.equal(port.read(16, 4), 0);
+    assert.throws(() => device.check_state([[0], "verified"]), /invalid.*snapshot/i);
+    device.reset();
+    assert.equal(device.status(), "idle");
+    device.check_state(saved);
+    device.set_state(saved);
+    port.write(8, 4, 0x08480000);
+    port.write(12, 4, 0);
+    assert.deepEqual(device.get_state(), [[], "request"]);
 });
 
 test("the ARM1136 maps the supplied chip ROM read-only and binds snapshots to its digest", async () => {

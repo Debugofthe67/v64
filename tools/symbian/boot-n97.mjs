@@ -11,19 +11,27 @@ import { V86 } from "../../src/main.js";
 import { N97_BOOT_TOC, N97_RAM_BASE, N97_RAM_SIZE, N97_ROM_ADDRESS } from "../../src/symbian/n97_board.js";
 import { read_n97_boot_media } from "../../src/symbian/n97_boot_media.js";
 import { N97_CPU_PLL, N97_L2_BASE, N97_PLL3_CONTROL, N97_RAPIDO_SELECT } from "../../src/symbian/n97_devices.js";
+import { N97_COMPAT_XIP } from "../../src/symbian/n97_rapido_compat.js";
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     "ap-only": { type: "boolean" }, "boot-media": { type: "string" }, "boot-rom": { type: "string" }, "reject-probe": { type: "boolean" },
-    "nand": { type: "string" }, "isa-probe": { type: "string" },
+    "nand": { type: "string" }, "isa-probe": { type: "string" }, "rapido-compat-rom": { type: "boolean" },
+    "compat-negative": { type: "string" },
 } });
+const compat = values["rapido-compat-rom"];
+const negative = values["compat-negative"];
+const negative_outcome = new Map([["descriptor", "request"], ["toc-size", "request"], ["toc-name", "request"], ["root", "keys"], ["keys-signature", "keys"],
+    ["modem-key", "keys"], ["certificate", "isasw"], ["certificate-trailer", "isasw"], ["isasw-payload", "isasw"], ["dsp0-payload", "dsp0"]]);
 if(positionals.length !== 1 || (values["boot-rom"] || values["reject-probe"]) && !values["boot-media"] ||
-    values["ap-only"] && values["boot-media"] || values["boot-rom"] && values["reject-probe"] || values["isa-probe"] && !values["ap-only"])
+    values["ap-only"] && values["boot-media"] || values["boot-rom"] && values["reject-probe"] || values["isa-probe"] && !values["ap-only"] ||
+    compat && (!values["boot-media"] || !values.nand || values["boot-rom"] || values["reject-probe"]) ||
+    negative !== undefined && (!compat || !negative_outcome.has(negative)))
 {
-    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--nand <onenand.img>] [--ap-only [--isa-probe <rapido-boot.bin>] | --boot-media <rapido-boot.bin> [--boot-rom <dump> | --reject-probe]]");
+    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--nand <onenand.img>] [--ap-only [--isa-probe <rapido-boot.bin>] | --boot-media <rapido-boot.bin> [--boot-rom <dump> | --reject-probe | --rapido-compat-rom [--compat-negative <" + [...negative_outcome.keys()].join("|") + ">]]]");
 }
 const rom = await readFile(positionals[0]);
 const sha256 = createHash("sha256").update(rom).digest("hex");
-assert.equal(sha256, "9c0863e379d243f953d3cfcd87d11c98231f2d0469e69244d9ee059472c99194", "expected RM-505 22.0.110 XIP");
+assert.equal(sha256, N97_COMPAT_XIP, "expected RM-505 22.0.110 XIP");
 const wasm_path = fileURLToPath(new URL("../../build/v86-arm64.wasm", import.meta.url));
 
 const instructions_per_ms = 8000;
@@ -38,7 +46,7 @@ const vm = new V86({ machine_type: "nokia-n97", graphics_adapter: "none", disabl
     autostart: false, log_level: 0, wasm_path, cpu_clock: { mode: "deterministic", instructions_per_ms },
     symbian: { rom: { buffer: Uint8Array.from(rom).buffer }, rom_sha256: sha256, application_processor_only: values["ap-only"],
         boot_media: await image(values["boot-media"]), bootrom: values["reject-probe"] ? rejection_image() : await image(values["boot-rom"]),
-        nand: values.nand ? { url: values.nand, disk_option: "read_write" } : undefined } });
+        nand: values.nand ? { url: values.nand, disk_option: "read_write" } : undefined, rapido_compat_rom: compat } });
 
 // The original TOC lookup and stores publish the physical pointer before the
 // chip-ROM call, even when the original lookup finds no ISASW entry.
@@ -51,6 +59,33 @@ function observe_isasw_record(record, pc, step, register, word)
         record.published = { physical: word(record.address + 0x20), bytes: word(record.address + 0x24) };
         assert.deepEqual(record.published, record.found);
     }
+}
+
+// Diagnostic regressions flip bytes after the original loader publishes its
+// record. The flash cases flip a private copy of the decoded page on read.
+function apply_compat_negative(cpu, media, descriptor)
+{
+    const ram_address = new Map([["descriptor", descriptor], ["toc-size", N97_BOOT_TOC + 36], ["toc-name", N97_BOOT_TOC + 52],
+        ["certificate", media.isa.address + 0x80],
+        ["certificate-trailer", media.isa.address + 0x200], ["isasw-payload", media.isa.address + media.isa.bytes.length - 1],
+        ["dsp0-payload", media.dsp.address + media.dsp.bytes.length - 1]]).get(negative);
+    if(ram_address !== undefined)
+    {
+        const bytes = cpu.read_blob_physical(ram_address, 1).slice();
+        bytes[0] ^= 1;
+        cpu.write_blob_physical(bytes, ram_address);
+        return;
+    }
+    const nand = cpu.devices.n97_onenand;
+    const read = nand.read_main_page;
+    const offset = new Map([["root", 0xC], ["keys-signature", 0x444], ["modem-key", 0x21C]]).get(negative);
+    assert.ok(offset !== undefined);
+    nand.read_main_page = page => {
+        const bytes = read(page);
+        assert.equal(page, 0x105);
+        bytes[0x200 + offset] ^= 1;
+        return bytes;
+    };
 }
 
 function observe_rapido_service(cpu, pc_now, field, register, word)
@@ -75,6 +110,7 @@ function observe_rapido_service(cpu, pc_now, field, register, word)
                 expanded_bytes: word(media.isa.address + 0x3D8), load_address: word(media.isa.address + 0x3DC) };
             assert.deepEqual(service.isasw_header, { magic: 0x809795A3, startup_offset: 0x1000,
                 expanded_bytes: media.isa.bytes.length, load_address: media.isa.address });
+            if(negative) apply_compat_negative(cpu, media, service.registers[0]);
         }
         if(service && pc === service.lr)
         {
@@ -97,8 +133,64 @@ function observe_rapido_service(cpu, pc_now, field, register, word)
     if(values["reject-probe"]) assert.deepEqual(result, { step: service.step + 2, pc: service.lr, return_value: 0,
         next_branch: N97_ROM_ADDRESS + 0x2898 });
     if(result.return_value !== undefined) assert.equal(result.next_branch, result.return_value === 1 ? 0x0890289C : 0x08902898);
-    return { sha256, boot_media_sha256: media.digest, bootrom_sha256: cpu.boot_files.bootrom_digest || null,
-        diagnostic_rejection: !!values["reject-probe"], onenand: cpu.devices.n97_onenand?.status(), isasw_record, service, result };
+    const verification = cpu.devices.n97_rapido_compat?.status();
+    if(compat)
+    {
+        assert.equal(verification, negative ? negative_outcome.get(negative) : "verified");
+        assert.equal(result.return_value, negative ? 0 : 1);
+    }
+    const handoff = compat && !negative && observe_retail_handoff(cpu, result.step + 2, isasw_record, pc_now, field, register, word);
+    return { sha256, boot_media_sha256: media.digest, bootrom_sha256: !compat && cpu.boot_files.bootrom_digest || null,
+        diagnostic_rejection: !!values["reject-probe"], onenand: cpu.devices.n97_onenand?.status(),
+        isasw_record, service, result, verification, negative, handoff: handoff || undefined };
+}
+
+function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, register, word)
+{
+    const wasm = cpu.wm.exports;
+    const handoff = {};
+    cpu.clock.resume();
+    for(let elapsed = 0; elapsed < 5000000; elapsed++)
+    {
+        if(elapsed && elapsed % 32 === 0) cpu.run_hardware_timers(null, cpu.clock.advance_instructions(32));
+        const pc = pc_now(), step = service_step + elapsed;
+        if((pc === N97_ROM_ADDRESS + 0x2394 || pc === 0x80002394) && !handoff.mapped)
+        {
+            const record = field("sctlr_el1") & 1 ? supervisor_physical(register(7), field, word) : register(7);
+            handoff.mapped = { pc, step, record, virtual: word(record + 0x20), bytes: word(record + 0x24), physical: word(record + 0x74) };
+        }
+        if(pc === 0x800B3B40 && !handoff.sisa)
+        {
+            const physical = supervisor_physical(register(4), field, word);
+            handoff.sisa = { pc, step, image: register(5), physical, bytes: word(physical + 0x24) };
+        }
+        if(pc === 0xC6301000 && !handoff.isa_entry)
+        {
+            handoff.isa_entry = { pc, step, args: [0, 1, 2, 3].map(register), lr: register(14) };
+        }
+        if(pc === 0xC636280A && !handoff.irq_callback)
+        {
+            const read = address => word(supervisor_physical(address, field, word));
+            const irq = read_hw_conf(handoff.isa_entry.args[2], read).find(record => record.type === 0x0B);
+            handoff.irq_callback = { pc, step, table: read(0xC68020C8), slot: irq.payload[1], published: read(irq.payload[1]) };
+            assert.equal(handoff.irq_callback.table, irq.payload[0]);
+        }
+        wasm["a64_worker_slice"](1);
+        const vector = pc_now();
+        if((vector === 4 || vector === 0xFFFF0004) && !handoff.first_undefined)
+            handoff.first_undefined = { pc, step: step + 1, vector, lr: register(14) };
+        if([12, 16, 0xFFFF000C, 0xFFFF0010].includes(vector))
+        {
+            handoff.abort = { pc, step: step + 1, vector, far: field("far_el1"), fsr: field(vector % 0x100 === 0xC ? "a32_ifsr" : "esr_el1") };
+            break;
+        }
+    }
+    assert.deepEqual([handoff.mapped?.virtual, handoff.mapped?.physical, handoff.mapped?.bytes],
+        [0xC6300000, isasw_record.published.physical, isasw_record.published.bytes]);
+    assert.equal(handoff.sisa?.image, handoff.mapped.virtual);
+    assert.equal(handoff.isa_entry?.lr, 0x800B3BA0);
+    assert.equal(handoff.irq_callback?.published, 0xC6679028);
+    return handoff;
 }
 
 // Observe a supervisor mapping from the live short-descriptor tables.

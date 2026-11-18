@@ -121,7 +121,8 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
             "nand": file(o["symbian"]["nand"]),
             "emmc": file(o["symbian"]["emmc"]), "sd": file(o["symbian"]["sd"]),
             "bootrom": file(o["symbian"]["bootrom"]), "bootrom_id": o["symbian"]["bootrom_id"],
-            "bootrom_sha256": o["symbian"]["bootrom_sha256"], "application_processor_only": o["symbian"]["application_processor_only"] },
+            "bootrom_sha256": o["symbian"]["bootrom_sha256"], "application_processor_only": o["symbian"]["application_processor_only"],
+            "rapido_compat_rom": o["symbian"]["rapido_compat_rom"] },
         "kernel": file(o.kernel), "dtb": file(o.dtb),
         // (docs/plan/android-images-plan.md I2: the bootloader runs in the worker, beside the disk)
         "android": o.android && { "device": o.android.device, "gpu_mode": o.android.gpu_mode, "selinux": o.android.selinux,

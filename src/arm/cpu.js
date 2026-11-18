@@ -33,7 +33,8 @@ import { GoldfishFb, GoldfishEvents, GoldfishBattery, GoldfishAudio, GoldfishPip
 import { BackdoorA32, BACKDOOR_NOT_HANDLED } from "./backdoor_a32.js";
 import { IOSInstallService } from "../ios/install_service.js";
 import { IOSNetwork } from "../ios/network.js";
-import { create_n97_boot_timer, create_n97_sram, load_n97_rom, n97_boot_files, N97_DEVICE_MEMORY, N97_LAYOUT_VERSION, N97_RAM_BASE } from "../symbian/n97_board.js";
+import { create_n97_boot_timer, create_n97_sram, load_n97_rom, n97_boot_files, N97_BOOT_TOC, N97_DEVICE_MEMORY, N97_LAYOUT_VERSION, N97_RAM_BASE } from "../symbian/n97_board.js";
+import { create_n97_rapido_compat } from "../symbian/n97_rapido_compat.js";
 import { create_n97_board_config, create_n97_clocks, create_n97_gpio_input, create_n97_interrupts, create_n97_l2, create_n97_nand_bus, create_n97_os_timer,
     create_n97_rapido_id, create_n97_xti } from "../symbian/n97_devices.js";
 import { create_n97_onenand } from "../symbian/n97_onenand.js";
@@ -72,7 +73,7 @@ const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldf
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
     "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
     "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma", "n97_touch_gpio", "n97_touch",
-    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus", "n97_power_gpio", "n97_cbus", "n97_sd_detect"];
+    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus", "n97_power_gpio", "n97_cbus", "n97_sd_detect", "n97_rapido_compat"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -264,6 +265,7 @@ A64CPU.prototype.init = function(settings, device_bus)
         media: settings.symbian_boot_media, media_digest: settings.symbian["boot_media_sha256"],
         bootrom: settings.symbian_bootrom, bootrom_id: settings.symbian["bootrom_id"], bootrom_digest: settings.symbian["bootrom_sha256"],
         ap_only: settings.symbian["application_processor_only"], nand: !!settings.symbian_nand,
+        rapido_compat: settings.symbian["rapido_compat_rom"],
     }) : null;
     const { cores, memory_size } = virt_machine(settings);
     this.cores = cores;
@@ -302,6 +304,10 @@ A64CPU.prototype.init = function(settings, device_bus)
         {
             this.devices.n97_onenand = create_n97_onenand(this.io, settings.symbian_nand, n97_boot.rom_digest,
                 level => this.devices.n97_nand_bus?.set_input(level));
+        }
+        if(n97_boot?.rapido_compat)
+        {
+            this.devices.n97_rapido_compat = create_n97_rapido_compat(this, this.devices.n97_onenand, N97_BOOT_TOC);
         }
         if(this.boot_files?.tags)
         {
@@ -1403,6 +1409,9 @@ A64CPU.prototype.validate_state = function(state)
             throw new Error("Snapshot and machine must use the same Nokia N97 MMC configuration");
         if(mmc) mmc_device.check_state(mmc);
         this.devices.n97_sram.check_state(state[4]?.[DEVICE_ORDER.indexOf("n97_sram")], legacy_n97);
+        const rapido_compat = state[4]?.[DEVICE_ORDER.indexOf("n97_rapido_compat")];
+        if(!!rapido_compat !== !!this.devices.n97_rapido_compat) throw new Error("Snapshot RAPIDO compatibility ROM configuration differs");
+        this.devices.n97_rapido_compat?.check_state(rapido_compat);
     }
     if(this.machine_type === "s5l8930" && !!state[4]?.[DEVICE_ORDER.indexOf("apple_nand")] !== !!this.devices.apple_nand)
     {
@@ -1625,7 +1634,8 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
             ...(this.devices.n97_onenand ? { "onenand": this.devices.n97_onenand.status() } : {}),
             ...(this.devices.n97_mmc ? { "mmc": this.devices.n97_mmc.status() } : {}),
             ...(this.boot_files.media ? { "rapido_boot": { "media_sha256": this.boot_files.media.digest,
-                "bootrom_sha256": this.boot_files.bootrom_digest || null } } : {}) } } : {}),
+                "bootrom_sha256": this.boot_files.rapido_compat ? null : this.boot_files.bootrom_digest || null,
+                ...(this.devices.n97_rapido_compat ? { "compatibility_rom": this.devices.n97_rapido_compat.status() } : {}) } } : {}) } } : {}),
         ...(include_steps ? { "steps": this.step_stats(25) } : {}),
         ...(nand ? { "nand": { "bytes_read": nand.bytes_read, "bytes_written": nand.bytes_written } } : {}),
     };

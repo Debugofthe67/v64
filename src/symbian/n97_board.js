@@ -5,6 +5,7 @@ import { sha256_hex } from "../image/sha256.js";
 import { N97_FLASH_BLOCK, N97_FLASH_SIZE, N97_FLASH_ID } from "./n97_flash.js";
 import { check_n97_bootrom, read_n97_boot_media, N97_BOOTROM_BASE, N97_CORE_ADDRESS, N97_CORE_HEADER_OFFSET,
     N97_MDI_BASE, N97_MDI_SIZE, N97_ROM_ADDRESS } from "./n97_boot_media.js";
+import { n97_compat_bootrom } from "./n97_rapido_compat.js";
 export { N97_ROM_ADDRESS };
 
 export const N97_LAYOUT_VERSION = 5;
@@ -93,17 +94,21 @@ function rom_toc(size, media)
 export function n97_boot_files(rom, address, registers, options)
 {
     const rom_digest = sha256_hex(new Uint8Array(rom));
+    const rapido_compat = options?.rapido_compat === true;
+    if(rapido_compat && (address !== undefined || options.ap_only || options.bootrom))
+        throw new Error("The RAPIDO compatibility ROM needs the retail handoff without a separate boot ROM");
     if(address !== undefined)
     {
         return { rom, rom_digest, address, registers: registers.slice(), tags: null, media: null, bootrom: null, bootrom_digest: "", ap_only: false };
     }
     const media = options?.media ? read_n97_boot_media(new Uint8Array(options.media), rom_digest) : null;
     if(options?.media_digest && media?.digest !== options.media_digest) throw new Error("Nokia N97 boot media SHA-256 mismatch");
-    const bootrom = options?.bootrom ? new Uint8Array(options.bootrom) : null;
+    const bootrom = rapido_compat ? n97_compat_bootrom(rom_digest, media, options.nand) :
+        options?.bootrom ? new Uint8Array(options.bootrom) : null;
     const bootrom_digest = bootrom ? check_n97_bootrom(bootrom, options.bootrom_id, options.bootrom_digest).sha256 : "";
     const tags = cold_boot_tags(options?.ap_only, options?.nand);
     return { rom, rom_digest, address: N97_ROM_ADDRESS, registers: [0, 0, N97_RAM_BASE + N97_RAM_SIZE - tags.length, 0],
-        tags, media, bootrom, bootrom_digest, ap_only: !!options?.ap_only };
+        tags, media, bootrom, bootrom_digest, rapido_compat, ap_only: !!options?.ap_only };
 }
 
 /** The 32,768 Hz counter read by both RAP3NAND and the XIP's boot timestamp routine. */
@@ -186,7 +191,7 @@ export function create_n97_sram(cpu, boot, expected_sha256)
     const digest = boot?.rom_digest ?? null;
     if(expected_sha256 !== undefined && digest !== expected_sha256) throw new Error("Nokia N97 firmware SHA-256 mismatch");
     const identity = boot ? [digest, boot.address, ...boot.registers, !!boot.tags, boot.media?.digest || "",
-        boot.bootrom_digest].join(":") : null;
+        boot.rapido_compat ? "compat:" + boot.bootrom_digest : boot.bootrom_digest].join(":") : null;
     // Layout 4 is the same AP board without the 12-byte type-18 record.
     // A legacy snapshot carries its own RAM contents and R2.
     const legacy_registers = boot?.registers.slice();

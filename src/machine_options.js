@@ -278,6 +278,14 @@ export function check_machine_options(options)
             {
                 throw new Error("Nokia N97 needs both the retail boot media and the local RAPIDO boot ROM");
             }
+            const rapido_compat = symbian["rapido_compat_rom"];
+            if(rapido_compat !== undefined && typeof rapido_compat !== "boolean")
+                throw new Error("Nokia N97 requires rapido_compat_rom to be a boolean");
+            if(rapido_compat && (!symbian["boot_media"] || !nand || symbian["bootrom"] || symbian["bootrom_id"] !== undefined ||
+                symbian["bootrom_sha256"] !== undefined || address !== undefined || symbian["application_processor_only"]))
+            {
+                throw new Error("The RAPIDO compatibility ROM requires the retail boot media and OneNAND without a separate boot ROM or diagnostic handoff");
+            }
             if((address !== undefined || symbian["application_processor_only"]) &&
                 (symbian["boot_media"] || symbian["bootrom"]))
             {

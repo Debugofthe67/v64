@@ -994,7 +994,7 @@ export interface V86Options {
         emmc?: { url: string; disk_option: "read_write"; size?: number };
         /** User's removable raw SD or SDHC image. */
         sd?: V86BufferImage | { url: string; disk_option: "read_write"; size?: number };
-        bootrom?: V86Image; bootrom_id?: string; bootrom_sha256?: string; application_processor_only?: boolean } &
+        bootrom?: V86Image; bootrom_id?: string; bootrom_sha256?: string; rapido_compat_rom?: boolean; application_processor_only?: boolean } &
         ({ load_address?: undefined; boot_registers?: undefined } |
         { load_address: number; boot_registers: [number, number, number, number] });
 
