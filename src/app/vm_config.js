@@ -11,7 +11,8 @@ import { ANDROID_DEVICES as ANDROID_DEVICE_MODELS } from "../android/bootloader.
 import { DEFAULT_GLES_VERSION, GLES_VERSIONS } from "../android/devices.js";
 import { N90_RESTORE } from "../ios/catalog.js";
 import { IOS_NETWORK_RELAY } from "../ios/network.js";
-import { N97_DEVICE, N97_MEDIA } from "../symbian/catalog.js";
+import { N97_DEVICE, N97_MEDIA, N97_REQUIRED_MEDIA } from "../symbian/catalog.js";
+import { N97_RAPIDO_ROM_ID } from "../symbian/n97_boot_media.js";
 import { DISK_OPTIONS, DISK_ERRORS, check_disk_options } from "../disk_options.js";
 import { DEFAULT_FORM, DEFAULT_MEMORY_SIZE, MAX_MEMORY_SIZE, MAX_HEAP_MEMORY_SIZE, MAX_ARRAY_BUFFER_SIZE_MB, DEFAULT_VGA_MEMORY_SIZE,
     DEFAULT_MTU, apply_form, settings_to_options } from "../browser/vm_options.js";
@@ -134,7 +135,7 @@ export const TPM_STATE_SIZE = 512 * 1024;
  * @typedef {{ kind: "browser", path: string, size: number, sha256: string }} SymbianDisk
  * @typedef {{ device: string, model: string, product_code: string, sw_version: string, variant_version: string,
  *     description: string | null, manifest: string, manifest_sha256: string, media: Record<string, SymbianDisk>,
- *     languages?: {id: number, default: boolean}[] }} Symbian
+ *     languages?: {id: number, default: boolean}[], bootrom?: SymbianDisk & {name: string, reported_id?: string} }} Symbian
  */
 
 /**
@@ -464,7 +465,8 @@ export function validate_config(config)
             {
                 problem("symbian.languages", "Invalid language list");
             }
-            for(const role of Object.keys(N97_MEDIA))
+            const roles = firmware.media?.boot_media ? [...N97_REQUIRED_MEDIA, "boot_media"] : N97_REQUIRED_MEDIA;
+            for(const role of roles)
             {
                 const image = firmware.media?.[role];
                 check_image(image, "symbian.media." + role, problems);
@@ -474,6 +476,18 @@ export function validate_config(config)
                 }
             }
             if(Object.keys(firmware.media || {}).some(role => !Object.hasOwn(N97_MEDIA, role))) problem("symbian.media", "Unknown firmware image");
+            const bootrom = firmware.bootrom;
+            if(bootrom)
+            {
+                check_image(bootrom, "symbian.bootrom", problems);
+                if(!firmware.media?.boot_media || bootrom.kind !== "browser" || !digest.test(bootrom.sha256) ||
+                    !Number.isInteger(bootrom.size) || bootrom.size < 0x2000 || bootrom.size > 0x10000 || bootrom.size % 4096 ||
+                    typeof bootrom.name !== "string" || !bootrom.name ||
+                    bootrom.reported_id && bootrom.reported_id !== N97_RAPIDO_ROM_ID)
+                {
+                    problem("symbian.bootrom", "Choose compatible boot media and a local RM-505 RAPIDO boot ROM");
+                }
+            }
         }
         if(cpu.type !== "arm32" || cpu.cores !== 1 || cpu.parallel || cpu.profile !== "arm1136" ||
             config.memory.mb !== 128 || config.advanced.cpu_worker !== true || cpu.jit !== false)
@@ -960,13 +974,19 @@ export function config_to_options(config, env)
     const machine = config.machine, cpu = config.cpu, display = config.display, advanced = config.advanced;
     if(machine.type === N97_DEVICE.id && config.symbian)
     {
-        const rom = config.symbian.media.rom;
+        const { rom, boot_media } = config.symbian.media;
+        const bootrom = config.symbian.bootrom;
         return {
             machine_type: N97_DEVICE.id, cpu_type: "arm32", cpu_profile: "arm1136", cpu_cores: 1, memory_size: 128 * MB,
             cpu_worker: true, disable_jit: true, cpu_worker_url: "build/cpu-worker.js" + env.query_append,
             wasm_path: "build/" + (env.debug ? "v86-arm64-debug.wasm" : "v86-arm64.wasm") + env.query_append,
             screen: { container: env.screen_container }, graphics_adapter: "none", net_device: { type: "none" },
-            symbian: { rom: image(rom), rom_sha256: rom.sha256 },
+            symbian: { rom: image(rom), rom_sha256: rom.sha256, ...(boot_media ? {
+                boot_media: image(boot_media), boot_media_sha256: boot_media.sha256,
+            } : {}), ...(bootrom ? {
+                bootrom: image(bootrom),
+                bootrom_sha256: bootrom.sha256, bootrom_id: bootrom.reported_id,
+            } : {}) },
             initial_state: image(config.initial_state), autostart: true, disable_speaker: true,
         };
     }

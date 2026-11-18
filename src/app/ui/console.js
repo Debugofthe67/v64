@@ -1315,7 +1315,10 @@ function console_ui(layout, emulator, ctx)
         replace(layout.toolbar,
             h("a.button", { href: location.pathname }, "Library"),
             menu_button("Power", items.power, "menu_power"),
-            ios ? iphone_controls : symbian ? h("span.note", null, "Nokia N97 · Experimental boot") :
+            ios ? iphone_controls : symbian ? h("span.note", null, "Nokia N97 · Experimental boot",
+                ctx.config.symbian.media.boot_media && !ctx.config.symbian.bootrom ?
+                    " · RAPIDO ROM missing. Add a local chip dump in Library → Settings → Symbian firmware." :
+                    !ctx.config.symbian.media.boot_media ? " · Legacy XIP. Reimport the RM-505 package to add its original modem images." : "") :
                 [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
             menu_button("View", items.view, "menu_view"),
             ios || symbian ? null : menu_button("Input", items.input, "menu_input"),

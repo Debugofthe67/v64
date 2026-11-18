@@ -1,10 +1,13 @@
 // Generated test structures contain no Nokia firmware.
 
-export function block(payload, start, label = null)
+import { deflateRawSync } from "node:zlib";
+
+export function block(payload, start, label = null, key = null)
 {
     const header = Buffer.alloc(label ? 50 : 19);
     header.set(label ? [0x5D, 1, 0x27, 45] : [0x54, 1, 0x17, 14]);
     header.set([0, 3, 0], label ? 36 : 4);
+    if(key) header.set(key, 4);
     if(label) header.write(label, 24);
     else header[9] = 1;
     let checksum = 0;
@@ -83,15 +86,54 @@ export function fat_payload()
 export const valid_page = Buffer.concat([Buffer.from([2, 0xFC, 0x81, 0x11, 0x12, 0x82, 0x81, 0x81]), Buffer.alloc(1024, 0x82)]);
 export const cert = (start, label, fill = 1) => block(Buffer.alloc(512, fill), start, label);
 
+export const fixture_root_key = Buffer.from("caeebb65d3c48e6dc73b49dc5063a2ee5867d611", "hex");
+
+function boot_cert(start, label, stored, expanded, address, key)
+{
+    const payload = Buffer.alloc(0x400);
+    payload.writeUInt32LE(0x809795A3, 0);
+    payload.writeUInt32LE(0x31DEEAE8, 0x3D0);
+    payload.writeUInt32LE(payload.length + stored, 0x3D4);
+    payload.writeUInt32LE(payload.length + expanded, 0x3D8);
+    payload.writeUInt32LE(address, 0x3DC);
+    return block(payload, start, label, key);
+}
+
+function boot_group(start, label, address, payload, deflated)
+{
+    const stored = deflated ? deflateRawSync(payload) : payload;
+    const padded = Buffer.alloc(Math.ceil(stored.length / 512) * 512, 0xFF);
+    stored.copy(padded);
+    return [
+        boot_cert(start, label, stored.length, payload.length, address, Buffer.alloc(20, 0x5A)),
+        boot_cert(start, label, stored.length, payload.length, address, fixture_root_key),
+        block(padded, start + 0x400),
+    ];
+}
+
 export function firmware_fixture()
 {
     const core_data = Buffer.alloc(0x2200, 0xFF);
     core_data.fill(0xDA, 0, 0xC00);
     rom_page(valid_page).copy(core_data, 0xC00);
+    const modem = [
+        [0x90000, "SOS*DSP0", 0x08200000, Buffer.alloc(600, 0x77), true],
+        [0x92000, "SOS*ISASW", 0x08480000, Buffer.alloc(900, 0x9D), true],
+        [0x94000, "SOS+CORE", 0x088FF000, core_data, false],
+    ];
+    const toc = Buffer.alloc(512);
+    for(const [i, [flash, label, address]] of modem.entries())
+    {
+        const offset = i * 32;
+        toc.writeUInt32LE(flash - 0x80000, offset);
+        toc.writeUInt32LE(0x4000, offset + 4);
+        toc.writeUInt32LE(address, offset + 16);
+        toc.write(label, offset + 20);
+    }
+    toc.fill(0xFF, modem.length * 32);
     const core = fpsx([
-        cert(0x1000, "SOS*DSP0"), block(Buffer.alloc(512, 0x77), 0x1200),
-        cert(0x8000, "SOS+CORE"), block(core_data.subarray(0, 4096), 0x8200), block(core_data.subarray(4096), 0x9200),
-        cert(0x10000, "SOS+ROFS1"), block(rofs_payload(), 0x10200),
+        block(toc, 0x80000), ...modem.flatMap(args => boot_group(...args)),
+        cert(0x98000, "SOS+ROFS1"), block(rofs_payload(), 0x98200),
     ]);
     const rofs2 = fpsx([cert(0x20000, "SOS+ROFS2"), block(rofs_payload(), 0x20200)]);
     const rofs3 = fpsx([cert(0x30000, "SOS+ROFS3"), block(rofs_payload(), 0x30200)]);

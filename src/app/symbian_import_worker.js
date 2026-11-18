@@ -102,8 +102,10 @@ async function read_package(files, selection, supplements)
     }
     progress("Rebuilding the XIP ROM and firmware images…");
     const extracted = extract_n97_images(inputs);
-    const images = Object.fromEntries(Object.entries(N97_MEDIA).map(([role, name]) =>
-        [role, extracted.files.find(file => file.name === name)]));
+    const images = Object.fromEntries(Object.entries(N97_MEDIA).flatMap(([role, name]) => {
+        const file = extracted.files.find(file => file.name === name);
+        return file ? [[role, file]] : [];
+    }));
     return { check, images, languages: extracted.report.languages };
 }
 
@@ -124,7 +126,7 @@ async function write_images(images, ids)
     for(const [role, image] of Object.entries(images))
     {
         const id = ids[role];
-        if(typeof id !== "string" || !/^[a-f0-9-]+-symbian-(?:rom|rofs[123]|phone)$/.test(id))
+        if(typeof id !== "string" || !/^[a-f0-9-]+-symbian-(?:rom|rofs[123]|phone|boot_media)$/.test(id))
         {
             throw new Error("Invalid firmware import destination");
         }
@@ -174,6 +176,10 @@ self.onmessage = async ({ data }) =>
         if(data.op === "import")
         {
             if(!check.ok) throw new Error("The required firmware files no longer pass preflight");
+            if(Object.keys(result.media).length !== Object.keys(data.expected.media).length)
+            {
+                throw new Error("The firmware images changed since preflight");
+            }
             for(const [role, saved] of Object.entries(data.expected.media))
             {
                 if(result.media[role]?.sha256 !== saved.sha256 || result.media[role]?.size !== saved.size)

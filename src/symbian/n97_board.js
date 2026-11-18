@@ -2,31 +2,33 @@
 // and 0x30001000 as its initial stack top. See docs/symbian-n97.md.
 
 import { sha256_hex } from "../image/sha256.js";
+import { check_n97_bootrom, read_n97_boot_media, N97_BOOTROM_BASE, N97_CORE_ADDRESS, N97_CORE_HEADER_OFFSET,
+    N97_MDI_BASE, N97_MDI_SIZE, N97_ROM_ADDRESS } from "./n97_boot_media.js";
+export { N97_ROM_ADDRESS };
 
-export const N97_LAYOUT_VERSION = 4;
+export const N97_LAYOUT_VERSION = 5;
 export const N97_RAM_BASE = 0x08000000;
 export const N97_RAM_SIZE = 128 * 1024 * 1024;
 export const N97_SRAM_BASE = 0x30000000;
 export const N97_SRAM_SIZE = 16 * 1024;
 export const N97_DEVICE_MEMORY = N97_SRAM_SIZE + 8;
-const N97_CORE_ADDRESS = 0x088FF000;
-const N97_CORE_HEADER_OFFSET = 0x1000;
-export const N97_ROM_ADDRESS = N97_CORE_ADDRESS + N97_CORE_HEADER_OFFSET;
 export const N97_BOOT_TOC = 0x0FCFF000;
 export const N97_BOOT_TIMER = 0x20040480;
 export const N97_BOOT_CONTROL = 0x20040308;
 export const N97_BOOT_MAILBOX = 0x20032D10;
 export const N97_BOOT_DEBUG_COOKIE = 0x10001F00;
+const RAPIDO_ROM_JUMP_TABLE = 0xFFFF1200;
 
 // The POR configuration uses the loader's tag sizes and reverse insertion
 // order. RAP3NAND stores the resulting R2 pointer in SRAM at 0x30003EF8.
-function cold_boot_tags()
+function cold_boot_tags(ap_only)
 {
     const clock = new DataView(new ArrayBuffer(8));
     clock.setFloat64(0, 433.92, true);
     const records = [
-        [16, 0x00080000, 0x08140000],
-        [9, 0x01400000, N97_RAM_BASE],
+        // RAP3NAND+0x33D0 publishes the on-chip ROM jump table.
+        [18, RAPIDO_ROM_JUMP_TABLE],
+        ...(ap_only ? [] : [[16, N97_MDI_SIZE, N97_MDI_BASE], [9, 0x01400000, N97_RAM_BASE]]),
         [5, N97_SRAM_SIZE, N97_SRAM_BASE],
         [10, N97_BOOT_TOC],
         [13, 0x00012400],
@@ -55,27 +57,49 @@ function cold_boot_tags()
 // RAP3NAND names the whole SOS+CORE segment MCUSW. Its offset is relative to
 // the TOC and points at the preamble, a page before the XIP entry. The ROM
 // reserves this preamble separately at XIP+0x26D0.
-function rom_toc(size)
+function rom_toc(size, media)
 {
-    const bytes = new Uint8Array(64);
+    // The bootstrap looks for SOS-ISASW in the in-memory TOC, while the
+    // firmware file's compressed group is named SOS*ISASW.
+    const entries = media ? [
+        ["DSP0", media.dsp.address, media.dsp.bytes.length],
+        ["SOS-ISASW", media.isa.address, media.isa.bytes.length],
+    ] : [];
+    entries.push(["MCUSW", N97_CORE_ADDRESS, N97_CORE_HEADER_OFFSET + size]);
+    const bytes = new Uint8Array((entries.length + 1) * 32);
     const view = new DataView(bytes.buffer);
-    view.setInt32(0, N97_CORE_ADDRESS - N97_BOOT_TOC, true);
-    view.setUint32(4, N97_CORE_HEADER_OFFSET + size, true);
-    view.setUint32(16, N97_CORE_ADDRESS, true);
-    bytes.set([0x4D, 0x43, 0x55, 0x53, 0x57], 20); // MCUSW
-    bytes.fill(0xFF, 32);
+    const encoder = new TextEncoder();
+    for(const [i, [name, address, length]] of entries.entries())
+    {
+        const offset = 32 * i;
+        view.setInt32(offset, address - N97_BOOT_TOC, true);
+        view.setUint32(offset + 4, length, true);
+        view.setUint32(offset + 16, address, true);
+        bytes.set(encoder.encode(name), offset + 20);
+    }
+    bytes.fill(0xFF, entries.length * 32);
     return bytes;
 }
 
-/** @param {ArrayBuffer} rom @param {number=} address @param {Array<number>=} registers */
-export function n97_boot_files(rom, address, registers)
+/**
+ * @param {ArrayBuffer} rom
+ * @param {number=} address
+ * @param {Array<number>=} registers
+ * @param {Object=} options local RAPIDO boot inputs or the explicit AP diagnostic handoff
+ */
+export function n97_boot_files(rom, address, registers, options)
 {
     if(address !== undefined)
     {
-        return { rom, address, registers: registers.slice(), tags: null };
+        return { rom, address, registers: registers.slice(), tags: null, media: null, bootrom: null, bootrom_digest: "", ap_only: false };
     }
-    const tags = cold_boot_tags();
-    return { rom, address: N97_ROM_ADDRESS, registers: [0, 0, N97_RAM_BASE + N97_RAM_SIZE - tags.length, 0], tags };
+    const media = options?.media ? read_n97_boot_media(new Uint8Array(options.media), sha256_hex(new Uint8Array(rom))) : null;
+    if(options?.media_digest && media?.digest !== options.media_digest) throw new Error("Nokia N97 boot media SHA-256 mismatch");
+    const bootrom = options?.bootrom ? new Uint8Array(options.bootrom) : null;
+    const bootrom_digest = bootrom ? check_n97_bootrom(bootrom, options.bootrom_id, options.bootrom_digest).sha256 : "";
+    const tags = cold_boot_tags(options?.ap_only);
+    return { rom, address: N97_ROM_ADDRESS, registers: [0, 0, N97_RAM_BASE + N97_RAM_SIZE - tags.length, 0],
+        tags, media, bootrom, bootrom_digest, ap_only: !!options?.ap_only };
 }
 
 /** The 32,768 Hz counter read by both RAP3NAND and the XIP's boot timestamp routine. */
@@ -144,15 +168,34 @@ export function create_n97_sram(cpu, boot, expected_sha256)
     }
     const bytes = () => new Uint8Array(cpu.wasm_memory.buffer, cpu.mem8.byteOffset + offset, N97_SRAM_SIZE);
     const update = () => wasm["a64_bus_written"](offset, N97_SRAM_SIZE);
+    const bootrom_at = offset + N97_DEVICE_MEMORY;
+    if(boot?.bootrom && !wasm["a64_bus_map_rom"](N97_BOOTROM_BASE, 0, boot.bootrom.length, 0, bootrom_at))
+    {
+        throw new Error("Nokia N97: cannot map the on-chip RAPIDO boot ROM");
+    }
+    const load_bootrom = () => {
+        if(!boot?.bootrom) return;
+        new Uint8Array(cpu.wasm_memory.buffer, cpu.mem8.byteOffset + bootrom_at, boot.bootrom.length).set(boot.bootrom);
+        wasm["a64_bus_written"](bootrom_at, boot.bootrom.length);
+    };
+    load_bootrom();
     const digest = boot ? sha256_hex(new Uint8Array(boot.rom)) : null;
     if(expected_sha256 !== undefined && digest !== expected_sha256) throw new Error("Nokia N97 firmware SHA-256 mismatch");
-    const identity = boot ? [digest, boot.address, ...boot.registers, !!boot.tags].join(":") : null;
+    const identity = boot ? [digest, boot.address, ...boot.registers, !!boot.tags, boot.media?.digest || "",
+        boot.bootrom_digest].join(":") : null;
+    // Layout 4 is the same AP board without the 12-byte type-18 record.
+    // A legacy snapshot carries its own RAM contents and R2.
+    const legacy_registers = boot?.registers.slice();
+    if(boot?.tags) legacy_registers[2] += 12;
+    const legacy_identity = boot && !boot.media && !boot.bootrom && !boot.ap_only ?
+        [digest, boot.address, ...legacy_registers, !!boot.tags].join(":") : undefined;
     return {
-        reset() { bytes().fill(0); update(); },
+        reset() { bytes().fill(0); update(); load_bootrom(); },
         get_state() { return [identity, bytes().slice()]; },
-        check_state(state)
+        check_state(state, legacy = false)
         {
-            if(state?.[0] !== identity || !(state[1] instanceof Uint8Array) || state[1].length !== N97_SRAM_SIZE)
+            const expected = legacy ? legacy_identity : identity;
+            if(!state || expected === undefined || state[0] !== expected || !(state[1] instanceof Uint8Array) || state[1].length !== N97_SRAM_SIZE)
             {
                 throw new Error("Nokia N97 snapshot requires the same ROM and loader handoff");
             }
@@ -163,7 +206,7 @@ export function create_n97_sram(cpu, boot, expected_sha256)
 
 export function load_n97_rom(cpu, boot)
 {
-    const { rom, address, registers, tags } = boot;
+    const { rom, address, registers, tags, media } = boot;
     const bytes = new Uint8Array(rom);
     const offset = cpu.ram_offset(address, bytes.length);
     if(bytes.length < 4 || offset < 0 || tags && address + bytes.length > N97_BOOT_TOC)
@@ -175,8 +218,20 @@ export function load_n97_rom(cpu, boot)
     if(tags)
     {
         const tags_offset = cpu.ram_offset(registers[2], tags.length);
-        const toc = rom_toc(bytes.length);
+        const toc = rom_toc(bytes.length, media);
         const toc_offset = cpu.ram_offset(N97_BOOT_TOC, toc.length);
+        if(media)
+        {
+            const sections = [media.dsp, media.isa,
+                { address: N97_CORE_ADDRESS + N97_CORE_HEADER_OFFSET - media.prefix.length, bytes: media.prefix }];
+            for(const section of sections)
+            {
+                const dest = cpu.ram_offset(section.address, section.bytes.length);
+                if(dest < 0) throw new Error("Nokia N97: a boot image is outside SDRAM");
+                cpu.mem8.set(section.bytes, dest);
+                cpu.wm.exports["a64_bus_written"](dest, section.bytes.length);
+            }
+        }
         cpu.mem8.set(toc, toc_offset);
         cpu.wm.exports["a64_bus_written"](toc_offset, toc.length);
         cpu.mem8.set(tags, tags_offset);

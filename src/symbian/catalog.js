@@ -10,7 +10,9 @@ export const N97_MEDIA = {
     rofs2: "rofs2.img",
     rofs3: "rofs3.img",
     phone: "uda.fat",
+    boot_media: "rapido-boot.bin",
 };
+export const N97_REQUIRED_MEDIA = ["rom", "rofs1", "rofs2", "rofs3", "phone"];
 
 // TLanguage from Nokia's S60 SDK. Display unlisted IDs as recorded.
 export function firmware_languages(languages)

@@ -17,9 +17,11 @@ import { android_panel } from "./panels/android.js";
 import { ANDROID_DEFAULTS } from "../vm_config.js";
 import { RANCHU_DEVICES } from "../../android/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
+import { check_n97_bootrom, N97_RAPIDO_ROM_ID } from "../../symbian/n97_boot_media.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Problem} Problem */
+/** @typedef {{file: File, sha256: string, reported_id?: string}} PendingBootRom */
 
 /**
  * @typedef {Object} PanelContext
@@ -30,6 +32,8 @@ import { USB_PORTS } from "../../machine_options.js";
  * @property {{put_handle: (handle: any) => Promise<string>}} store where picked files' handles go
  * @property {import("../disk_service_client.js").Service | null} service the disk service, if there is one
  * @property {((progress: (text: string) => void) => Promise<void>) | null} erase_ios
+ * @property {PendingBootRom | null} pending_bootrom
+ * @property {(value: PendingBootRom) => void} stage_bootrom
  */
 
 /**
@@ -50,7 +54,7 @@ export function hardware_items(c)
 {
     if(c.symbian) return [
         { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
-        { id: "symbian", label: "Firmware", summary: "Nokia N97 · " + c.symbian.sw_version, panel: symbian_panel, remove: null },
+        { id: "symbian", label: "Symbian firmware", summary: "Nokia N97 · " + c.symbian.sw_version, panel: symbian_panel, remove: null },
     ];
     if(c.ios) return [
         { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
@@ -110,8 +114,52 @@ function symbian_panel(ctx)
 {
     const firmware = ctx.config.symbian;
     const rows = [...hardware_rows(ctx.config), ["VPL", firmware.manifest], ["VPL SHA-256", firmware.manifest_sha256]];
-    return h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
+    const hardware = h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
         h("tr", null, h("th", null, label), h("td", null, value)))));
+    const bootrom = firmware.bootrom;
+    const heading = h("h4", null, "RAPIDO boot ROM");
+    if(!firmware.media?.boot_media)
+    {
+        return [hardware, heading, h("p.note", null,
+            "This VM lacks the original DSP0 and ISASW images. Reimport the matching RM-505 package in New VM to add them. This VM keeps its own Phone data image.")];
+    }
+    if(ctx.config.suspended)
+    {
+        return [hardware, heading, h("p.note", null,
+            "The suspended state requires its original ROM. Resume the VM and shut it down or discard the suspended state before changing the chip ROM.")];
+    }
+    const file = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: ".bin,.rom,.img,application/octet-stream" }));
+    const id = /** @type {HTMLInputElement} */ (h("input", { type: "text", placeholder: "Optional", spellcheck: false }));
+    const sha = /** @type {HTMLInputElement} */ (h("input", { type: "text", placeholder: "Optional", spellcheck: false }));
+    const status = h("p.note", { role: "status" });
+    const select = /** @type {HTMLButtonElement} */ (h("button", { type: "button", disabled: true }, "Use this dump"));
+    file.onchange = () => { select.disabled = !file.files?.length; status.textContent = ""; };
+    select.onclick = async () =>
+    {
+        const chosen = file.files?.[0];
+        if(!chosen) return;
+        select.disabled = true;
+        try
+        {
+            if(chosen.size > 0x10000) throw new Error("The raw RAPIDO boot ROM must fit in 64 KiB.");
+            if(sha.value.trim() && !/^[0-9a-f]{64}$/i.test(sha.value.trim())) throw new Error("Enter a 64-digit SHA-256 digest.");
+            const verified = check_n97_bootrom(new Uint8Array(await chosen.arrayBuffer()), id.value, sha.value);
+            if(!select.isConnected) return;
+            ctx.stage_bootrom({ file: chosen, sha256: verified.sha256, reported_id: verified.id || undefined });
+        }
+        catch(error) { status.textContent = String(error.message || error); }
+        finally { select.disabled = false; }
+    };
+    return [hardware, heading,
+        h("p.note", null, "The RM-505 firmware package contains DSP0 and ISASW. The boot ROM is built into the RAPIDO chip and comes from a separate local dump."),
+        h("p.note", null, "RM-505 service report ROM ID " + N97_RAPIDO_ROM_ID),
+        h("p", null, ctx.pending_bootrom ? ctx.pending_bootrom.file.name + " · ready to save" : bootrom ?
+            bootrom.name + (bootrom.reported_id ? " · service report ID matches" : " · dump structure checked") : "Chip ROM missing"),
+        bootrom ? h("p.note", null, "Stored SHA-256 " + bootrom.sha256) : null,
+        h("label.field", null, h("span", null, "Local RAPIDO dump"), file),
+        h("label.field", null, h("span", null, "ROM ID from service report"), id),
+        h("label.field", null, h("span", null, "Expected SHA-256"), sha), select, status,
+        h("p.note", null, "The selected dump applies at the next cold start. A suspended state requires its original boot images.")];
 }
 
 /** @param {PanelContext} ctx */
@@ -267,7 +315,8 @@ function additions(c)
  * (checked) or null when cancelled
  * @param {VMConfig} config
  * @param {{store: PanelContext["store"], service?: PanelContext["service"], title?: string, save_label?: string, item?: string,
- *     erase_ios?: PanelContext["erase_ios"]}} options
+ *     erase_ios?: PanelContext["erase_ios"],
+ *     persist?: (config: VMConfig, bootrom: PendingBootRom | null) => Promise<VMConfig>}} options
  * @return {Promise<VMConfig | null>}
  */
 export function open_settings(config, options)
@@ -278,12 +327,15 @@ export function open_settings(config, options)
         let notes = fitted(config).notes;
         let selected = options.item || "general";
         let erasing = false;
+        let saving_bootrom = false;
+        /** @type {PendingBootRom | null} */
+        let pending_bootrom = null;
         /** @type {Problem[]} */
         let problems = [];
         const element = /** @type {HTMLDialogElement} */ (h("dialog.settings-dialog", { "aria-label": options.title || "Settings" }));
         const close = value =>
         {
-            if(erasing) return;
+            if(erasing || saving_bootrom) return;
             element.close();
             element.remove();
             resolve(value);
@@ -294,6 +346,8 @@ export function open_settings(config, options)
         const ctx = {
             get config() { return working; },
             get choices() { return choices(working); },
+            get pending_bootrom() { return pending_bootrom; },
+            stage_bootrom(value) { pending_bootrom = value; render(); },
             set(path, value)
             {
                 const result = change(working, path, value);
@@ -322,9 +376,9 @@ export function open_settings(config, options)
             }),
         };
 
-        const save = () =>
+        const save = async () =>
         {
-            if(erasing) return;
+            if(erasing || saving_bootrom) return;
             problems = check_config(working);
             if(problems.length)
             {
@@ -332,7 +386,23 @@ export function open_settings(config, options)
                 render();
                 return;
             }
-            close(working);
+            if(!options.persist)
+            {
+                close(working);
+                return;
+            }
+            saving_bootrom = true;
+            render();
+            let saved;
+            try { saved = await options.persist(working, pending_bootrom); }
+            catch(error)
+            {
+                if(pending_bootrom) selected = "symbian";
+                problems = [{ path: pending_bootrom ? "symbian.bootrom" : selected, message: String(error.message || error) }];
+            }
+            finally { saving_bootrom = false; }
+            if(saved) close(saved);
+            else render();
         };
 
         function render()
@@ -373,8 +443,9 @@ export function open_settings(config, options)
                     h("footer.settings-footer", null,
                         h("div.settings-notes", { role: "status" }, notes.length ? "Also changed: " + notes.join("; ") : problems.length ?
                             problems.length + (problems.length === 1 ? " problem" : " problems") + " to fix before saving" : ""),
-                        h("button", { type: "button", onclick: () => close(null) }, "Cancel"),
-                        h("button.primary", { type: "button", onclick: save }, options.save_label || "Save"))));
+                        h("button", { type: "button", disabled: saving_bootrom, onclick: () => close(null) }, "Cancel"),
+                        h("button.primary", { type: "button", disabled: saving_bootrom, onclick: save },
+                            saving_bootrom ? "Saving…" : options.save_label || "Save"))));
         }
 
         document.body.append(element);

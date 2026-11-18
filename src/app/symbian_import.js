@@ -66,9 +66,9 @@ async function import_directory(create)
     }
 }
 
-function media_ids(vm_id)
+function media_ids(vm_id, roles = Object.keys(N97_MEDIA))
 {
-    return Object.fromEntries(Object.keys(N97_MEDIA).map(role => [role, vm_id + "-symbian-" + role]));
+    return Object.fromEntries(roles.map(role => [role, vm_id + "-symbian-" + role]));
 }
 
 async function discard_import(ids)
@@ -119,7 +119,7 @@ export async function import_symbian_package(files, selection, expected, name, n
         await make_room(logical_size, options.store);
         options.signal?.throwIfAborted();
         const config = new_symbian_config(name, notes);
-        const ids = media_ids(config.id);
+        const ids = media_ids(config.id, Object.keys(expected.media));
         const { product_code, sw_version, variant_version, description, manifest, manifest_sha256 } = selection;
         const journal = await import_directory(true);
         await journal.getFileHandle(config.id, { create: true });

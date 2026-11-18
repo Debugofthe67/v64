@@ -987,7 +987,9 @@ export interface V86Options {
     apple_model?: "iPhone3,1";
     ios?: { kernelcache?: V86Image; devicetree?: V86Image; ramdisk?: V86Image; nand?: V86HardDiskImage; bootlogo?: V86Image; boot_args?: string; nand_boot?: boolean };
     /** RM-505 XIP boot, optionally with an explicit physical address and R0–R3 for a diagnostic guest. */
-    symbian?: { rom: V86Image; rom_sha256?: string } & ({ load_address?: undefined; boot_registers?: undefined } |
+    symbian?: { rom: V86Image; rom_sha256?: string; boot_media?: V86Image; boot_media_sha256?: string;
+        bootrom?: V86Image; bootrom_id?: string; bootrom_sha256?: string; application_processor_only?: boolean } &
+        ({ load_address?: undefined; boot_registers?: undefined } |
         { load_address: number; boot_registers: [number, number, number, number] });
 
     /**

@@ -903,6 +903,7 @@ export function open_wizard(options)
                 const languages = firmware_languages(s.report.languages);
                 if(languages) rows.push(["Languages", languages]);
                 return [h("h3", null, s.name.trim()), h("p.note", null, "Experimental boot. This machine runs the original start-up code while board and display support are in development."),
+                    media.boot_media ? h("p.note", null, "The original loader calls the RAPIDO chip ROM at 0xFFFF1208. After import, attach a local chip ROM dump in Settings → Symbian firmware. The firmware package contains the modem images separately.") : null,
                     h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
                         h("tr", null, h("th", null, label), h("td", null, value)))))];
             }

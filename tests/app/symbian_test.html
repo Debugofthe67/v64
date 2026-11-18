@@ -50,13 +50,34 @@ function button(scope, label)
 function expected_assets(config)
 {
     const roles = Object.keys(config.symbian.media).sort().join(",");
-    check(roles === "phone,rofs1,rofs2,rofs3,rom", "all five outputs are registered");
+    check(roles === "boot_media,phone,rofs1,rofs2,rofs3,rom", "all six outputs are registered");
     return config_images(config);
 }
 async function hash(file)
 {
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
     return [...digest].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function worker_diagnostics(emulator)
+{
+    let timer, on_error;
+    try
+    {
+        return await Promise.race([
+            new Promise((resolve, reject) => {
+                on_error = error => reject(new Error("CPU Worker failed: " + (error?.message || error)));
+                emulator.add_listener("emulator-error", on_error);
+                timer = setTimeout(() => reject(new Error("CPU Worker diagnostics did not respond")), 15000);
+            }),
+            emulator.get_diagnostics(),
+        ]);
+    }
+    finally
+    {
+        clearTimeout(timer);
+        emulator.remove_listener("emulator-error", on_error);
+    }
 }
 
 let library;
@@ -146,7 +167,7 @@ try
         await save(wizard, "Second N97");
         const second = (await store.list()).find(config => config.name === "Second N97");
         check(first.symbian.media.phone.path !== second.symbian.media.phone.path, "phone data paths are isolated");
-        check(expected_assets(first).length === 5 && expected_assets(second).length === 5, "all assets participate in VM lifecycle");
+        check(expected_assets(first).length === 6 && expected_assets(second).length === 6, "all assets participate in VM lifecycle");
         wizard = start_wizard(doc);
         // Native folder input sets these paths. Each variant is in a
         // separate folder and both are missing the same CORE basename.
@@ -185,18 +206,21 @@ try
         let recovered = false;
         try { await disks.getFileHandle(orphan); }
         catch(error) { recovered = error.name === "NotFoundError"; }
-        check(recovered && (await list_disks()).length === 10, "reopen reclaimed only abandoned output");
+        check(recovered && (await list_disks()).length === 12, "reopen reclaimed only abandoned output");
         check((await disk_file(disk_id(first.symbian.media.rom.path))).size > 0, "completed files survived recovery");
     }
     if(local) await save(wizard, "Original RM-505");
     const config = (await store.list()).find(entry => entry.name === (local ? "Original RM-505" : "Fixture N97"));
-    check(config && expected_assets(config).length === 5, "stored configuration");
+    check(config && expected_assets(config).length === 6, "stored configuration");
     const rom = config.symbian.media.rom;
     check(await hash(await disk_file(disk_id(rom.path))) === rom.sha256, "stored ROM digest");
+    const boot_media = config.symbian.media.boot_media;
+    check(await hash(await disk_file(disk_id(boot_media.path))) === boot_media.sha256, "stored DSP0/ISASW digest");
     if(local)
     {
         check(config.symbian.product_code === "0576555" && config.symbian.sw_version === "22.0.110", "original variant identity");
         check(rom.sha256 === "9c0863e379d243f953d3cfcd87d11c98231f2d0469e69244d9ee059472c99194", "original XIP digest");
+        check(boot_media.sha256 === "de16da82ffe3a83fc376fefaa494470850648d5b0aec6d4507c931ada1075e74", "original DSP0/ISASW digest");
         check(JSON.stringify(config.symbian.languages) === JSON.stringify([
             { id: 37, default: false }, { id: 1, default: true }, { id: 50, default: false },
         ]), "language list read from the original ROFS overlay");
@@ -212,18 +236,63 @@ try
     const { emulator, options } = console_state;
     check(options.cpu_worker === true && options.machine_type === "nokia-n97", "the standard config selects the CPU Worker");
     const diagnostics = await until(async () => {
-        const diagnostics = await emulator.get_diagnostics();
-        return emulator.get_instruction_counter() > 10 && (!local || diagnostics.symbian?.clocks.pll3_locked) && diagnostics;
+        const diagnostics = await worker_diagnostics(emulator);
+        return emulator.get_instruction_counter() > 10 && diagnostics.symbian?.rapido_boot && diagnostics;
     }, "guest instruction execution");
     check(diagnostics.machine_type === "nokia-n97" && diagnostics.cpu_type === "arm32", "Worker ran the N97 machine");
-    if(local)
-    {
-        check(diagnostics.symbian.l2_enabled && diagnostics.symbian.clocks.configured_cpu_hz === 433920000 &&
-            emulator.get_instruction_counter() >= 1360000, "original ROM booted the kernel and exercised the RAPIDO variant clocks");
-    }
+    check(diagnostics.symbian.rapido_boot.media_sha256 === boot_media.sha256 &&
+        diagnostics.symbian.rapido_boot.bootrom_sha256 === null, "CPU Worker loads original modem media before a chip ROM is provided");
+    check(console_frame.contentDocument.body.textContent.includes("RAPIDO ROM missing"), "console explains the missing chip ROM");
     check(console_frame.contentDocument.body.textContent.includes("Experimental boot"), "console names its boot milestone");
     check(!console_frame.contentDocument.querySelector("#menu_keys, #menu_devices, #iphone_install_ipa"), "no unsupported phone controls");
     await emulator.destroy();
+    console_frame.remove();
+    if(!local)
+    {
+        const open_rom_settings = async () => {
+            (await until(() => button(doc, "Edit settings…"), "edit settings")).click();
+            const dialog = await until(() => doc.querySelector("dialog.settings-dialog"), "settings dialog");
+            dialog.querySelector('[data-item="symbian"]').click();
+            return dialog;
+        };
+        const select_bootrom = async (dialog, file) => {
+            choose(dialog.querySelector('input[type="file"]'), [file]);
+            button(dialog, "Use this dump").click();
+        };
+        const bytes = new Uint8Array(8192);
+        // Synthetic service rejection. No hardware code or positive authorization.
+        bytes.set([0x00, 0x20, 0x70, 0x47], 0x1208);
+        const sample = new File([bytes], "synthetic-reject.rom");
+        let settings = await open_rom_settings();
+        await select_bootrom(settings, new File([new Uint8Array(8192)], "empty.rom"));
+        await until(() => settings.textContent.includes("no code at"), "reject empty ROM entry");
+        const report = [...settings.querySelectorAll("label.field")].find(label => label.textContent.includes("ROM ID from service report"));
+        report.querySelector("input").value = "BAD";
+        await select_bootrom(settings, sample);
+        await until(() => settings.textContent.includes("does not match RM-505"), "reject mismatching report ID");
+        report.querySelector("input").value = "";
+        await select_bootrom(settings, sample);
+        await until(() => settings.textContent.includes("ready to save"), "stage boot ROM");
+        button(settings, "Cancel").click();
+        check(!(await store.get(config.id)).symbian.bootrom && (await list_disks()).length === 12, "cancel left no boot ROM");
+        settings = await open_rom_settings();
+        await select_bootrom(settings, sample);
+        await until(() => settings.textContent.includes("ready to save"), "stage boot ROM for saving");
+        button(settings, "Save").click();
+        const stored = await until(async () => (await store.get(config.id)).symbian.bootrom, "saved boot ROM");
+        check(stored.sha256 === await hash(sample) && await hash(await disk_file(disk_id(stored.path))) === stored.sha256,
+            "boot ROM is stored with its inspected digest");
+        doc = await open_library();
+        doc.querySelector('[data-id="' + config.id + '"]').click();
+        window.power_on_url = null;
+        doc.defaultView.open = url => { window.power_on_url = url; };
+        button(doc, "Power on").click();
+        const reopened = frame(await until(() => window.power_on_url, "console with boot ROM"));
+        const worker = (await until(() => reopened.contentWindow.v86_console, "reopened CPU Worker")).emulator;
+        const loaded = await until(async () => (await worker_diagnostics(worker)).symbian?.rapido_boot, "CPU Worker validated the boot ROM");
+        check(loaded.bootrom_sha256 === stored.sha256 && loaded.media_sha256 === boot_media.sha256, "CPU Worker loaded both selected boot images");
+        await worker.destroy();
+    }
     store.close();
     result.textContent = "PASS " + (local ? "original firmware via Chrome folder selection" : "public firmware fixture") +
         "; OPFS assets retained after reopening; CPU Worker ran the XIP";

@@ -116,7 +116,10 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
             "nand": file(o.ios.nand), "ramdisk": file(o.ios.ramdisk), "bootlogo": file(o.ios.bootlogo), "boot_args": o.ios.boot_args,
             "nand_boot": o.ios.nand_boot, "network": o.ios.network },
         "symbian": o["symbian"] && { "rom": file(o["symbian"]["rom"]), "load_address": o["symbian"]["load_address"],
-            "boot_registers": o["symbian"]["boot_registers"], "rom_sha256": o["symbian"]["rom_sha256"] },
+            "boot_registers": o["symbian"]["boot_registers"], "rom_sha256": o["symbian"]["rom_sha256"],
+            "boot_media": file(o["symbian"]["boot_media"]), "boot_media_sha256": o["symbian"]["boot_media_sha256"],
+            "bootrom": file(o["symbian"]["bootrom"]), "bootrom_id": o["symbian"]["bootrom_id"],
+            "bootrom_sha256": o["symbian"]["bootrom_sha256"], "application_processor_only": o["symbian"]["application_processor_only"] },
         "kernel": file(o.kernel), "dtb": file(o.dtb),
         // (docs/plan/android-images-plan.md I2: the bootloader runs in the worker, beside the disk)
         "android": o.android && { "device": o.android.device, "gpu_mode": o.android.gpu_mode, "selinux": o.android.selinux,

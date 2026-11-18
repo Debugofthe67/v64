@@ -28,7 +28,7 @@ FPSX 的程序、证书和擦除范围以闪存地址记录。`SOS+CORE` 中 ROM
 | ROM 物理地址 | CORE 的应用处理器闪存 TOC 位于 `0x80000`，SHA-256 为 `482b607a6113162e95a984b6d26bb2af30d08afbe8d338dc00f8fa34dec696d1`。原始 `SOS+CORE` 记录从闪存 `0xD60000` 载入 `0x088FF000`，ROM 头在该范围偏移 `0x1000`。 |
 | 主内存和 SRAM | RAP3NAND `+0x314C–0x3174` 以 `0x08000000` 为 SDRAM 基址并写入 type 4。主内存范围是 `0x08000000–0x0FFFFFFF`。RAP3NAND 的 SRAM 交接地址 `0x30003EF0` 和 type 5 给出 16 KiB 的 SRAM。原版 ROM 在 `0x30000010` 保存 R0–R3，并以 `0x30001000` 为初始栈顶。 |
 | 配置记录 | 原版标签用小端 `type, byte_length, payload`，从 SDRAM 顶部向下建立。R2 指向表首，本机型用连续表并为 ROM 在 type 2 结尾的三字读取预留一个字。原版查找和复制函数在 ROM `+0x1C04`、`+0x1BC4` 识别 type 3 续表地址。R0、R1、R3 目前采用零作为默认交接。 |
-| 频率、启动原因和保留区 | RAP3NAND `+0x3254–0x3266` 写入 type 22 的 433,920,000 Hz 和 type 7 的 433.92 MHz。type 13 取加载器 `+0x1CCC` 使用的初始原因 `0x00012400`。type 16 对应加载器 `+0x331A` 的 MDI 缓冲区，原版据此在 SDRAM 顶部预留 3 MiB。 |
+| 频率、启动原因和保留区 | RAP3NAND `+0x3254–0x3266` 写入 type 22 的 433,920,000 Hz 和 type 7 的 433.92 MHz。仿真采用 `0x00012400` 作为代表启动原因。type 16 对应加载器 `+0x331A` 的 MDI 缓冲区，原版据此在 SDRAM 顶部预留 3 MiB。 |
 | type 10 目录 | RAP3NAND `+0x32A6–0x32BC` 写入 SDRAM TOC 指针。加载器 `+0x13A2–0x13D6` 生成 32 字节条目并用 `0xFF` 结尾，`+0x167E–0x16A0` 按表改名为 `MCUSW`。本机型在 `0x0FCFF000` 重建单条目录。条目从 SOS+CORE 的 `0x088FF000` 开始，原版在 XIP `+0x26D0` 单独保留这里的 4 KiB。当前只装载原版 XIP，前导页的数据和其他引导映像尚未接入。 |
 | 初始计时器和控制字 | ROM 与 RAP3NAND 都向 `0x20040484` 写 1，向 `0x20040494` 写 0 后读取 `0x20040490`。RAP3NAND `+0x596–0x5AA` 对计数差乘 `2^-15`，计时器模型使用 32,768 Hz 并在写捕获寄存器时锁存。ROM 向 `0x20040308` 写 8，当前保存这次写值。 |
 | 共享引导字 | ROM `+0x1958` 读 `0x20032D10`，随后在 `+0x1974` 覆盖该值。分别返回零与 `0xFF55AA99` 时，到该指令的 1,867 步 PC 序列、R0–R15 和 SDRAM+SRAM SHA-256 完全相同（`05b6342917737168c79e259ab9d1bd303a861bdc2d33d3d642b3c2c2d6e8745a`）。机型使用零作为该只读字的复位值假设。ROM 重启路径还访问其邻近的 `0xC6032D14`，与 `0xC6050014` 共同参与握手。 |
@@ -69,7 +69,7 @@ FPSX 的程序、证书和擦除范围以闪存地址记录。`SOS+CORE` 中 ROM
 | 第 3,269,951 步后 | `0x8004F354` 的异常返回指令恢复 CPSR `0xA0000013`，回到被中断的 `0x8008F640`（`LR_irq - 4`）。 |
 | 第 3,272,619 步后 | 原版在 `0x80096144` 报告 `RapidoVariant 0x200002C0`。该路径检查配置记录计数，缺少 RAP3NAND `+0x33D0–0x33D6` 写入的 type 18 ROM 跳转表地址 `0xFFFF1200`。 |
 
-验收工具对同一款默认机器的未修改 XIP 单步执行。它使用 8000 步/ms 的确定性诊断时钟，每 32 步调用实际硬件计时器，未写客体寄存器或内存。通用裸机探针另外覆盖 ARM/Thumb、VFPv2、SVC/IRQ 返回和 ARMv6 地址转换与数据异常。旧版机型配置可冷启动，较早的 N97 快照需重新创建。ROM 跳转表服务和客体存储挂载待后续验收。
+验收工具对同一款默认机器的未修改 XIP 单步执行。它使用 8000 步/ms 的确定性诊断时钟，每 32 步调用实际硬件计时器，未写客体寄存器或内存。通用裸机探针另外覆盖 ARM/Thumb、VFPv2、SVC/IRQ 返回和 ARMv6 地址转换与数据异常。当前入口可单独复测 IRQ，并沿路与后续阶段共用断言。
 
 ```sh
 make build/v86-arm64.wasm
@@ -77,11 +77,34 @@ node --test tests/symbian/*.mjs
 node tools/symbian/boot-n97.mjs <new-output-directory>/rom.xip.bin
 ```
 
+## 零售调制解调器映像和芯片 Boot ROM
+
+RM-505 的 CORE 包含外层 FPSX 闪存目录和 `SOS*DSP0`、`SOS*ISASW` 组件。提取器按目录和证书中的物理地址检查布局，读取记录中的根键字段选择实机服务报告对应的原厂证书。组件原始 DEFLATE 流的输入和输出长度与证书 `+0x3D4`、`+0x3D8` 核对。加载器 `+0x600–0x624` 把 1 KiB 证书放在每个解压段前面。辅助文件 `rapido-boot.bin` 保存这些证书和映像，以及 CORE 的完整 4 KiB 前导页，绑定到同一 XIP 的 SHA-256。[RM-505 原厂固件档案](https://archive.org/details/rm-505-emea-22.0.110-v-8.00)
+
+| 0576555 样本 | SDRAM | 大小和 SHA-256 |
+| --- | --- | --- |
+| DSP0 | `0x08200000` | 1,820,720 字节，`a4d24c50241c40a26a07db4ac180908e2eecab1839e20565b8adee976b7f123e` |
+| ISASW | `0x08480000` | 3,893,852 字节，`60863fb9c4af32f638b0f867d69ab9304dec2d439648832852a3b15b39d31f21` |
+
+原版 XIP 在第 1,470 步进入 Thumb 服务 `0xFFFF1208`，R0 指向实际固件的 16 字节描述，R2 指向 ISASW 证书起址。这个芯片 ROM 入口在 RAP3NAND 的 type 18 跳转表附近。用真 XIP 和完整映像运行时，缺芯片 ROM 会在第 1,471 步产生外部预取异常。该服务需要本地的 RAPIDO 芯片转储。合成探针仅验证指令调用和失败分支，回传零后原版跳到其失败处理 `0x08902898`。
+
+设置支持从本地附加映射于 `0xFFFF0000` 的原始 Boot ROM 文件。入口处需有内容，文件大小为 8–64 KiB 且按页对齐。RM-505 服务报告的 ROM ID 为 `4B9B75103E691FF8`，可随转储提供以排除不匹配的报告。可选的预期 SHA-256 与实际文件比对，每次装载和快照恢复继续核对已保存的文件指纹。当前检查覆盖文件结构、区域和摘要。实机报告中两个 ROM CRC 的覆盖范围和真实转储的启动结果仍待验证。[RM-505 芯片读数](https://forum.gsmhosting.com/vbb/f609/n97-rm-505-flashing-problem-1218453/)
+
+仅 AP 的显式诊断入口使用同一未修改的 XIP 和其可选配置记录路径，保留内核 IRQ 验收，并到达 `Sys/Bin/dma.dll` 的原版初始化 `0x8009D114`。原版随后在 `0x8009D13C` 向第一个 DMA 通道的 VA `0xC6040C04`（PA `0x20040C04`）写 1。该入口用于开发主板和外设。零售固件的普通 VM 启动保留 DSP0、ISASW 以及芯片 ROM 服务的原版调用。
+
+```sh
+node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin
+node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --boot-rom <local-dump>
+node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --ap-only
+```
+
 ## 浏览器导入与重新打开
 
 在新建虚拟机的 **Source** 页选择 **Symbian → S60v5 · Nokia N97**，再选择本地固件目录或多选 VPL 和配套文件。若目录有多个 RM-505 变体，选中一个后才开始完整预检。目录缺件可在该变体下用文件多选框补入，同目录已有的文件优先。真实 0576555 样本的 ROFS 语言清单识别为 Arabic、English（默认）及 Farsi。[Nokia S60 SDK 语言枚举](https://docs.huihoo.com/symbian/s60-5th-edition-cpp-developers-library-v2.1/GUID-35228542-8C95-4849-A73F-2B4F082F0C44/sdk/doc_source/ToolsAndUtilities94/Installing-ref/PKG_format/PKG_languages_table.html)
 
-导入 Worker 核对清单和 FPSX 分组，重建 XIP、ROFS1–3 与 UDA。五个图像按各自逻辑长度写入浏览器私有存储并读回核对 SHA-256。此版本为每台 VM 保留独立手机数据图像，系统图像从 VM 的内部资产引用。导入取消或页面刷新留下的未提交文件按其导入记录回收。重新打开时，CPU Worker 在装载前核对保存的 XIP 摘要。
+导入 Worker 核对清单和 FPSX 分组，重建 XIP、ROFS1–3、UDA 和适用的调制解调器映像。写入浏览器私有存储后读回核对 SHA-256。每台 VM 有独立的手机数据图像。导入取消或页面刷新留下的未提交文件按导入记录回收。重新打开时，CPU Worker 在装载前核对 XIP、调制解调器映像以及所选芯片 ROM 的摘要。
+
+从库中选择 **Settings → Symbian firmware** 可以附加芯片 ROM。保存配置前校验并复制新转储，取消保留现有配置，保存失败回收临时副本。挂起的 VM 可以使用原有 ROM 恢复，再在关机后更换。旧的仅 XIP VM 仍可打开和恢复上一阶段的同 ROM 快照。用 **New VM** 重新导入同款包可建立带 DSP0 和 ISASW 的虚拟机，原 VM 的 Phone data 映像仍归原 VM 使用。
 
 库、向导和控制台将此机型标为 **Experimental boot**。默认运行的边界见上节。ROFS 和 UDA 的客体挂载、大容量盘、显示与输入属于后续板级与系统工作。
 

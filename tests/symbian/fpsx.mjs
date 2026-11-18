@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { fpsx_group_data, parse_fpsx, validate_fpsx_layout } from "../../src/symbian/fpsx.js";
-import { extract_n97_images, inspect_n97_uda } from "../../src/symbian/n97_images.js";
+import { extract_n97_images, inspect_n97_uda, select_n97_boot_certificate } from "../../src/symbian/n97_images.js";
+import { read_n97_boot_media } from "../../src/symbian/n97_boot_media.js";
 import { rebuild_eka2_rom } from "../../src/symbian/rom.js";
 
 import { block, cert, fat_payload, firmware_fixture, fpsx, rom_page, valid_page } from "./fpsx_fixture.js";
@@ -62,7 +63,7 @@ test("extends a trimmed FAT16 volume only when the rest of its data area is free
     assert.throws(() => inspect_n97_uda(data), /cluster in use lies beyond/);
 });
 
-test("CLI exports the selected N97 regions and leaves separate DSP data in its FPSX group", t => {
+test("CLI exports separate certified DSP0 and ISASW regions bound to the selected N97 XIP", t => {
     const directory = mkdtempSync(join(tmpdir(), "v86-fpsx-"));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
     const input = join(directory, "firmware");
@@ -78,8 +79,21 @@ test("CLI exports the selected N97 regions and leaves separate DSP data in its F
     const result = run(output);
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const report = JSON.parse(readFileSync(join(output, "firmware.json"), "utf8"));
-    assert.deepEqual(report.containers.core.groups.map(group => group.label), ["SOS*DSP0", "SOS+CORE", "SOS+ROFS1"]);
+    assert.deepEqual(report.containers.core.groups.map(group => group.label), [null, "SOS*DSP0", "SOS*ISASW", "SOS+CORE", "SOS+ROFS1"]);
     assert.equal(readFileSync(join(output, "core-prefix.bin"))[0], 0xDA);
+    const digest = report.images.find(image => image.name === "rom.xip.bin").sha256;
+    const bytes = readFileSync(join(output, "rapido-boot.bin"));
+    const media = read_n97_boot_media(bytes, digest);
+    assert.equal(media.dsp.address, 0x08200000);
+    assert.equal(media.isa.address, 0x08480000);
+    assert.equal(media.dsp.bytes[1024], 0x77);
+    assert.equal(media.isa.bytes[1024], 0x9D);
+    assert.equal(media.prefix[1024], 0xDA);
+    assert.throws(() => read_n97_boot_media(bytes, "0".repeat(64)), /different XIP/);
+    assert.throws(() => read_n97_boot_media(bytes.subarray(0, -1), digest), /malformed image lengths/);
+    const overlap = Buffer.from(bytes);
+    overlap.writeUInt32LE(media.dsp.address, 48);
+    assert.throws(() => read_n97_boot_media(overlap, digest), /overlap/);
     assert.equal(readFileSync(join(output, "uda.fat")).at(-1), 0);
     for(const { name, size, sha256 } of report.images)
     {
@@ -92,4 +106,14 @@ test("CLI exports the selected N97 regions and leaves separate DSP data in its F
     writeFileSync(join(input, "core.C00"), core.subarray(0, -1));
     assert.match(run(rejected).stderr, /truncated block data/);
     assert.equal(existsSync(rejected), false);
+});
+
+test("selects the RM-505 certificate key independently of its order", () => {
+    const parsed = parse_fpsx(firmware_fixture().core);
+    const group = parsed.groups.find(group => group.label === "SOS*ISASW");
+    const [unmatched, match] = group.certificates;
+    assert.equal(select_n97_boot_certificate(parsed, group).address, 0x08480000);
+    assert.equal(select_n97_boot_certificate(parsed, { ...group, certificates: [match, unmatched] }).address, 0x08480000);
+    assert.throws(() => select_n97_boot_certificate(parsed, { ...group, certificates: [unmatched] }), /expected one/);
+    assert.throws(() => select_n97_boot_certificate(parsed, { ...group, certificates: [match, match] }), /expected one/);
 });

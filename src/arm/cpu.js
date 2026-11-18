@@ -247,6 +247,11 @@ A64CPU.prototype.init = function(settings, device_bus)
     const ranchu = machine_type === "ranchu";
     const n97 = machine_type === "nokia-n97";
     const n97_address = n97 ? settings.symbian?.["load_address"] : undefined;
+    const n97_boot = n97 && settings.symbian_rom ? n97_boot_files(settings.symbian_rom, n97_address, settings.symbian["boot_registers"], {
+        media: settings.symbian_boot_media, media_digest: settings.symbian["boot_media_sha256"],
+        bootrom: settings.symbian_bootrom, bootrom_id: settings.symbian["bootrom_id"], bootrom_digest: settings.symbian["bootrom_sha256"],
+        ap_only: settings.symbian["application_processor_only"],
+    }) : null;
     const { cores, memory_size } = virt_machine(settings);
     this.cores = cores;
     // (cpu_type "arm32": AArch32 throughout, docs/plan/aarch32-plan.md part 2)
@@ -272,13 +277,13 @@ A64CPU.prototype.init = function(settings, device_bus)
     const adapter = this.graphics_adapter_descriptor;
     this.create_memory(memory_size, adapter ? Math.max(DEVICE_MEMORY_SIZE,
         adapter["device_memory_size"]?.({ "test": settings.graphics_adapter_test }) || 0) :
-        machine_type === "s5l8930" ? 1 << 20 : n97 ? N97_DEVICE_MEMORY : 0,
+        machine_type === "s5l8930" ? 1 << 20 : n97 ? N97_DEVICE_MEMORY + (n97_boot?.bootrom?.length ?? 0) : 0,
         n97 ? (n97_address < N97_RAM_BASE ? 0 : N97_RAM_BASE) : VIRT_RAM_BASE);
     this.configure_extended_memory(settings.extended_memory_size || 0, settings.extended_memory_cache);
     this.device_bus = device_bus;
     if(n97)
     {
-        this.boot_files = settings.symbian_rom ? n97_boot_files(settings.symbian_rom, n97_address, settings.symbian["boot_registers"]) : null;
+        this.boot_files = n97_boot;
         this.devices = { "n97_sram": create_n97_sram(this, this.boot_files, settings.symbian?.["rom_sha256"]) };
         if(this.boot_files?.tags)
         {
@@ -1319,7 +1324,8 @@ A64CPU.prototype.validate_state = function(state)
     // (arm32's and arm64's profiles are of different CPUs)
     const profiles = Object.values(this.cpu_type === "arm32" ? ARM32_PROFILES : A64_PROFILES);
     const layout = machine_layout(this.machine_type);
-    if(identity[1] !== layout || !profiles.some(p => p[0] === identity[2]) ||
+    const legacy_n97 = machine === "nokia-n97" && identity[1] === 4;
+    if(identity[1] !== layout && !legacy_n97 || !profiles.some(p => p[0] === identity[2]) ||
         (machine === "nokia-n97") !== (identity[2] === "arm1136"))
     {
         throw new Error("The snapshot is from " + machine + " layout " + identity[1] + " with CPU profile " + identity[2] +
@@ -1327,7 +1333,7 @@ A64CPU.prototype.validate_state = function(state)
     }
     if(this.devices.n97_sram)
     {
-        this.devices.n97_sram.check_state(state[4]?.[DEVICE_ORDER.indexOf("n97_sram")]);
+        this.devices.n97_sram.check_state(state[4]?.[DEVICE_ORDER.indexOf("n97_sram")], legacy_n97);
     }
     if(this.machine_type === "s5l8930" && !!state[4]?.[DEVICE_ORDER.indexOf("apple_nand")] !== !!this.devices.apple_nand)
     {
@@ -1525,7 +1531,9 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
             }, this.devices.apple_clcd.performance) : null,
         } } : {}),
         ...(this.devices.n97_xti ? { "symbian": { "xti": this.devices.n97_xti.packets(),
-            "clocks": this.devices.n97_clocks.status(), "l2_enabled": this.devices.n97_l2.enabled() } } : {}),
+            "clocks": this.devices.n97_clocks.status(), "l2_enabled": this.devices.n97_l2.enabled(),
+            ...(this.boot_files.media ? { "rapido_boot": { "media_sha256": this.boot_files.media.digest,
+                "bootrom_sha256": this.boot_files.bootrom_digest || null } } : {}) } } : {}),
         ...(include_steps ? { "steps": this.step_stats(25) } : {}),
         ...(nand ? { "nand": { "bytes_read": nand.bytes_read, "bytes_written": nand.bytes_written } } : {}),
     };

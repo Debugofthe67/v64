@@ -1,11 +1,123 @@
 import { c_string, equals, u16, u32 } from "../android/bytes.js";
 import { SHA256, sha256_hex } from "../image/sha256.js";
 import { fpsx_group_data, parse_fpsx, validate_fpsx_layout } from "./fpsx.js";
+import { N97_CORE_ADDRESS, N97_CORE_HEADER_OFFSET, usable_n97_modem_address, write_n97_boot_media } from "./n97_boot_media.js";
+import { inflate } from "../virt/inflate.js";
 import { rebuild_eka2_rom } from "./rom.js";
 
 // The 22.0.110 SOS+CORE group starts with 3 KiB of separate metadata.
 // Each SOS+ROFS group has the same-size reserved zero area before its header.
 const SOS_PREFIX_SIZE = 0xC00;
+
+const IMAGE_NAMES = ["DSP0", "ISASW"];
+const FLASH_TOC = 0x80000;
+const RECORD_SIZE = 32;
+const CERT_SIZE = 0x400;
+const RM505_ROOT_KEY = "caeebb65d3c48e6dc73b49dc5063a2ee5867d611";
+
+function invalid_boot_media(message)
+{
+    throw new Error("Nokia N97 boot media: " + message);
+}
+
+/** @param {ReturnType<typeof parse_fpsx>} core @param {ReturnType<typeof parse_fpsx>["groups"][number]} group */
+export function select_n97_boot_certificate(core, group)
+{
+    // The type-27 FPSX record's 20-byte target key distinguishes its
+    // alternatives. The retail RM-505 reports the CAEEBB65… root key.
+    const matches = group.certificates.filter(cert => cert.type === 0x27 &&
+        Array.from(core.bytes.subarray(cert.offset + 4, cert.offset + 24),
+            byte => byte.toString(16).padStart(2, "0")).join("") === RM505_ROOT_KEY);
+    if(matches.length !== 1) invalid_boot_media("expected one RM-505 root-key certificate for " + group.label);
+    const cert = matches[0];
+    const bytes = core.bytes.subarray(cert.data_offset, cert.data_offset + cert.size);
+    if(bytes.length !== CERT_SIZE || u32(bytes, 0) !== 0x809795A3 || u32(bytes, 0x3D0) !== 0x31DEEAE8)
+    {
+        invalid_boot_media("invalid RM-505 certificate for " + group.label);
+    }
+    // RAP3NAND+0x600–0x624 retains the entire certificate in SDRAM.
+    return { bytes, input_size: u32(bytes, 0x3D4), output_size: u32(bytes, 0x3D8), address: u32(bytes, 0x3DC) };
+}
+
+function flash_toc_record(toc, label)
+{
+    let record = -1;
+    for(let at = 0; at + RECORD_SIZE <= toc.length; at += RECORD_SIZE)
+    {
+        if(toc[at + 20] === 0xFF) break;
+        if(c_string(toc, at + 20, 12) !== label) continue;
+        if(record !== -1) invalid_boot_media("duplicate flash TOC entry for " + label);
+        record = at;
+    }
+    if(record === -1) invalid_boot_media("missing flash TOC entry for " + label);
+    return { flash: FLASH_TOC + u32(toc, record), limit: u32(toc, record + 4), address: u32(toc, record + 16) };
+}
+
+/**
+ * Recreate the modem payloads from the CORE's flash TOC and original raw
+ * DEFLATE groups, without running either payload or any download.
+ * @param {ReturnType<typeof import("./fpsx.js").parse_fpsx>} core
+ * @param {!Uint8Array} prefix
+ * @param {!Uint8Array} rom
+ */
+function extract_n97_boot_media(core, prefix, rom)
+{
+    const groups = IMAGE_NAMES.map(name => core.groups.filter(group => group.label === "SOS*" + name && group.data.length));
+    if(groups.every(matches => !matches.length)) return null;
+    if(groups.some(matches => matches.length !== 1)) invalid_boot_media("expected one DSP0 and one ISASW group");
+
+    const toc_groups = core.groups.filter(group => group.label === null && group.data[0]?.start === FLASH_TOC);
+    if(toc_groups.length !== 1) invalid_boot_media("expected one application flash TOC");
+    const toc = fpsx_group_data(core, toc_groups[0]);
+    const records = IMAGE_NAMES.map(name => flash_toc_record(toc, "SOS*" + name));
+    const core_record = flash_toc_record(toc, "SOS+CORE");
+    const core_group = selected_group(core, "SOS+CORE");
+    const core_cert = select_n97_boot_certificate(core, core_group);
+    if(core_record.address !== N97_CORE_ADDRESS || prefix.length !== SOS_PREFIX_SIZE ||
+        core_cert.address !== core_record.address || core_record.flash !== core_group.certificates[0].start ||
+        !usable_n97_modem_address(records[0].address) || !usable_n97_modem_address(records[1].address) || records[0].address >= records[1].address)
+    {
+        invalid_boot_media("unsupported flash TOC load map");
+    }
+
+    const images = groups.map(([group], i) => {
+        const { flash, limit, address } = records[i];
+        const flash_start = group.certificates[0]?.start ?? group.data[0].start;
+        if(group.space.join(",") !== "0,3,0" || flash !== flash_start || group.data.at(-1).end > flash + limit)
+        {
+            invalid_boot_media("flash TOC disagrees with the " + IMAGE_NAMES[i] + " group");
+        }
+        const cert = select_n97_boot_certificate(core, group);
+        const compressed = fpsx_group_data(core, group);
+        const capacity = (records[i + 1]?.address ?? N97_CORE_ADDRESS) - address;
+        const input_size = cert.input_size - CERT_SIZE;
+        const output_size = cert.output_size - CERT_SIZE;
+        if(cert.address !== address || input_size <= 0 || input_size > compressed.length ||
+            output_size <= 0 || cert.output_size > capacity || compressed.length - input_size >= 512 ||
+            compressed.subarray(input_size).some(byte => byte !== 0xFF))
+        {
+            invalid_boot_media("certificate extents disagree with " + IMAGE_NAMES[i]);
+        }
+        const decoded = inflate(compressed.subarray(0, input_size), 0, output_size, output_size + 1);
+        if(decoded.end !== input_size || decoded.output.length !== output_size)
+        {
+            invalid_boot_media("invalid DEFLATE extent in " + IMAGE_NAMES[i]);
+        }
+        const bytes = new Uint8Array(cert.output_size);
+        bytes.set(cert.bytes);
+        bytes.set(decoded.output, CERT_SIZE);
+        return { address, bytes, payload_sha256: sha256_hex(decoded.output) };
+    });
+    const [dsp, isa] = images;
+    const preamble = new Uint8Array(N97_CORE_HEADER_OFFSET);
+    preamble.set(core_cert.bytes);
+    preamble.set(prefix, CERT_SIZE);
+    return {
+        bytes: write_n97_boot_media(preamble, rom, dsp, isa),
+        report: Object.fromEntries(images.map(({ address, bytes, payload_sha256 }, i) =>
+            [IMAGE_NAMES[i], { address, size: bytes.length, sha256: sha256_hex(bytes), payload_sha256 }])),
+    };
+}
 
 function data_ranges(blocks)
 {
@@ -225,6 +337,8 @@ export function extract_n97_images(inputs)
         image("rom.packed.bin", packed.subarray(0, rom.header.stored_size)),
         image("rom.xip.bin", rom.bytes),
     ];
+    const boot_media = extract_n97_boot_media(core, core_data.subarray(0, SOS_PREFIX_SIZE), rom.bytes);
+    if(boot_media) files.push(image("rapido-boot.bin", boot_media.bytes));
     const rofs_headers = [];
     let languages = [];
     for(const [index, container] of [core, rofs2, rofs3].entries())
@@ -247,7 +361,7 @@ export function extract_n97_images(inputs)
             containers: Object.fromEntries(Object.entries(containers).map(([key, parsed]) => [key, describe_fpsx(parsed)])),
             rom: { ...rom.header, pages: rom.page_counts, flash_address: core_group.data[0].start + SOS_PREFIX_SIZE,
                 core_flash_group_sha256: sha256_hex(core_data), rom_flash_span_sha256: sha256_hex(packed) },
-            rofs: rofs_headers, languages,
+            rofs: rofs_headers, languages, ...(boot_media ? { boot_media: boot_media.report } : {}),
             uda: { ...uda_header, flash_address: uda_group.data[0].start },
         },
     };

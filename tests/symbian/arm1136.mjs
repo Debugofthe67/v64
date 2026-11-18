@@ -69,6 +69,11 @@ try
         const wrong = cpu.get_state(true);
         wrong[4].find(device => device?.[1] instanceof Uint8Array && device[1].length === N97_SRAM_SIZE)[0] = "other ROM or handoff";
         assert.throws(() => cpu.validate_state(wrong), /same ROM and loader handoff/);
+        const legacy = cpu.get_state(true);
+        legacy[103][1] = 4;
+        const legacy_sram = legacy[4].find(device => device?.[1] instanceof Uint8Array && device[1].length === N97_SRAM_SIZE);
+        legacy_sram[0] = legacy_sram[0].replace(/::$/, "");
+        assert.doesNotThrow(() => cpu.validate_state(legacy));
         const [identity, sram] = cpu.devices.n97_sram.get_state();
         sram[0x10] = 45;
         cpu.devices.n97_sram.set_state([identity, sram]);

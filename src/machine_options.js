@@ -249,10 +249,28 @@ export function check_machine_options(options)
             const address = symbian?.["load_address"];
             const regs = symbian?.["boot_registers"];
             if(!symbian?.["rom"]) throw new Error("Nokia N97 requires symbian.rom");
-            const digest = symbian["rom_sha256"];
-            if(digest !== undefined && (typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)))
+            for(const name of ["rom_sha256", "boot_media_sha256", "bootrom_sha256"])
             {
-                throw new Error("Nokia N97: rom_sha256 must be a lowercase SHA-256 digest");
+                const digest = symbian[name];
+                if(digest !== undefined && (typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)))
+                {
+                    throw new Error("Nokia N97: " + name + " must be a lowercase SHA-256 digest");
+                }
+            }
+            if(symbian["bootrom"] && !symbian["boot_media"])
+            {
+                throw new Error("Nokia N97 needs both the retail boot media and the local RAPIDO boot ROM");
+            }
+            if((address !== undefined || symbian["application_processor_only"]) &&
+                (symbian["boot_media"] || symbian["bootrom"]))
+            {
+                throw new Error("Nokia N97's diagnostic handoff cannot be combined with the full modem boot media");
+            }
+            if(symbian["bootrom_id"] !== undefined && typeof symbian["bootrom_id"] !== "string" ||
+                symbian["application_processor_only"] !== undefined && typeof symbian["application_processor_only"] !== "boolean" ||
+                address !== undefined && symbian["application_processor_only"])
+            {
+                throw new Error("Nokia N97 has invalid diagnostic or ROM identity options");
             }
             if((address !== undefined || regs !== undefined) &&
                 (!Number.isInteger(address) || address < 0 || address >= N97_RAM_BASE + N97_RAM_SIZE || address % 4 ||

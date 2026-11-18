@@ -542,6 +542,8 @@ V86.prototype.continue_init = async function(emulator, options)
     {
         options["symbian"] = Object.assign({}, options["symbian"], {
             "rom": await opfs_readable("Nokia N97 firmware", options["symbian"]["rom"]),
+            "boot_media": await opfs_readable("Nokia N97 modem images", options["symbian"]["boot_media"]),
+            "bootrom": await opfs_readable("Nokia N97 RAPIDO boot ROM", options["symbian"]["bootrom"]),
         });
     }
     if(options.virtio_disks)
@@ -997,6 +999,12 @@ V86.prototype.continue_init = async function(emulator, options)
             case "symbian_rom":
                 settings.symbian_rom = buffer.buffer;
                 break;
+            case "symbian_boot_media":
+                settings.symbian_boot_media = buffer.buffer;
+                break;
+            case "symbian_bootrom":
+                settings.symbian_bootrom = buffer.buffer;
+                break;
             case "kernel":
                 settings.kernel = buffer.buffer;
                 break;
@@ -1089,7 +1097,8 @@ V86.prototype.continue_init = async function(emulator, options)
 
         if(name === "bios" || name === "vga_bios" || name === "firmware_code" || name === "firmware_vars" || name === "tpm_wasm" || name === "tpm_state" ||
             name === "initial_state" || name === "multiboot" ||
-            name === "bzimage" || name === "initrd" || name === "kernel" || name === "ios_bootlogo" || name === "symbian_rom" || name === "dtb" || name === "android_vendor_ramdisk")
+            name === "bzimage" || name === "initrd" || name === "kernel" || name === "ios_bootlogo" ||
+            name.startsWith("symbian_") || name === "dtb" || name === "android_vendor_ramdisk")
         {
             // Ignore async for these because they must be available before boot.
             // This should make result.buffer available after the object is loaded
@@ -1167,6 +1176,8 @@ V86.prototype.continue_init = async function(emulator, options)
     {
         if(!options["symbian"]) throw new Error("Nokia N97 boot requires symbian.rom");
         add_file("symbian_rom", options["symbian"]["rom"]);
+        add_file("symbian_boot_media", options["symbian"]["boot_media"]);
+        add_file("symbian_bootrom", options["symbian"]["bootrom"]);
     }
     add_file("initrd", options.ios ? options.ios.ramdisk : options.initrd);
     add_file("kernel", options.ios ? options.ios.kernelcache : options.kernel);

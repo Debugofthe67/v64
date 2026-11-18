@@ -189,9 +189,36 @@ export async function open_library(root)
             }
             finally { lock.release(); }
         } : null;
-        const edited = await open_settings(config, { store, service, erase_ios });
+        const edited = await open_settings(config, { store, service, erase_ios, persist: async (draft, bootrom) => {
+            if(!bootrom) return store.put(draft);
+            const lock = await hold_machine(draft.id);
+            if(!lock) throw new Error("Power off the Nokia N97 before changing its chip ROM");
+            try
+            {
+                const current = await store.get(draft.id);
+                if(!current?.symbian || current.suspended || draft.suspended)
+                {
+                    throw new Error("Reopen the settings after the VM has shut down and any suspended state is cleared");
+                }
+                const { file, sha256, reported_id } = bootrom;
+                const disk = await import_disk(file, draft.name + " · RAPIDO boot ROM",
+                    { prefs: store, symbian: { owner: draft.id, role: "bootrom" } });
+                try
+                {
+                    if(disk.sha256 !== sha256) throw new Error("The ROM changed during import. Choose the dump again.");
+                    return await store.put({ ...draft, symbian: { ...draft.symbian,
+                        bootrom: { kind: "browser", path: disk.path, size: disk.size, sha256, name: file.name, reported_id } } });
+                }
+                catch(error)
+                {
+                    await delete_disk(disk.id);
+                    throw error;
+                }
+            }
+            finally { lock.release(); }
+        } });
         if(!edited) return;
-        await reload((await store.put(edited)).id);
+        await reload(edited.id);
     };
 
     const import_file = async () =>

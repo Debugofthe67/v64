@@ -34,6 +34,8 @@ test("the RM-505 handoff supplies the physical ROM address and RAP3NAND tag form
     assert.equal(view.getUint32(records.get(22)[0] + 8, true), 433920000);
     assert.equal(view.getUint32(records.get(10)[0] + 8, true), N97_BOOT_TOC);
     assert.equal(view.getUint32(records.get(13)[0] + 8, true), 0x00012400);
+    assert.deepEqual(records.get(18), [0, 12]);
+    assert.equal(view.getUint32(8, true), 0xFFFF1200);
 });
 
 test("the boot timer advances at 32768 Hz and holds a counter snapshot until the next capture", () => {
