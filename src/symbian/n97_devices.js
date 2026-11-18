@@ -121,7 +121,7 @@ function latches(io, base, name, offsets, on_write = undefined)
 
 export const N97_KEYBOARD_IRQ = 249;
 export const N97_SLIDER_IRQ = 248;
-export const N97_TOUCH_IRQ = 234;
+export const N97_PANEL_IRQ = 234;
 const ICU_BASE = 0x20400000;
 const NO_INTERRUPT = 0xFFFFFFFF;
 const MS_TICK_INTERRUPT = 35;
@@ -136,7 +136,7 @@ export function create_n97_interrupts(io, set_lines)
     // from +0x48 (+0x8D178), with -1 as the empty ID on either port.
     const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C]);
     const priority = new Uint8Array(256);
-    const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ, ...N97_DMA_IRQS, N97_TOUCH_IRQ];
+    const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ, ...N97_DMA_IRQS, N97_PANEL_IRQ];
     const unmasked = new Set(), asserted = new Set();
     let enabled = 0, selected = 0, active = NO_INTERRUPT;
     const pending = () => {
@@ -210,7 +210,7 @@ export function create_n97_interrupts(io, set_lines)
         set_i2c(level) { line(N97_I2C_IRQ, level); },
         set_keyboard(level) { line(N97_KEYBOARD_IRQ, level); },
         set_slider(level) { line(N97_SLIDER_IRQ, level); },
-        set_touch(level) { line(N97_TOUCH_IRQ, level); },
+        set_panel(level) { line(N97_PANEL_IRQ, level); },
         reset()
         {
             configuration.reset();
@@ -243,14 +243,18 @@ export function create_n97_interrupts(io, set_lines)
     };
 }
 
-// egpio.dll's bank layout. Hall (GENIO58), pen DAV (GENIO38) and the
-// active-low cold-insert microSD detector (GENIO45) share bank 1.
+// egpio.dll's bank layout. Pen DAV (GENIO38) and the lock switch (GENIO40)
+// share IRQ234. Hall (GENIO58) and microSD detect (GENIO45) share the bank.
 export function create_n97_gpio_input(io, base, direction_set, pin, initial_high, set_irq, other_inputs = () => 0)
 {
     const pins = [];
+    const irq_groups = new Map();
     let bank_enabled = false;
     const pending = line => line.pending || (line.input && !line.edge && line.trigger === (line.high ? 2 : 1) ? line.bit : 0);
-    const update = () => pins.forEach(line => line.set_irq(!!(bank_enabled && (line.enabled & pending(line)))));
+    const update = () => {
+        for(const [set_irq, group] of irq_groups)
+            set_irq(bank_enabled && group.some(line => line.enabled & pending(line)));
+    };
     const bitmap = value => pins.reduce((mask, line) => mask | value(line), 0);
     const change = (value, mask, modify) => {
         for(const line of pins) if(value & mask & line.bit) modify(line);
@@ -281,8 +285,10 @@ export function create_n97_gpio_input(io, base, direction_set, pin, initial_high
     function connect(pin, high, set_irq)
     {
         const primary = pins.length === 0;
-        const line = { bit: 1 << pin, high, input: true, enabled: 0, pending: 0, edge: false, trigger: 0, set_irq };
+        const line = { bit: 1 << pin, high, input: true, enabled: 0, pending: 0, edge: false, trigger: 0 };
         pins.push(line);
+        if(!irq_groups.has(set_irq)) irq_groups.set(set_irq, []);
+        irq_groups.get(set_irq).push(line);
         return {
             connect,
             set_input(level)

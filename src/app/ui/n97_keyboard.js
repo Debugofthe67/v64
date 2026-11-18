@@ -9,7 +9,11 @@ const rows = [
     ["Shift", "Z", "X", "C", "V", "B", "N", "M", "Space", "Chr", "Fn"],
 ];
 const rocker = ["Up", "Left", "Select", "Right", "Down"];
-const outer_keys = ["Menu", "VolumeDown", "VolumeUp", "CameraFocus", "CameraShutter"];
+const front_keys = ["Send", "Menu", "End"];
+const side_keys = ["Lock", "VolumeDown", "VolumeUp", "CameraFocus", "CameraShutter"];
+const outer_keys = [...front_keys, ...side_keys];
+/** @type {Map<string, "send" | "end" | "lock">} */
+const panel_controls = new Map([["Send", "send"], ["End", "end"], ["Lock", "lock"]]);
 const labels = {
     Backspace: "⌫", Comma: ",", Left: "←", Up: "↑", Down: "↓", Right: "→", Select: "●",
     Shift: "⇧", Enter: "↵", VolumeDown: "Vol −", VolumeUp: "Vol +", CameraFocus: "Focus", CameraShutter: "Shutter",
@@ -21,15 +25,17 @@ const shortcuts = {
     ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down",
     F2: "Fn", F3: "Chr", ContextMenu: "Menu", AudioVolumeDown: "VolumeDown",
     AudioVolumeUp: "VolumeUp", F7: "CameraFocus", F8: "CameraShutter",
+    Home: "Send", End: "End", F4: "Lock",
 };
 
 /**
  * @param {(code: number, pressed: boolean) => void} send
+ * @param {(control: "send" | "end" | "lock", pressed: boolean) => void} send_control
  * @param {(open: boolean) => void} move_slider
  */
-export function n97_keyboard_panel(send, move_slider)
+export function n97_keyboard_panel(send, send_control, move_slider)
 {
-    const panel = h("div.n97-keyboard#n97_keyboard", { tabindex: 0, role: "group", "aria-label": "Nokia N97 keyboard" });
+    const panel = h("div.n97-keyboard#n97_keyboard", { tabindex: 0, role: "group", "aria-label": "Nokia N97 controls" });
     let slide_open = false;
     const slider = h("button#n97_slider", { type: "button", onclick: () => {
         set_slider(!slide_open);
@@ -54,7 +60,9 @@ export function n97_keyboard_panel(send, move_slider)
         if((before === 0) !== (count === 0))
         {
             const code = N97_KEY_CODES.get(key);
+            const control = panel_controls.get(key);
             if(code !== undefined) send(code, !!count);
+            else if(control !== undefined) send_control(control, !!count);
             buttons.get(key)?.setAttribute("aria-pressed", String(!!count));
         }
     }
@@ -97,7 +105,8 @@ export function n97_keyboard_panel(send, move_slider)
     {
         const host_key = Object.keys(shortcuts).find(code => shortcuts[code] === key);
         const label = key === "CameraFocus" ? "Camera focus" : key === "CameraShutter" ? "Camera shutter" :
-            key === "VolumeUp" ? "Volume up" : key === "VolumeDown" ? "Volume down" : key;
+            key === "VolumeUp" ? "Volume up" : key === "VolumeDown" ? "Volume down" :
+            key === "Send" ? "Answer call" : key === "End" ? "End call" : key === "Lock" ? "Side lock switch" : key;
         const button = h("button", { type: "button", dataset: { key }, "aria-label": label, "aria-pressed": "false",
             title: host_key ? label + " · " + host_key : label }, labels[key] || key);
         button.addEventListener("pointerdown", event => {
@@ -122,7 +131,9 @@ export function n97_keyboard_panel(send, move_slider)
     keypad.append(h("div.n97-slide-layout", null,
         h("div.n97-key-rocker", { role: "group", "aria-label": "Directional pad" }, rocker.map(make_button)),
         h("div", null, rows.map(row => h("div.n97-key-row", null, row.map(make_button))))));
-    panel.append(h("div.n97-key-row.n97-outer-keys", { role: "group", "aria-label": "Front and side controls" }, outer_keys.map(make_button)));
+    panel.append(
+        h("div.n97-key-row.n97-outer-keys", { role: "group", "aria-label": "Front controls" }, front_keys.map(make_button)),
+        h("div.n97-key-row.n97-outer-keys", { role: "group", "aria-label": "Side controls" }, side_keys.map(make_button)));
     panel.addEventListener("keydown", event => {
         if(event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
         if(event.target instanceof HTMLButtonElement && (event.code === "Space" || event.code === "Enter")) return;

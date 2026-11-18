@@ -81,17 +81,19 @@ try
     cpu.clock.resume();
     const advance = ms => cpu.run_hardware_timers(null, cpu.clock.advance_instructions(1000 * ms));
 
-    const driver = 0xC8070000, pen = 0xC8072000, pen_handle = pen + 0x100;
+    const driver = 0xC8070000, touch_keys = driver + 0x400, pen = 0xC8072000, pen_handle = pen + 0x100;
     const tsc = 0xC8073000, master = 0xC8074000, message = 0xC8075000, tx = 0xC8076000;
     const rx = tsc + 0xB4, vtable = 0xC8077000;
     put(driver, 0x8016EABC);
-    put(driver + 0xF8, driver + 0x400);
+    put(driver + 0xF8, touch_keys);
     put(driver + 0x108, pen);
     put(pen, vtable);
     for(let offset = 8; offset <= 0x20; offset += 4) put(vtable + offset, done + 16);
     put(tsc + 8, driver);
+    call(0x801694BC); // retail exyin.dll static initialization
     call(0x8016CA8C, [driver]);
     call(0x8016C7BC, [driver]);
+    call(0x8016A4E0, [touch_keys, 0xC800F9C4]); // load the retail touch-key rectangles
     assert.deepEqual(Array.from({ length: 6 }, (_, i) => word(driver + 0x170 + i * 4)),
         [0xADBE, 0, 0, 0x6448, 0xFFEBA3BC, 0xFFEAD8D0]);
 
@@ -183,6 +185,38 @@ try
     assert.equal(call(0x80169F80, [tsc + 0xC4]), 0);
     call(0x8016BAFC, [driver]); // stock pen-up path, normally invoked from the timer DFC
     assert.deepEqual(events, [[10, 0, 0], [1, 320, 180], [1, 639, 359], [1, 15, 42], [11, 15, 42]]);
-    console.log(JSON.stringify({ firmware: cpu.boot_files.rom_digest, i2c_address: 0x4A, gpio: 38, irq: 234, samples, release: events.at(-1) }, null, 2));
+    const release = events.at(-1), call_keys = [];
+    const previous_events = events.length;
+    for(const [key, adc_x, scan] of [["send", 720, 0xC4], ["end", 293, 0xC5]])
+    {
+        const adc = [];
+        vm.symbian_send_control(key, true);
+        for(let i = 0; i < 2; i++)
+        {
+            if(i) advance(10);
+            assert.equal(call(0x8016B5C0, [pen]), 0);
+            assert.equal(call(load_word, [icu + 8]), 234);
+            call(0x8009FEFC, [1]);
+            assert.deepEqual(gpio_callbacks.at(-1), [0x501, 0x2600]);
+            const result = query(setup[1], 8, rx);
+            assert.deepEqual(result, [adc_x >> 8, adc_x & 255, 0, 15, 1, 144, 1, 194]);
+            call(load_word, [icu + 0x80]);
+            call(0x80169818, [tsc]);
+            adc.push(result);
+        }
+        assert.deepEqual(events.slice(previous_events + call_keys.length * 2), [[3, scan, 0]],
+            "the held call contact produces a single key-down and no LCD event");
+        vm.symbian_send_control(key, false);
+        assert.deepEqual(query(setup[2], 2, tsc + 0xC4), [0x4A, 0x2B]);
+        assert.equal(call(0x80169F80, [tsc + 0xC4]), 0, "the stock poll detects a lifted call contact");
+        // At this probe's DFC boundary, invoke the original key-release callback.
+        call(0x8016A380, [touch_keys]);
+        assert.deepEqual(events.at(-1), [4, scan, 0]);
+        call(0x8016BAFC, [driver]);
+        call_keys.push({ key, adc, events: events.slice(-2) });
+    }
+    assert.deepEqual(events.slice(previous_events), [[3, 0xC4, 0], [4, 0xC4, 0], [3, 0xC5, 0], [4, 0xC5, 0]]);
+    console.log(JSON.stringify({ firmware: cpu.boot_files.rom_digest, i2c_address: 0x4A, gpio: 38, irq: 234,
+        samples, release, call_keys }, null, 2));
 }
 finally { await vm.destroy(); }

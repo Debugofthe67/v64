@@ -26,7 +26,7 @@ test("TSC2004 ADC samples cover every pixel of the original exyin calibration", 
     }
 });
 
-test("N97 touch shares I²C and GPIO with the keyboard and retains a latched sample through snapshot restore", async () => {
+test("N97 screen, call keys and lock share the original buses and restore without stale contacts", async () => {
     const vm = new V86({ machine_type: "nokia-n97", graphics_adapter: "none", autostart: false, disable_jit: true,
         cpu_clock: { mode: "deterministic", instructions_per_ms: 1000 }, log_level: 0,
         wasm_path: fileURLToPath(new URL("../../build/v86-arm64.wasm", import.meta.url)),
@@ -87,7 +87,9 @@ test("N97 touch shares I²C and GPIO with the keyboard and retains a latched sam
         assert.deepEqual(read_adc(0x63), [0x4A2B]);
         assert.deepEqual(read_adc(0x6B, 2), [0x104, 0xF81C]);
 
-        const pen = 1 << 6, hall = 1 << 26, absent_sd = 1 << 13;
+        assert.throws(() => vm.symbian_send_control("power", true), /expected a Nokia N97 control/);
+        assert.throws(() => vm.symbian_send_control("lock", 1), /boolean state/);
+        const pen = 1 << 6, lock = 1 << 8, hall = 1 << 26, absent_sd = 1 << 13;
         gpio(0x2C, pen); // exyin configures a low-level GPIO interrupt.
         gpio(0x38, pen);
         gpio(0x28, hall);
@@ -101,10 +103,10 @@ test("N97 touch shares I²C and GPIO with the keyboard and retains a latched sam
             icu(0x24, 2);
             icu(0x0C, id);
         }
-        assert.equal(gpio(8), pen | absent_sd);
+        assert.equal(gpio(8), pen | lock | absent_sd);
         vm.symbian_set_touch(320, 180, true);
         vm.symbian_set_slider(true);
-        assert.equal(gpio(8), hall | absent_sd);
+        assert.equal(gpio(8), hall | lock | absent_sd);
         assert.equal(icu(8), 248);
         gpio(0x20, hall);
         icu(0x80);
@@ -117,7 +119,7 @@ test("N97 touch shares I²C and GPIO with the keyboard and retains a latched sam
         assert.deepEqual(read_adc(0x0B, 3), [521, 400, 450]);
         icu(0x80);
         assert.equal(icu(8), 0xFFFFFFFF);
-        assert.equal(gpio(8), hall | pen | absent_sd);
+        assert.equal(gpio(8), hall | pen | lock | absent_sd);
         assert.deepEqual(read_adc(0x63), [0x8A2B]);
 
         vm.symbian_set_touch(639, 359, true);
@@ -135,25 +137,85 @@ test("N97 touch shares I²C and GPIO with the keyboard and retains a latched sam
         assert.deepEqual(read_adc(0x63), [0x4A2B]);
         advance(50000);
         assert.equal(cpu.devices.n97_touch.status().samples, 2);
-        assert.equal(gpio(8), hall | pen | absent_sd);
+        assert.equal(gpio(8), hall | pen | lock | absent_sd);
+        icu(0x80);
+
+        // GENIO38 and GENIO40 drive the same ICU source. Confirm either
+        // interrupt still reaches the guest after acknowledging the other.
+        gpio(0x28, lock);
+        gpio(0x38, lock);
+        gpio(0x10, lock);
+        vm.symbian_send_control("send", true);
+        vm.symbian_send_control("lock", true);
+        assert.equal(gpio(8), hall | absent_sd);
+        assert.equal(gpio(0x0C), pen | lock);
+        assert.equal(icu(8), 234);
+        gpio(0x20, lock);
+        icu(0x80);
+        assert.equal(icu(8), 234, "DAV remains asserted after acknowledging lock");
+        assert.deepEqual(read_adc(3, 4), [720, 15, 400, 450]);
+        icu(0x80);
+        assert.equal(icu(8), 0xFFFFFFFF);
+        vm.symbian_set_touch(100, 200, true);
+        vm.symbian_send_control("end", true);
+        advance(10000);
+        assert.equal(cpu.devices.n97_touch.status().contact, "send");
+        assert.deepEqual(read_adc(3, 4), [720, 15, 400, 450]);
+        vm.symbian_send_control("send", false);
+        vm.symbian_set_touch(110, 210, true); // movement of a second contact
+        assert.equal(cpu.devices.n97_touch.status().contact, null);
+        assert.deepEqual(read_adc(0x63), [0x4A2B]);
+
+        vm.symbian_set_touch(110, 210, false);
+        vm.symbian_send_control("end", false);
+        vm.symbian_send_control("end", true);
+        gpio(0x34, lock);
+        const held_controls = await vm.save_state();
+        assert.equal(cpu.devices.n97_touch.status().contact, "end");
+        assert.deepEqual(read_adc(3, 4), [293, 15, 400, 450]);
+        vm.symbian_send_control("lock", false);
+        gpio(0x20, pen);
+        icu(0x80);
+        assert.equal(gpio(0x0C), lock);
+        assert.equal(icu(8), 234, "lock rising edge remains after draining DAV");
+        await vm.restore_state(held_controls);
+        assert.equal(gpio(8) & lock, lock, "restoring releases the host lock switch");
+        assert.equal(cpu.devices.n97_touch.status().contact, null, "restoring releases the bezel contact");
+        assert.equal(gpio(0x0C), pen | lock);
+        assert.deepEqual(read_adc(3, 4), [293, 15, 400, 450]);
+        gpio(0x20, lock);
+        icu(0x80);
+
+        vm.symbian_set_touch(320, 180, true);
+        vm.symbian_send_control("send", true);
+        assert.deepEqual(read_adc(3, 4), [515, 521, 400, 450]);
+        assert.equal(cpu.devices.n97_touch.status().contact, "screen");
+        vm.symbian_set_touch(320, 180, false);
+        vm.symbian_send_control("send", false);
+        vm.symbian_set_touch(10, 12, true);
+        vm.symbian_set_touch(20, 30, false);
+        assert.deepEqual([cpu.devices.n97_touch.status().x, cpu.devices.n97_touch.status().y], [20, 30]);
+        assert.deepEqual(read_adc(3, 4), [86, 978, 400, 450], "lifting preserves the last latched conversion");
 
         // The stock NSC driver's pin 19 is KP-Y11/GPIO0. A brief glitch is
         // ignored and a valid low pulse resets N500 without losing Hall state.
-        for(const delay of [4, 10])
+        for(const delay of [4, 11])
         {
             assert.ok(send(0x42, [0x85, 0, 1]));
             assert.ok(send(0x42, [0x86, 0, 0]));
             advance(delay);
-            if(delay === 10) assert.ok(!send(0x4A, [0x63]));
+            if(delay === 11) assert.ok(!send(0x4A, [0x63]));
             assert.ok(send(0x42, [0x86, 0, 1]));
-            assert.deepEqual(read_adc(0x63), [delay === 10 ? 0x4000 : 0x4A2B]);
+            assert.deepEqual(read_adc(0x63), [delay === 11 ? 0x4000 : 0x4A2B]);
         }
-        assert.equal(gpio(8), hall | pen | absent_sd);
+        assert.equal(gpio(8), hall | pen | lock | absent_sd);
         assert.ok(send(0x42, [0x86, 0, 0]));
         const legacy = cpu.get_state(true);
-        legacy[4].splice(-2); // the earlier layout ends before the touch pin and controller.
+        legacy[4].splice(-3); // the earlier layout ends before the touch pin, controller and lock.
         assert.ok(send(0x42, [0x86, 0, 1]));
+        vm.symbian_send_control("lock", true);
         cpu.set_state(legacy);
+        assert.equal(gpio(8) & lock, lock, "older snapshots start with the lock switch at rest");
         assert.ok(!send(0x4A, [0x63]), "previous snapshots still drive the N500 reset line from GPIO0");
         assert.ok(send(0x42, [0x86, 0, 1]));
         assert.deepEqual(read_adc(0x63), [0x4000]);
@@ -165,14 +227,16 @@ test("N97 touch shares I²C and GPIO with the keyboard and retains a latched sam
         bus(0x1C, 0x86);
         bus(0x2C, 0x4A);
         const legacy_tx = cpu.get_state(true);
-        legacy_tx[4].splice(-2);
+        legacy_tx[4].splice(-3);
         legacy_tx[4].find(device => device?.[5] === "tx").pop();
         bus(0x24, 0);
         cpu.set_state(legacy_tx);
         bus(0x1C, 0);
         advance(11);
         assert.ok(!send(0x4A, [0x63]), "legacy in-flight TX finishes at the keypad after SA changes");
+        vm.symbian_send_control("lock", true);
         await vm.restart();
+        assert.equal(gpio(8) & lock, lock);
         assert.equal(cpu.devices.n97_touch.status().samples, 0);
     }
     finally { await vm.destroy(); }

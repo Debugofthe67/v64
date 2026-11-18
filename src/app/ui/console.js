@@ -646,12 +646,14 @@ function console_ui(layout, emulator, ctx)
     const n97_touch = symbian ? n97_touch_surface(layout.screen_container, (x, y, down) => emulator.symbian_set_touch(x, y, down),
         () => running && !powered_off) : null;
     let slider_changes = 0;
-    const n97_keyboard = symbian ? n97_keyboard_panel((code, pressed) => emulator.symbian_send_key(code, pressed), open => {
-        slider_changes++;
-        n97_touch.set_slider(open);
-        if(zoom_to_fit) fit();
-        emulator.symbian_set_slider(open);
-    }) : null;
+    const n97_keyboard = symbian ? n97_keyboard_panel((code, pressed) => emulator.symbian_send_key(code, pressed),
+        (control, pressed) => { if(!pressed || running && !powered_off) emulator.symbian_send_control(control, pressed); },
+        open => {
+            slider_changes++;
+            n97_touch.set_slider(open);
+            if(zoom_to_fit) fit();
+            emulator.symbian_set_slider(open);
+        }) : null;
     async function refresh_slider()
     {
         if(!n97_keyboard) return;
@@ -671,7 +673,10 @@ function console_ui(layout, emulator, ctx)
         emulator.add_listener("emulator-loaded", sync_slider);
         // A library resume restores the saved Hall level after emulator-loaded.
         emulator.add_listener("emulator-started", sync_slider);
-        emulator.add_listener("emulator-stopped", n97_touch.release);
+        emulator.add_listener("emulator-stopped", () => {
+            n97_touch.release();
+            n97_keyboard.release();
+        });
     }
 
     // ---- power

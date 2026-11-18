@@ -1,5 +1,5 @@
 import { N97_MATRIX_CODES } from "../symbian/n97_keymap.js";
-import { n97_touch_point } from "../symbian/n97_touch.js";
+import { n97_control, n97_touch_point } from "../symbian/n97_touch.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
 import { instantiate_v86, memory_import } from "../parallel/relocate.js";
 import { default_worker_url, parallel_unsupported_reason } from "../parallel/machine.js";
@@ -2834,6 +2834,22 @@ V86.prototype.symbian_set_touch = function(x, y, pressed)
 };
 // eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
 V86.prototype["symbian_set_touch"] = V86.prototype.symbian_set_touch;
+
+/**
+ * Move a Nokia N97 call touch key or the side lock switch.
+ * @param {string} control "send", "end", or "lock"
+ * @param {boolean} pressed
+ */
+V86.prototype.symbian_send_control = function(control, pressed)
+{
+    if(this.machine_type !== "nokia-n97" || !n97_control(control, pressed))
+    {
+        throw new Error("symbian_send_control: expected a Nokia N97 control and a boolean state");
+    }
+    this.bus.send("symbian-control", [control, pressed]);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_send_control"] = V86.prototype.symbian_send_control;
 
 /**
  * Rotate the simulated N90's gravity vector, in clockwise degrees from portrait.

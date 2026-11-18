@@ -102,7 +102,27 @@ async function check_n97_keyboard(frame, emulator)
     const pointer = (name, type, pointerId) => key(name).dispatchEvent(new win.PointerEvent(type, {
         button: 0, bubbles: true, cancelable: true, pointerId, pointerType: "touch",
     }));
+    const panel_contact = (contact, lock_pressed) => until(async () => {
+        const state = await read();
+        return state.touch.contact === contact && state.lock_pressed === lock_pressed;
+    }, "front contact " + contact + " and side lock " + lock_pressed);
     check(slider.textContent === "Open slider" && key("Q").closest(".n97-slide-keys").hidden, "closed slider hides its QWERTY keys");
+    pointer("Send", "pointerdown", 4);
+    await panel_contact("send", false);
+    pointer("Lock", "pointerdown", 5);
+    await panel_contact("send", true);
+    pointer("Send", "pointercancel", 4);
+    await panel_contact(null, true);
+    pointer("Lock", "lostpointercapture", 5);
+    await panel_contact(null, false);
+    keys("keydown", "End");
+    await panel_contact("end", false);
+    keys("keyup", "End");
+    await panel_contact(null, false);
+    keys("keydown", "Home");
+    await panel_contact("send", false);
+    keys("keyup", "Home");
+    await panel_contact(null, false);
     pointer("Menu", "pointerdown", 6);
     await pressed([0x35]);
     pointer("Menu", "pointerup", 6);
@@ -137,12 +157,17 @@ async function check_n97_keyboard(frame, emulator)
     win.dispatchEvent(new win.Event("blur"));
     await pressed([]);
     pointer("VolumeUp", "pointerdown", 12);
+    keys("keydown", "F4");
+    await panel_contact(null, true);
     keys("keydown", "KeyQ");
     await pressed([1, 0x38]);
     slider.click();
     await until(async () => !(await read()).slider_open, "closed Hall sensor at CPU Worker");
+    await panel_contact(null, true);
     await pressed([0x38]);
     pointer("VolumeUp", "pointerup", 12);
+    win.dispatchEvent(new win.Event("blur"));
+    await panel_contact(null, false);
     await pressed([]);
     doc.querySelector("#drawer_keyboard").click();
     check(keyboard.closest("[hidden]"), "normal keyboard drawer closes");
@@ -238,6 +263,11 @@ async function check_n97_keyboard_resume(first, store, id)
     }));
     await until(async () => (await worker_diagnostics(first.contentWindow.v86_console.emulator)).symbian.touch.pressed,
         "held touchscreen contact before suspend");
+    doc.querySelector('[data-key="Lock"]').dispatchEvent(new first.contentWindow.PointerEvent("pointerdown", {
+        bubbles: true, cancelable: true, button: 0, pointerId: 27, pointerType: "touch",
+    }));
+    await until(async () => (await worker_diagnostics(first.contentWindow.v86_console.emulator)).symbian.lock_pressed,
+        "held side lock before suspend");
     doc.querySelector("#menu_power").click();
     (await until(() => doc.querySelector("#menu_suspend"), "Suspend menu")).click();
     await until(() => doc.querySelector(".console-status")?.dataset.state === "Suspended", "suspended Nokia N97");
@@ -253,8 +283,8 @@ async function check_n97_keyboard_resume(first, store, id)
     const current = (await worker_diagnostics(emulator)).symbian;
     check(current.slider_open && !current.keyboard.pressed.length &&
         !reopened.querySelector(".n97-slide-keys").hidden, "restored Hall level and keyboard drawer agree");
-    check(!current.touch.pressed && reopened.querySelector(".n97-touch-screen").dataset.landscape === "true",
-        "restored screen orientation follows Hall and has no stale finger");
+    check(!current.touch.pressed && !current.lock_pressed && reopened.querySelector(".n97-touch-screen").dataset.landscape === "true",
+        "restored screen orientation follows Hall and has no stale contact");
     return resumed;
 }
 

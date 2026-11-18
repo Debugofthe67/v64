@@ -1764,6 +1764,8 @@ export class V86 {
     symbian_set_slider(open: boolean): void;
     /** Set the Nokia N97 resistive touch contact in the native 640 by 360 screen plane. */
     symbian_set_touch(x: number, y: number, pressed: boolean): void;
+    /** Press or release a Nokia N97 call touch key or the side lock switch. */
+    symbian_send_control(control: "send" | "end" | "lock", pressed: boolean): void;
 
     /** Install an unencrypted ARMv7 IPA using the native iOS 6 helper. */
     ios_install_status(): Promise<IOSInstallStatus>;
