@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Observes an unmodified RM-505 22.0.110 XIP with the selected board handoff.
-// The trace does not register devices or change guest memory or registers.
+// --reject-probe supplies only a Thumb caller-return test with status zero.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -9,14 +9,17 @@ import { parseArgs } from "node:util";
 import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
 import { V86 } from "../../src/main.js";
 import { N97_BOOT_TOC, N97_RAM_BASE, N97_RAM_SIZE, N97_ROM_ADDRESS } from "../../src/symbian/n97_board.js";
+import { read_n97_boot_media } from "../../src/symbian/n97_boot_media.js";
 import { N97_CPU_PLL, N97_L2_BASE, N97_PLL3_CONTROL, N97_RAPIDO_SELECT } from "../../src/symbian/n97_devices.js";
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    "ap-only": { type: "boolean" }, "boot-media": { type: "string" }, "boot-rom": { type: "string" }, "nand": { type: "string" },
+    "ap-only": { type: "boolean" }, "boot-media": { type: "string" }, "boot-rom": { type: "string" }, "reject-probe": { type: "boolean" },
+    "nand": { type: "string" }, "isa-probe": { type: "string" },
 } });
-if(positionals.length !== 1 || values["boot-rom"] && !values["boot-media"] || values["ap-only"] && values["boot-media"])
+if(positionals.length !== 1 || (values["boot-rom"] || values["reject-probe"]) && !values["boot-media"] ||
+    values["ap-only"] && values["boot-media"] || values["boot-rom"] && values["reject-probe"] || values["isa-probe"] && !values["ap-only"])
 {
-    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--nand <onenand.img>] [--ap-only | --boot-media <rapido-boot.bin> [--boot-rom <dump>]]");
+    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--nand <onenand.img>] [--ap-only [--isa-probe <rapido-boot.bin>] | --boot-media <rapido-boot.bin> [--boot-rom <dump> | --reject-probe]]");
 }
 const rom = await readFile(positionals[0]);
 const sha256 = createHash("sha256").update(rom).digest("hex");
@@ -25,26 +28,53 @@ const wasm_path = fileURLToPath(new URL("../../build/v86-arm64.wasm", import.met
 
 const instructions_per_ms = 8000;
 const image = async path => path ? { buffer: Uint8Array.from(await readFile(path)).buffer } : undefined;
+function rejection_image()
+{
+    const bytes = new Uint8Array(0x2000);
+    bytes.set([0x00, 0x20, 0x70, 0x47], 0x1208); // movs r0, #0; bx lr
+    return { buffer: bytes.buffer };
+}
 const vm = new V86({ machine_type: "nokia-n97", graphics_adapter: "none", disable_jit: true,
     autostart: false, log_level: 0, wasm_path, cpu_clock: { mode: "deterministic", instructions_per_ms },
     symbian: { rom: { buffer: Uint8Array.from(rom).buffer }, rom_sha256: sha256, application_processor_only: values["ap-only"],
-        boot_media: await image(values["boot-media"]), bootrom: await image(values["boot-rom"]),
+        boot_media: await image(values["boot-media"]), bootrom: values["reject-probe"] ? rejection_image() : await image(values["boot-rom"]),
         nand: values.nand ? { url: values.nand, disk_option: "read_write" } : undefined } });
+
+// The original TOC lookup and stores publish the physical pointer before the
+// chip-ROM call, even when the original lookup finds no ISASW entry.
+function observe_isasw_record(record, pc, step, register, word)
+{
+    if(pc === N97_ROM_ADDRESS + 0x2594) Object.assign(record, { step, pc, address: register(7),
+        found: { physical: register(0), bytes: register(1) } });
+    if(pc === N97_ROM_ADDRESS + 0x259C)
+    {
+        record.published = { physical: word(record.address + 0x20), bytes: word(record.address + 0x24) };
+        assert.deepEqual(record.published, record.found);
+    }
+}
 
 function observe_rapido_service(cpu, pc_now, field, register, word)
 {
     const wasm = cpu.wm.exports;
     const media = cpu.boot_files.media;
+    const isasw_record = {};
     let service, result;
     for(let step = 0; step < 500000; step++)
     {
         const pc = pc_now();
+        observe_isasw_record(isasw_record, pc, step, register, word);
         if(pc === 0xFFFF1208 && !service)
         {
             service = { step, pc, thumb: !!(field("pstate") & 32), registers: [0, 1, 2, 3].map(register), lr: register(14) };
             assert.deepEqual(service.registers, [N97_ROM_ADDRESS + 0x2A08, 0, media.isa.address, 0]);
             assert.equal(service.thumb, true);
-            assert.equal(word(media.isa.address), 0x809795A3);
+            assert.equal(service.lr, N97_ROM_ADDRESS + 0x2890);
+            service.return_thumb = !!(service.lr & 1);
+            service.descriptor_words = [0, 4, 8, 12].map(offset => word(service.registers[0] + offset));
+            service.isasw_header = { magic: word(media.isa.address), startup_offset: word(media.isa.address + 0x148),
+                expanded_bytes: word(media.isa.address + 0x3D8), load_address: word(media.isa.address + 0x3DC) };
+            assert.deepEqual(service.isasw_header, { magic: 0x809795A3, startup_offset: 0x1000,
+                expanded_bytes: media.isa.bytes.length, load_address: media.isa.address });
         }
         if(service && pc === service.lr)
         {
@@ -62,10 +92,140 @@ function observe_rapido_service(cpu, pc_now, field, register, word)
         wasm["a64_worker_slice"](1);
     }
     assert.ok(service && result, "the retail bootstrap should reach the RAPIDO ROM service");
+    assert.deepEqual(isasw_record.published, { physical: media.isa.address, bytes: media.isa.bytes.length });
     if(!cpu.boot_files.bootrom) assert.deepEqual(result, { step: service.step + 1, pc: 0x0C, ifsr: 8 });
+    if(values["reject-probe"]) assert.deepEqual(result, { step: service.step + 2, pc: service.lr, return_value: 0,
+        next_branch: N97_ROM_ADDRESS + 0x2898 });
     if(result.return_value !== undefined) assert.equal(result.next_branch, result.return_value === 1 ? 0x0890289C : 0x08902898);
     return { sha256, boot_media_sha256: media.digest, bootrom_sha256: cpu.boot_files.bootrom_digest || null,
-        onenand: cpu.devices.n97_onenand?.status(), service, result };
+        diagnostic_rejection: !!values["reject-probe"], onenand: cpu.devices.n97_onenand?.status(), isasw_record, service, result };
+}
+
+// Observe a supervisor mapping from the live short-descriptor tables.
+function supervisor_descriptor(address, field)
+{
+    const n = field("a32_ttbcr") & 7;
+    const use_ttbr1 = !!n && address >>> (32 - n) !== 0;
+    const table = (field(use_ttbr1 ? "ttbr1_el1" : "ttbr0_el1") & (-1 << (use_ttbr1 ? 14 : 14 - n))) >>> 0;
+    const index = (address >>> 20) & (use_ttbr1 ? 0xFFF : (1 << (12 - n)) - 1);
+    return table + 4 * index;
+}
+
+function supervisor_physical(address, field, word)
+{
+    const first = word(supervisor_descriptor(address, field));
+    if((first & 3) === 2) return ((first & 0xFFF00000) | (address & 0xFFFFF)) >>> 0;
+    assert.equal(first & 3, 1);
+    const page = word(((first & 0xFFFFFC00) >>> 0) + (address >>> 12 & 255) * 4);
+    if(page & 2) return ((page & 0xFFFFF000) | (address & 0xFFF)) >>> 0;
+    assert.equal(page & 3, 1);
+    return ((page & 0xFFFF0000) | (address & 0xFFFF)) >>> 0;
+}
+
+function read_hw_conf(start, read)
+{
+    const records = [];
+    let address = start;
+    for(let n = 0; n < 64; n++)
+    {
+        const type = read(address), length = read(address + 4);
+        assert.ok(length >= 8 && length <= 256 && !(length % 4), "invalid original HW_CONF record length");
+        const payload = Array.from({ length: length / 4 - 2 }, (_, i) => read(address + 8 + i * 4));
+        records.push({ address, type, length, payload });
+        if(type === 2) return records;
+        address = type === 3 ? payload[0] : address + length;
+    }
+    throw new Error("original HW_CONF did not terminate");
+}
+
+// Execute the original ISASW entry on a restored diagnostic copy of the AP
+// state. Supply the mappings and variant record fields that AP-only omitted,
+// then let the original wrapper inspect the image and make the call.
+function observe_isa_entry(isa, sisa, cpu, state, pc_now, field, register, word)
+{
+    assert.equal(pc_now(), sisa.pc);
+    assert.equal(sisa.record.image, 0);
+    const base = 0xC6300000, payload = base + 0x400;
+    const entry_offset = new DataView(isa.bytes.buffer, isa.bytes.byteOffset).getUint32(0x148, true);
+    assert.equal(entry_offset, 0x1000);
+    const entry = base + entry_offset;
+    const read = address => word(supervisor_physical(address, field, word));
+    const irq_record = sisa.hw_conf.find(record => record.type === 0x0B);
+    assert.equal(irq_record.payload.length, 2);
+    const previous_callback = read(irq_record.payload[1]);
+    const align_page = size => Math.ceil(size / 0x1000) * 0x1000;
+    const assert_unused = (address, size) => assert.ok(cpu.read_blob_physical(address, size).every(byte => !byte),
+        "diagnostic scratch range is already used at 0x" + address.toString(16));
+    let next_table = 0x0A284000;
+    function map_pages(virtual, physical, size, read_only = false)
+    {
+        assert_unused(physical, align_page(size));
+        for(let offset = 0; offset < size; offset += 0x1000)
+        {
+            const address = virtual + offset;
+            const slot = supervisor_descriptor(address, field);
+            let first = word(slot);
+            if(!first)
+            {
+                assert_unused(next_table, 0x400);
+                first = next_table | 1;
+                next_table += 0x400;
+                cpu.write32_physical(slot, first);
+            }
+            assert.equal(first & 3, 1);
+            const page_slot = ((first & 0xFFFFFC00) >>> 0) + 4 * (address >>> 12 & 255);
+            assert.equal(word(page_slot), 0, "the new diagnostic page must not replace a mapped page");
+            // ARMv6 extended small page: AP=3, APX set only for image pages.
+            cpu.write32_physical(page_slot, physical + offset | (read_only ? 0x232 : 0x32));
+        }
+    }
+    map_pages(base, isa.address, isa.bytes.length, true);
+    map_pages(0xC6800000, 0x0A000000, 0x280000); // XIP +0x208C reserves this extent for ISASW.
+    map_pages(0xC60F0000, 0x0A280000, 0x2000); // XIP +0x233C uses an 8 KiB mapping.
+    cpu.write_blob_physical(isa.bytes, isa.address);
+    const sp = register(13), return_address = read(sp + 12);
+    assert.equal(return_address, 0x800B3BA0);
+    const saved_regs = [0, 4, 8].map(offset => read(sp + offset));
+    cpu.write32_physical(sisa.record.physical + 0x20, base);
+    cpu.write32_physical(sisa.record.physical + 0x24, isa.bytes.length);
+    const wrapper = 0x800B3B38; // ldr r5, [r4, #0x20]
+    state.setUint32(STATE_OFFSETS.pc, wrapper, true);
+    const wasm = cpu.wm.exports;
+    wasm["a64_restored"]();
+    const checkpoints = new Map([[entry, "entry"], [payload + 0x62326, "early_init"], [payload + 0x623E4, "irq_services_record"],
+        [payload + 0x62408, "publish_irq_callback"], [payload + 0xC3E, "semaphore_init"]]);
+    const visits = [], route = [];
+    cpu.clock.resume();
+    let result, entry_context;
+    for(let step = 0; step < 100000; step++)
+    {
+        const pc = pc_now();
+        if(checkpoints.has(pc)) visits.push({ step, pc, stage: checkpoints.get(pc), thumb: !!(field("pstate") & 32) });
+        if(pc === entry)
+        {
+            entry_context = { args: [0, 1, 2, 3].map(register), saved_regs: [4, 5, 6].map(register), sp: register(13), lr: register(14) };
+            assert.deepEqual(entry_context, { args: sisa.startup_args, saved_regs, sp: sp + 16, lr: return_address });
+        }
+        if([0x04, 0x0C, 0x10, 0xFFFF0004, 0xFFFF000C, 0xFFFF0010].includes(pc))
+        {
+            result = { step, pc, from: route.at(-1), far: field("far_el1"), fsr: field("esr_el1"), route: route.slice() };
+            break;
+        }
+        route.push(pc);
+        if(route.length > 12) route.shift();
+        if(step && step % 32 === 0) cpu.run_hardware_timers(null, cpu.clock.advance_instructions(32));
+        wasm["a64_worker_slice"](1);
+    }
+    assert.ok(result, "original ISASW probe reached its instruction limit");
+    assert.deepEqual(visits.map(({ pc, thumb }) => [pc, thumb]), Array.from(checkpoints.keys(), pc => [pc, pc !== entry]));
+    assert.deepEqual([result.pc, result.from, result.far, result.fsr], [0xFFFF0010, 0xC636206A, 0xC6040400, 8],
+        "after publishing the IRQ bridge, the isolated startup stops at the board's boot source read");
+    const irq_callback_table = read(0xC68020C8), irq_callback = read(irq_record.payload[1]);
+    assert.equal(irq_callback_table, irq_record.payload[0]);
+    assert.equal(irq_callback, 0xC6679028);
+    assert.notEqual(irq_callback, previous_callback, "the original ISASW callback must be published by the original code");
+    return { kind: "isolated_ap_diagnostic", wrapper, entry, entry_context, visits, result,
+        irq_callback_table, previous_callback, irq_callback };
 }
 
 try
@@ -80,7 +240,11 @@ try
     const pc_now = () => Number(cpu.read_pc());
     const field = name => state.getUint32(STATE_OFFSETS[name], true);
     const register = n => state.getUint32(STATE_OFFSETS.x + n * 8, true);
-    const word = address => new DataView(cpu.mem8.buffer, cpu.mem8.byteOffset + cpu.ram_offset(address, 4), 4).getUint32(0, true);
+    const word = address => {
+        const offset = cpu.ram_offset(address, 4);
+        assert.ok(offset >= 0, "diagnostic expects SDRAM at 0x" + address.toString(16));
+        return new DataView(cpu.mem8.buffer, cpu.mem8.byteOffset + offset, 4).getUint32(0, true);
+    };
     assert.equal(cpu.profile, "arm1136");
     assert.equal(pc_now(), N97_ROM_ADDRESS);
     if(values["boot-media"])
@@ -125,6 +289,8 @@ async function observe_kernel(cpu, wasm, state, pc_now, field, register, word)
     const variant_start = 0x800973C4;
     const variant_clock_exit = 0x8009746C;
     let configuration, mmu_enabled_at, first_linked_pc, ekern, variant, irq, dma, next_abort;
+    const isasw_record = {};
+    let sisa, before_sisa;
     const dma_entry = 0x8009D114;
     const first_instructions = [];
     const init_poll_interval = 32;
@@ -138,6 +304,7 @@ async function observe_kernel(cpu, wasm, state, pc_now, field, register, word)
             cpu.run_hardware_timers(null, cpu.clock.advance_instructions(init_poll_interval));
         }
         const pc = pc_now();
+        observe_isasw_record(isasw_record, pc, step, register, word);
         const pstate = field("pstate");
         const sctlr = field("sctlr_el1");
         if(first_instructions.length < 4) first_instructions.push(pc - N97_ROM_ADDRESS);
@@ -164,6 +331,16 @@ async function observe_kernel(cpu, wasm, state, pc_now, field, register, word)
             dma.first_request = { pc, step, address: (register(0) + 0x484) >>> 0, width: 4, value: register(6) };
         }
         if(dma && !dma.returned && pc === dma.lr) dma.returned = { pc, step };
+        if(values["ap-only"] && pc === 0x800B3B40 && !sisa)
+        {
+            const virtual = register(4), physical = supervisor_physical(virtual, field, word);
+            sisa = { pc, step, record: { virtual, physical, image: word(physical + 0x20), bytes: word(physical + 0x24) },
+                address_read: register(5), expected_magic: register(0), startup_args: [0x78, 0x7C, 0x80, 0x84].map(offset => word(physical + offset)) };
+            assert.equal(sisa.address_read, sisa.record.image);
+            assert.equal(sisa.expected_magic, 0x809795A3);
+            sisa.hw_conf = read_hw_conf(sisa.startup_args[2], address => word(supervisor_physical(address, field, word)));
+            if(values["isa-probe"]) before_sisa = await vm.save_state();
+        }
         wasm["a64_worker_slice"](1);
         if(irq && !irq.returned && (pstate & 31) === 0x12 && [0x8004F354, 0x8004F370, 0x8008D120].includes(pc))
         {
@@ -219,6 +396,10 @@ async function observe_kernel(cpu, wasm, state, pc_now, field, register, word)
     ]);
     if(values["ap-only"])
     {
+        assert.deepEqual(isasw_record.published, { physical: 0, bytes: 0 });
+        assert.ok(sisa && next_abort?.pc === sisa.pc && next_abort.far === 0 && next_abort.fsr === 5,
+            "the AP diagnostic must observe the original ISASW consumer fault on its absent image");
+        assert.equal(sisa.record.physical, isasw_record.address);
         assert.ok(dma?.first_request && dma.step > irq.returned.step, "the AP diagnostic must reach the original DMA extension");
         assert.equal(dma.first_request.address, 0xC6040C04);
         assert.equal(dma.first_request.value, 1);
@@ -250,7 +431,15 @@ async function observe_kernel(cpu, wasm, state, pc_now, field, register, word)
     assert.deepEqual(cpu.get_diagnostics().symbian, devices);
     assert.deepEqual(cpu.devices.n97_os_timer.get_state(), tick_state);
     assert.deepEqual(cpu.devices.n97_interrupts.get_state(), interrupt_state);
+    let isa_probe;
+    if(before_sisa)
+    {
+        await vm.restore_state(before_sisa);
+        const media = read_n97_boot_media(await readFile(values["isa-probe"]), sha256);
+        assert.equal(media.digest, "de16da82ffe3a83fc376fefaa494470850648d5b0aec6d4507c931ada1075e74", "original 0576555 boot media");
+        isa_probe = observe_isa_entry(media.isa, sisa, cpu, state, pc_now, field, register, word);
+    }
     console.log(JSON.stringify({ sha256, load_address: N97_ROM_ADDRESS, boot_registers, first_instructions,
         configuration, toc_entry, mmu_enabled_at, first_linked_pc, ekern, variant, instructions_per_ms,
-        irq, tick_bus, dma, next_abort, devices, reset_devices, mmio }, null, 2));
+        irq, tick_bus, dma, isasw_record, sisa, next_abort, isa_probe, devices, reset_devices, mmio }, null, 2));
 }

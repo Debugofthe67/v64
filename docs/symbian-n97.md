@@ -86,19 +86,36 @@ RM-505 的 CORE 包含外层 FPSX 闪存目录和 `SOS*DSP0`、`SOS*ISASW` 组�
 | DSP0 | `0x08200000` | 1,820,720 字节，`a4d24c50241c40a26a07db4ac180908e2eecab1839e20565b8adee976b7f123e` |
 | ISASW | `0x08480000` | 3,893,852 字节，`60863fb9c4af32f638b0f867d69ab9304dec2d439648832852a3b15b39d31f21` |
 
-原版 XIP 在第 1,470 步进入 Thumb 服务 `0xFFFF1208`，R0 指向实际固件的 16 字节描述，R2 指向 ISASW 证书起址。这个芯片 ROM 入口在 RAP3NAND 的 type 18 跳转表附近。用真 XIP 和完整映像运行时，缺芯片 ROM 会在第 1,471 步产生外部预取异常。该服务需要本地的 RAPIDO 芯片转储。合成探针仅验证指令调用和失败分支，回传零后原版跳到其失败处理 `0x08902898`。
+原版 XIP 第 1,470 步进入 Thumb 服务 `0xFFFF1208`（接 OneNAND 时为第 1,550 步）。R0 为 16 字节描述符地址 `0x08902A08`，四个字为 `0x96BD0FAB`、`0x71C22AAF`、`0xAF6462D2`、`0x00140000`。R2 为 `0x08480000`，指向 ISASW 的 1 KiB 证书和紧随其后的解压映像。此次调用中 R1、R3 都为零，尚无独立证据说明它们的含义。缺芯片 ROM 时，下一条指令触发外部预取异常（向量 `0x0000000C`、IFSR `8`）。`--reject-probe` 仅让调用以 R0=0 返回到 ARM 的 `0x08902890`，原版随后转到 `0x08902898` 的拒绝路径。原版比较指令要求返回值恰为 1 才继续。这个比较来自静态检查，诊断只执行了拒绝路径。
 
 设置支持从本地附加映射于 `0xFFFF0000` 的原始 Boot ROM 文件。入口处需有内容，文件大小为 8–64 KiB 且按页对齐。RM-505 服务报告的 ROM ID 为 `4B9B75103E691FF8`，可随转储提供以排除不匹配的报告。可选的预期 SHA-256 与实际文件比对，每次装载和快照恢复继续核对已保存的文件指纹。当前检查覆盖文件结构、区域和摘要。实机报告中两个 ROM CRC 的覆盖范围和真实转储的启动结果仍待验证。[RM-505 芯片读数](https://forum.gsmhosting.com/vbb/f609/n97-rm-505-flashing-problem-1218453/)
 
-仅 AP 的显式诊断入口使用同一未修改的 XIP 和其可选配置记录路径，保留内核 IRQ 验收。原版通过 `Sys/Bin/dma.dll` 的六通道复位，并从 `0x8009D114` 返回调用者 `0x8009D2EC`。下一处原版异常来自 `Sys/Bin/sisa.ext` 的 `0x800B3B40`。它读取未由 AP 单独引导提供的 ISASW 交接地址，产生 `FAR=0`、`FSR=5` 的数据异常。原版 XTI 识别异常线程为 `ekern.exe::Supervisor`，输出 `FAULT: Exception 0x10000000`。普通 VM 保留 DSP0、ISASW 以及 `0xFFFF1208` 芯片 ROM 服务的原版调用。
+仅 AP 的显式诊断入口使用同一未修改的 XIP 和其可选配置记录路径，保留内核 IRQ 验收。原版通过 `Sys/Bin/dma.dll` 的六通道复位，并从 `0x8009D114` 返回调用者 `0x8009D2EC`。XIP `+0x2594` 和 `+0x2598` 把 TOC 查询得到的 ISASW 地址和长度写到变体记录 `+0x20`、`+0x24`。零售诊断在芯片服务前读回 `0x08480000` 和 3,893,852 字节，仅 AP 路径读回两个零。`sisa.ext` 的 `0x800B3B40` 随后从零地址读证书头，产生 `FAR=0`、`FSR=5` 的数据异常。原版 XTI 报告异常线程 `ekern.exe::Supervisor`。
 
 0576555 清单里的 `RM505_APE_ONLY_ENO_09w23_v0.072.fpsx` 是独立的 `SOS*ENO` 交付组件。该样本的 2877440 字节压缩区域位于闪存 `0x00400400`，解压得到 5585920 字节，证书描述的装载起点为 `0x088FF000`。公开实机刷写记录在独立的 `RAPIDOv11_2nd.fg` 装载前读取芯片 ROM 标识。仍未找到可核对身份的 RAPIDO 芯片 ROM 转储，或 N97 零售固件支持的 AP-only 离线启动方式。普通 VM 仍在原始 ROM 服务入口保留该依赖。[RM-505 实机刷写记录](https://forum.gsmhosting.com/vbb/f528/nokia-n97-rm-505-flash-ok-817598/)
 
 ```sh
+node tools/symbian/vpl.mjs extract <firmware-directory> <output> --product-code 0576555
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin
+node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --nand <output>/onenand.img --boot-media <output>/rapido-boot.bin --reject-probe
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --boot-rom <local-dump>
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --ap-only
+node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --ap-only --isa-probe <output>/rapido-boot.bin
 ```
+
+### 原版 ISASW 启动与中断回调交接
+
+静态对照显示，在 ISASW 记录非零的路径上，XIP `+0x2350–0x2390` 把 ISASW 映射到 `0xC6300000`，保存原物理地址，然后用虚拟地址更新记录。`sisa.ext` 检查证书魔数 `0x809795A3` 和 `+0x148` 非零入口偏移，从变体记录 `+0x78–0x84` 取四个参数，最后在同一应用处理器上 `BX` 到映像。0576555 的偏移为 `0x1000`。另外两处芯片服务调用仅出现在原厂加载器发布 `KEYS`（tag 12）或 `R&D`（tag 25）的分支，本次零售冷启动没有这些记录。其描述符末字分别为 `0x00110000`、`0x00100000`。
+
+`--isa-probe` 在原版仅 AP 内核读取空指针前保存状态。探针先验证原来的数据异常，再恢复状态，在这一临时实例内补映射原版只读 ISASW 和工作内存，填入该次诊断的映像地址及长度。它让原版 `sisa.ext` 从 `0x800B3B38` 重新读取记录，由原版代码检查证书头、恢复栈和寄存器，以及跳转到 `0xC6301000`。R2 为来宾实际建立的 `HW_CONF` 链，包含 type `0x0A` 的 TOC 指针和 type `0x0B` 的两个中断服务交接地址。
+
+原版 ARM 入口到达 Thumb 早期初始化 `0xC6362726`。随后在 `0xC63627E4` 读取 type `0x0B`，把 AP 回调表 `0xC8008B50` 存到 `0xC68020C8`，并在 `0xC6362808` 向 AP 提供的回写地址 `0xC8008B38` 发布原版函数 `0xC6679028`。之后，原版在 `0xC636206A` 读 VA `0xC6040400`（PA `0x20040400`）时发生外部数据异常（FSR `8`）。RAP3NAND `+0x1EFE` 附近从同一物理寄存器读取位 `[23:20]`，用作启动源选择。本次隔离诊断执行到了真实回调发布。正常冷启动仍停在片上 ROM 服务，ISASW 完成初始化及 S60 主屏均待验收。
+
+### 原厂证书链的独立对照
+
+对 0576555 的原厂 `KEYS`、ISASW 和 DSP0 用 OpenSSL 做了证书和载荷对照。`KEYS` 位于同套 OneNAND 主区偏移 `0x82A00`，占 `0x600` 字节。`KEYS[0x004:0x08C]` 的 SHA-1 对应 RM-505 的根键指纹 `CAEEBB65D3C48E6DC73B49DC5063A2EE5867D611`。原厂 RSA 公钥的指数为 3，128 字节模数为小端。根键以 PKCS#1 v1.5/SHA-1 验证 `KEYS[0:0x444]`，签名为 `[0x444:0x4C4]` 的大端数。其 `+0x21C` 的基带公钥验证两个组件各自的证书 `[0:0x168]`，签名位于 `[0x350:0x3D0]`。两个样本的扩展载荷 SHA-1 与证书 `[0x24:0x38]` 仅首字节的 `0x80` 位不同。分别改动根指纹、签名、证书字段、基带公钥或载荷后，独立校验均拒绝数据。
+
+下一步可为模拟器添加显式兼容模式，固定可信根并核对来宾实际提交的 ISASW 证书、装载范围与完整解压载荷。通过验签后，还需用原版后续指令验收变体记录、地址映射和启动源寄存器上的行为。此阶段只交付诊断和样本证据。
 
 ## Samsung MuxOneNAND 物理介质
 
