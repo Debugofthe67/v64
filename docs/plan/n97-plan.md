@@ -96,3 +96,19 @@ CORE 为 111,508,110 字节，SHA-256 为 `d5b3cd2467edb812ab3a582b67168a962b47e
 运行 `node tools/symbian/vpl.mjs extract <固件目录> <新建输出目录> --product-code 0576555` 可生成 `firmware.json` 和七个输出文件。工具按 FPSX 记录的目标空间、证书分组及闪存地址重建镜像，对每块检查头与载荷校验。应用处理器的 `SOS+CORE`、三个 ROFS 和 UDA 分别提取。收包记录中的其他处理器镜像仍可在报告中辨认。
 
 在独立解码中，1,954 个 BytePair 页和 34 个未压缩页还原出同一份 15,646,720 字节 XIP。逐字节对比通过，SHA-256 为 `9c0863e379d243f953d3cfcd87d11c98231f2d0469e69244d9ee059472c99194`。ROM 头的链接基址为 `0x80000000`，起始指令跳至 ROM 偏移 `0x1880`。在 ROM 目录中读到了 `ekern.exe`、`efile.exe` 和 `EStart.exe`。三层 ROFS 的字节数依次为 90,117,152、19,889,920、440，第二层的语言文件给出了 37、01（默认）、50，第三层有客户版本标识。UDA 的 FAT16 卷逻辑容量为 76,640,256 字节，固件提供的 9,216,000 字节恰好覆盖至最后一个已分配簇。[Symbian ROM 结构](https://github.com/SymbianSource/oss.FCL.sf.os.kernelhwsrv/blob/master/kernel/eka/include/e32rom.h) · [ROFS 结构](https://github.com/SymbianSource/oss.FCL.sf.os.kernelhwsrv/blob/master/userlibandfileserver/fileserver/inc/rofs.h)
+
+### S1.1　执行原版复位入口（2026-11-18 通过）
+
+`nokia-n97` 已有独立 ARM32 初始化入口。裸机测试覆盖 ARM/Thumb 切换、SVC 与 IRQ 返回、ARMv6 扩展短描述符和数据异常。首轮复核在两个实验装载地址执行了相同的原版指令：ROM 先向 SRAM `0x30000010` 保存 R0–R3，再向 `0x20040484` 写入 1。独立 ARM1136 模拟器复现了原版代码的两次初始寄存器写入，以及读取 R2 中 RAM 标签之后的前三次板级访问。虚拟机管理器的 81 种既有启动配置对照通过。[N97 引导验收与复现命令](../symbian-n97.md)
+
+### S1.2　原厂加载地址、交接记录与内核入口（2026-11-18 通过）
+
+原厂闪存目录与 RAP3NAND 加载器给出 XIP 物理地址 `0x08900000`、128 MiB 主内存和 16 KiB SRAM。常规 N97 入口已从该地址执行固件。复核时，原版读取了 R2 指向的交接记录，处理内存、时钟与冷启动原因，第 1,868 步在向 `0x20030300` 写入 `0xA` 时触发数据异常。独立测试覆盖 32,768 Hz 计时器的锁存和回绕，并在 Chrome 的 CPU Worker 中验证了新物理布局。
+
+这一阶段的诊断曾为五处硬件地址提供限定响应。同一份 XIP 在第 29,804 步开启 MMU，第 1,336,740 步到达 ROM 目录所列 `ekern.exe` 入口 `0x8004F110`，执行第一条内核指令后 PC 为 `0x8004F114`。S1.3 后这些里程碑已可直接从默认机型复现。[逐地址记录与当前复现命令](../symbian-n97.md)
+
+### S1.3　默认机型进入原版内核并完成时钟初始化（2026-11-18 通过）
+
+默认机型按 RAPIDO3G 1.13 建模，原版在第 29,801 步开启 MMU，第 1,336,737 步进入 `ekern.exe`，随后调用 RAPIDO variant，按原版流程启用 L2 并等到 PLL3 锁定。独立实测停在第 1,360,196 步：`0x800974C4` 向 VA `0xC6031C10`（PA `0x20031C10`）写 `0xAAAAAAAA`，触发外部数据异常。
+
+在对照实验中，仅恢复模拟 CPU 原先的缓存类型寄存器值，原版便通过 XTI 通道 `0xE0` 发出 `CacheFault 116`。改为 ARM1136 定义的缓存类型后，同一份固件通过该处。16 项公开测试以及原厂 XIP 冷重置、快照回读通过。机型布局从 2 换为 3，较早实验版本的挂起状态需要冷启动重建。[机型与验收记录](../symbian-n97.md) · [Arm ARM1136 技术手册](https://developer.arm.com/documentation/ddi0211/k/)

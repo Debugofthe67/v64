@@ -44,7 +44,7 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
     // (the defaults of src/browser/starter.js: an NE2000 and an SB16 on the PC machines)
     const machine = check_machine_options(o);
     const arm = is_arm(machine.cpu_type);
-    const net_type = o.net_device?.type || (machine.machine_type === "s5l8930" ? "none" : arm ? "virtio" : "ne2k");
+    const net_type = o.net_device?.type || (["s5l8930", "nokia-n97"].includes(machine.machine_type) ? "none" : arm ? "virtio" : "ne2k");
     const audio_device = arm ? o["audio_device"] : o["audio_device"] || "sb16";
     return {
         "device_plugins": plugins.map(plugin => {
@@ -115,6 +115,8 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
         "ios": o.ios && { "kernelcache": file(o.ios.kernelcache), "devicetree": file(o.ios.devicetree),
             "nand": file(o.ios.nand), "ramdisk": file(o.ios.ramdisk), "bootlogo": file(o.ios.bootlogo), "boot_args": o.ios.boot_args,
             "nand_boot": o.ios.nand_boot, "network": o.ios.network },
+        "symbian": o["symbian"] && { "rom": file(o["symbian"]["rom"]), "load_address": o["symbian"]["load_address"],
+            "boot_registers": o["symbian"]["boot_registers"], "rom_sha256": o["symbian"]["rom_sha256"] },
         "kernel": file(o.kernel), "dtb": file(o.dtb),
         // (docs/plan/android-images-plan.md I2: the bootloader runs in the worker, beside the disk)
         "android": o.android && { "device": o.android.device, "gpu_mode": o.android.gpu_mode, "selinux": o.android.selinux,

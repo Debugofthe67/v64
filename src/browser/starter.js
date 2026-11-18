@@ -45,6 +45,7 @@ import { DEFAULT_GLES_VERSION, GLES_VERSIONS, ranchu_gpu_mode } from "../android
 import { PartitionBuffer } from "../android/partition_buffer.js";
 import { read_nand_boot } from "../ios/nand_boot.js";
 import { attach_ios_install_api } from "../ios/install_api.js";
+import { N97_RAM_SIZE } from "../symbian/n97_board.js";
 import { FS } from "../../lib/filesystem.js";
 
 /**
@@ -537,6 +538,12 @@ V86.prototype.continue_init = async function(emulator, options)
     {
         options[name] = await opfs_readable(name, options[name]);
     }
+    if(options["symbian"]?.["rom"])
+    {
+        options["symbian"] = Object.assign({}, options["symbian"], {
+            "rom": await opfs_readable("Nokia N97 firmware", options["symbian"]["rom"]),
+        });
+    }
     if(options.virtio_disks)
     {
         options.virtio_disks = await Promise.all(options.virtio_disks.map((disk, i) => opfs_readable("virtio_disk" + i, disk)));
@@ -632,7 +639,8 @@ V86.prototype.continue_init = async function(emulator, options)
     settings["x87_fast_math"] = options["x87_fast_math"];
     settings["x87_jit_cache"] = options["x87_jit_cache"];
     settings.load_devices = true;
-    settings.memory_size = options.memory_size || (this.machine_type === "s5l8930" ? 512 : 64) * 1024 * 1024;
+    settings.memory_size = options.memory_size || (this.machine_type === "nokia-n97" ? N97_RAM_SIZE :
+        (this.machine_type === "s5l8930" ? 512 : 64) * 1024 * 1024);
     settings.high_memory_size = options.high_memory_size;
     settings.extended_memory_size = options.extended_memory_size;
     settings.extended_memory_cache = options.extended_memory_cache;
@@ -650,6 +658,7 @@ V86.prototype.continue_init = async function(emulator, options)
     settings.parallel1 = options.parallel1;
     settings.cmdline = options.ios ? options.ios.boot_args : options.cmdline;
     settings.ios_network = !!options.ios?.network;
+    settings.symbian = options["symbian"];
     settings.preserve_mac_from_state_image = options.preserve_mac_from_state_image;
     settings.mac_address_translation = options.mac_address_translation;
     settings.cpuid_level = options.cpuid_level;
@@ -985,6 +994,9 @@ V86.prototype.continue_init = async function(emulator, options)
             case "ios_bootlogo":
                 settings.ios_bootlogo = buffer.buffer;
                 break;
+            case "symbian_rom":
+                settings.symbian_rom = buffer.buffer;
+                break;
             case "kernel":
                 settings.kernel = buffer.buffer;
                 break;
@@ -1077,7 +1089,7 @@ V86.prototype.continue_init = async function(emulator, options)
 
         if(name === "bios" || name === "vga_bios" || name === "firmware_code" || name === "firmware_vars" || name === "tpm_wasm" || name === "tpm_state" ||
             name === "initial_state" || name === "multiboot" ||
-            name === "bzimage" || name === "initrd" || name === "kernel" || name === "ios_bootlogo" || name === "dtb" || name === "android_vendor_ramdisk")
+            name === "bzimage" || name === "initrd" || name === "kernel" || name === "ios_bootlogo" || name === "symbian_rom" || name === "dtb" || name === "android_vendor_ramdisk")
         {
             // Ignore async for these because they must be available before boot.
             // This should make result.buffer available after the object is loaded
@@ -1150,6 +1162,11 @@ V86.prototype.continue_init = async function(emulator, options)
             throw new Error("iPhone boot requires a prepared NAND image, or ios.kernelcache and ios.devicetree");
         if(options.ios?.nand_boot && (!options.ios.nand || options.ios.kernelcache || options.ios.devicetree))
             throw new Error("ios.nand_boot requires a NAND image and supplies its own kernel and device tree");
+    }
+    if(this.machine_type === "nokia-n97")
+    {
+        if(!options["symbian"]) throw new Error("Nokia N97 boot requires symbian.rom");
+        add_file("symbian_rom", options["symbian"]["rom"]);
     }
     add_file("initrd", options.ios ? options.ios.ramdisk : options.initrd);
     add_file("kernel", options.ios ? options.ios.kernelcache : options.kernel);

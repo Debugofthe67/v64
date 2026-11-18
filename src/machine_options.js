@@ -5,6 +5,8 @@
 // machine runs the arm64 CPU; an option of the other family is an error,
 // never silently ignored.
 
+import { N97_RAM_BASE, N97_RAM_SIZE } from "./symbian/n97_board.js";
+
 /** The guest CPUs (`cpu_type`); the first is the default */
 export const CPU_TYPES = ["x86", "x86_64", "arm64", "arm32"];
 /** The ARM family's CPU types: the ARM core (v86-arm64.wasm) on the virt machine; arm32 is AArch32 throughout (docs/plan/aarch32-plan.md part 2) */
@@ -35,13 +37,15 @@ export const CPU_PROFILES = {
     "generic-arm64-v1.1": { cpu_type: "arm64", hidden: true },
     "cortex-a15": { cpu_type: "arm32" },
     "cortex-a8": { cpu_type: "arm32" },
+    "arm1136": { cpu_type: "arm32" },
 };
 
 /** Each cpu_type's CPU model when cpu_profile is not given */
 export const DEFAULT_CPU_PROFILES = { "x86": "generic-x86", "x86_64": "generic-x86-64", "arm64": "generic-arm64", "arm32": "cortex-a15" };
 
 /** The CPU models a machine takes, where it is choosy: machine_type → cpu_type → models */
-export const MACHINE_CPU_PROFILES = { "virt": { "arm32": ["cortex-a15"] }, "ranchu": { "arm32": ["cortex-a15"] }, "s5l8930": { "arm32": ["cortex-a8"] } };
+export const MACHINE_CPU_PROFILES = { "virt": { "arm32": ["cortex-a15"] }, "ranchu": { "arm32": ["cortex-a15"] },
+    "s5l8930": { "arm32": ["cortex-a8"] }, "nokia-n97": { "arm32": ["arm1136"] } };
 
 /**
  * The CPU models a page may offer for a CPU type and machine (the hidden ones left out)
@@ -62,9 +66,9 @@ export function cpu_profiles_of(cpu_type, machine_type)
  * management, AHCI; docs/q35.md), "virt" (the ARM board, docs/virt.md) and
  * "ranchu" (the Android emulator's ARM board: its SDK images, src/virt/ranchu.js)
  */
-export const MACHINE_TYPES = ["i440fx", "q35", "virt", "ranchu", "s5l8930"];
+export const MACHINE_TYPES = ["i440fx", "q35", "virt", "ranchu", "s5l8930", "nokia-n97"];
 /** The ARM CPUs' machines */
-export const ARM_MACHINE_TYPES = ["virt", "ranchu", "s5l8930"];
+export const ARM_MACHINE_TYPES = ["virt", "ranchu", "s5l8930", "nokia-n97"];
 
 /**
  * The most cores (`cpu_cores`) of the PC machines (src/platform.js): must
@@ -127,6 +131,7 @@ export const Q35_ONLY = ["hpet", "smbus", "pcie_root_ports"];
 
 const APPLE_UNAVAILABLE = ["hda", "hdb", "cdrom", "extended_memory_size", "virtio_rng", "virtio_disks", "virtio_input",
             "virtio_vsock", "virtio_transport", "virtio_sound", "virtio_console", "virtio_balloon", "virtio_console_ports", "virtio_gpu_pci_slot"];
+const N97_UNAVAILABLE = [...new Set([...APPLE_UNAVAILABLE, ...VIRT_ONLY, "initrd"])];
 
 const given = value => value !== undefined && value !== null && value !== false;
 
@@ -154,7 +159,8 @@ export function check_machine_options(options)
     }
     // (a CPU model alone picks its CPU type)
     const cpu_type = options["cpu_type"] !== undefined ? options["cpu_type"] :
-        cpu_profile !== undefined ? CPU_PROFILES[cpu_profile].cpu_type : options["machine_type"] === "s5l8930" ? "arm32" : CPU_TYPES[0];
+        cpu_profile !== undefined ? CPU_PROFILES[cpu_profile].cpu_type :
+        ["s5l8930", "nokia-n97"].includes(options["machine_type"]) ? "arm32" : CPU_TYPES[0];
     if(!CPU_TYPES.includes(cpu_type))
     {
         throw new Error("Unknown cpu_type " + JSON.stringify(cpu_type) + "; supported: " +
@@ -166,7 +172,8 @@ export function check_machine_options(options)
             "\", not \"" + cpu_type + "\"; cpu_type \"" + cpu_type + "\" has " + cpu_profiles_of(cpu_type).map(name => "\"" + name + "\"").join(", "));
     }
     const arm = is_arm(cpu_type);
-    const machine_type = options["machine_type"] === undefined ? (cpu_profile === "cortex-a8" ? "s5l8930" : arm ? "virt" : "i440fx") : options["machine_type"];
+    const machine_type = options["machine_type"] === undefined ?
+        (cpu_profile === "cortex-a8" ? "s5l8930" : cpu_profile === "arm1136" ? "nokia-n97" : arm ? "virt" : "i440fx") : options["machine_type"];
     if(!MACHINE_TYPES.includes(machine_type))
     {
         throw new Error("machine_type must be one of " + MACHINE_TYPES.map(m => "\"" + m + "\"").join(", ") +
@@ -218,7 +225,44 @@ export function check_machine_options(options)
         if(options["graphics_adapter"] && options["graphics_adapter"] !== "none" ||
             options["net_device"] && options["net_device"]["type"] !== "none") throw new Error("s5l8930 requires graphics and network adapters set to none");
     }
-    const profile = cpu_profile === undefined ? (apple ? "cortex-a8" : DEFAULT_CPU_PROFILES[cpu_type]) : cpu_profile;
+    const n97 = machine_type === "nokia-n97";
+    if(options["symbian"] !== undefined && !n97) throw new Error("symbian requires machine_type nokia-n97");
+    if(n97)
+    {
+        if(cpu_type !== "arm32" || options["cpu_cores"] !== undefined && options["cpu_cores"] !== 1 ||
+            options["memory_size"] !== undefined && options["memory_size"] !== N97_RAM_SIZE)
+        {
+            throw new Error("Nokia N97 requires one ARM32 core and 128 MiB RAM");
+        }
+        for(const name of N97_UNAVAILABLE)
+        {
+            if(given(options[name])) throw new Error(name + " is not available on nokia-n97");
+        }
+        if(options["graphics_adapter"] && options["graphics_adapter"] !== "none" ||
+            options["net_device"] && options["net_device"]["type"] !== "none")
+        {
+            throw new Error("nokia-n97 requires graphics and network adapters set to none");
+        }
+        const symbian = options["symbian"];
+        if(symbian !== undefined)
+        {
+            const address = symbian?.["load_address"];
+            const regs = symbian?.["boot_registers"];
+            if(!symbian?.["rom"]) throw new Error("Nokia N97 requires symbian.rom");
+            const digest = symbian["rom_sha256"];
+            if(digest !== undefined && (typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)))
+            {
+                throw new Error("Nokia N97: rom_sha256 must be a lowercase SHA-256 digest");
+            }
+            if((address !== undefined || regs !== undefined) &&
+                (!Number.isInteger(address) || address < 0 || address >= N97_RAM_BASE + N97_RAM_SIZE || address % 4 ||
+                !Array.isArray(regs) || regs.length !== 4 || !Array.from(regs).every(x => Number.isInteger(x) && x >= 0 && x <= 0xFFFFFFFF)))
+            {
+                throw new Error("Nokia N97 requires symbian.rom, an aligned RAM load_address and four unsigned boot_registers");
+            }
+        }
+    }
+    const profile = cpu_profile === undefined ? (apple ? "cortex-a8" : n97 ? "arm1136" : DEFAULT_CPU_PROFILES[cpu_type]) : cpu_profile;
     const only = MACHINE_CPU_PROFILES[machine_type] && MACHINE_CPU_PROFILES[machine_type][cpu_type];
     if(only && !only.includes(profile))
     {
@@ -437,6 +481,7 @@ export function check_machine_options(options)
 export function allowed_options(cpu_type, machine_type)
 {
     const virt = ARM_MACHINE_TYPES.includes(machine_type);
+    const n97 = machine_type === "nokia-n97";
     /** @type {!Object<string, string>} */
     const unavailable = {};
     if(virt)
@@ -451,6 +496,10 @@ export function allowed_options(cpu_type, machine_type)
         if(machine_type === "s5l8930")
         {
             for(const name of APPLE_UNAVAILABLE) unavailable[name] = "the iPhone 4 board has no " + name;
+        }
+        if(n97)
+        {
+            for(const name of N97_UNAVAILABLE) unavailable[name] = "the Nokia N97 board has no " + name + " option";
         }
         if(machine_type === "ranchu")
         {
@@ -471,15 +520,15 @@ export function allowed_options(cpu_type, machine_type)
         }
     }
     return {
-        machine_types: is_arm(cpu_type) ? ARM_MACHINE_TYPES.filter(m => m !== "s5l8930" || cpu_type === "arm32") : MACHINE_TYPES.filter(m => !ARM_MACHINE_TYPES.includes(m)),
-        graphics_adapters: machine_type === "ranchu" || machine_type === "s5l8930" ? ["none"] : virt ? VIRT_GRAPHICS_ADAPTERS.slice() : GRAPHICS_ADAPTERS.slice(),
-        net_device_types: machine_type === "s5l8930" ? ["none"] : virt ? VIRT_NET_DEVICE_TYPES.slice() : NET_DEVICE_TYPES.slice(),
+        machine_types: is_arm(cpu_type) ? ARM_MACHINE_TYPES.filter(m => !["s5l8930", "nokia-n97"].includes(m) || cpu_type === "arm32") : MACHINE_TYPES.filter(m => !ARM_MACHINE_TYPES.includes(m)),
+        graphics_adapters: machine_type === "ranchu" || machine_type === "s5l8930" || n97 ? ["none"] : virt ? VIRT_GRAPHICS_ADAPTERS.slice() : GRAPHICS_ADAPTERS.slice(),
+        net_device_types: machine_type === "s5l8930" || n97 ? ["none"] : virt ? VIRT_NET_DEVICE_TYPES.slice() : NET_DEVICE_TYPES.slice(),
         // (the virt machine's sound is virtio_sound)
         audio_devices: virt ? [] : AUDIO_DEVICES.slice(),
         // (the virt machine's input is virtio_input)
         usb_controllers: virt ? [] : USB_CONTROLLERS.slice(),
         cpu_profiles: cpu_profiles_of(cpu_type, machine_type),
-        max_cores: machine_type === "s5l8930" ? 1 : MAX_CORES,
+        max_cores: machine_type === "s5l8930" || n97 ? 1 : MAX_CORES,
         acpi: virt ? "none" : machine_type === "q35" ? "required" : "with_cores",
         unavailable,
     };

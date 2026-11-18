@@ -983,9 +983,12 @@ export interface V86Options {
      * "none"), a GICv2 with "arm32"; no PCIe.
      * @default "i440fx" ("virt" with cpu_type "arm64" or "arm32")
      */
-    machine_type?: "i440fx" | "q35" | "virt" | "ranchu" | "s5l8930";
+    machine_type?: "i440fx" | "q35" | "virt" | "ranchu" | "s5l8930" | "nokia-n97";
     apple_model?: "iPhone3,1";
     ios?: { kernelcache?: V86Image; devicetree?: V86Image; ramdisk?: V86Image; nand?: V86HardDiskImage; bootlogo?: V86Image; boot_args?: string; nand_boot?: boolean };
+    /** RM-505 XIP boot, optionally with an explicit physical address and R0–R3 for a diagnostic guest. */
+    symbian?: { rom: V86Image; rom_sha256?: string } & ({ load_address?: undefined; boot_registers?: undefined } |
+        { load_address: number; boot_registers: [number, number, number, number] });
 
     /**
      * machine_type "ranchu" only: the display (the framebuffer's size in
@@ -1125,7 +1128,7 @@ export interface V86Options {
      * @default the cpu_type's generic model ("cortex-a15" for "arm32")
      */
     cpu_profile?: "generic-x86" | "generic-x86-64" | "generic-arm64" | "generic-arm64-compat32" | "generic-arm64-v1" | "generic-arm64-v1.1" |
-        "cortex-a8" | "cortex-a15";
+        "cortex-a8" | "cortex-a15" | "arm1136";
 
     /**
      * With cpu_type "x86_64", "x86-64-v1" selects the psABI baseline,

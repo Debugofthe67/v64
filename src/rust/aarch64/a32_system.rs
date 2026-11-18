@@ -28,6 +28,7 @@ const SCTLR_EE: u32 = 1 << 25;
 const SCTLR_TE: u32 = 1 << 30;
 /// SCTLR at reset (QEMU's cortex-a15)
 pub const SCTLR_RESET_A32: u64 = 0x00C5_0078;
+const SCTLR_RESET_ARM1136: u64 = 0x0005_0078;
 
 /// The modes this CPU has (no Monitor, no Hyp)
 #[inline(always)]
@@ -371,6 +372,10 @@ pub fn vfp_system(register: u32, rt: u32, to_core: bool) -> Result<Flow, Excepti
     }
     let id = |row: usize| crate::aarch64::sysregs::AARCH32_ID[2][row] as u32;
     let value = match register {
+        0 if cpu::arm1136() => 0x4101_20B4,
+        6 if cpu::arm1136() => 0,
+        7 if cpu::arm1136() => 0x1111_1111,
+        5 if cpu::arm1136() => return Err(Exception::Undefined),
         0 if cpu::cortex_a8() => 0x4103_30C0,
         5 if cpu::cortex_a8() => 0,
         6 if cpu::cortex_a8() => 0x0001_1111,
@@ -536,7 +541,7 @@ pub fn reset(entry: u64, context: u64) {
             MODE_SVC | PSTATE_A | PSTATE_I | PSTATE_F | if entry & 1 != 0 { PSTATE_T } else { 0 };
         *pc = entry & !1;
         *x = context as u32 as u64;
-        *sctlr_el1 = SCTLR_RESET_A32;
+        *sctlr_el1 = if cpu::arm1136() { SCTLR_RESET_ARM1136 } else { SCTLR_RESET_A32 };
         for i in 0..12 {
             *a32_bank.add(i) = 0;
         }
@@ -548,6 +553,9 @@ pub fn reset(entry: u64, context: u64) {
         }
         if cpu::cortex_a8() {
             *actlr_el1 = 2;
+        }
+        if cpu::arm1136() {
+            *actlr_el1 = 7;
         }
         *a32_ttbcr = 0;
         *a32_dacr = 0;
@@ -562,6 +570,15 @@ pub fn a32_boot(entry: u32, dtb: u32) {
     crate::aarch64::smp::a64_boot(entry, 0, 0, 0);
     cpu::set_x(1, 0xFFFF_FFFF);
     cpu::set_x(2, dtb as u64);
+}
+
+/// The board's loader handoff. Reset the CPU and pass the arguments it supplied.
+#[no_mangle]
+pub fn a32_boot_with_registers(entry: u32, r0: u32, r1: u32, r2: u32, r3: u32) {
+    crate::aarch64::smp::a64_boot(entry, 0, r0, 0);
+    cpu::set_x(1, r1 as u64);
+    cpu::set_x(2, r2 as u64);
+    cpu::set_x(3, r3 as u64);
 }
 
 // ---- CP15 at PL1
@@ -582,6 +599,12 @@ fn id_register(crm: u32, op2: u32) -> u32 {
 /// MIDR: cortex-a15 r4p0 (QEMU's; the Android emulator's 32-bit CPU)
 pub const MIDR_A15: u32 = 0x414F_C0F0;
 const CTR_A15: u32 = 0x8444_C004;
+
+// ARM1136 r1p3 register identities from Arm DDI 0211 and QEMU's arm1136.
+const ARM1136_ID: [[u32; 8]; 2] = [
+    [0x111, 1, 2, 3, 0x0113_0003, 0x1003_0302, 0x0122_2110, 0],
+    [0x0014_0011, 0x1200_2111, 0x1123_1111, 0x0110_2131, 0x141, 0, 0, 0],
+];
 
 /// MRC (read, Rt := the value) or MCR (`value`) of CP15 at PL1
 pub fn cp15(
@@ -637,7 +660,27 @@ pub fn cp15(
         Ok(Flow::Next)
     };
     let a8 = cpu::cortex_a8();
+    let arm1136 = cpu::arm1136();
     match (opc1, crn, crm, opc2) {
+        (0, 0, 0, 0 | 4 | 7) if arm1136 => constant(0x4117_B363),
+        // DDI 0211K §3.3.2: Ctype 1110, separate 16 KiB caches, 4 ways and 32-byte lines.
+        (0, 0, 0, 1) if arm1136 => constant(0x1D15_2152),
+        (0, 0, 0, 2..=3 | 5..=6) if arm1136 => constant(0),
+        (0, 0, 1..=2, n) if arm1136 => constant(ARM1136_ID[crm as usize - 1][n as usize]),
+        (1..=2, 0, _, _) | (0, 12 | 14, _, _) | (0, 4, 6, 0) if arm1136 => Err(Exception::Undefined),
+        (0, 1, 0, 1) if arm1136 => half(actlr_el1, false),
+        // The ARM1136 invalidates both caches with this operation. Memory is coherent here.
+        (0, 7, 7, 0) if arm1136 && !read => Ok(Flow::Next),
+        (0, 13, 0, 0) if arm1136 => {
+            if read {
+                set_reg(rt, (unsafe { *contextidr_el1 } >> 32) as u32);
+            }
+            else {
+                unsafe { *contextidr_el1 = *contextidr_el1 & 0xFFFF_FFFF | ((value & 0xFE00_0000) as u64) << 32 };
+                crate::aarch64::mmu::ttbr_changed();
+            }
+            Ok(Flow::Next)
+        },
         // Cortex-A8 identification (realview-pb-a8); N90's bootstrap sweeps
         // 32 KiB four-way L1s and a 512 KiB eight-way L2 with 64-byte lines.
         (0, 0, 0, 0 | 4 | 7) if a8 => constant(0x410F_C080),
@@ -718,6 +761,9 @@ pub fn cp15(
         (0, 2, 0, 2) => {
             let r = field(a32_ttbcr);
             if !read {
+                if arm1136 {
+                    unsafe { *a32_ttbcr &= 7 };
+                }
                 crate::aarch64::mmu::regime_changed();
             }
             r
@@ -838,7 +884,7 @@ pub fn cp15_64(
         set_reg(rt, got as u32);
         set_reg(rt2, (got >> 32) as u32);
     };
-    if cpu::cortex_a8() && matches!(crm, 2 | 12 | 14) {
+    if cpu::arm1136() || cpu::cortex_a8() && matches!(crm, 2 | 12 | 14) {
         return Err(Exception::Undefined);
     }
     match (opc1, crm) {

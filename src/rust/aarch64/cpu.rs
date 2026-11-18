@@ -83,6 +83,7 @@ pub const FEATURE_AARCH32: u32 = 1 << 1;
 /// crate::aarch64::a32_system)
 pub const FEATURE_A32: u32 = 1 << 2;
 pub const FEATURE_CORTEX_A8: u32 = 1 << 3;
+pub const FEATURE_ARM1136: u32 = 1 << 4;
 static mut FEATURES: u32 = 0;
 
 /// The optional features of the machine's profile: FEATURE_PAN (v2),
@@ -91,7 +92,7 @@ static mut FEATURES: u32 = 0;
 pub fn a64_set_features(mask: u32) {
     unsafe {
         *crate::parallel::machine(&raw mut FEATURES) =
-            mask & (FEATURE_PAN | FEATURE_AARCH32 | FEATURE_A32 | FEATURE_CORTEX_A8)
+            mask & (FEATURE_PAN | FEATURE_AARCH32 | FEATURE_A32 | FEATURE_CORTEX_A8 | FEATURE_ARM1136)
     };
     crate::aarch64::tlb::flush(true);
 }
@@ -100,6 +101,14 @@ pub fn a64_set_features(mask: u32) {
 pub fn cortex_a8() -> bool {
     unsafe { *crate::parallel::machine(&raw mut FEATURES) & FEATURE_CORTEX_A8 != 0 }
 }
+
+#[inline(always)]
+pub fn arm1136() -> bool {
+    unsafe { *crate::parallel::machine(&raw mut FEATURES) & FEATURE_ARM1136 != 0 }
+}
+
+#[inline(always)]
+pub fn a32_direct_interrupts() -> bool { cortex_a8() || arm1136() }
 
 /// Whether the profile has FEAT_PAN
 #[inline(always)]

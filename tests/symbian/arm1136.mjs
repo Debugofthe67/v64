@@ -1,0 +1,91 @@
+// Run after building build/v86-arm64.wasm. No stock firmware is required.
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { check_machine_options } from "../../src/machine_options.js";
+import { N97_SRAM_SIZE } from "../../src/symbian/n97_board.js";
+import { V86 } from "../../src/main.js";
+
+const wasm = fileURLToPath(new URL("../../build/v86-arm64.wasm", import.meta.url));
+const source = fileURLToPath(new URL("./arm1136.S", import.meta.url));
+
+function run(command, args)
+{
+    const result = spawnSync(command, args, { encoding: "utf8" });
+    assert.equal(result.status, 0, result.error?.message || result.stderr);
+    return result.stdout.trim();
+}
+
+assert.deepEqual(check_machine_options({ machine_type: "nokia-n97" }), {
+    cpu_type: "arm32", cpu_profile: "arm1136", machine_type: "nokia-n97",
+});
+assert.equal(check_machine_options({ machine_type: "s5l8930" }).cpu_profile, "cortex-a8");
+assert.equal(check_machine_options({ machine_type: "ranchu", cpu_type: "arm32" }).cpu_profile, "cortex-a15");
+assert.throws(() => check_machine_options({ machine_type: "nokia-n97", cpu_profile: "cortex-a15" }), /takes cpu_profile/);
+assert.throws(() => check_machine_options({ machine_type: "nokia-n97", cpu_cores: 2 }), /one ARM32 core/);
+assert.throws(() => check_machine_options({ machine_type: "nokia-n97", symbian: { rom: {}, load_address: 2, boot_registers: [] } }), /aligned RAM/);
+
+const directory = mkdtempSync(join(tmpdir(), "v86-arm1136-"));
+try
+{
+    const object = join(directory, "guest.o"), binary = join(directory, "guest.bin");
+    run(process.env.CLANG || "clang", ["--target=arm-none-eabi", "-mcpu=arm1136jf-s", "-c", "-o", object, source]);
+    const sysroot = run("rustc", ["--print", "sysroot"]);
+    const host = run("rustc", ["-vV"]).match(/^host: (.*)$/m)[1];
+    const lld = process.env.LD_LLD || join(sysroot, "lib", "rustlib", host, "bin", "rust-lld");
+    run(lld, ["-flavor", "gnu", "-m", "armelf", "--image-base=0", "-Ttext=0", "--oformat=binary", "-o", binary, object]);
+    const emulator = new V86({ machine_type: "nokia-n97", graphics_adapter: "none", disable_jit: true, autostart: false,
+        wasm_path: wasm, log_level: 0, symbian: { rom: { url: binary }, load_address: 0, boot_registers: [0, 0, 0, 0] } });
+    try
+    {
+        await new Promise((resolve, reject) => {
+            emulator.add_listener("emulator-loaded", resolve);
+            emulator.add_listener("emulator-error", reject);
+        });
+        const cpu = emulator.v86.cpu;
+        const { a32_set_interrupt_lines, a64_worker_slice } = cpu.wm.exports;
+        assert.equal(cpu.profile, "arm1136");
+        assert.equal(cpu.ram_offset(0, 4), 0);
+        assert.equal(cpu.ram_offset(0x40000000, 4), -1);
+        assert.deepEqual([...cpu.mem8.subarray(0, 4)], [...readFileSync(binary).subarray(0, 4)]);
+        const result = new DataView(cpu.wasm_memory.buffer, cpu.mem8.byteOffset + 0x800, 48);
+        const value = offset => result.getUint32(offset, true);
+        const step = until => {
+            for(let i = 0; i < 250 && !until(); i++) a64_worker_slice(1);
+            assert.ok(until(), `probe timed out at ${cpu.read_pc()}`);
+        };
+        step(() => value(20) === 1);
+        a32_set_interrupt_lines(true, false);
+        step(() => value(24) === 3);
+        a32_set_interrupt_lines(false, false);
+        step(() => value(40) !== 0);
+        assert.deepEqual(Array.from({ length: 12 }, (_, i) => value(i * 4)),
+            [0x4117B363, 0x00050078, 7, 73, 0x1D3, 1, 3, 0x4117B363, 5, 0x01000000, 0xAA, 0x1D152152]);
+        const wrong = cpu.get_state(true);
+        wrong[4].find(device => device?.[1] instanceof Uint8Array && device[1].length === N97_SRAM_SIZE)[0] = "other ROM or handoff";
+        assert.throws(() => cpu.validate_state(wrong), /same ROM and loader handoff/);
+        const [identity, sram] = cpu.devices.n97_sram.get_state();
+        sram[0x10] = 45;
+        cpu.devices.n97_sram.set_state([identity, sram]);
+        const state = await emulator.save_state();
+        await emulator.restart("power-on");
+        assert.equal(cpu.devices.n97_sram.get_state()[1][0x10], 0);
+        assert.equal(value(40), 0);
+        assert.equal(Number(cpu.read_pc()), 0);
+        await emulator.restore_state(state);
+        assert.equal(cpu.devices.n97_sram.get_state()[1][0x10], 45);
+        assert.equal(value(40), 0xAA);
+        console.log("PASS: ARM1136 identity, ARM/Thumb interworking, exceptions and MMU");
+    }
+    finally
+    {
+        await emulator.destroy();
+    }
+}
+finally
+{
+    rmSync(directory, { recursive: true, force: true });
+}
