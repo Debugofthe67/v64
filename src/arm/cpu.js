@@ -35,7 +35,7 @@ import { IOSInstallService } from "../ios/install_service.js";
 import { IOSNetwork } from "../ios/network.js";
 import { create_n97_boot_timer, create_n97_sram, load_n97_rom, n97_boot_files, N97_BOOT_TOC, N97_DEVICE_MEMORY, N97_LAYOUT_VERSION, N97_RAM_BASE } from "../symbian/n97_board.js";
 import { create_n97_rapido_compat } from "../symbian/n97_rapido_compat.js";
-import { create_n97_board_config, create_n97_clocks, create_n97_gpio_input, create_n97_interrupts, create_n97_l2, create_n97_nand_bus, create_n97_os_timer,
+import { create_n97_board_config, create_n97_boot_source, create_n97_clocks, create_n97_gpio_input, create_n97_interrupts, create_n97_l2, create_n97_nand_bus, create_n97_os_timer,
     create_n97_rapido_id, create_n97_xti } from "../symbian/n97_devices.js";
 import { create_n97_onenand } from "../symbian/n97_onenand.js";
 import { create_n97_mmc } from "../symbian/n97_mmc.js";
@@ -73,7 +73,7 @@ const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldf
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
     "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
     "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma", "n97_touch_gpio", "n97_touch",
-    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus", "n97_power_gpio", "n97_cbus", "n97_sd_detect", "n97_rapido_compat"];
+    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus", "n97_power_gpio", "n97_cbus", "n97_sd_detect", "n97_rapido_compat", "n97_boot_source"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -312,6 +312,7 @@ A64CPU.prototype.init = function(settings, device_bus)
         if(this.boot_files?.tags)
         {
             this.devices.n97_boot_timer = create_n97_boot_timer(this);
+            this.devices.n97_boot_source = create_n97_boot_source(this.io);
             this.devices.n97_rapido_id = create_n97_rapido_id(this.io);
             this.devices.n97_l2 = create_n97_l2(this.io);
             this.devices.n97_xti = create_n97_xti(this.io);

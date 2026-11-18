@@ -7,11 +7,15 @@ import { N97_DMA_IRQS } from "./n97_dma.js";
 
 export const N97_RAPIDO_SELECT = 0x20030300;
 export const N97_RAPIDO_REVISION = 0x113;
+export const N97_BOOT_SOURCE = 0x20040400;
+export const N97_RESET_STATUS = 0x20032C18;
+export const N97_SHARED_CONTROL = 0x20040380;
 export const N97_CPU_PLL = 0x20032D24;
 export const N97_CLOCK_DIVIDERS = 0x20032C04;
 export const N97_PLL3 = 0x20032D84;
 export const N97_PLL3_CONTROL = 0x20032D8C;
-export const N97_PLL_POWER = 0x20032C84;
+const PLL_POWER_BASE = 0x20032C80;
+export const N97_PLL_POWER = PLL_POWER_BASE + 4;
 export const N97_L2_BASE = 0x50000000;
 export const N97_XTI_CONTROL = 0x40000000;
 export const N97_XTI_DATA = 0x401E0000;
@@ -36,8 +40,15 @@ export function word(io, address, name, read, write)
     });
 }
 
-const CLOCK_WORDS = [N97_CPU_PLL, N97_CLOCK_DIVIDERS, N97_PLL_POWER, 0x20032C88, 0x20032CD8, 0x20032C10, 0x20032C34,
-    0x20032CB8, N97_PLL3, N97_PLL3_CONTROL];
+function set_clear_word(io, address, name, read, write)
+{
+    word(io, address, name, read, write);
+    word(io, address + 4, name + " set", () => 0, (value, mask) => write(-1, value & mask));
+    word(io, address + 8, name + " clear", () => 0, (value, mask) => write(0, value & mask));
+}
+
+const CLOCK_WORDS = [N97_CPU_PLL, N97_CLOCK_DIVIDERS, N97_PLL_POWER, N97_PLL_POWER + 4, 0x20032CD8, 0x20032C10, 0x20032C34,
+    0x20032CB8, N97_PLL3, N97_PLL3_CONTROL, 0x20032CA8, 0x20032C44];
 // ROM+0x8D948 calculates 38.4 MHz * M / (N+1) / (postdiv+1).
 // Match the RAP3NAND handoff's 433.92 MHz with M=113, N=9 and postdiv=0.
 const CPU_PLL_RESET = (113 << 5) | 9;
@@ -51,15 +62,23 @@ export function create_n97_clocks(io)
     const clock_value = address => registers[CLOCK_WORDS.indexOf(address)];
     const pll_locked = () => (clock_value(N97_PLL_POWER) & PLL_ENABLE) &&
         (clock_value(N97_PLL3_CONTROL) & PLL_ENABLE) && ((clock_value(N97_PLL3) >> 5) & 0x7FF) ? PLL_LOCKED : 0;
+    // XIP+0x9A3EC reads the base word; +0x9A410/+0x9A418 use its set and
+    // clear ports. ISASW sets bit 15 without clearing the AP's bit 14.
+    // Retain the old +4 slot as the shared latch in existing snapshots.
+    const power_index = CLOCK_WORDS.indexOf(N97_PLL_POWER);
+    set_clear_word(io, PLL_POWER_BASE, "RAPIDO PLL power", () => registers[power_index], (value, mask) => {
+        registers[power_index] = merge(registers[power_index], value, mask);
+    });
     for(const [index, address] of CLOCK_WORDS.entries())
     {
+        if(address === N97_PLL_POWER || address === N97_PLL_POWER + 4) continue;
         word(io, address, "RAPIDO clock control", () => registers[index] | (address === N97_PLL3_CONTROL ? pll_locked() : 0),
             (value, mask) => { registers[index] = merge(registers[index], value, address === N97_PLL3_CONTROL ? mask & ~PLL_LOCKED : mask); });
     }
     return {
         reset() { registers = reset_values(); },
         get_state() { return registers.slice(); },
-        set_state(state) { registers = state.slice(); },
+        set_state(state) { registers = reset_values().map((value, index) => state[index] ?? value); },
         status()
         {
             const pll = clock_value(N97_CPU_PLL);
@@ -72,6 +91,31 @@ export function create_n97_clocks(io)
 function merge(old, value, mask)
 {
     return ((old & ~mask) | (value & mask)) >>> 0;
+}
+
+export function create_n97_boot_source(io)
+{
+    // RAP3NAND+0x1EFE selects normal boot when [23:20] is zero.
+    // ISASW+0x61C72 updates that field and the two low bits in place.
+    const boot_fields = 0x00F00003;
+    let registers = [0, 0];
+    // The loader writes the set and clear ports in both groups. Keep the
+    // second group's programmed bits without assigning undocumented effects.
+    const groups = [[N97_BOOT_SOURCE, "RAPIDO boot source", boot_fields], [N97_SHARED_CONTROL, "RAPIDO shared control", -1]];
+    for(const [index, [address, name, fields]] of groups.entries())
+    {
+        set_clear_word(io, address, name, () => registers[index], (value, mask) => {
+            registers[index] = merge(registers[index], value, mask & fields);
+        });
+    }
+    // ISASW+0x60214 reads the watchdog/software reset flags here. At
+    // power-on no modeled source asserts them; reset requests are separate.
+    word(io, N97_RESET_STATUS, "RAPIDO reset status", () => 0, () => {});
+    return {
+        reset() { registers = [0, 0]; },
+        get_state() { return registers.slice(); },
+        set_state(state) { registers = [state[0] & boot_fields, state[1] >>> 0]; },
+    };
 }
 
 export function create_n97_board_config(io, mmc = () => null)

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { create_n97_board_config, create_n97_clocks, create_n97_interrupts, create_n97_l2, create_n97_os_timer,
+import { create_n97_board_config, create_n97_boot_source, create_n97_clocks, create_n97_interrupts, create_n97_l2, create_n97_os_timer,
     create_n97_rapido_id, create_n97_xti,
-    N97_CPU_PLL, N97_L2_BASE, N97_PLL3, N97_PLL3_CONTROL, N97_PLL_POWER, N97_RAPIDO_SELECT,
+    N97_BOOT_SOURCE, N97_CPU_PLL, N97_L2_BASE, N97_PLL3, N97_PLL3_CONTROL, N97_PLL_POWER, N97_RAPIDO_SELECT, N97_RESET_STATUS, N97_SHARED_CONTROL,
     N97_XTI_CONTROL, N97_XTI_DATA, N97_XTI_DOORBELL } from "../../src/symbian/n97_devices.js";
 
 function bus()
@@ -43,6 +43,34 @@ test("the RAPIDO board settings retain guest writes without shadowing adjacent h
     assert.equal(io.read(0x20031C10), 0);
     config.set_state(saved);
     assert.equal(io.read(0x20031C10), 0xAAAA55AA);
+});
+
+test("the RAPIDO boot source and shared control retain their SET/CLR lanes across reset and restore", () => {
+    const io = bus(), boot = create_n97_boot_source(io);
+    assert.equal(io.read(N97_BOOT_SOURCE), 0);
+    assert.equal(io.read(N97_RESET_STATUS), 0);
+    assert.equal(io.has(N97_BOOT_SOURCE + 0x0C), false);
+    assert.equal(io.has(N97_RESET_STATUS + 4), false);
+    io.write(N97_BOOT_SOURCE, 0xFA0FFF03);
+    assert.equal(io.read(N97_BOOT_SOURCE), 3);
+    io.write(N97_BOOT_SOURCE + 4, 0xA0, 1, 2);
+    io.write(N97_BOOT_SOURCE + 8, 0x20, 1, 2);
+    assert.equal(io.read(N97_BOOT_SOURCE), 0x00800003);
+    io.write(N97_BOOT_SOURCE, 0x50, 1, 2);
+    assert.equal(io.read(N97_BOOT_SOURCE), 0x00500003);
+    assert.equal(io.read(N97_BOOT_SOURCE, 1, 2), 0x50);
+    io.write(N97_SHARED_CONTROL + 4, 0x3FE);
+    io.write(N97_SHARED_CONTROL + 8, 0x1FE);
+    assert.equal(io.read(N97_SHARED_CONTROL), 0x200);
+    io.write(N97_RESET_STATUS, 0xFFFFFFFF);
+    assert.equal(io.read(N97_RESET_STATUS), 0);
+    const saved = boot.get_state();
+    boot.reset();
+    assert.equal(io.read(N97_BOOT_SOURCE), 0);
+    assert.equal(io.read(N97_SHARED_CONTROL), 0);
+    boot.set_state(saved);
+    assert.equal(io.read(N97_BOOT_SOURCE), 0x00500003);
+    assert.equal(io.read(N97_SHARED_CONTROL), 0x200);
 });
 
 test("the RAPIDO tick counts down, drives only an unmasked IRQ, and resumes an in-flight interval", () => {
@@ -139,13 +167,28 @@ test("RAPIDO PLL lock follows the programmed multiplier, enable and power bits",
     io.write(N97_PLL_POWER, 0x4000);
     assert.equal(io.read(N97_PLL3_CONTROL), 0xD490);
     assert.equal(clocks.status().pll3_locked, true);
+    io.write(N97_PLL_POWER, 0x80, 1, 1); // ISASW sets bit 15 after the AP enabled bit 14.
+    assert.equal(io.read(N97_PLL_POWER - 4), 0xC000);
+    assert.equal(io.read(N97_PLL3_CONTROL), 0xD490);
+    io.write(N97_PLL_POWER + 4, 0x8000);
+    assert.equal(io.read(N97_PLL_POWER - 4), 0x4000);
+    io.write(0x20032CA8, 0x3000);
+    io.write(0x20032C44, 0x18);
     const saved = clocks.get_state();
+    io.write(N97_PLL_POWER + 4, 0x4000);
+    assert.equal(io.read(N97_PLL3_CONTROL), 0xD480);
     io.write(N97_PLL3_CONTROL, 0x9480);
     assert.equal(io.read(N97_PLL3_CONTROL), 0x9480);
     clocks.reset();
     assert.equal(io.read(N97_PLL3), 0);
     clocks.set_state(saved);
     assert.equal(io.read(N97_PLL3_CONTROL), 0xD490);
+    assert.equal(io.read(0x20032CA8), 0x3000);
+    assert.equal(io.read(0x20032C44), 0x18);
+    clocks.set_state(saved.slice(0, 10));
+    assert.equal(io.read(N97_PLL3_CONTROL), 0xD490);
+    assert.equal(io.read(0x20032CA8), 0);
+    assert.equal(io.read(0x20032C44), 0);
 });
 
 test("original XTI channel bytes commit the corresponding packet across a save/restore", () => {

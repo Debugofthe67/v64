@@ -10,7 +10,8 @@ import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
 import { V86 } from "../../src/main.js";
 import { N97_BOOT_TOC, N97_RAM_BASE, N97_RAM_SIZE, N97_ROM_ADDRESS } from "../../src/symbian/n97_board.js";
 import { read_n97_boot_media } from "../../src/symbian/n97_boot_media.js";
-import { N97_CPU_PLL, N97_L2_BASE, N97_PLL3_CONTROL, N97_RAPIDO_SELECT } from "../../src/symbian/n97_devices.js";
+import { N97_BOOT_SOURCE, N97_CPU_PLL, N97_L2_BASE, N97_PLL3, N97_PLL3_CONTROL, N97_PLL_POWER, N97_RAPIDO_SELECT, N97_RESET_STATUS,
+    N97_SHARED_CONTROL } from "../../src/symbian/n97_devices.js";
 import { N97_COMPAT_XIP } from "../../src/symbian/n97_rapido_compat.js";
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
@@ -148,12 +149,32 @@ function observe_rapido_service(cpu, pc_now, field, register, word)
 function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, register, word)
 {
     const wasm = cpu.wm.exports;
-    const handoff = {};
+    const handoff = { boot_registers: [] };
+    const observed = new Set([N97_BOOT_SOURCE, N97_BOOT_SOURCE + 4, N97_BOOT_SOURCE + 8, N97_RESET_STATUS,
+        N97_SHARED_CONTROL + 4, N97_SHARED_CONTROL + 8, 0x20032CA8, 0x20032C44, N97_PLL_POWER, N97_PLL_POWER + 4, N97_PLL3, N97_PLL3_CONTROL]);
+    let step = service_step;
+    function record(owner, offset, width, direction, value)
+    {
+        const address = cpu.io.ranges[owner].base + Number(offset);
+        if(observed.has(address) && handoff.boot_registers.length < 48)
+            handoff.boot_registers.push({ pc: pc_now(), step, direction, address, width, value: Number(value) });
+    }
+    const read_mmio = cpu.io.mmio_read.bind(cpu.io), write_mmio = cpu.io.mmio_write.bind(cpu.io);
+    cpu.io.mmio_read = (owner, offset, width) => {
+        const value = read_mmio(owner, offset, width);
+        record(owner, offset, width, "read", value);
+        return value;
+    };
+    cpu.io.mmio_write = (owner, offset, width, value) => {
+        write_mmio(owner, offset, width, value);
+        record(owner, offset, width, "write", value);
+    };
     cpu.clock.resume();
     for(let elapsed = 0; elapsed < 5000000; elapsed++)
     {
         if(elapsed && elapsed % 32 === 0) cpu.run_hardware_timers(null, cpu.clock.advance_instructions(32));
-        const pc = pc_now(), step = service_step + elapsed;
+        const pc = pc_now(), thumb = !!(field("pstate") & 32);
+        step = service_step + elapsed;
         if((pc === N97_ROM_ADDRESS + 0x2394 || pc === 0x80002394) && !handoff.mapped)
         {
             const record = field("sctlr_el1") & 1 ? supervisor_physical(register(7), field, word) : register(7);
@@ -175,21 +196,47 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
             handoff.irq_callback = { pc, step, table: read(0xC68020C8), slot: irq.payload[1], published: read(irq.payload[1]) };
             assert.equal(handoff.irq_callback.table, irq.payload[0]);
         }
+        if(pc === handoff.isa_entry?.lr && !handoff.isa_return) handoff.isa_return = { pc, step, r0: register(0) };
         wasm["a64_worker_slice"](1);
         const vector = pc_now();
-        if((vector === 4 || vector === 0xFFFF0004) && !handoff.first_undefined)
-            handoff.first_undefined = { pc, step: step + 1, vector, lr: register(14) };
+        if(vector === 4 || vector === 0xFFFF0004)
+        {
+            const event = { pc, step: step + 1, vector, lr: register(14) };
+            handoff.first_undefined ??= event;
+            if(handoff.isa_entry && !handoff.isa_undefined)
+            {
+                let opcode;
+                if(!thumb)
+                {
+                    const address = field("sctlr_el1") & 1 ? supervisor_physical(pc, field, word) : pc;
+                    opcode = word(address);
+                }
+                handoff.isa_undefined = { ...event, thumb, opcode };
+            }
+        }
         if([12, 16, 0xFFFF000C, 0xFFFF0010].includes(vector))
         {
-            handoff.abort = { pc, step: step + 1, vector, far: field("far_el1"), fsr: field(vector % 0x100 === 0xC ? "a32_ifsr" : "esr_el1") };
+            const far = field("far_el1"), fsr = field(vector % 0x100 === 0xC ? "a32_ifsr" : "esr_el1");
+            const physical = vector % 0x100 === 0x10 && (fsr & 0x40F) === 8 && (field("sctlr_el1") & 1) ?
+                supervisor_physical(far, field, word) : undefined;
+            handoff.abort = { pc, step: step + 1, vector, far, fsr, physical, lr: register(14) };
             break;
         }
     }
+    cpu.io.mmio_read = read_mmio;
+    cpu.io.mmio_write = write_mmio;
+    if(!handoff.abort) handoff.last = { pc: pc_now(), step: step + 1 };
     assert.deepEqual([handoff.mapped?.virtual, handoff.mapped?.physical, handoff.mapped?.bytes],
         [0xC6300000, isasw_record.published.physical, isasw_record.published.bytes]);
     assert.equal(handoff.sisa?.image, handoff.mapped.virtual);
     assert.equal(handoff.isa_entry?.lr, 0x800B3BA0);
     assert.equal(handoff.irq_callback?.published, 0xC6679028);
+    const source = handoff.boot_registers.filter(access => access.address === N97_BOOT_SOURCE);
+    assert.deepEqual(source.slice(0, 3).map(access => [access.direction, access.width, access.value]),
+        [["read", 4, 0], ["read", 4, 0], ["write", 4, 0]]);
+    assert.ok(handoff.boot_registers.some(access => access.address === N97_RESET_STATUS && access.direction === "read" && access.value === 0));
+    assert.ok(handoff.boot_registers.some(access => access.address === N97_PLL3_CONTROL && access.direction === "read" &&
+        access.pc >= 0xC6300000 && (access.value & 0x10)), "the original ISASW must observe the shared PLL lock");
     return handoff;
 }
 
@@ -285,8 +332,8 @@ function observe_isa_entry(isa, sisa, cpu, state, pc_now, field, register, word)
     const wasm = cpu.wm.exports;
     wasm["a64_restored"]();
     const checkpoints = new Map([[entry, "entry"], [payload + 0x62326, "early_init"], [payload + 0x623E4, "irq_services_record"],
-        [payload + 0x62408, "publish_irq_callback"], [payload + 0xC3E, "semaphore_init"]]);
-    const visits = [], route = [];
+        [payload + 0x62408, "publish_irq_callback"]]);
+    const visits = [];
     cpu.clock.resume();
     let result, entry_context;
     for(let step = 0; step < 100000; step++)
@@ -298,20 +345,16 @@ function observe_isa_entry(isa, sisa, cpu, state, pc_now, field, register, word)
             entry_context = { args: [0, 1, 2, 3].map(register), saved_regs: [4, 5, 6].map(register), sp: register(13), lr: register(14) };
             assert.deepEqual(entry_context, { args: sisa.startup_args, saved_regs, sp: sp + 16, lr: return_address });
         }
-        if([0x04, 0x0C, 0x10, 0xFFFF0004, 0xFFFF000C, 0xFFFF0010].includes(pc))
+        if(pc === payload + 0x6240A)
         {
-            result = { step, pc, from: route.at(-1), far: field("far_el1"), fsr: field("esr_el1"), route: route.slice() };
+            result = { step, pc };
             break;
         }
-        route.push(pc);
-        if(route.length > 12) route.shift();
         if(step && step % 32 === 0) cpu.run_hardware_timers(null, cpu.clock.advance_instructions(32));
         wasm["a64_worker_slice"](1);
     }
-    assert.ok(result, "original ISASW probe reached its instruction limit");
+    assert.ok(result, "original ISASW probe must publish the IRQ bridge");
     assert.deepEqual(visits.map(({ pc, thumb }) => [pc, thumb]), Array.from(checkpoints.keys(), pc => [pc, pc !== entry]));
-    assert.deepEqual([result.pc, result.from, result.far, result.fsr], [0xFFFF0010, 0xC636206A, 0xC6040400, 8],
-        "after publishing the IRQ bridge, the isolated startup stops at the board's boot source read");
     const irq_callback_table = read(0xC68020C8), irq_callback = read(irq_record.payload[1]);
     assert.equal(irq_callback_table, irq_record.payload[0]);
     assert.equal(irq_callback, 0xC6679028);

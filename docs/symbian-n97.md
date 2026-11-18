@@ -109,7 +109,7 @@ node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --ap-only --isa-probe <outp
 
 `--isa-probe` 在原版仅 AP 内核读取空指针前保存状态。探针先验证原来的数据异常，再恢复状态，在这一临时实例内补映射原版只读 ISASW 和工作内存，填入该次诊断的映像地址及长度。它让原版 `sisa.ext` 从 `0x800B3B38` 重新读取记录，由原版代码检查证书头、恢复栈和寄存器，以及跳转到 `0xC6301000`。R2 为来宾实际建立的 `HW_CONF` 链，包含 type `0x0A` 的 TOC 指针和 type `0x0B` 的两个中断服务交接地址。
 
-原版 ARM 入口到达 Thumb 早期初始化 `0xC6362726`。随后在 `0xC63627E4` 读取 type `0x0B`，把 AP 回调表 `0xC8008B50` 存到 `0xC68020C8`，并在 `0xC6362808` 向 AP 提供的回写地址 `0xC8008B38` 发布原版函数 `0xC6679028`。之后，原版在 `0xC636206A` 读 VA `0xC6040400`（PA `0x20040400`）时发生外部数据异常（FSR `8`）。RAP3NAND `+0x1EFE` 附近从同一物理寄存器读取位 `[23:20]`，用作启动源选择。本次隔离诊断执行到了真实回调发布。正常冷启动仍停在片上 ROM 服务，ISASW 完成初始化及 S60 主屏均待验收。
+原版 ARM 入口到达 Thumb 早期初始化 `0xC6362726`。随后在 `0xC63627E4` 读取 type `0x0B`，把 AP 回调表 `0xC8008B50` 存到 `0xC68020C8`，并在 `0xC6362808` 向 AP 提供的回写地址 `0xC8008B38` 发布原版函数 `0xC6679028`。隔离诊断在确认回调写入后结束。初次调查曾在同一引导流程的 `0xC636206A` 读取启动源时遇到外部异常，该寄存器现已接入兼容冷启。
 
 ### 原厂证书链的独立对照
 
@@ -121,7 +121,7 @@ node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --ap-only --isa-probe <outp
 
 `0xFFFF1208` 的 Thumb 代码将原版调用的四个参数转交 v86 私有 MMIO。验证器从实际 SDRAM 核对调用描述符、TOC 里的组件名称、地址及长度，从 OneNAND 主区读取 `KEYS`，按固定的 RM-505 根指纹、根签名和基带公钥验签。它对当前 SDRAM 中两个组件的完整展开载荷计算摘要，并核对该版本原厂证书签名未覆盖的尾部 SHA-256。通过才返回 1，校验失败返回 0。支持范围限于本次实测的 ISASW 调用及其同时装载的 DSP0。[PKCS#1 v1.5，RFC 8017 §8.2、§9.2](https://www.rfc-editor.org/rfc/rfc8017#section-8.2)
 
-带同套 OneNAND 的冷启动在第 1,559 步向原版 `0x08902890` 返回 1，原版比较后进入 `0x0890289C`。随后原版 XIP 把 `0x08480000` 映射到 `0xC6300000`，`sisa.ext` 在第 4,018,740 步自行跳到原版 ISASW 的 `0xC6301000`。原版 ISASW 把 `0xC6679028` 写入 `HW_CONF` 提供的 `0xC8008B38`，第 4,025,994 步读取 VA `0xC6040400` 时触发外部数据异常（FSR `8`）。探针到这一点未向 OneNAND 发出编程或擦除。Chrome 的发布版 CPU Worker 也用同套媒体完成了兼容 ROM 的验签。下一步需验证启动源寄存器与其后的原版基带初始化，原版 S60 主屏和手机内安装器仍待验收。
+带同套 OneNAND 的冷启动在第 1,559 步向原版 `0x08902890` 返回 1，原版比较后进入 `0x0890289C`。随后原版 XIP 把 `0x08480000` 映射到 `0xC6300000`，`sisa.ext` 在第 4,018,740 步自行跳到原版 ISASW 的 `0xC6301000`。原版 ISASW 把 `0xC6679028` 写入 `HW_CONF` 提供的 `0xC8008B38`。Chrome 的发布版 CPU Worker 也用同套媒体完成了兼容 ROM 的验签。
 
 以下命令使用上文提取的文件。负例在新启动的诊断实例内改动一次 RAM 或 OneNAND 读出副本，分别覆盖调用描述符、TOC 名称和长度、根键、`KEYS` 签名、基带公钥、ISASW 证书及尾部、ISASW 和 DSP0 的载荷末字节。每个负例都返回 0，原版进入 `0x08902898`。
 
@@ -129,6 +129,14 @@ node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --ap-only --isa-probe <outp
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img --rapido-compat-rom
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img --rapido-compat-rom --compat-negative isasw-payload
 ```
+
+### RAPIDO 启动源、复位状态和共享 PLL
+
+RAP3NAND `+0x1EFE` 读取 PA `0x20040400` 的位 `[23:20]`，零对应正常加载。原版 ISASW `+0x61C5C` 还读取低两位，并在 `+0x61C72` 更新这两个字段。寄存器支持直接写和 `+4` 置位、`+8` 清位。原版冷启动实际执行两次读零、一次写零，随后在 `0xC6360618` 和 `0xC6360628` 读取 PA `0x20032C18`。该地址携带原版 `SisaResetReason` 所需的复位标志，本次冷开状态为零。原版软件复位请求使用相邻的 `0x20032C1C`，其执行路径留待验收。
+
+原版 ISASW 和 AP 侧 `usb.dll` 均访问 `0x20040380` 的清位别名，RAP3NAND 使用同组置位别名。模型保存该组的程序写入，也保存时钟配置 `0x20032CA8`、`0x20032C44`。原版 AP 先经 `0x20032C84` 置共享 PLL 电源位 14。ISASW 通过 `0x20032C88` 清位 15，再配置 ACCPLL，读到 `0x20032D8C = 0xD490`，最后经置位别名置位 15。两端之间保留位 14 才能在固件第二次配置后报告锁定。快照保存共享寄存器，旧快照沿用已保存的 PLL 电源字并初始化新配置字。
+
+同一条正常兼容冷启在第 4,357,316 步因原版 `0xC666B36C` 的 ARM 指令 `MRC p15,0,r0,c15,c2,0`（`0xEE1F0F12`）进入未定义指令向量。原版异常处理随后在 `exmondebug.dll` 的 `0x801DCBF4` 读空指针，产生第二次异常。探针记录两处原版现场和启动寄存器访问，私有 OneNAND 副本的 SHA-256 保持一致。ISASW 返回 SISA、系统服务和 S60 主屏仍待验收。复现时可将上节 `--nand` 换成同一出厂映像的可写副本。[Arm ARM1136 TRM 表 3-2](https://documentation-service.arm.com/static/5e8e4457fd977155116ab118)
 
 ## Samsung MuxOneNAND 物理介质
 
