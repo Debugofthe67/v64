@@ -250,3 +250,205 @@ test("RAPIDO host MMC IRQ, card mux, cold reopen and snapshot generation", async
         assert.deepEqual(bytes, new Uint8Array([0x75, 0x25]));
     });
 });
+
+test("RAPIDO DMA consumes actual MMC handshakes, retains partial writes on restore and acknowledges ICU vectors", async t => {
+    const dir = mkdtempSync(join(tmpdir(), "v86-n97-mmc-dma-"));
+    const file = join(dir, "emmc"), sd = join(dir, "sd");
+    local_file(file, true, access => format_n97_emmc(open_n97_emmc(access, true), 1));
+    local_file(sd, true, access => access.truncate(16 * 1024 ** 2));
+    const target = await machine(file, sd);
+    t.after(async () => {
+        await target.vm.destroy();
+        rmSync(dir, { recursive: true, force: true });
+    });
+    const { vm, set, get, io_set, io_get, cmd, ready, select } = target;
+    const cpu = vm.v86.cpu, dma = cpu.devices.n97_dma, icu = 0x20400000;
+    const data = N97_MMC_BASE + 0x20, buffer = 0x08200000, channel = 0x20041000;
+    const write = (address, value) => io_set(address, value, 4);
+    const read = address => io_get(address, 4);
+    const regs = (base, values) => values.forEach(([offset, value]) => write(base + offset, value));
+    const status = () => dma.status();
+    function arm(irq)
+    {
+        regs(icu, [[0x04, 1], [0x20, irq], [0x24, 2], [0x0C, irq]]);
+    }
+    function interrupt(irq)
+    {
+        assert.equal(read(icu + 8), irq);
+        read(icu + 0x80);
+        assert.equal(read(icu + 8), 0xFFFFFFFF, "one pending event per completed DMA transfer");
+    }
+    function physical(write_to_card, address = buffer)
+    {
+        write(channel + 4, 1);
+        write(channel + 8, 0);
+        const memory = [address, 4, 32], peripheral = [data, 0, 16];
+        [0x14, 0x20].forEach((offset, index) => {
+            const endpoint = index === +write_to_card ? peripheral : memory;
+            regs(channel + offset, endpoint.map((word, part) => [part * 4, word]));
+        });
+        write(0x2004080C, write_to_card ? 16 : 15);
+        regs(channel, [[0x10, 0], [0x2C, 255], [0x34, 1], [8, 2]]);
+    }
+    function logical(write_to_card)
+    {
+        write(0x20042640, 1);
+        regs(0x20042400, [[0x80, 256], [0x140, 2], [0x1C0, data], [0x200, buffer], [0x280, 512 * 4], [0x300, 1]]);
+        write(0x20040820, write_to_card ? 16 : 15);
+        write(0x20042440, write_to_card ? 1 : 2);
+        if(write_to_card) write(0x2004242C, 1);
+    }
+    function complete()
+    {
+        for(let n = 0; n < 16; n++) dma.poll();
+    }
+
+    assert.equal(read(channel), 0);
+    write(channel, 2);
+    assert.equal(read(channel), 0, "reset is gated");
+    regs(channel, [[4, 1], [0, 2], [4, 0]]);
+    assert.equal(read(channel), 0x6E);
+    assert.equal(status().physical_resets, 1);
+    assert.equal(read(channel + 8), 0);
+
+    ready(); // eMMC starts with a real FAT32 MBR at LBA 0.
+    arm(1);
+    physical(false);
+    dma.poll();
+    assert.equal(status().bytes, 0, "arming cannot initiate media I/O");
+    assert.equal(read(channel + 8), 2);
+    assert.equal(cmd(0xB111).status & 0x80, 0);
+    dma.poll();
+    assert.equal(read(channel + 0x2C), 255, "PIO mode requests no DMA");
+    set(0x2C, 0x8F00);
+    dma.poll();
+    assert.equal(read(channel + 0x2C), 223);
+    const snapshot = await vm.save_state();
+    complete();
+    assert.equal(read(channel + 0x2C), 0xFFFFFF);
+    assert.equal(cpu.read16_physical(buffer + 510), 0xAA55);
+    interrupt(1);
+    await vm.restore_state(snapshot);
+    assert.equal(read(channel + 0x2C), 223);
+    complete();
+    assert.equal(status().completed, 1);
+    assert.equal(status().bytes, 512);
+    assert.equal(cpu.read16_physical(buffer + 510), 0xAA55);
+    interrupt(1);
+    write(channel + 4, 0);
+
+    arm(6);
+    logical(false);
+    cmd(0xB111, 2048);
+    complete();
+    assert.equal(read(0x200426C0), 256);
+    assert.equal(Buffer.from(cpu.read_blob_physical(buffer + 82, 8)).toString(), "FAT32   ");
+    interrupt(6);
+    regs(0x20042400, [[0x1C, buffer + 510], [0x20, 2], [0x18, 4]]);
+    assert.equal(read(0x20042418), 0, "the real logical RX completion barrier is coherent");
+    regs(0x20042400, [[0x1C, data], [0x18, 4]]);
+    assert.equal(read(0x20042418), 4, "the RAM barrier does not acknowledge peripheral addresses");
+
+    select(true);
+    cmd(0);
+    cmd(0x1608, 0x1AA);
+    cmd(0x1137);
+    cmd(0x1329, 0x40FF8000);
+    cmd(0x1202);
+    cmd(0x1603);
+    cmd(0x2907, 0x10000);
+    const payload = Uint8Array.from({ length: 512 }, (_, i) => i ^ (i >>> 4));
+    cpu.write_blob_physical(payload, buffer);
+    set(0x2C, 0x008F);
+    assert.equal(cmd(0x3118, 512).status, 1);
+    physical(true);
+    dma.poll();
+    const partial_write = await vm.save_state();
+    set(0x2C, 0);
+    dma.poll();
+    assert.equal(read(channel + 0x2C), 223, "disabled DMA requests preserve transferred positions");
+    await vm.restore_state(partial_write);
+    complete();
+    assert.equal(get(0x10) & 0x18, 0x18);
+    interrupt(1);
+    const disk = openSync(sd, "r");
+    try
+    {
+        const written = new Uint8Array(512);
+        assert.equal(readSync(disk, written, 0, 512, 512), 512);
+        assert.deepEqual(written, payload);
+    }
+    finally { closeSync(disk); }
+
+    set(0x2C, 0x8F00);
+    cmd(0xB111, 512);
+    physical(false, data);
+    complete();
+    assert.equal(status().errors, 1, "invalid RAM terminates the channel");
+    assert.equal(read(icu + 8), 0xFFFFFFFF);
+    physical(false);
+    const untouched = cpu.read_blob_physical(buffer, 512);
+    cmd(0x290C);
+    cmd(0xB111, 0);
+    dma.poll();
+    assert.equal(status().errors, 2, "cancelling before the first DMA beat does not redirect the request");
+    assert.deepEqual(cpu.read_blob_physical(buffer, 512), untouched);
+    assert.equal(read(icu + 8), 0xFFFFFFFF);
+    cmd(0x290C);
+
+    set(0x2C, 0x008F);
+    cmd(0x3118, 512);
+    logical(true);
+    cmd(0x290C);
+    cmd(0x3118, 1024);
+    complete();
+    assert.equal(status().errors, 3, "cancelled logical TX cannot write to another sector");
+    assert.equal(get(0x10) & 0x18, 0);
+    assert.equal(read(icu + 8), 0xFFFFFFFF);
+    const after_retry = openSync(sd, "r");
+    try
+    {
+        const untouched_sector = new Uint8Array(512);
+        assert.equal(readSync(after_retry, untouched_sector, 0, 512, 1024), 512);
+        assert.deepEqual(untouched_sector, new Uint8Array(512));
+    }
+    finally { closeSync(after_retry); }
+
+    cmd(0x290C);
+    arm(6);
+    cmd(0xB111, 512);
+    logical(true);
+    dma.poll();
+    assert.equal(read(0x20042440), 1, "TX waits while the active command is in the other direction");
+    for(let word = 0; word < 256; word++)
+        assert.equal(get(0x20), payload[word * 2] | payload[word * 2 + 1] << 8);
+    assert.equal(cmd(0x3118, 1024).status, 1);
+    complete();
+    assert.equal(get(0x10) & 0x18, 0x18);
+    interrupt(6);
+    assert.equal(status().errors, 3, "a previous RX does not expire a queued TX");
+
+    set(0x2C, 0x8F00);
+    logical(false);
+    write(0x20042500, 1);
+    cmd(0xB111, 512);
+    dma.poll();
+    assert.equal(read(0x200426C0), 0, "paused DMA consumes no beats");
+    cmd(0x290C);
+    cmd(0xB111, 0);
+    dma.poll();
+    assert.equal(read(0x20042440), 0, "a paused channel expires when its command is cancelled");
+    assert.equal(status().errors, 4);
+    assert.deepEqual(cpu.read_blob_physical(buffer, 512), untouched);
+    assert.equal(read(icu + 8), 0xFFFFFFFF);
+    cmd(0x290C);
+
+    physical(false);
+    cmd(0xB111, 512);
+    cmd(0x290C);
+    cmd(0xB111, 0);
+    complete();
+    assert.equal(status().errors, 5, "arming before a command still reserves only that command's generation");
+    assert.deepEqual(cpu.read_blob_physical(buffer, 512), untouched);
+    assert.equal(read(icu + 8), 0xFFFFFFFF);
+});

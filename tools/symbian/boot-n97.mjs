@@ -124,11 +124,12 @@ async function observe_kernel(cpu, wasm, state, pc_now, field, register, word)
     const entry = 0x8004F110;
     const variant_start = 0x800973C4;
     const variant_clock_exit = 0x8009746C;
-    let configuration, mmu_enabled_at, first_linked_pc, ekern, variant, irq, dma;
+    let configuration, mmu_enabled_at, first_linked_pc, ekern, variant, irq, dma, next_abort;
+    const dma_entry = 0x8009D114;
     const first_instructions = [];
     const init_poll_interval = 32;
     cpu.clock.resume();
-    for(; step < 3500000; step++)
+    for(; step < (values["ap-only"] ? 5000000 : 3500000); step++)
     {
         // This tool single-steps with the VM stopped. Let the normal
         // clock and device scheduler advance for the instructions just run.
@@ -157,22 +158,28 @@ async function observe_kernel(cpu, wasm, state, pc_now, field, register, word)
                 spsr: state.getUint32(STATE_OFFSETS.a32_spsr + 4, true) };
         }
         if(irq && !irq.scheduler && pc === 0x8004F31C) irq.scheduler = { pc, step, mode: pstate & 31 };
-        if(values["ap-only"] && pc === 0x8009D114) dma = { pc, step };
-        if(dma && pc === 0x8009D13C)
+        if(values["ap-only"] && !dma && pc === dma_entry) dma = { pc, step, lr: register(14) };
+        if(dma && !dma.first_request && pc === 0x8009D13C)
         {
             dma.first_request = { pc, step, address: (register(0) + 0x484) >>> 0, width: 4, value: register(6) };
         }
+        if(dma && !dma.returned && pc === dma.lr) dma.returned = { pc, step };
         wasm["a64_worker_slice"](1);
         if(irq && !irq.returned && (pstate & 31) === 0x12 && [0x8004F354, 0x8004F370, 0x8008D120].includes(pc))
         {
             irq.returned = { instruction: pc, pc: pc_now(), step: step + 1, cpsr: (field("pstate") | field("nzcv")) >>> 0 };
         }
         if(pc === entry) ekern.pc_after_first_instruction = pc_now();
-        if(dma?.first_request || !values["ap-only"] && irq?.returned) break;
-        if([0xC, 0x10, 0xFFFF000C, 0xFFFF0010].includes(pc_now()))
+        if(!values["ap-only"] && irq?.returned) break;
+        if(!next_abort && [0xC, 0x10, 0xFFFF000C, 0xFFFF0010].includes(pc_now()))
         {
-            assert.fail(`Unexpected abort after PC 0x${pc.toString(16)} at VA 0x${field("far_el1").toString(16)}`);
+            if(!dma?.returned)
+                assert.fail(`Unexpected abort after PC 0x${pc.toString(16)} at VA 0x${field("far_el1").toString(16)}`);
+            next_abort = { pc, step: step + 1, vector: pc_now(), far: field("far_el1"),
+                fsr: field(pc_now() % 0x100 === 0x10 ? "esr_el1" : "a32_ifsr") };
         }
+        if(next_abort && step % init_poll_interval === 0 && (step - next_abort.step > 50000 ||
+            cpu.devices.n97_xti.packets().some(packet => /FAULT: Exception/.test(packet.data)))) break;
     }
 
     assert.deepEqual(first_instructions, [0, 0x1880, 0x1884, 0x1888]);
@@ -215,6 +222,15 @@ async function observe_kernel(cpu, wasm, state, pc_now, field, register, word)
         assert.ok(dma?.first_request && dma.step > irq.returned.step, "the AP diagnostic must reach the original DMA extension");
         assert.equal(dma.first_request.address, 0xC6040C04);
         assert.equal(dma.first_request.value, 1);
+        assert.ok(dma.returned?.step > dma.step, "the original DMA channel initialization must return");
+        for(let channel = 0; channel < 6; channel++)
+        {
+            const base = 0x20040C00 + channel * 0x400;
+            const access = mmio.filter(({ address }) => address >= base && address <= base + 8);
+            assert.deepEqual(access.slice(0, 6).map(({ direction, address, width, value }) => [direction, address - base, width, value]),
+                [["write", 4, 4, 1], ["write", 0, 4, 2], ["read", 0, 4, 0x6E],
+                    ["write", 8, 4, 0], ["read", 8, 4, 0], ["write", 4, 4, 0]]);
+        }
     }
     const devices = cpu.get_diagnostics().symbian;
     assert.equal(devices.l2_enabled, true);
@@ -236,5 +252,5 @@ async function observe_kernel(cpu, wasm, state, pc_now, field, register, word)
     assert.deepEqual(cpu.devices.n97_interrupts.get_state(), interrupt_state);
     console.log(JSON.stringify({ sha256, load_address: N97_ROM_ADDRESS, boot_registers, first_instructions,
         configuration, toc_entry, mmu_enabled_at, first_linked_pc, ekern, variant, instructions_per_ms,
-        irq, tick_bus, dma, devices, reset_devices, mmio }, null, 2));
+        irq, tick_bus, dma, next_abort, devices, reset_devices, mmio }, null, 2));
 }

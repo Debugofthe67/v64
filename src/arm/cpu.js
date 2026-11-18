@@ -40,6 +40,7 @@ import { create_n97_onenand } from "../symbian/n97_onenand.js";
 import { create_n97_mmc } from "../symbian/n97_mmc.js";
 import { create_n97_keyboard } from "../symbian/n97_keyboard.js";
 import { create_n97_i2c } from "../symbian/n97_i2c.js";
+import { create_n97_dma } from "../symbian/n97_dma.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -64,7 +65,7 @@ import { COMMAND_RELOAD, COMMAND_RESET } from "../parallel/control.js";
 const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe",
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
     "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
-    "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio"];
+    "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -311,6 +312,8 @@ A64CPU.prototype.init = function(settings, device_bus)
                 level => interrupts.set_slider(level), () => this.devices.n97_mmc?.sd ? 0 : 0x2000);
             const keypad = this.devices.n97_keyboard = create_n97_keyboard(level => keypad_irq.set_input(!level));
             this.devices.n97_i2c = create_n97_i2c(this.io, keypad, level => interrupts.set_i2c(level));
+            this.devices.n97_dma = create_n97_dma(this.io, this, () => this.devices.n97_mmc,
+                (source, level) => interrupts.set_dma(source, level));
             device_bus.register("symbian-key", ([code, pressed]) => keypad.press(code, pressed));
             device_bus.register("symbian-slider", open => { if(typeof open === "boolean") slider.set_input(open); });
             if(settings.symbian_emmc || settings.symbian_sd)
@@ -858,7 +861,7 @@ A64CPU.prototype.state_block_of = function(core)
 /** (env.run_hardware_timers) the virt machine's device timers (the PL031's alarm, the display's); the cores' timers are their own */
 A64CPU.prototype.run_hardware_timers = function(acpi, now)
 {
-    if(this.devices.n97_os_timer) return this.devices.n97_os_timer.poll(now);
+    if(this.devices.n97_os_timer) return Math.min(this.devices.n97_os_timer.poll(now), this.devices.n97_dma.poll());
     const display = this.devices.display ? this.devices.display.timer(now) : 100;
     if(this.devices.apple_timer) return Math.min(display, this.devices.apple_timer.timer(), this.devices.apple_gpio.timer(now),
         this.devices.apple_accelerometer?.timer(now) ?? 100, this.devices.apple_gyroscope?.timer(now) ?? 100,
@@ -1565,6 +1568,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
         ...(this.devices.n97_xti ? { "symbian": { "xti": this.devices.n97_xti.packets(),
             "clocks": this.devices.n97_clocks.status(), "l2_enabled": this.devices.n97_l2.enabled(),
             "keyboard": this.devices.n97_keyboard.status(), "slider_open": this.devices.n97_slider_gpio.read_input(),
+            "dma": this.devices.n97_dma.status(),
             ...(this.devices.n97_onenand ? { "onenand": this.devices.n97_onenand.status() } : {}),
             ...(this.devices.n97_mmc ? { "mmc": this.devices.n97_mmc.status() } : {}),
             ...(this.boot_files.media ? { "rapido_boot": { "media_sha256": this.boot_files.media.digest,

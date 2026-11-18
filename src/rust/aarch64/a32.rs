@@ -1575,9 +1575,34 @@ fn a32_multiply(word: u32) -> Result<Flow, Exception> {
     }
 }
 
-/// The synchronization primitives (bits 27:23 00011, 7:4 1001): the
-/// exclusives and load-acquire/store-release
+/// ARM1136 implements SWP/SWPB in both alignment modes (ARM DDI 0100I A4.1.108–109).
+/// On this single-core profile neither guest interrupts nor DMA run between
+/// the two bus accesses. A fault leaves the destination register untouched.
+fn arm1136_swap(word: u32) -> Result<Flow, Exception> {
+    let rn = word >> 16 & 15;
+    let rd = word >> 12 & 15;
+    let rm = word & 15;
+    if rn == 15 || rd == 15 || rm == 15 || rn == rd || rn == rm {
+        return Err(Exception::Undefined);
+    }
+    let size = if word & (1 << 22) != 0 { 1 } else { 4 };
+    let address = reg(rn);
+    let low = address & (size - 1);
+    if low != 0 && sctlr() & (SCTLR_A | (1 << 22)) != 0 {
+        return Err(execute::alignment(address as u64, false, Syndrome::NONE));
+    }
+    let aligned = address - low;
+    let previous = load(aligned, size, false)?;
+    memory::write(aligned as u64, size, reg(rm) as u64, false, syndrome(size))?;
+    set_reg(rd, previous.rotate_right(8 * low));
+    Ok(Flow::Next)
+}
+
+/// A32 synchronization primitives: swap, exclusives and acquire/release.
 fn a32_synchronization(word: u32, pc: u32) -> Result<Flow, Exception> {
+    if word & 0x0FB0_0FF0 == 0x0100_0090 && arm1136() {
+        return arm1136_swap(word);
+    }
     let size = [2, 3, 0, 1][(word >> 21 & 3) as usize];
     let load = word & 1 << 20 != 0;
     let rn = word >> 16 & 15;

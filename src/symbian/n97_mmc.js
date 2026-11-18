@@ -7,6 +7,7 @@ import { N97_MMC_SECTOR } from "./n97_mmc_media.js";
 
 export const N97_MMC_BASE = 0x20032800;
 export const N97_MMC_IRQ = 159;
+export const N97_MMC_DMA_PORT = N97_MMC_BASE + 0x20;
 const CMD = 0, ARGL = 4, ARGH = 8, CON = 0xC, STAT = 0x10, IE = 0x14;
 const CTO = 0x18, DTO = 0x1C, DATA = 0x20, BLEN = 0x24, NBLK = 0x28, BUF = 0x2C, SDIO = 0x34, RSP = 0x40;
 const EOC = 1, BRS = 8, EOFB = 16, DATA_TIMEOUT = 32, CMD_TIMEOUT = 128, AF = 0x400, AE = 0x800, CERR = 0x4000;
@@ -20,6 +21,7 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
 {
     const cards = [emmc ? create_n97_mmc_card(emmc, true) : null, sd ? create_n97_mmc_card(sd, false) : null];
     const regs = new Uint16Array(24);
+    const transfer_sequences = [0, 0];
     let clock, selected, transfer, fifo_last, commands, reads, writes;
     const update_irq = () => set_irq(!!(clock && (regs[STAT / 4] & regs[IE / 4])));
     const powered = () => clock && (regs[CON / 4] & POWER);
@@ -47,6 +49,7 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
         selected = 0;
         fifo_last = 0;
         commands = reads = writes = 0;
+        transfer_sequences.fill(0);
         abort();
         for(const card of cards) card?.reset();
         update_irq();
@@ -62,8 +65,9 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
             regs[STAT / 4] |= DATA_TIMEOUT;
             return;
         }
-        transfer = { card: selected, sector: info?.sector ?? 0, count, write: !!info?.write, fixed: !!fixed,
-            bytes: fixed ?? null, at: 0 };
+        const write = !!info?.write;
+        transfer = { card: selected, sector: info?.sector ?? 0, count, write, fixed: !!fixed,
+            bytes: fixed ?? null, at: 0, sequence: ++transfer_sequences[+write] };
         cards[selected].start_data(transfer.write);
         if(!transfer.fixed && transfer.write) transfer.bytes = new Uint8Array(N97_MMC_SECTOR);
     }
@@ -152,9 +156,9 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
         update_irq();
     }
 
-    function read_data()
+    function read_data(dma = false)
     {
-        if(!powered() || !transfer || transfer.write) return fifo_last;
+        if(!powered() || !transfer || transfer.write) return dma ? null : fifo_last;
         try
         {
             if(!transfer.bytes) transfer.bytes = sector_from_card();
@@ -164,18 +168,30 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
             if(transfer.at === transfer.bytes.length) next_block();
             else if(transfer.bytes.length - transfer.at < FIFO_WORDS * 2) update_fifo();
         }
-        catch(error) { data_timeout(); }
+        catch(error)
+        {
+            data_timeout();
+            if(dma) return null;
+        }
         return fifo_last;
     }
     function write_data(value)
     {
-        if(!powered() || !transfer?.write) return;
+        if(!powered() || !transfer?.write) return false;
         const be = !!(regs[CON / 4] & BIG_ENDIAN);
         transfer.bytes[transfer.at++] = be ? value >> 8 : value & 0xFF;
         transfer.bytes[transfer.at++] = be ? value & 0xFF : value >> 8;
-        if(transfer.at !== transfer.bytes.length) return;
+        if(transfer.at !== transfer.bytes.length) return true;
         try { sector_to_card(); next_block(); }
-        catch(error) { data_timeout(); }
+        catch(error) { data_timeout(); return false; }
+        return true;
+    }
+    function dma_request(write)
+    {
+        if(!transfer || transfer.write !== write) return null;
+        const bytes = (transfer.bytes?.length ?? N97_MMC_SECTOR) - transfer.at;
+        const enabled = powered() && (regs[BUF / 4] & (write ? WRITE_DMA : READ_DMA));
+        return { sequence: transfer.sequence, beats: enabled ? Math.min(FIFO_WORDS, (bytes + 1) >> 1) : 0 };
     }
     function select_card(slot)
     {
@@ -222,13 +238,16 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
     });
     reset();
     return {
-        emmc, sd, reset, select_card, set_clock,
+        emmc, sd, reset, select_card, set_clock, dma_request,
+        dma_generation(write) { return transfer_sequences[+write]; },
+        dma_read() { return read_data(true); },
+        dma_write(value) { return write_data(value); },
         status: () => ({ "emmc_bytes": emmc?.byteLength ?? null, "sd_bytes": sd?.byteLength ?? null,
             "slot": selected, "commands": commands, "reads": reads, "writes": writes }),
         get_state: () => [cards.map(card => card ? [card.buffer.get_state(), card.get_state()] : null),
             regs.slice(), clock, selected, transfer ? [transfer.card, transfer.sector, transfer.count,
-                transfer.write, transfer.fixed, transfer.bytes?.slice() ?? null, transfer.at] : null,
-            fifo_last, commands, reads, writes],
+                transfer.write, transfer.fixed, transfer.bytes?.slice() ?? null, transfer.at, transfer.sequence] : null,
+            fifo_last, commands, reads, writes, transfer_sequences.slice()],
         check_state(saved)
         {
             for(const [i, card] of cards.entries())
@@ -250,11 +269,12 @@ export function create_n97_mmc(io, emmc, sd, set_irq)
             });
             regs.set(saved[1]);
             [, , clock, selected, , fifo_last, commands, reads, writes] = saved;
+            [transfer_sequences[0], transfer_sequences[1]] = saved[9] || [0, 0];
             transfer = null;
             if(saved[4])
             {
-                const [card, sector, count, write, fixed, bytes, at] = saved[4];
-                transfer = { card, sector, count, write, fixed, bytes: bytes?.slice() ?? null, at };
+                const [card, sector, count, write, fixed, bytes, at, sequence = ++transfer_sequences[+write]] = saved[4];
+                transfer = { card, sector, count, write, fixed, bytes: bytes?.slice() ?? null, at, sequence };
             }
             update_irq();
         },

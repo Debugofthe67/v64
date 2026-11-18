@@ -3,6 +3,7 @@
 
 import { N97_MMC_IRQ } from "./n97_mmc.js";
 import { N97_I2C_IRQ } from "./n97_i2c.js";
+import { N97_DMA_IRQS } from "./n97_dma.js";
 
 export const N97_RAPIDO_SELECT = 0x20030300;
 export const N97_RAPIDO_REVISION = 0x113;
@@ -134,7 +135,7 @@ export function create_n97_interrupts(io, set_lines)
     // from +0x48 (+0x8D178), with -1 as the empty ID on either port.
     const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C]);
     const priority = new Uint8Array(256);
-    const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ];
+    const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ, ...N97_DMA_IRQS];
     const unmasked = new Set(), asserted = new Set();
     let enabled = 0, selected = 0, active = NO_INTERRUPT;
     const pending = () => {
@@ -155,7 +156,12 @@ export function create_n97_interrupts(io, set_lines)
     reg(0x04, "RAPIDO interrupt enable", () => enabled, (value, mask) => { enabled = merge(enabled, value, mask & 1); update(); });
     reg(0x08, "RAPIDO IRQ claim", () => {
         const id = pending();
-        if(id !== NO_INTERRUPT) { active = id; update(); }
+        if(id !== NO_INTERRUPT)
+        {
+            active = id;
+            if(N97_DMA_IRQS.includes(id)) asserted.delete(id);
+            update();
+        }
         return id;
     }, () => {});
     // The firmware calls the +0x0C command with the bound tick ID
@@ -199,6 +205,7 @@ export function create_n97_interrupts(io, set_lines)
     return {
         set_timer(level) { line(MS_TICK_INTERRUPT, level); },
         set_mmc(level) { line(N97_MMC_IRQ, level); },
+        set_dma(source, level) { line(source, level); },
         set_i2c(level) { line(N97_I2C_IRQ, level); },
         set_keyboard(level) { line(N97_KEYBOARD_IRQ, level); },
         set_slider(level) { line(N97_SLIDER_IRQ, level); },
@@ -398,7 +405,8 @@ export function create_n97_l2(io)
     // These maintenance operations finish synchronously on V86's coherent
     // memory. Their status is clear on read after the operation completes.
     for(const [offset, name] of [[L2_SYNC, "L2x0 cache sync"], [L2_INVALIDATE_WAY, "L2x0 invalidate by way"],
-        [L2_CLEAN_INVALIDATE_WAY, "L2x0 clean/invalidate by way"]])
+        [L2_CLEAN_INVALIDATE_WAY, "L2x0 clean/invalidate by way"], [0x770, "L2x0 invalidate line by PA"],
+        [0x7B0, "L2x0 clean line by PA"], [0x7F0, "L2x0 clean/invalidate line by PA"]])
     {
         reg(offset, name, () => 0, () => {});
     }

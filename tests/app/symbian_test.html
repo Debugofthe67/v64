@@ -379,6 +379,8 @@ try
         "normal Worker mapped the imported RM-505 OneNAND");
     check(diagnostics.symbian.mmc?.emmc_bytes === N97_EMMC_SIZE && diagnostics.symbian.mmc.sd_bytes === null,
         "normal Worker mapped the 32 GB eMMC and an empty optional slot");
+    check(diagnostics.symbian.dma?.bytes === 0 && diagnostics.symbian.dma.errors === 0,
+        "normal Worker initializes the RAPIDO DMA controller");
     check(diagnostics.symbian.rapido_boot.media_sha256 === boot_media.sha256 &&
         diagnostics.symbian.rapido_boot.bootrom_sha256 === null, "CPU Worker loads original modem media before a chip ROM is provided");
     check(console_frame.contentDocument.body.textContent.includes("RAPIDO ROM missing"), "console explains the missing chip ROM");

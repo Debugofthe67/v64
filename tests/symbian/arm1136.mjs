@@ -52,7 +52,7 @@ try
         assert.equal(cpu.ram_offset(0, 4), 0);
         assert.equal(cpu.ram_offset(0x40000000, 4), -1);
         assert.deepEqual([...cpu.mem8.subarray(0, 4)], [...readFileSync(binary).subarray(0, 4)]);
-        const result = new DataView(cpu.wasm_memory.buffer, cpu.mem8.byteOffset + 0x800, 56);
+        const result = new DataView(cpu.wasm_memory.buffer, cpu.mem8.byteOffset + 0x800, 116);
         const registers = new DataView(cpu.wasm_memory.buffer, cpu.state_base);
         const value = offset => result.getUint32(offset, true);
         const step = until => {
@@ -66,6 +66,9 @@ try
         step(() => value(40) !== 0);
         assert.deepEqual(Array.from({ length: 14 }, (_, i) => value(i * 4)),
             [0x4117B363, 0x00050078, 7, 73, 0x1D3, 1, 3, 0x4117B363, 5, 0x01000000, 0xAA, 0x1D152152, 0x44, 0x98]);
+        assert.deepEqual([56, 60, 64, 68].map(value), [0x11223344, 0x77, 0x885566AA, 0x11223344]);
+        assert.deepEqual([72, 76, 80].map(value), [0x11223344, 1, 0x871]);
+        assert.deepEqual([84, 88, 92, 112].map(value), [0x42, 0x80D, 0x300870, 0x11223344]);
         const wrong = cpu.get_state(true);
         wrong[4].find(device => device?.[1] instanceof Uint8Array && device[1].length === N97_SRAM_SIZE)[0] = "other ROM or handoff";
         assert.throws(() => cpu.validate_state(wrong), /same ROM and loader handoff/);

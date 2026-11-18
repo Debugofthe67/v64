@@ -73,6 +73,44 @@ wait_irq:
     add r0, r10, #0x00200000
     ldr r0, [r0]
     str r0, [r10, #28]
+
+    @ The N97 kernel synchronizes the external cache with SWP Rd,Rd,[Rn].
+    add r6, r10, #112
+    ldr r3, =0x11223344
+    str r3, [r6]
+    ldr r4, =0x55667788
+    swp r4, r4, [r6]
+    str r4, [r10, #56]
+    add r6, r6, #1
+    mov r5, #0xaa
+    swpb r4, r5, [r6]
+    str r4, [r10, #60]
+    swp r4, r3, [r6]       @ U=A=0: align the store, rotate the load
+    str r4, [r10, #64]
+    ldr r4, [r10, #112]
+    str r4, [r10, #68]
+    mrc p15, 0, r0, c1, c0, 0
+    orr r0, r0, #(1 << 22)
+    mcr p15, 0, r0, c1, c0, 0
+    swp r4, r5, [r6]       @ U=1: alignment abort, Rd and RAM preserved
+    str r4, [r10, #72]
+    ldr r4, [r10, #32]
+    str r4, [r10, #76]
+    ldr r4, [r10, #36]
+    str r4, [r10, #80]
+
+    @ Map a read-only privileged alias of the same word (XP, APX=1, AP=1).
+    ldr r0, =0x840a
+    str r0, [r2, #12]
+    add r6, r10, #0x00300000
+    add r6, r6, #112
+    mov r4, #0x42
+    swp r4, r5, [r6]
+    str r4, [r10, #84]
+    ldr r4, [r10, #32]
+    str r4, [r10, #88]
+    ldr r4, [r10, #36]
+    str r4, [r10, #92]
     mov r0, #0x01000000
     ldr r1, [r0]
     mov r0, #0xaa
