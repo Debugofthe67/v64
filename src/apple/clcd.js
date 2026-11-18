@@ -16,6 +16,9 @@ export class AppleCLCD
         this.rgba32 = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1 ?
             new Uint32Array(this.rgba.buffer) : null;
         this.scanout_bytes = null;
+        /** @type {?Uint32Array} */
+        this.composited_ui = null;
+        this.overlay = false;
         this.translate = address => address;
         this.shown = new Uint32Array(N90_VIDEO.width * N90_VIDEO.height);
         this.blank = false;
@@ -215,7 +218,7 @@ export class AppleCLCD
         const pages = this.surface_pages(base, rgba.length);
         if(!pages || (base & 3)) return;
         const bytes = this.scanout_bytes || (this.scanout_bytes = new Uint8Array(rgba.length));
-        for(let i = 0; i < bytes.length; i += 4)
+        for(let i = 0; i < rgba.length; i += 4)
         {
             bytes[i] = rgba[i + 2];
             bytes[i + 1] = rgba[i + 1];
@@ -245,22 +248,87 @@ export class AppleCLCD
         return pages;
     }
 
-    surface_words(base, staging = null)
+    surface_words(base, staging = null, count = this.shown.length)
     {
-        const size = this.rgba.length, offset = this.cpu.ram_offset(base, size);
+        const size = count * 4, offset = this.cpu.ram_offset(base, size);
         if(offset >= 0 && !(offset & 3))
-            return new Uint32Array(this.cpu.mem8.buffer, this.cpu.mem8.byteOffset + offset, this.shown.length);
+            return new Uint32Array(this.cpu.mem8.buffer, this.cpu.mem8.byteOffset + offset, count);
         if(base & 3) return null;
         const pages = this.surface_pages(base, size);
         if(!pages) return null;
-        const bytes = staging || this.scanout_bytes || (this.scanout_bytes = new Uint8Array(size));
+        const bytes = staging || (this.scanout_bytes?.length >= size ? this.scanout_bytes :
+            (this.scanout_bytes = new Uint8Array(Math.max(size, this.rgba.length))));
         let at = 0;
         for(const [physical, length] of pages)
         {
             const offset = this.cpu.ram_offset(physical, length);
             bytes.set(this.cpu.mem8.subarray(offset, offset + length), at); at += length;
         }
-        return new Uint32Array(bytes.buffer, bytes.byteOffset, this.shown.length);
+        return new Uint32Array(bytes.buffer, bytes.byteOffset, count);
+    }
+
+    draw_ui_layer(pixels, layer, blend)
+    {
+        const { width, height } = N90_VIDEO;
+        const reg = offset => this.regs[(0x4000 + layer * 0x1000 + offset) >>> 2];
+        const format = reg(0x40);
+        if(format >>> 8 & 7) return;
+        // The two UI windows fetch BGRA rows. The tiled stride spans 16 rows.
+        const stride = (reg(0x48) & ~63) >>> (format & 1 ? 2 : 6);
+        const src = reg(0x50), src_end = reg(0x60);
+        const sx = src >>> 16 & 0x7FF, sy = src & 0x7FF;
+        const sw = src_end ? (src_end >>> 16 & 0x7FF) - sx : width;
+        const sh = src_end ? (src_end & 0x7FF) - sy : height;
+        if(sw <= 0 || sh <= 0 || stride < sx + sw || stride > 4096) return;
+        const unscaled = reg(0x4C) & 1;
+        const dst = unscaled ? 0 : reg(0x54), dst_end = unscaled ? 0 : reg(0x64);
+        const dx = dst >>> 16 & 0x7FF, dy = dst & 0x7FF;
+        const dw = dst_end ? (dst_end >>> 16 & 0x7FF) - dx : sw;
+        const dh = dst_end ? (dst_end & 0x7FF) - dy : sh;
+        const columns = Math.min(dw, width - dx), rows = Math.min(dh, height - dy);
+        if(columns <= 0 || rows <= 0) return;
+        const address = reg(0x44) + (sy * stride + sx) * 4;
+        const count = (sh - 1) * stride + sw;
+        if(address + count * 4 > 0x100000000) return;
+        const source = this.surface_words(address, null, count);
+        if(!source) return;
+        for(let y = 0; y < rows; y++)
+        {
+            const from = Math.floor(y * sh / dh) * stride;
+            const to = (dy + y) * width + dx;
+            if(!blend && dw === sw)
+            {
+                pixels.set(source.subarray(from, from + columns), to);
+                continue;
+            }
+            for(let x = 0; x < columns; x++)
+            {
+                const pixel = source[from + Math.floor(x * sw / dw)];
+                const alpha = pixel >>> 24;
+                if(!blend || alpha === 255) pixels[to + x] = pixel;
+                else if(alpha)
+                {
+                    // Core Animation supplies premultiplied source colors.
+                    const background = pixels[to + x];
+                    let color = 0;
+                    for(let shift = 0; shift < 24; shift += 8)
+                    {
+                        const channel = (pixel >>> shift & 255) + Math.round((background >>> shift & 255) * (255 - alpha) / 255);
+                        color |= Math.min(255, channel) << shift;
+                    }
+                    pixels[to + x] = color;
+                }
+            }
+        }
+    }
+
+    compose_ui(layers)
+    {
+        const pixels = this.composited_ui || (this.composited_ui = new Uint32Array(this.shown.length));
+        pixels.fill(0);
+        if(layers & 0x100) this.draw_ui_layer(pixels, 0, false);
+        this.draw_ui_layer(pixels, 1, !!(layers & 0x100));
+        return pixels;
     }
 
     render(now = performance.now())
@@ -277,6 +345,8 @@ export class AppleCLCD
         // A black boot surface has nothing to animate. Probe it at 10 Hz
         // until pixels appear; real VBL/interrupts stay at 60 Hz. Explicit
         // GPU posts and color changes request a scan immediately.
+        const layers = this.regs[0x1038 >>> 2], overlay = !!(layers & 0x200);
+        if(this.overlay !== overlay) { this.overlay = overlay; this.invalidate(); }
         if(this.blank && !this.dirty && now < this.next_blank_scan) return;
         const started = performance.now();
         const base = this.regs[0x4044 >>> 2];
@@ -287,7 +357,7 @@ export class AppleCLCD
         const pointer = (!this.cpu.parallel && exports?.["a64_video_rgb_changed"] &&
             exports["a64_video_prepare"]?.(this.shown.length)) >>> 0;
         const staging = pointer ? new Uint8Array(this.cpu.wasm_memory.buffer, pointer, this.rgba.length) : null;
-        const words = this.surface_words(base, staging);
+        const words = overlay ? this.compose_ui(layers) : this.surface_words(base, staging);
         if(!words) return;
         if(staging)
         {
