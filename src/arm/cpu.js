@@ -1271,7 +1271,7 @@ A64CPU.prototype.load_core_state = function(saved, core = 0)
     {
         const bytes = saved.subarray(at, at + b - a);
         block.set(bytes, a);
-        // Older snapshots end before the added VFPv2 instruction registers.
+        // Older snapshots may end before the added AArch32 registers.
         if(bytes.length < b - a) block.fill(0, a + bytes.length, b);
         at += b - a;
     }

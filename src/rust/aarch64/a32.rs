@@ -1180,7 +1180,8 @@ fn as_cp_trap(e: Exception, trap: Exception) -> Exception {
 }
 
 /// MRC, MCR of CP15 at EL0 (`value` what MCR writes): the thread ID
-/// registers, the generic timer's, CP15's barriers; the rest UNDEFINED
+/// registers, the generic timer's, CP15's barriers and ARM1136 prefetch
+/// controls; the rest UNDEFINED
 pub fn cp15(
     read: bool,
     opc1: u32,
@@ -1191,7 +1192,9 @@ pub fn cp15(
     value: u32,
     cond: u32,
 ) -> Result<Flow, Exception> {
-    if crate::aarch64::a32_system::privileged() {
+    if crate::aarch64::a32_system::privileged() ||
+        arm1136() && matches!((opc1, crn, crm, opc2), (0, 7, 12, 4 | 5))
+    {
         return crate::aarch64::a32_system::cp15(read, opc1, crn, crm, opc2, rt, value);
     }
     let trap = cp_trap(0x03, cond, opc1, crn, crm, opc2, rt, 0, read);

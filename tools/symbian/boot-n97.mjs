@@ -149,7 +149,9 @@ function observe_rapido_service(cpu, pc_now, field, register, word)
 function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, register, word)
 {
     const wasm = cpu.wm.exports;
-    const handoff = { boot_registers: [] };
+    const handoff = { boot_registers: [], cp15: [] };
+    const cp15_reads = new Map([[0xC666B36C, ["data_remap", 0]], [0xC666B374, ["instruction_remap", 0]],
+        [0xC666B37C, ["peripheral_remap", 0]], [0xC666B660, ["cache_dirty", 1]], [0xC666B6AC, ["block_status", 0]]]);
     const observed = new Set([N97_BOOT_SOURCE, N97_BOOT_SOURCE + 4, N97_BOOT_SOURCE + 8, N97_RESET_STATUS,
         N97_SHARED_CONTROL + 4, N97_SHARED_CONTROL + 8, 0x20032CA8, 0x20032C44, N97_PLL_POWER, N97_PLL_POWER + 4, N97_PLL3, N97_PLL3_CONTROL]);
     let step = service_step;
@@ -197,8 +199,22 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
             assert.equal(handoff.irq_callback.table, irq.payload[0]);
         }
         if(pc === handoff.isa_entry?.lr && !handoff.isa_return) handoff.isa_return = { pc, step, r0: register(0) };
+        if(pc === 0xC666B6A4) handoff.cp15.push({ pc, step, write: "peripheral_remap", value: register(0) });
+        if(pc === 0xC666B6F0 && (field("sctlr_el1") & 1))
+        {
+            const branch = supervisor_physical(pc + 4, field, word), target = register(1);
+            handoff.mmu_off = { pc, step, before: field("sctlr_el1"), ttbr0: field("ttbr0_el1"), ttbr1: field("ttbr1_el1"),
+                ttbcr: field("a32_ttbcr"), branch, branch_opcode: word(branch), target,
+                target_opcode: cpu.ram_offset(target, 4) < 0 ? undefined : word(target) };
+        }
         wasm["a64_worker_slice"](1);
         const vector = pc_now();
+        if(cp15_reads.has(pc) && vector === pc + 4)
+        {
+            const [name, reg] = cp15_reads.get(pc);
+            handoff.cp15.push({ pc, step, read: name, value: register(reg) });
+        }
+        if(pc === handoff.mmu_off?.pc) Object.assign(handoff.mmu_off, { after: field("sctlr_el1"), next_pc: vector });
         if(vector === 4 || vector === 0xFFFF0004)
         {
             const event = { pc, step: step + 1, vector, lr: register(14) };
@@ -237,6 +253,9 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
     assert.ok(handoff.boot_registers.some(access => access.address === N97_RESET_STATUS && access.direction === "read" && access.value === 0));
     assert.ok(handoff.boot_registers.some(access => access.address === N97_PLL3_CONTROL && access.direction === "read" &&
         access.pc >= 0xC6300000 && (access.value & 0x10)), "the original ISASW must observe the shared PLL lock");
+    assert.ok(handoff.cp15.some(access => access.read === "data_remap" && access.value === 0x01C97CC8));
+    assert.ok(handoff.cp15.some(access => access.write === "peripheral_remap" && access.value === 0x20000013));
+    assert.ok(handoff.mmu_off && !(handoff.mmu_off.after & 1), "original ISASW must reach the MMU disable");
     return handoff;
 }
 

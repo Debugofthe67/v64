@@ -7,7 +7,7 @@
 
 _start:
     b startup
-    b unexpected
+    b undefined_handler
     b svc_handler
     b unexpected
     b data_abort
@@ -113,6 +113,58 @@ wait_irq:
     str r4, [r10, #92]
     mov r0, #0x01000000
     ldr r1, [r0]
+
+    @ ARM1136 memory remap registers use two different writable masks.
+    mrc p15, 0, r0, c15, c2, 0
+    str r0, [r10, #120]
+    mrc p15, 0, r0, c15, c2, 1
+    str r0, [r10, #124]
+    mrc p15, 0, r0, c15, c2, 2
+    str r0, [r10, #128]
+    mrc p15, 0, r0, c15, c2, 4
+    str r0, [r10, #132]
+    ldr r0, =0x81097cc8
+    mcr p15, 0, r0, c15, c2, 0
+    ldr r0, =0x00c97cc8
+    mcr p15, 0, r0, c15, c2, 1
+    ldr r0, =0x01d97cc8
+    mcr p15, 0, r0, c15, c2, 2
+    ldr r0, =0x20000ff3
+    mcr p15, 0, r0, c15, c2, 4
+    mrc p15, 0, r0, c15, c2, 0
+    str r0, [r10, #136]
+    mrc p15, 0, r0, c15, c2, 1
+    str r0, [r10, #140]
+    mrc p15, 0, r0, c15, c2, 2
+    str r0, [r10, #144]
+    mrc p15, 0, r0, c15, c2, 4
+    str r0, [r10, #148]
+
+    mov r0, #0
+    mcr p15, 0, r0, c7, c12, 5
+    mrc p15, 0, r0, c7, c10, 6
+    str r0, [r10, #152]
+    mrc p15, 0, r0, c7, c12, 4
+    str r0, [r10, #156]
+    mov r7, #0
+    mcr p15, 0, r0, c7, c10, 6  @ read-only cache dirty status
+    mcr p15, 0, r0, c7, c12, 4  @ read-only block transfer status
+    mrc p15, 0, r0, c7, c12, 5  @ write-only stop prefetch
+    mrc p15, 0, r0, c15, c2, 3  @ reserved encoding
+    str r7, [r10, #160]
+
+    cps #0x10
+    mcr p15, 0, r0, c7, c12, 5
+    mov r0, #0xff
+    mrc p15, 0, r0, c7, c12, 4
+    str r0, [r10, #164]
+    mrc p15, 0, r0, c7, c10, 6  @ privileged cache dirty status
+    mcr p15, 0, r0, c7, c12, 4  @ direction remains enforced in User mode
+    mrc p15, 0, r0, c7, c12, 5
+    mrc p15, 0, r0, c15, c2, 0  @ privileged remap read and write
+    mcr p15, 0, r0, c15, c2, 4
+    str r7, [r10, #168]
+
     mov r0, #0xaa
     str r0, [r10, #40]
     b .
@@ -133,6 +185,10 @@ data_abort:
     mrc p15, 0, r1, c6, c0, 0
     str r1, [r10, #36]
     subs pc, lr, #4
+
+undefined_handler:
+    add r7, r7, #1
+    movs pc, lr
 
 unexpected:
     mov r0, #0xee

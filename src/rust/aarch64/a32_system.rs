@@ -564,6 +564,7 @@ pub fn reset(entry: u64, context: u64) {
         *a32_ttbcr = 0;
         *a32_dacr = 0;
         *a32_ifsr = 0;
+        core::ptr::write_bytes(a32_mem_remap, 0, 4);
     }
 }
 
@@ -675,6 +676,28 @@ pub fn cp15(
         (0, 1, 0, 1) if arm1136 => half(actlr_el1, false),
         // The ARM1136 invalidates both caches with this operation. Memory is coherent here.
         (0, 7, 7, 0) if arm1136 && !read => Ok(Flow::Next),
+        // DDI 0211I Tables 3-80/81 and 3-86/89. Synchronous, coherent
+        // accesses leave no dirty L1 data or outstanding prefetch range.
+        (0, 7, 10, 6) if arm1136 => {
+            if read { constant(0) } else { Err(Exception::Undefined) }
+        },
+        (0, 7, 12, 4) if arm1136 && read => constant(0),
+        (0, 7, 12, 5) if arm1136 && !read => Ok(Flow::Next),
+        // DDI 0211I §3.3.38. Keep the attribute and peripheral-window
+        // settings for context switches. The coherent physical bus already
+        // routes each PA to its device, whether the MMU is on or off.
+        (0, 15, 2, op @ (0..=2 | 4)) if arm1136 => {
+            let (index, mask, reset) = if op == 4 { (3, 0xFFFF_F01F, 0) } else { (op as usize, 0x01FF_FFFF, 0x01C9_7CC8) };
+            let slot = unsafe { a32_mem_remap.add(index) };
+            if read {
+                set_reg(rt, unsafe { *slot } ^ reset);
+            }
+            else {
+                // Old snapshots zero-fill later fields. Zero stores reset.
+                unsafe { *slot = (value & mask) ^ reset };
+            }
+            Ok(Flow::Next)
+        },
         (0, 13, 0, 0) if arm1136 => {
             if read {
                 set_reg(rt, (unsafe { *contextidr_el1 } >> 32) as u32);

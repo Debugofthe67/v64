@@ -76,6 +76,7 @@ export const STATE_OFFSETS = {
     a32_fpexc: 1480,
     a32_fpinst: 1484,
     a32_fpinst2: 1488,
+    a32_mem_remap: 1492,
 };
 
 /**
@@ -91,7 +92,7 @@ export const CORE_STATE_RANGES = [
     [1208, 1248],
     [1248, 1312],
     [1312, 1320],
-    [1360, 1492],
+    [1360, 1508],
 ];
 
 /** [offset, size] of the core state that INIT keeps (the rest takes its reset value) */

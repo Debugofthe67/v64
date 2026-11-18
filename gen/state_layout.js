@@ -263,6 +263,7 @@ export const A64_STATE_FIELDS = [
     { name: "a32_fpexc", offset: 1480, rust: "u32", size: 4, owner: "core", range: "a32", note: "FPEXC (EN: VFP and Advanced SIMD enabled)" },
     { name: "a32_fpinst", offset: 1484, rust: "u32", size: 4, owner: "core", range: "a32", note: "VFPv2 FPINST" },
     { name: "a32_fpinst2", offset: 1488, rust: "u32", size: 4, owner: "core", range: "a32", note: "VFPv2 FPINST2" },
+    { name: "a32_mem_remap", offset: 1492, rust: "u32", count: 4, size: 16, owner: "core", range: "a32", note: "ARM1136 memory remap registers, stored relative to reset" },
 ];
 
 // Every static in src/rust, by file. The check fails on a static that is not
