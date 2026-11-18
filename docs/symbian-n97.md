@@ -116,7 +116,7 @@ RM-505 的 CS0 是单 die 256 MiB 的 SLC，块大小 128 KiB，页大小 2 KiB�
 | `0x09CA1000` | ROFS3 | `7ff2686472083798be88dd71c55a3952059207bbe7abcb74550741014ba64cf6` |
 | `0x0ABA0000` | UDA FAT16 BPB，逻辑字节数 `0x04917000` | `6b5f0abf82be73c4d3572cfda1098c7a148bfc3f29b40da55e9ebf1fba31f37b` |
 
-当前模型同步完成常规读、编程和实际擦除。理想介质的读出 ECC 为零。无法读取介质数据时返回控制器失败和 ECC 不可纠正位，ECC bypass 只屏蔽 ECC 位。硬件的 ECC 编码、单比特纠正和厂级坏块资料仍待验证。接入 OneNAND 后，正常零售引导第 1,550 步到达 `0xFFFF1208`，须通过 RAPIDO 芯片 Boot ROM 才能进入完整存储初始化。
+当前模型同步完成常规读、编程和实际擦除。正常读取返回介质中的主区、spare 和已存储的 ECC 字节。介质读取失败时返回控制器错误及 ECC 不可纠正位，ECC bypass 屏蔽该 ECC 状态。读出校验和单比特纠正、厂级坏块资料仍待验证。接入 OneNAND 后，正常零售引导第 1,550 步到达 `0xFFFF1208`，须通过 RAPIDO 芯片 Boot ROM 才能进入完整存储初始化。
 
 D3000 的 INTo 经 MEMCONT[10] 接到 GENIO22。原版 `mednand.pdd` 设置 bank 0 的输入和上升沿，`egpio.dll` 给这一输入分配 IRQ 245。OneNAND 的 IOBE、INTpol 和完成位共同决定引脚电平。GPIO 保留边沿并经 ICU 提交，恢复快照时保留待处理状态。原版 PDD 另在 `0x800DF9B0` 向闪存接口配置地址 PA `0x20034094` 写入 `0x300`。当前模型保存此配置字，既有 CS0 地址解码不依赖该字。[Nokia RM-505/RM-507 板图第 2 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf) · [Samsung MuxOneNAND 2G §§2.8.19、7.1](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf)
 
@@ -154,9 +154,11 @@ node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapid
 node tools/symbian/nand-pdd-n97.mjs <extraction-directory> --stl-erase
 ```
 
-探针使用带 BML 预置的 0576555 提取目录。它仅在一次性副本上运行原版 `STL_Format`，按原版配置准备分区 8 和 10。在新启动的 AP 内核中，原版 PDD 完成硬件创建阶段并返回 0。探针停在通知异步队列之前，随后调用原版分区查询。`PartitionInfo` 返回 `KErrCompletion (-17)`，原版 LocDrv 将其作为成功。分区 8 的原版异步写入锁存 `0x7B7–0x7B3`，提交 `0x7B8` 并逐块验证六块。同次开机中，`STL_Read` 从扇区 0、3377、2048 分别读回 4、2、16 个扇区，与 UDA 原始字节完全一致。
+探针使用带 BML 预置的 0576555 提取目录。它仅在一次性副本上运行原版 `STL_Format`，按原版配置准备分区 8 和 10。在新启动的 AP 内核中，原版 PDD 完成硬件创建阶段并返回 0。探针停在通知异步队列之前，随后调用原版分区查询。`PartitionInfo` 返回 `KErrCompletion (-17)`，原版 LocDrv 将其作为成功。分区 8 的原版异步写入锁存 `0x7B7–0x7B3`，提交 `0x7B8` 并逐块验证六块。
 
-关闭 STL 并冷开同一副本后，原版 STL 对这三段返回擦除值。原版 `0x800E4AA8` 验证单元头中的主区 ECC，当前编程留下的空 ECC 使其跳过已写单元。本次交付验证了原版 STL 同次开机读写及硬件多块擦除。普通新机仍使用上节的 BML 预置，生产可冷读的 STL FAT16 UDA 与整机文件服务器挂载仍待验收。
+启用 ECC 时，`0x80` 从每个参与编程的 BufferRAM 扇区计算两组校验码。512 字节主区的 24 位码写入该扇区 spare 的 `8–10` 字节。spare 中逻辑扇区号 `2–4` 字节的 10 位码写入 `11–12`，高六位为 1。`0x1A` 仅编程 spare，保留已有主区和主区校验码。ECC bypass 允许调用者写入这些位置。NAND 编程只允许位从 1 变 0，生成的校验码在随后读取时进入 BufferRAM。位序采用三星发布的 512 字节软件参考格式，三星指出硬件位序可能不同。此位序已通过 0576555 原版驱动校验，尚需 RM-505 实机原始页验证硬件位序。[Samsung MuxOneNAND 2G §§2.7.2、2.7.5、3.17](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf) · [Samsung 512-byte ECC Algorithm](https://www.elnec.com/sw/samsung_ecc_algorithm_for_512b.pdf)
+
+原版 `STL_Read` 从扇区 0、3377、2048 分别读回 4、2、16 个扇区。同次开机和调用 `STL_Close` 后冷开均逐字节匹配原始 UDA，五个相邻的未写扇区保持擦除值。该诊断用原版 AP 内核以及一次性副本。普通新机使用 BML 预置，生产导入时的 STL FAT16 UDA 初始化与整机文件服务器挂载仍待验收。
 
 ### 从原版 ROFS 按路径读取文件
 

@@ -252,6 +252,15 @@ async function probe(mode, samples = [])
             const buffer = allocate(Math.max(...samples.map(sample => sample.bytes.length)));
             const completed = allocate(4);
             const transfers = [];
+            function read_sectors(sector, count)
+            {
+                const length = count * 512;
+                // A read cannot pass by seeing bytes left in the write buffer.
+                write_guest(buffer, new Uint8Array(length).fill(0xAD));
+                put(stack, buffer);
+                assert.equal(call(0x800E2724, [0, 8, sector, count]), 0, "stock STL_Read");
+                return read_guest(buffer, length);
+            }
             trace_erases = true;
             for(const { sector, count, bytes } of samples)
             {
@@ -277,15 +286,16 @@ async function probe(mode, samples = [])
                         written += accepted;
                     }
                 }
-                // Clear SDRAM first so readback cannot pass by seeing the write buffer.
-                write_guest(buffer, new Uint8Array(bytes.length).fill(0xAD));
-                put(stack, buffer);
-                assert.equal(call(0x800E2724, [0, 8, sector, count]), 0, "stock STL_Read");
-                const contents = read_guest(buffer, bytes.length);
-                const matches_uda = contents.equals(bytes);
-                if(mode === "stl-write") assert.ok(matches_uda, "same-boot STL sector readback");
-                transfers.push({ sector, count, steps, matches_uda, erased: contents.every(byte => byte === 0xFF),
+                const contents = read_sectors(sector, count);
+                assert.deepEqual(contents, bytes, mode + " UDA sectors at " + sector);
+                transfers.push({ sector, count, steps, matches_uda: true,
                     sha256: createHash("sha256").update(contents).digest("hex") });
+            }
+            const untouched_sectors = samples.flatMap(({ sector, count }) =>
+                sector > 0 ? [sector - 1, sector + count] : [sector + count]);
+            for(const sector of untouched_sectors)
+            {
+                assert.ok(read_sectors(sector, 1).every(byte => byte === 0xFF), mode + " left sector " + sector + " erased");
             }
             if(mode === "stl-write")
             {
@@ -299,7 +309,7 @@ async function probe(mode, samples = [])
                 assert.deepEqual(new Set(verified.map(row => row.block)), new Set([...queued, ...committed].map(row => row.block)));
             }
             assert.equal(call(0x800E2654, [0, 8]), 0, "stock STL_Close");
-            return { firmware, drives, identity, partition_info: result, after_open, transfers, erase_commands,
+            return { firmware, drives, identity, partition_info: result, after_open, transfers, untouched_sectors, erase_commands,
                 after_close: cpu.devices.n97_onenand.status() };
         }
         assert.deepEqual(ids, [...identity, ...identity, ...identity]);

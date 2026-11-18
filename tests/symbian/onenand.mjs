@@ -8,7 +8,7 @@ import { sha256_hex } from "../../src/image/sha256.js";
 import { V86 } from "../../src/main.js";
 import { N97_NAND_IRQ } from "../../src/symbian/n97_devices.js";
 import { create_n97_onenand } from "../../src/symbian/n97_onenand.js";
-import { N97_FLASH_HEADER, N97_FLASH_IMAGE_SIZE, N97_FLASH_SLOT, n97_flash_header } from "../../src/symbian/n97_flash.js";
+import { N97_FLASH_HEADER, N97_FLASH_IMAGE_SIZE, N97_FLASH_PAGE, N97_FLASH_SLOT, n97_flash_header } from "../../src/symbian/n97_flash.js";
 
 const BLOCK = 0x1E200, PAGE = 0x1E20E, SELECT = 0x1E400, CMD = 0x1E440;
 const CONFIG = 0x1E442, STATUS = 0x1E480, INTERRUPT = 0x1E482, UNLOCK = 0x1E498, WP = 0x1E49C;
@@ -93,6 +93,75 @@ test("OneNAND BufferRAM bank selection, boot commands, bounds and ECC status", (
     device.reset();
     assert.equal(word(DATA), 0xFFFF);
     assert.equal(word(CONFIG), 0x40C0);
+});
+
+test("OneNAND writes sector ECC from BufferRAM and preserves stored codes on loads", () => {
+    const page = new Uint8Array(N97_FLASH_SLOT);
+    const backend = {
+        byteLength: N97_FLASH_IMAGE_SIZE,
+        get_from_cache(offset) { return offset === 0 ? n97_flash_header(digest) : page; },
+        set(offset, bytes, complete) { page.set(bytes); complete(); },
+    };
+    let handler;
+    create_n97_onenand({ register_mmio(base, size, h) { handler = h; } }, backend, digest);
+    const a = access(handler.read, handler.write);
+    const data7 = DATA + 7 * 512, data4 = DATA + 4 * 512, spare7 = SPARE + 7 * 16, spare4 = SPARE + 4 * 16;
+    const put = (address, bytes) => bytes.forEach((byte, index) => handler.write(address + index, 1, byte));
+    const read = (address, length) => Array.from({ length }, (_, index) => handler.read(address + index, 1));
+    const raw = (at, length) => Array.from(page.subarray(at, at + length), byte => byte ^ 0xFF);
+    const raw_spare = (sector, offset, length) => raw(N97_FLASH_PAGE + sector * 16 + offset, length);
+    const main1 = new Uint8Array(512).fill(0xFF);
+    main1[298] = 0xFB;
+    const main2 = Uint8Array.from({ length: 512 }, (_, i) => (i * i * 131 + i * 11 + Math.floor(i / 7)) ^ 0x9D);
+    const oob1 = [0x72, 0xFF, 0xEF, 0xFD, 0x7F, 0xE1, 0x79, 0x2E, 0, 0, 0, 0, 0, 0xE9, 0xB1, 0x12];
+    const oob2 = [0xFF, 0xFF, 0xCC, 0x59, 0x81, 0x5A, 0x79, 0x2E, 0, 0, 0, 0, 0, 0xE9, 0xB1, 0x12];
+    // Calculated bit by bit using the parity groups published by Samsung.
+    const ecc1 = [0x66, 0xA6, 0x99, 0x65, 0xFE];
+    const ecc2 = [0x66, 0x69, 0x9A, 0x3F, 0xFC];
+    a.select(0, 1, 0xF02);
+    assert.equal(a.command(0x23), 0);
+    put(data7, main1);
+    put(data4, main2);
+    put(spare7, oob1);
+    put(spare4, oob2);
+    assert.equal(a.command(0x80), 0);
+    assert.deepEqual(read(spare7, 16), oob1, "programming leaves the host's BufferRAM unchanged");
+    assert.deepEqual(read(spare4, 16), oob2);
+    assert.deepEqual(raw(512, 512), [...main1]);
+    assert.deepEqual(raw(1024, 512), [...main2]);
+    assert.deepEqual(raw_spare(1, 0, 16), [...oob1.slice(0, 8), ...ecc1, ...oob1.slice(13)]);
+    assert.deepEqual(raw_spare(2, 0, 16), [...oob2.slice(0, 8), ...ecc2, ...oob2.slice(13)]);
+    assert.deepEqual(raw_spare(0, 0, 16), Array(16).fill(0xFF));
+    assert.deepEqual(raw_spare(3, 0, 16), Array(16).fill(0xFF));
+
+    a.store(data7, 0x1234);
+    assert.equal(a.command(0x13), 0);
+    assert.equal(a.word(data7), 0x1234, "spare-only load leaves main BufferRAM unchanged");
+    assert.deepEqual(read(spare7 + 8, 5), ecc1);
+    assert.deepEqual(read(spare4 + 8, 5), ecc2);
+    assert.equal(a.word(ECC), 0);
+
+    a.select(0, 1, 0xF01);
+    put(spare7, [0xFF, 0xFF, 0xEC, 0xBD, 0x0E, 0xF0, 0xFF, 0xFF, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0xFF]);
+    assert.equal(a.command(0x1A), 0);
+    assert.deepEqual(raw(512, 512), [...main1]);
+    assert.deepEqual(raw_spare(1, 2, 4), [0xEC, 0xBD, 0x0E, 0xE0]);
+    assert.deepEqual(raw_spare(1, 8, 5), [0x66, 0xA6, 0x99, 0x21, 0xFE],
+        "spare-only program keeps main ECC and combines the generated spare code with prior cells");
+
+    a.select(0, 3, 0xF01);
+    a.store(CONFIG, a.word(CONFIG) | 0x100);
+    const manual = [0x16, 0xA4, 0x81, 0x93, 0xF5];
+    put(spare7 + 8, manual);
+    assert.equal(a.command(0x1A), 0);
+    assert.deepEqual(raw_spare(3, 8, 5), manual, "bypass programs caller-supplied ECC");
+    assert.ok(raw(1536, 512).every(byte => byte === 0xFF));
+    put(spare7 + 8, [0xFB, 0xFF, 0xFF, 0xFF, 0xFF]);
+    assert.equal(a.command(0x80), 0);
+    const programmed = [0x12, ...manual.slice(1)];
+    assert.deepEqual(raw_spare(3, 8, 5), programmed);
+    assert.equal(a.command(0), 0);
+    assert.deepEqual(read(spare7 + 8, 5), programmed, "loads return the flash codes verbatim");
 });
 
 function make_image(filename, rom)

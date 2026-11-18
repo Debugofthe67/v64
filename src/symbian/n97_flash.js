@@ -21,6 +21,52 @@ export const N97_BML_RESERVOIR = LAST_BLOCK + 1 - 44;
 export const N97_BML_USER_BLOCKS = N97_BML_RESERVOIR - 2;
 const BML_SECTOR = 512, BML_SPARE = 16;
 
+// Samsung's published 512-byte ECC format. Each pair contains inverted
+// parity for the zero and one groups of an address bit, in that order.
+const ECC_MAIN_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
+const ECC_SPARE_ORDER = [3, 4, 0, 1, 2];
+const ECC_BYTE_PARITY = new Uint8Array(256);
+for(let byte = 1; byte < ECC_BYTE_PARITY.length; byte++)
+{
+    ECC_BYTE_PARITY[byte] = ECC_BYTE_PARITY[byte >> 1] ^ (byte & 1);
+}
+
+/** @param {!Uint8Array} bytes @param {number} offset @param {number} length @param {!Array<number>} order */
+function sector_ecc(bytes, offset, length, order)
+{
+    let columns = 0, rows = 0;
+    for(let index = 0; index < length; index++)
+    {
+        const byte = bytes[offset + index];
+        columns ^= byte;
+        rows ^= index & -ECC_BYTE_PARITY[byte];
+    }
+    const position = rows << 3 | ECC_BYTE_PARITY[columns & 0xAA] |
+        ECC_BYTE_PARITY[columns & 0xCC] << 1 | ECC_BYTE_PARITY[columns & 0xF0] << 2;
+    const total = ECC_BYTE_PARITY[columns];
+    let ecc = 0;
+    for(let index = 0; index < order.length; index++)
+    {
+        const one_group = position >> order[index] & 1;
+        const zero_group = total ^ one_group;
+        const pair = (1 ^ zero_group) | (1 ^ one_group) << 1;
+        ecc |= pair << (2 * index);
+    }
+    return ecc;
+}
+
+/** @param {!Uint8Array} main @param {number} offset */
+export function n97_main_ecc(main, offset)
+{
+    return sector_ecc(main, offset, 512, ECC_MAIN_ORDER);
+}
+
+/** @param {!Uint8Array} spare @param {number} offset Start of the 16-byte spare sector. */
+export function n97_spare_ecc(spare, offset)
+{
+    return 0xFC00 | sector_ecc(spare, offset + 2, 3, ECC_SPARE_ORDER);
+}
+
 /**
  * Construct the two initial XSR pool control blocks for this single-die
  * OneNAND with no bad blocks. The original RM-505 BML_Format produces this

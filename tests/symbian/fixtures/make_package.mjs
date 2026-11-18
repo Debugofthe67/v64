@@ -52,7 +52,12 @@ function device_probe()
         nand_command(0, 0, 0x8080);
         write_half(0x400, 0x125A);
         write_half(0x10020, 0x4567);
+        write_half(0x10022, 0xFDEF);
+        write_half(0x10024, 0xFF7F);
         nand_command(0x80, 0, 0x8040);
+        nand_command(0x13, 0, 0x8080);
+        require_half(0x1002A, 0x6533); // last main ECC byte, first spare ECC byte
+        require_half(0x1002C, 0xFFFE); // second spare ECC byte, reserved byte
     }
     write_half(0x1E200, first);
     nand_command(0x95, 0x8800, 0x8020);

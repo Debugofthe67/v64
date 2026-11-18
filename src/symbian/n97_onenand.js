@@ -3,7 +3,7 @@
 import { check_disk_state } from "../disk_writeback.js";
 import { VirtDeviceSpace } from "../virt/io.js";
 import { check_n97_flash, N97_FLASH_BLOCK, N97_FLASH_HEADER, N97_FLASH_ID,
-    N97_FLASH_PAGE, N97_FLASH_SIZE, N97_FLASH_SLOT, N97_FLASH_SPARE } from "./n97_flash.js";
+    N97_FLASH_PAGE, N97_FLASH_SIZE, N97_FLASH_SLOT, N97_FLASH_SPARE, n97_main_ecc, n97_spare_ecc } from "./n97_flash.js";
 
 const PAGES_PER_BLOCK = N97_FLASH_BLOCK / N97_FLASH_PAGE;
 const BLOCK_COUNT = N97_FLASH_SIZE / N97_FLASH_BLOCK;
@@ -14,7 +14,7 @@ const LOAD_ERROR = ERROR | 0x2000, PROGRAM_ERROR = ERROR | 0x1000, ERASE_ERROR =
 const ERASE_ONGOING = 0x8800, ERASE_BATCH_LIMIT = 64;
 const LOCKED = 2, UNLOCKED = 4, LOCKED_TIGHT = 1;
 const CONFIG1 = 0xF221;
-const IOBE = 0x20, INT_POLARITY = 0x40;
+const IOBE = 0x20, INT_POLARITY = 0x40, ECC_BYPASS = 0x100;
 const STATUS = 0xF240, INTERRUPT = 0xF241, ECC = 0xFF00;
 const REGISTERS = new Set([0xF100, 0xF101, 0xF102, 0xF103, 0xF107, 0xF200, 0xF220,
     CONFIG1, STATUS, INTERRUPT, 0xF24C, ECC]);
@@ -92,6 +92,7 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
         const read = command === 0 || command === 0x13;
         const mode = read ? READ : WRITE;
         const oob = command === 0x13 || command === 0x1A;
+        const ecc_enabled = !(regs.get(CONFIG1) & ECC_BYPASS);
         const flash_sector = page_address & 3;
         const bank = start >> 8 & 0xF;
         const sector = bank & 3;
@@ -122,14 +123,31 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
             for(const [ram, page_start, stride] of [[banks[0], 0, 512], [banks[1], N97_FLASH_PAGE, 16]])
             {
                 if(oob && page_start === 0) continue;
+                const automatic_ecc = !read && ecc_enabled && page_start !== 0;
                 for(let s = 0; s < count; s++)
                 {
-                    const at = (half * 4 + ((sector + s) & (boot_buffer ? 1 : 3))) * stride;
+                    const buffer_sector = half * 4 + ((sector + s) & (boot_buffer ? 1 : 3));
+                    const at = buffer_sector * stride;
                     const from = page_start + (flash_sector + s) * stride;
                     for(let i = 0; i < stride; i++)
                     {
                         if(read) ram[at + i] = target[from + i] ^ 0xFF;
-                        else target[from + i] |= ram[at + i] ^ 0xFF;
+                        else if(!automatic_ecc || i < 8 || i > 12) target[from + i] |= ram[at + i] ^ 0xFF;
+                    }
+                    if(automatic_ecc)
+                    {
+                        // Generate codes from the bytes presented by BufferRAM.
+                        // Only the NAND cells change and their zeros stay zero.
+                        if(!oob)
+                        {
+                            const code = n97_main_ecc(banks[0], buffer_sector * 512);
+                            target[from + 8] |= ~code & 0xFF;
+                            target[from + 9] |= ~code >>> 8 & 0xFF;
+                            target[from + 10] |= ~code >>> 16 & 0xFF;
+                        }
+                        const code = n97_spare_ecc(ram, at);
+                        target[from + 11] |= ~code & 0xFF;
+                        target[from + 12] |= ~code >>> 8 & 0xFF;
                     }
                 }
             }
@@ -146,7 +164,7 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
             // FPSX supplies error-free cells without ECC codes. A media read
             // that cannot supply data is exposed as uncorrectable; ECC bypass
             // leaves the ECC register clear and retains the controller error.
-            if(read && !(regs.get(CONFIG1) & 0x100))
+            if(read && ecc_enabled)
             {
                 const sectors = 0x1111 >> ((4 - count) * 4);
                 regs.set(ECC, (oob ? 2 : 10) * sectors);
