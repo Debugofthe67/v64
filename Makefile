@@ -1595,6 +1595,7 @@ a32-system-tests: build/v86-arm64.wasm
 	node tests/a32/cps_mask.mjs
 	node tests/a32/cps_enable.mjs
 	node tests/a32/status_mask.mjs
+	node tests/a32/swp.mjs
 	node tests/a32/ranchu_devices.mjs
 	for cores in 1 2 4; do A32_JIT=1 A32_CORES=$$cores node tests/a32/linux_boot.mjs || exit 1; done
 	A32_STAGE=lifecycle A32_JIT=1 A32_CORES=2 node tests/a32/linux_boot.mjs

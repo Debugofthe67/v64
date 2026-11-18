@@ -9,6 +9,7 @@
 //! The decoders (A32 here, T32 in t32.rs) call the operations below, which
 //! take their operands already read (the PC as the instruction set reads it).
 
+use crate::aarch64::bus;
 use crate::aarch64::cpu::*;
 use crate::aarch64::decode::Inst;
 use crate::aarch64::execute::{self, Flow};
@@ -1575,10 +1576,10 @@ fn a32_multiply(word: u32) -> Result<Flow, Exception> {
     }
 }
 
-/// ARM1136 implements SWP/SWPB in both alignment modes (ARM DDI 0100I A4.1.108–109).
-/// On this single-core profile neither guest interrupts nor DMA run between
+/// SWP/SWPB on ARM1136 and Cortex-A8. On these single-core machines
+/// neither another guest core nor guest interrupts or DMA run between
 /// the two bus accesses. A fault leaves the destination register untouched.
-fn arm1136_swap(word: u32) -> Result<Flow, Exception> {
+fn a32_swap(word: u32, arm1136: bool) -> Result<Flow, Exception> {
     let rn = word >> 16 & 15;
     let rd = word >> 12 & 15;
     let rm = word & 15;
@@ -1588,20 +1589,35 @@ fn arm1136_swap(word: u32) -> Result<Flow, Exception> {
     let size = if word & (1 << 22) != 0 { 1 } else { 4 };
     let address = reg(rn);
     let low = address & (size - 1);
-    if low != 0 && sctlr() & (SCTLR_A | (1 << 22)) != 0 {
+    // Cortex-A8 requires word alignment. ARM1136 permits a rotated word
+    // read and an aligned store when both SCTLR.A and SCTLR.U are clear.
+    if low != 0 && (!arm1136 || sctlr() & (SCTLR_A | (1 << 22)) != 0) {
         return Err(execute::alignment(address as u64, false, Syndrome::NONE));
     }
     let aligned = address - low;
     let previous = load(aligned, size, false)?;
-    memory::write(aligned as u64, size, reg(rm) as u64, false, syndrome(size))?;
-    set_reg(rd, previous.rotate_right(8 * low));
+    let value = reg(rm);
+    // The memory helpers take little-endian values.
+    let big_endian = !arm1136 && size == 4 && get_pstate() & PSTATE_E != 0;
+    let (previous, value) = if big_endian {
+        (previous.swap_bytes(), value.swap_bytes())
+    }
+    else {
+        (previous.rotate_right(8 * low), value)
+    };
+    memory::write(aligned as u64, size, value as u64, false, syndrome(size))?;
+    set_reg(rd, previous);
     Ok(Flow::Next)
 }
 
 /// A32 synchronization primitives: swap, exclusives and acquire/release.
 fn a32_synchronization(word: u32, pc: u32) -> Result<Flow, Exception> {
-    if word & 0x0FB0_0FF0 == 0x0100_0090 && arm1136() {
-        return arm1136_swap(word);
+    if word & 0x0FB0_0FF0 == 0x0100_0090 {
+        let legacy = arm1136();
+        // Cortex-A8 has no SCTLR.SW enable bit (DDI 0344K, table 3-46).
+        if legacy || (cortex_a8() && !bus::iop_active()) {
+            return a32_swap(word, legacy);
+        }
     }
     let size = [2, 3, 0, 1][(word >> 21 & 3) as usize];
     let load = word & 1 << 20 != 0;
