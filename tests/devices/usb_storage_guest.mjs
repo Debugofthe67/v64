@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // USB disks in a guest (usb.mass_storage, docs/usb.md,
-// docs/modern-pc-devices-plan.md U2): Alpine 3.24 x86_64 (uhci-hcd,
+// docs/plan/modern-pc-devices-plan.md U2): Alpine 3.24 x86_64 (uhci-hcd,
 // usb-storage, sd-mod) with a disk image on the UHCI controller. The disk
 // seen (vendor, model, removable, size), data written through it and read
 // back by SHA-256 on both sides of the image (the guest's page cache

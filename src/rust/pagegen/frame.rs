@@ -1,4 +1,4 @@
-//! The neutral skeleton of a page function (docs/jit-unification-plan.md
+//! The neutral skeleton of a page function (docs/plan/jit-unification-plan.md
 //! P5.9): one Wasm function serves the compiled block starts of a guest code
 //! page (or a span of consecutive pages). Its frame, from the outside in:
 //!

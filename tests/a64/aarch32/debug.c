@@ -1,4 +1,4 @@
-// The AArch32 EL0 debug cases' driver (docs/aarch32-plan.md Q1.5,
+// The AArch32 EL0 debug cases' driver (docs/plan/aarch32-plan.md Q1.5,
 // tests/a64/aarch32_el0.mjs with A64_AARCH32_DRIVER=debug): each case of an
 // AArch32 binary (its table: the count, then per case its offset with bit 0
 // for T32, how many times to resume it, a control word, a breakpoint's

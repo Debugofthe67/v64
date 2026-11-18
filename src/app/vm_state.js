@@ -1,5 +1,5 @@
 // @ts-check
-// Suspended machines (docs/vm-manager-plan.md "存储与持久化", U5): a
+// Suspended machines (docs/plan/vm-manager-plan.md "存储与持久化", U5): a
 // machine's state saved as a V7 stream into the browser's private file
 // system (OPFS, v86/states/<id>.bin), the space it needs checked first,
 // persistent storage asked for once; the configuration's digest, to tell

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// AArch32's page functions against the interpreter (docs/aarch32-plan.md
+// AArch32's page functions against the interpreter (docs/plan/aarch32-plan.md
 // Q6): the AArch32 EL0 cases (tests/a64/aarch32/*.a32.S: branches and
 // interworking, IT blocks and an exception inside one, VFP and Advanced
 // SIMD traps) on v86 with the MMU on, interpreted and with the page tier

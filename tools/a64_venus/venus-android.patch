@@ -1,5 +1,5 @@
 Venus on Android with Cuttlefish's minigbm (Mesa 26.1.6, applied by
-tools/a64_venus/build.mjs; docs/arm64-virt-android16-plan.md P11.4):
+tools/a64_venus/build.mjs; docs/plan/arm64-virt-android16-plan.md P11.4):
 
 - vn_renderer_virtgpu.c: open the render node by path when drmGetDevices2
   fails. Android's SELinux policy lets apps, SurfaceFlinger and gpuservice

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // gl_protocol.js, the one description of the OpenGL records
-// (docs/opengl-webgpu-plan.md C1): the guest header generated from it
+// (docs/plan/opengl-webgpu-plan.md C1): the guest header generated from it
 // compiles with every layout assert holding, records round-trip, and the
 // executor has a handler for every opcode.
 "use strict";

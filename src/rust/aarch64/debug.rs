@@ -1,4 +1,4 @@
-//! Self-hosted debug of profile v1 (docs/arm64-virt-android16-plan.md P3.8):
+//! Self-hosted debug of profile v1 (docs/plan/arm64-virt-android16-plan.md P3.8):
 //! 2 breakpoints (the second context-aware: CONTEXTIDR_EL1 matches, and the
 //! target of linked address matches), 2 watchpoints, software step, the OS
 //! Lock and OS Double Lock, MDSCR_EL1. No external debug, no Halting, no

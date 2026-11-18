@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The Android catalog's entries checked (docs/android-images-plan.md I7.1,
+// The Android catalog's entries checked (docs/plan/android-images-plan.md I7.1,
 // src/app/android_catalog.js): each part's size and SHA-256 against a local
 // copy where there is one (build/a64-android/dl/ and dl/gsi/, or --dir),
 // else its size against the server (HEAD, redirects followed); nothing is

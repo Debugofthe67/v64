@@ -292,7 +292,7 @@ device layer registers every read and write with
 | `SyncFileBuffer` | a local file below 256 MB | read whole at start, then synchronous | in memory |
 | `AsyncFileBuffer` | a local file of 256 MB or more | synchronous with `FileReaderSync` in the CPU worker (about 0.5 ms per request), asynchronous with `FileReader` on the main thread; data read is not cached | kept in memory, 256-byte blocks in 16 MiB chunks |
 | `AsyncXHRBuffer` and others | a URL (HTTP Range requests), split files | asynchronous (blocks read are cached with `fixed_chunk_size`) | kept in memory, 256-byte blocks in 16 MiB chunks |
-| `DiskImage` ([`src/image/`](../src/image/disk_image.js)) | an image in a container format (`format`: QCOW2, ...) from any of the sources above | decoded by the format's reader; synchronous from memory and with `FileReaderSync`, otherwise asynchronous through a read cache of 64 KiB windows | kept in memory, the same layout; a read or write that fails ends the command with ABRT ([plan](disk-image-formats-plan.md)) |
+| `DiskImage` ([`src/image/`](../src/image/disk_image.js)) | an image in a container format (`format`: QCOW2, ...) from any of the sources above | decoded by the format's reader; synchronous from memory and with `FileReaderSync`, otherwise asynchronous through a read cache of 64 KiB windows | kept in memory, the same layout; a read or write that fails ends the command with ABRT ([plan](plan/disk-image-formats-plan.md)) |
 
 - Guest writes stay in memory and never change the original file. The written
   256-byte blocks are packed into chunks of 65536 (16 MiB), with a map from block
@@ -325,7 +325,7 @@ device layer registers every read and write with
   `cpu_worker=0` still read asynchronously, so the BIOS phase on Q35 remains slow
   with them. A disk written back to the local disk service (`127.0.0.1`) is read
   and written with synchronous XMLHttpRequests in the CPU worker
-  ([disk-persistence-plan.md](disk-persistence-plan.md), D2): MS-DOS copying
+  ([disk-persistence-plan.md](plan/disk-persistence-plan.md), D2): MS-DOS copying
   1.7 MB on Q35 took 17.1 s asynchronously and 1.2 s with them.
 - What FLUSH guarantees depends on the backend: with the in-memory overlay, a
   write is complete when the backend calls back.

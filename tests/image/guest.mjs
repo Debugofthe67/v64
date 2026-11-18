@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A guest on each format qemu-img makes (docs/disk-image-formats-plan.md,
+// A guest on each format qemu-img makes (docs/plan/disk-image-formats-plan.md,
 // "客体回归"): MS-DOS 6.22 (images/msdos622.img) converted by qemu-img, read in
 // ranges from the file, boots, writes a file, finds it after a restart and
 // after a snapshot restored; the file is not changed. DISK_IMAGE_GUEST

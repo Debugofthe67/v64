@@ -1,6 +1,6 @@
 # ARM (32-bit)
 
-> Status: part 2 of [aarch32-plan.md](aarch32-plan.md), R1–R8. The 64-bit
+> Status: part 2 of [aarch32-plan.md](plan/aarch32-plan.md), R1–R8. The 64-bit
 > CPU's 32-bit programs (AArch32 at EL0 under a 64-bit kernel, profile
 > `v3`) are part 1, in [aarch64.md](aarch64.md).
 
@@ -63,7 +63,7 @@ clock's rate the boot has no ANR). Without them SystemUI's start outlasted its t
 killed and started again for good, and the screen stayed black: the keyguard's opaque scrim, which PhoneWindowManager
 shows until SystemUI's KeyguardService connects, covered the launcher (SurfaceFlinger itself composed and posted
 frames). The guest's clock lags the host's accordingly. The VM manager imports
-the zip into one disk ([android-images-plan.md](android-images-plan.md) I6, the "Android (ARM 32-bit)"
+the zip into one disk ([android-images-plan.md](plan/android-images-plan.md) I6, the "Android (ARM 32-bit)"
 preset): v64's bootloader hands its kernel and ramdisk partitions to the kernel and makes its system, cache and userdata
 partitions the machine's virtio disks (`src/android/partition_buffer.js`).
 
@@ -72,9 +72,9 @@ partitions the machine's virtio disks (`src/android/partition_buffer.js`).
 With the device model's `gpu_mode: "host"` (`ranchu_gpu: "host"`; the VM manager's default where the page has WebGPU)
 the image runs as the emulator runs it with a host GPU: `qemu.gles=1`, its EGL and GLES libraries encode GLES 1.1, 2.0
 and 3.x (the device model's `gles_version`, the VM manager's `android.gles_version`: 2.0, 3.0 (the default), 3.1 or 3.2,
-announced to the guest and in `ro.opengles.version`; [gles3-plan.md](gles3-plan.md)) into the goldfish pipe's
+announced to the guest and in `ro.opengles.version`; [gles3-plan.md](plan/gles3-plan.md)) into the goldfish pipe's
 `opengles` service, gralloc's buffers are the host's color buffers, and SurfaceFlinger
-composes with GLES. The GLES host ([gles-proxy-plan.md](gles-proxy-plan.md), the plugin `build/v86-gles.js`) answers
+composes with GLES. The GLES host ([gles-proxy-plan.md](plan/gles-proxy-plan.md), the plugin `build/v86-gles.js`) answers
 every query from its shadow state on the machine's thread and sends the rest in batches to the page's WebGPU renderer
 (the display adapters' renderer channel, `svga_renderer.js`'s stream `"gles"`), whose GLES executor draws them; a
 posted frame is shown in the compositor's layer, or read back into the framebuffer device without one. Snapshots keep

@@ -1,4 +1,4 @@
-/* The VM manager's page (docs/vm-manager-plan.md); v86.css stays the old page's */
+/* The VM manager's page (docs/plan/vm-manager-plan.md); v86.css stays the old page's */
 @import url("./xterm.css");
 
 :root {
@@ -251,7 +251,7 @@ footer { color: var(--muted); padding: 10px 16px; border-top: 1px solid var(--li
     .console-drawer { flex-basis: auto; width: 100%; }
 }
 
-/* the wizard's Android image package (docs/android-images-plan.md I3) */
+/* the wizard's Android image package (docs/plan/android-images-plan.md I3) */
 .drop-zone { border: 2px dashed var(--line); border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
 .drop-zone.over { border-color: var(--accent); background: var(--selected); }
 

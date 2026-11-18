@@ -1,6 +1,6 @@
 # iPhone 4（A4，S5L8930）机器实施计划
 
-截至 2026-11-05，S1–S3 已用 iPhone3,1 的 10B329 固件验收。S4 已用原版内核从 NAND 挂载系统卷与数据卷，启动核心服务，加载系统钥匙包，并验证 C、D 两类文件写入、同步和重开后的内容。保留原版系统写入后断电，第二次冷启动已通过原版 YAFTL 全盘恢复并重新挂载两卷。浏览器入口与本地工具见 [iOS 使用说明](ios.md)。
+截至 2026-11-05，S1–S3 已用 iPhone3,1 的 10B329 固件验收。S4 已用原版内核从 NAND 挂载系统卷与数据卷，启动核心服务，加载系统钥匙包，并验证 C、D 两类文件写入、同步和重开后的内容。保留原版系统写入后断电，第二次冷启动已通过原版 YAFTL 全盘恢复并重新挂载两卷。浏览器入口与本地工具见 [iOS 使用说明](../ios.md)。
 
 S5 已在完整系统冷启动中显示原版 iOS 锁屏，并用模拟触控滑动解锁进入原版主屏。S6 已通过连续熄屏唤醒、主屏翻页、原版双指缩放及 Safari 横竖屏往返。设置、备忘录、计算器、照片、日历、时钟和离线 Safari 均已完成原版界面操作验收。S7 已在 Chrome 用真实 IPSW 验证导入、擦除、从持久 NAND 冷启动、连续两轮唤醒和触控解锁。此前浏览器挂起恢复已验收到客体和 NAND 状态。
 
@@ -287,7 +287,7 @@ SpringBoard 里，S0 核对。本计划在 OpenGL ES 这一层代理。
 
 ### 与 Android 32 位共用一套 GLES 代理
 
-32 位 Android（`ranchu` 上的 Android 7.1，[arm32.md](arm32.md)）现在用 `qemu.gles=0`，界面由 CPU 绘制。它的
+32 位 Android（`ranchu` 上的 Android 7.1，[arm32.md](../arm32.md)）现在用 `qemu.gles=0`，界面由 CPU 绘制。它的
 镜像里自带 Android 模拟器的 GLES 客体栈（2026-10-27 从 `armeabi-v7a-25_r18` 的 `system.img` 核对）：
 - `libEGL_emulation.so`、`libGLESv1_CM_emulation.so`、`libGLESv2_emulation.so`；
 - 编码器 `libGLESv1_enc.so`、`libGLESv2_enc.so`、`lib_renderControl_enc.so`、`libOpenglSystemCommon.so`；
@@ -295,7 +295,7 @@ SpringBoard 里，S0 核对。本计划在 OpenGL ES 这一层代理。
 
 它们把 GL 调用编码成 emugl 协议，经 goldfish pipe 的 `opengles` 服务交给宿主。这个协议后来演变成 gfxstream
 的 GLES 协议，今天的 Android 模拟器仍用同一套宿主解码器运行这些老镜像。v86 已经有 gfxstream 的传输与
-按操作码分派解码器的框架（[gfxstream-protocol.md](gfxstream-protocol.md)），但还没有解码任何 renderControl 命令
+按操作码分派解码器的框架（[gfxstream-protocol.md](../gfxstream-protocol.md)），但还没有解码任何 renderControl 命令
 （Android 16 的官方模式在客体内合成，不发 renderControl）。renderControl、GLES 的解码器与执行器都要新写。
 
 所以两边共用一个代理：**协议用 gfxstream/emugl 的 GLES 协议**，宿主侧写一次，客体侧各接各的：
@@ -362,7 +362,7 @@ libv86gles.dylib：v86 自己的编码器              镜像自带的编码器�
 
 **顺序：先做 Android 32 位，再做 iOS 的 S5。** Android 这边客体完全不用改，是未经修改的真实编码器在驱动宿主侧，
 解码器与执行器的错误能在没有逆向的环境里先找出来。之后 iOS 的 S5 只剩客体库、EAGL 适配、上屏和苹果私有部分。
-Android 32 位因此得到 GPU 加速的界面，现在由 CPU 绘制的慢界面（[arm32.md](arm32.md) 的 “Known defects”）也随之
+Android 32 位因此得到 GPU 加速的界面，现在由 CPU 绘制的慢界面（[arm32.md](../arm32.md) 的 “Known defects”）也随之
 解决。共用部分的阶段、测试和验收见 [gles-proxy-plan.md](gles-proxy-plan.md)，iOS 的 S5 建立在它的 E0–E6 之上。
 
 **软件渲染**：如果 S0 发现 iOS 6 的 Core Animation 有可用的软件渲染路径，S4 可以先用它点亮主屏幕，GPU 代理
@@ -373,7 +373,7 @@ SGX 的内核驱动保持加载，但没有硬件：它的 MMIO 读回“空闲�
 
 ## 界面
 
-照 Android 镜像的做法（[vm-manager.md](vm-manager.md) 的 “Android”，`src/app/android_catalog.js`、`android_import.js`、
+照 Android 镜像的做法（[vm-manager.md](../vm-manager.md) 的 “Android”，`src/app/android_catalog.js`、`android_import.js`、
 `android_import_worker.js`）：用户只选设备和版本、交出自己的文件，页面在本地验证、解密、打补丁、组装磁盘；
 开机时由 v86 从磁盘中读出内核与设备树。固件目录位于 `src/ios/catalog.js`，导入由 `src/app/ios_import.js` 和 `src/app/ios_import_worker.js` 处理。
 
@@ -940,4 +940,4 @@ CPU 创建的 BGRA 表面也能作为 GL 输入。客体在 IOSurface 的只读�
 - [touchHLE](https://github.com/touchHLE/touchHLE)（源码 MPL-2.0，二进制 GPL-3.0 以上）：EAGL 与 GL ES 1.1 的语义参考
 - QEMU（GPL-2.0，只读参考）：`cortex-a8` 型号与 `realview-pb-a8` 板，Cortex-A8 配置的行为参考
 - ARM：ARMv7-A/R 架构参考手册、Cortex-A8 TRM、PL192 VIC TRM
-- v86 内部：[arm32.md](arm32.md)（AArch32 核心）、[virt.md](virt.md)（ARM 机器与 ranchu 的先例）、[glbridge.md](glbridge.md)（代理与协议）、[gpu-devices.md](gpu-devices.md)（渲染器通道）
+- v86 内部：[arm32.md](../arm32.md)（AArch32 核心）、[virt.md](../virt.md)（ARM 机器与 ranchu 的先例）、[glbridge.md](../glbridge.md)（代理与协议）、[gpu-devices.md](../gpu-devices.md)（渲染器通道）

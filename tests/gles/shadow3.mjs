@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The GLES host's GLES 3.x (docs/gles3-plan.md L2): the versions announced
+// The GLES host's GLES 3.x (docs/plan/gles3-plan.md L2): the versions announced
 // and the contexts made, GLSL ES 3.x's shaders compiled and linked by
 // glslang on the CPU side, their link handed to the page in the batch
 // (PROGRAM_LINK), and GLES 3.0's state, queries and errors, against the

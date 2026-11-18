@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // An Android image package made into a v64 disk in node
-// (docs/android-images-plan.md I3.1, src/android/assemble.js): what the VM
+// (docs/plan/android-images-plan.md I3.1, src/android/assemble.js): what the VM
 // manager's importer does in a worker, into a file. A Cuttlefish images
 // zip (ci.android.com's aosp_cf_arm64_only_phone-img-<build>.zip) gives the
 // device's GPT disk: its images as they are, super shrunk, userdata blank
@@ -10,7 +10,7 @@
 //
 //   node tools/android_import.mjs <package.zip> <disk.img> [--userdata-mb 4096] [--gsi <gsi.zip>]
 //   (--gsi: a Generic System Image's system as system_a, its vbmeta the
-//   top-level one: docs/android-images-plan.md I5)
+//   top-level one: docs/plan/android-images-plan.md I5)
 
 import fs from "node:fs";
 import path from "node:path";

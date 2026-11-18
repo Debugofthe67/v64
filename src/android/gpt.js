@@ -1,6 +1,6 @@
 // GPT disks (UEFI 2.10 §5.3) as Android's partitions need them: a layout
 // of named partitions, the protective MBR and both GPTs as writes, and a
-// reader (docs/android-images-plan.md I1, I2)
+// reader (docs/plan/android-images-plan.md I1, I2)
 
 import { u32, u64, put16, put32, put64, latin1, bytes_of, utf8, copy, crc32, sha256_hex } from "./bytes.js";
 

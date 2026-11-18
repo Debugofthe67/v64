@@ -1,4 +1,4 @@
-//! XSAVE-managed state (docs/simd-xsave-plan.md 6.1-6.2): XCR0, IA32_XSS,
+//! XSAVE-managed state (docs/plan/simd-xsave-plan.md 6.1-6.2): XCR0, IA32_XSS,
 //! the upper halves of YMM0-YMM15, and the standard format of the XSAVE area.
 //! The 32-bit interpreter, the IR's helpers and the x64 engine share the
 //! encoding of the state components (encode, decode, in_use) and the rules

@@ -1,4 +1,4 @@
-//! The ARM core's physical address space (docs/arm64-virt-android16-plan.md
+//! The ARM core's physical address space (docs/plan/arm64-virt-android16-plan.md
 //! P1.5; the JIT plan's `Bus`): 64-bit physical addresses up to the
 //! profile's 40 bits, guest RAM from 0x4000_0000 at backing offset 0 of
 //! guest memory (mem8), and regions of ROM (read-only backing), MMIO (with
@@ -155,7 +155,7 @@ static mut DEVICE_TAKEN: Vec<u64> = Vec::new();
 pub fn bus() -> &'static AddressSpace { unsafe { &*(&raw const BUS) } }
 
 /// The bus behind compiled code's access cache (jitrt::access::Bus,
-/// docs/jit-unification-plan.md P5.8; the A64 page tier is J2): writable
+/// docs/plan/jit-unification-plan.md P5.8; the A64 page tier is J2): writable
 /// RAM only, never ROM, a device or a hole
 impl crate::jitrt::access::Bus for AddressSpace {
     fn ram_backing(&self, physical: u64) -> Option<u32> {

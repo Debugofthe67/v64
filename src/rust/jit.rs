@@ -1,5 +1,5 @@
 //! The x86 core's composition root of compiled code
-//! (docs/jit-unification-plan.md P5.1): whether it runs (jit_set_enabled),
+//! (docs/plan/jit-unification-plan.md P5.1): whether it runs (jit_set_enabled),
 //! the wiring of the ISA-neutral runtime crate::jitrt to the CPU (its host
 //! environment, the x64 page tier as the client X86Page that hears of writes
 //! and resets), and the hot-path compositions that stay here
@@ -78,7 +78,7 @@ fn reserve_compiler_heap() {
 
 /// Whether this build has Wasm SIMD: the portable one (build/v86-fallback.wasm)
 /// has none, and the page tier declines the forms whose templates need it
-/// (ir_wasm_simd_supported until M11 of docs/jit-unification-plan.md).
+/// (ir_wasm_simd_supported until M11 of docs/plan/jit-unification-plan.md).
 #[no_mangle]
 pub extern "C" fn jit_wasm_simd_supported() -> u32 { u32::from(cfg!(target_feature = "simd128")) }
 
@@ -265,7 +265,7 @@ pub fn wait_pages_published(pages: impl Iterator<Item = Page> + Clone, ms: f64) 
 }
 
 /// The fewest free table slots since the last jit_wasm_table_free_low_reset
-/// (docs/jit-unification-plan.md P0.10)
+/// (docs/plan/jit-unification-plan.md P0.10)
 #[no_mangle]
 pub fn jit_wasm_table_free_low() -> u32 { jitrt::state().table.free_low() }
 #[no_mangle]

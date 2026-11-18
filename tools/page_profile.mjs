@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Where a page function spends its time, per host instruction
-// (docs/profiling.md): runs a benchmark on the test core
+// (docs/perf/profiling.md): runs a benchmark on the test core
 // (build/v86-ir-test-release.wasm, ir-test-hooks) under V8's sampling
 // profiler (node --prof) while recording what the x64 page tier (with
 // --isa i686 in legacy protected mode, IR Tier-0's code until P7.5; with

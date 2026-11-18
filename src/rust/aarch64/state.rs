@@ -1,5 +1,5 @@
 #![allow(non_upper_case_globals, dead_code)]
-//! The ARM core's state block (docs/arm64-virt-android16-plan.md P1.4): its
+//! The ARM core's state block (docs/plan/arm64-virt-android16-plan.md P1.4): its
 //! own 4096 bytes from offset 64, like the x86 core's
 //! (crate::state_block), laid out by gen/state_layout.js (A64_STATE_FIELDS)
 //! and mirrored for JavaScript in src/arm/state_layout.js.

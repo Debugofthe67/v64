@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CTS 7.1 for the Android 7.1 image on ranchu (docs/gles-proxy-plan.md E4,
+// CTS 7.1 for the Android 7.1 image on ranchu (docs/plan/gles-proxy-plan.md E4,
 // dEQP): android-cts-7.1_r29-linux_x86-arm.zip is 713 MB, so, as
 // tools/a64_cts.mjs does for Android 16, only what is used comes over: the
 // zip's central directory (an ordinary end record: no zip64 below 4 GB),

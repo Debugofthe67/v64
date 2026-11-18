@@ -1,4 +1,4 @@
-// The virt machine's device registers (docs/arm64-virt-android16-plan.md
+// The virt machine's device registers (docs/plan/arm64-virt-android16-plan.md
 // P1.7): the interface of src/io.js's memory-mapped ranges (register and
 // unregister a range, handlers per access width), but with 64-bit addresses
 // and exact ranges of any size. The ranges are regions of the ARM core's

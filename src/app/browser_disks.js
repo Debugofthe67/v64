@@ -1,5 +1,5 @@
 // @ts-check
-// Browser disks, managed (docs/vm-manager-plan.md "浏览器磁盘（OPFS）", "管理",
+// Browser disks, managed (docs/plan/vm-manager-plan.md "浏览器磁盘（OPFS）", "管理",
 // U6): images in the browser's private file system (v86/disks/<id>.img, its
 // record <id>.json beside it, src/opfs_disk.js), made empty, imported from a
 // URL or a file (a copy: the source stays as it is; checked with SHA-256),

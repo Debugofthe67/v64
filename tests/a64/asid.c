@@ -1,5 +1,5 @@
 // The A64 page tier's access cache across ASIDs (tests/a64/asid.mjs;
-// docs/jit-unification-plan.md P6.4, a64_asid_tag): one VA mapped non-global
+// docs/plan/jit-unification-plan.md P6.4, a64_asid_tag): one VA mapped non-global
 // to a different page under each of 20 ASIDs (16-bit), switched with TTBR0
 // writes and no TLBI; remaps of a non-running ASID's page with TLBI VAE1 and
 // ASIDE1; a global page in the lower half invalidated through another ASID;

@@ -1,4 +1,4 @@
-//! The A64 page tier's code generator (docs/jit-unification-plan.md P6.3,
+//! The A64 page tier's code generator (docs/plan/jit-unification-plan.md P6.3,
 //! J2): one Wasm function per 4 KiB page of A64 code, built in the neutral
 //! skeleton crate::pagegen::frame (the frame, the structured layout of the
 //! block graph, the page dispatch, the access cache's lookups, chaining).
@@ -80,7 +80,7 @@ pub struct CompileEnv {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Isa {
     A64,
-    /// AArch32's (docs/aarch32-plan.md Q6): R0-R14 and NZCV stay in memory
+    /// AArch32's (docs/plan/aarch32-plan.md Q6): R0-R14 and NZCV stay in memory
     A32,
     T32,
 }
@@ -1596,7 +1596,7 @@ impl Emitter<'_> {
         self.retry_if(offset);
     }
 
-    // ---- scalar FP (P6.3b): the fast path's rules (docs/arm64-virt-android16-plan.md P6)
+    // ---- scalar FP (P6.3b): the fast path's rules (docs/plan/arm64-virt-android16-plan.md P6)
 
     /// Push whether an FP value's bits in local `l` (D: 64 bits, S: the low
     /// 32) are zero or a normal number, or with `result`, zero or a normal

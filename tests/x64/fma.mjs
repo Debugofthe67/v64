@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// FMA and F16C in the x64 engine (docs/simd-xsave-plan.md 9.3, P11): every
+// FMA and F16C in the x64 engine (docs/plan/simd-xsave-plan.md 9.3, P11): every
 // form in 64-bit mode with XMM0-15 (VEX.R, VEX.B and VEX.vvvv's top bit),
 // aliased operands and memory operands, and in compatibility mode, against
 // QEMU and tests/rust/sse_fp_model.mjs (through tests/rust/fma_cases.mjs).
@@ -258,7 +258,7 @@ check(expected_qemu, "QEMU");
 const FEATURES = {cpu_type: "x86_64", cpu_features: ["SSSE3", "SSE4.1", "SSE4.2", "XSAVE", "AVX", "FMA", "F16C"], cpu_features_unreleased: true};
 for(const [label, options] of [["interpreted", {}],
     ["x64 page tier", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true}],
-    // (compatibility-mode code in the page tier, docs/jit-unification-plan.md P7.2)
+    // (compatibility-mode code in the page tier, docs/plan/jit-unification-plan.md P7.2)
     ["x64 page tier, compat32", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true,
         jit_switches: {x64_page_compat32: 1}}]])
 {

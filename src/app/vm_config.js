@@ -1,5 +1,5 @@
 // @ts-check
-// A virtual machine's configuration in the VM manager (docs/vm-manager-plan.md,
+// A virtual machine's configuration in the VM manager (docs/plan/vm-manager-plan.md,
 // "虚拟机配置格式", U1): the format and its version, the defaults, the
 // migration of older versions, the checks, the V86 options of a
 // configuration (config_to_options, with the old page's rules of
@@ -129,11 +129,11 @@ export const TPM_STATE_SIZE = 512 * 1024;
  */
 
 /**
- * Android's bootloader (docs/android-images-plan.md I2): the device
+ * Android's bootloader (docs/plan/android-images-plan.md I2): the device
  * models of src/android/devices.js, its GPU modes (venus: Android's own
  * Venus driver, as tools/a64_android.mjs puts it in odm, with display.vulkan
  * "venus"; gfxstream: the image's own drivers, with display.vulkan
- * "gfxstream"; an emulator image's own two, docs/gles-proxy-plan.md E5:
+ * "gfxstream"; an emulator image's own two, docs/plan/gles-proxy-plan.md E5:
  * host, its GLES drawn by the page's WebGPU, and guest, the CPU draws, as
  * swiftshader does there), the vendor ramdisks (debug: Cuttlefish's
  * vendor_ramdisk-debug.img, a file of its own), SELinux's modes and the
@@ -152,7 +152,7 @@ export const DISPLAY_VULKAN = ["none", "venus", "gfxstream"];
 export const ANDROID_VENDOR_RAMDISKS = ["release", "debug"];
 export const ANDROID_SELINUX = ["enforcing", "permissive"];
 export const ANDROID_DISPLAYS = ["device", "window"];
-/** the GLES version an emulator image announces on the host's GPU (docs/gles3-plan.md) */
+/** the GLES version an emulator image announces on the host's GPU (docs/plan/gles3-plan.md) */
 export const ANDROID_GLES_VERSIONS = Object.keys(GLES_VERSIONS);
 /** @typedef {{model: string, build: string, nand: Image | null, boot_args: string, verbose: boolean,
  *     gles_proxy: boolean, orientation: 0 | 90 | 180 | 270, network: boolean, network_relay: string}} IOS */
@@ -300,7 +300,7 @@ function default_network()
  * @type {Object<number, function(any): any>}
  */
 const MIGRATIONS = {
-    // 2 (2026-10-24, docs/gfxstream-plan.md G5): display.vulkan names the kind, Venus or gfxstream
+    // 2 (2026-10-24, docs/plan/gfxstream-plan.md G5): display.vulkan names the kind, Venus or gfxstream
     1: config => {
         if(is_object(config.display) && typeof config.display.vulkan === "boolean")
         {
@@ -308,7 +308,7 @@ const MIGRATIONS = {
         }
         return config;
     },
-    // 3 (2026-10-26, docs/modern-pc-devices-plan.md H1): a PC's sound "none"
+    // 3 (2026-10-26, docs/plan/modern-pc-devices-plan.md H1): a PC's sound "none"
     // was the Sound Blaster muted (the guest had one); it stays so, as
     // sound.mute, and "none" is no sound card from now on
     2: config => {
@@ -540,7 +540,7 @@ export function validate_config(config)
     }
     if(!SECURE_BOOT_KEYS.includes(machine.secure_boot_keys)) problem("machine.secure_boot_keys", "must be one of " + SECURE_BOOT_KEYS.join(", "));
 
-    // the disks (docs/disk-persistence-plan.md: read write needs a source that can be written back)
+    // the disks (docs/plan/disk-persistence-plan.md: read write needs a source that can be written back)
     const slots = new Set();
     config.disks.forEach((disk, i) =>
     {

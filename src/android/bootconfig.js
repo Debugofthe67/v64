@@ -1,5 +1,5 @@
 // bootconfig (Documentation/admin-guide/bootconfig.rst) as Android's
-// bootloaders append it to the initrd (docs/android-images-plan.md I1)
+// bootloaders append it to the initrd (docs/plan/android-images-plan.md I1)
 
 import { put32, bytes_of, utf8, concat } from "./bytes.js";
 

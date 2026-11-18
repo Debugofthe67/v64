@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The A64 decoder against the decode oracle (docs/arm64-virt-android16-plan.md
+// The A64 decoder against the decode oracle (docs/plan/arm64-virt-android16-plan.md
 // P2.1): every word of a set is decoded by v86 (a64_decode_mnemonic of the
 // ARM core) and by llvm-mc with the profile's features
 // (tests/a64/oracle/decode.mjs); they must agree on whether it is an

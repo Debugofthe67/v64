@@ -1,5 +1,5 @@
 // The virt machine of cpu_type "arm64" (docs/virt.md,
-// docs/arm64-virt-android16-plan.md): its physical address map, which copies
+// docs/plan/arm64-virt-android16-plan.md): its physical address map, which copies
 // QEMU's virt-9.2 (the fixed reference), and the identity snapshots record.
 
 /** Version of the virt machine's device layout, recorded in snapshots (2: the PCIe host, P5.6) */
@@ -9,7 +9,7 @@ export const VIRT_LAYOUT_VERSION = 2;
 /** The CPU profiles' base name: v1; v1.1 adds ".1"; v2 is the default (src/arm/cpu.js) */
 export const A64_PROFILE = "v86-aarch64-v1";
 /**
- * The arm64 CPU's profiles (docs/arm64-virt-android16-plan.md, "CPU profile")
+ * The arm64 CPU's profiles (docs/plan/arm64-virt-android16-plan.md, "CPU profile")
  * by their CPU model (cpu_profile, src/machine_options.js): [name (the
  * snapshots record it), granules (bit 0 4 KiB, 1 16 KiB, 2 64 KiB),
  * optional features (bit 0 FEAT_PAN, bit 1 AArch32 at EL0)]
@@ -19,12 +19,12 @@ export const A64_PROFILES = {
     "generic-arm64-v1": [A64_PROFILE, 1, 0],
     "generic-arm64-v1.1": [A64_PROFILE + ".1", 7, 0],
     "generic-arm64": ["v86-aarch64-v2", 7, 1],
-    // (v2 and 32-bit processes: docs/aarch32-plan.md)
+    // (v2 and 32-bit processes: docs/plan/aarch32-plan.md)
     "generic-arm64-compat32": ["v86-aarch64-v3", 7, 3],
 };
 
 /**
- * cpu_type "arm32"'s profiles by their CPU model (docs/aarch32-plan.md part
+ * cpu_type "arm32"'s profiles by their CPU model (docs/plan/aarch32-plan.md part
  * 2): AArch32 throughout (feature bit 2), with AArch32's instructions (bit
  * 1); name, granules (none of AArch64's: the 4 KiB one), features
  * @type {!Object<string, !Array>}

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// AArch32 EL0 under the bare-metal AArch64 EL1 (docs/aarch32-plan.md Q0.2,
+// AArch32 EL0 under the bare-metal AArch64 EL1 (docs/plan/aarch32-plan.md Q0.2,
 // Q1): the cases of tests/a64/aarch32/*.a32.S, run by tests/a64/aarch32/el0.c
 // on QEMU (cortex-a35, which has AArch32 EL0) and on v86 with profile v3;
 // the outputs must be the same. A64_AARCH32_CASES=q1 (default): which binary.

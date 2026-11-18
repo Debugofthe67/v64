@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The GLES wire format (docs/gles-proxy-plan.md "协议与生成器", E1):
+// The GLES wire format (docs/plan/gles-proxy-plan.md "协议与生成器", E1):
 // - the generated tables (src/gles/gles_protocol.js): each API's base and
 //   size, ranges that do not overlap, the layouts of commands whose shape
 //   the guest's encoder (API 25's libGLESv2_enc, lib_renderControl_enc) is
@@ -51,7 +51,7 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
     assert.deepEqual(shape("gles1:glDrawTexsOES"), ["void", ["i16", "i16", "i16", "i16", "i16"]]);
     assert.ok(command_of_name("gles2:glGetString").flags.includes("unsupported"), "glGetString never on the wire (rcGetGLString instead)");
 
-    // the API 25 guest's renderControl (lib_renderControl_enc's symbols, docs/gles-proxy-plan.md "复核结论")
+    // the API 25 guest's renderControl (lib_renderControl_enc's symbols, docs/plan/gles-proxy-plan.md "复核结论")
     for(const name of ["rcGetRendererVersion", "rcGetEGLVersion", "rcQueryEGLString", "rcGetGLString", "rcGetNumConfigs", "rcGetConfigs",
         "rcChooseConfig", "rcGetFBParam", "rcCreateContext", "rcDestroyContext", "rcCreateWindowSurface", "rcDestroyWindowSurface",
         "rcCreateColorBuffer", "rcOpenColorBuffer", "rcOpenColorBuffer2", "rcCloseColorBuffer", "rcSetWindowColorBuffer",

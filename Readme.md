@@ -70,10 +70,10 @@ on WebGPU. Join its [Discord](https://discord.gg/re5CY3MbfW).
     DirectDraw, Direct3D 8 and Direct3D 9 for Windows 2000/XP programs, through
     proxy DLLs and a guest driver, rendered with WebGPU.
 - **Disks**: RAW images and QCOW2, VHD, VDI, VMDK and VHDX, OVA import, export
-  to QCOW2 or RAW ([formats](docs/disk-image-formats-plan.md)); with
+  to QCOW2 or RAW ([formats](docs/plan/disk-image-formats-plan.md)); with
   `disk_option: "read_write"` a RAW disk is written back to a disk service, a
   local file in Node, or a disk kept in the browser
-  ([persistence](docs/disk-persistence-plan.md)).
+  ([persistence](docs/plan/disk-persistence-plan.md)).
 
 ## Documentation
 
@@ -92,8 +92,8 @@ on WebGPU. Join its [Discord](https://discord.gg/re5CY3MbfW).
 [Display design](docs/display-design.md) —
 [Graphics proxy](docs/glbridge.md) —
 [Custom virtio devices](docs/custom-virtio-devices.md) —
-[Disk image formats](docs/disk-image-formats-plan.md) —
-[Disk persistence](docs/disk-persistence-plan.md) —
+[Disk image formats](docs/plan/disk-image-formats-plan.md) —
+[Disk persistence](docs/plan/disk-persistence-plan.md) —
 [Networking](docs/networking.md) —
 [Dial-up modem networking](docs/modem.md) —
 [9p filesystem](docs/filesystem.md) —
@@ -105,7 +105,7 @@ on WebGPU. Join its [Discord](https://discord.gg/re5CY3MbfW).
 [Windows 3.1x guest setup](docs/windows-31x.md) —
 [Windows 9x guest setup](docs/windows-9x.md) —
 [Windows NT guest setup](docs/windows-nt.md) —
-[Profiling](docs/profiling.md)
+[Profiling](docs/perf/profiling.md)
 
 ## Compatibility
 

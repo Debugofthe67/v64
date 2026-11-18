@@ -1,5 +1,5 @@
 //! Record and replay of x64 page tier compilations
-//! (docs/jit-unification-plan.md P2.0, cross-phase rule 4), in test builds
+//! (docs/plan/jit-unification-plan.md P2.0, cross-phase rule 4), in test builds
 //! (ir-test-hooks), as ir::tier0::replay for Tier-0: a record holds every
 //! input of pagegen::compile_with but the addresses, which replay pins
 //! (pagegen::CompileEnv::replay). tools/replay_check.mjs compares a base

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The CPU features of docs/simd-xsave-plan.md (src/cpu_features.js, setting
+// The CPU features of docs/plan/simd-xsave-plan.md (src/cpu_features.js, setting
 // cpu_features): CPUID reports exactly the requested features (not given:
 // every released one for x86_64, the owner's decision of 2026-10-17, none for
 // x86), a preset names a set, cpuid_level leaves out what it cannot report together with what

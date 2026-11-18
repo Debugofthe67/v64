@@ -6,7 +6,7 @@ cryptography, in WebAssembly, behind the Command Response Buffer (CRB)
 interface that Windows (`tpm.inf`, `ACPI\MSFT0101`) and Linux (`tpm_crb`)
 drive. It is a plugin, `build/v86-tpm.js`, with the module
 `build/libtpms.wasm` beside it; the source is in [`src/tpm/`](../src/tpm/).
-Stages T1 and T2 of [modern-pc-devices-plan.md](modern-pc-devices-plan.md).
+Stages T1 and T2 of [modern-pc-devices-plan.md](plan/modern-pc-devices-plan.md).
 
 ```js
 new V86({
@@ -123,7 +123,7 @@ state. A store of zeros is a TPM to manufacture; a store that is neither
 is refused, not replaced by a new TPM (a TPM's state holds keys, BitLocker's
 among them, that a new one would not have): clearing it is the user's
 explicit act. `tpm.state` with `disk_option: "read_write"` writes it back
-as a disk is written back ([disk-persistence-plan.md](disk-persistence-plan.md));
+as a disk is written back ([disk-persistence-plan.md](plan/disk-persistence-plan.md));
 without `state` the store is in memory.
 
 A snapshot holds the CRB's registers, the TPM's volatile state and the

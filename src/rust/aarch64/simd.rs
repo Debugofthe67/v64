@@ -1,5 +1,5 @@
 //! AdvSIMD and the SIMD&FP registers' loads, stores and moves
-//! (docs/arm64-virt-android16-plan.md P2.5, P2.7): the integer classes of
+//! (docs/plan/arm64-virt-android16-plan.md P2.5, P2.7): the integer classes of
 //! AdvSIMD, vector and scalar, written element by element on u128 values
 //! (so the portable build runs them too), the structure loads and stores,
 //! TBL/TBX, the permutes. The FP operations of the same classes are in

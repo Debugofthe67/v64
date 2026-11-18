@@ -1,4 +1,4 @@
-//! AArch32's page functions (docs/aarch32-plan.md Q6): EL0's A32 and T32
+//! AArch32's page functions (docs/plan/aarch32-plan.md Q6): EL0's A32 and T32
 //! code in the A64 page tier's frame. R0-R14 (X0-X14's low halves) use the
 //! state's memory or locals written back around helpers; NZCV stays in
 //! memory. Branches are native (B, BL, B<c>, CBZ, CBNZ, BX and BLX).
@@ -1078,7 +1078,7 @@ fn control(i: &Inst32, offset: u16) -> Option<(Vec<u64>, bool)> {
     }
 }
 
-/// (PL1, cpu_type arm32: docs/aarch32-plan.md R5.3) the instructions a PL1
+/// (PL1, cpu_type arm32: docs/plan/aarch32-plan.md R5.3) the instructions a PL1
 /// function steps that are helpers otherwise: MSR of CPSR's control or
 /// extension field (the mode, the masks: a function is of one privilege,
 /// and interrupts are taken between activations) and CP15's writes, MCR

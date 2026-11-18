@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The disk service's list and create (docs/vm-manager-plan.md "磁盘服务的创建
+// The disk service's list and create (docs/plan/vm-manager-plan.md "磁盘服务的创建
 // 与列出", U3; tools/disk-service.mjs) and the VM manager's client
 // (src/app/disk_service_client.js): every rule of create (--allow-create,
 // the name, an existing file, the size, the free space, the token, the

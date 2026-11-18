@@ -1,4 +1,4 @@
-// IMG3, the container of iOS 2–6 firmware files (docs/iphone4-plan.md S0):
+// IMG3, the container of iOS 2–6 firmware files (docs/plan/iphone4-plan.md S0):
 // a 20-byte header (magic "Img3", full size, size without the signature,
 // signed area, the image's type) then tags, each a magic, its total length
 // (with padding), its data's length and the data. Magics and types are

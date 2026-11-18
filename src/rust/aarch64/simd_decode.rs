@@ -1,5 +1,5 @@
 //! The scalar FP, AdvSIMD and crypto part of the A64 decoder
-//! (docs/arm64-virt-android16-plan.md P2.5-P2.8, P2.11): the classes of the
+//! (docs/plan/arm64-virt-android16-plan.md P2.5-P2.8, P2.11): the classes of the
 //! encoding index's "Data Processing -- Scalar Floating-Point and Advanced
 //! SIMD" group and the AdvSIMD structure loads and stores. Each class
 //! function checks a word against the class's allocated encodings for profile

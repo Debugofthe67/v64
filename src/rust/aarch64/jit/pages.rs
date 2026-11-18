@@ -1,5 +1,5 @@
-//! The A64 page tier's runtime (docs/jit-unification-plan.md P6, J2;
-//! docs/arm64-virt-android16-plan.md P6): jitrt's client A64Page in the ARM
+//! The A64 page tier's runtime (docs/plan/jit-unification-plan.md P6, J2;
+//! docs/plan/arm64-virt-android16-plan.md P6): jitrt's client A64Page in the ARM
 //! core. One Wasm function per 4 KiB code page (crate::aarch64::jit::pagegen),
 //! keyed by the page's code key (its RAM backing page from the AddressSpace,
 //! P6.1: the code is position independent) with the mode it was compiled for
@@ -50,7 +50,7 @@ extern "C" {
 
 /// The page tier runs (a64_page; default off until its F gate)
 pub static mut ENABLED: bool = false;
-/// AArch32's code is compiled too (a64_page_aarch32, docs/aarch32-plan.md Q6)
+/// AArch32's code is compiled too (a64_page_aarch32, docs/plan/aarch32-plan.md Q6)
 pub static mut AARCH32: bool = true;
 /// (bisecting) the switch's value: 2 helper calls only, 3 native forms only, 16 + a mask
 pub static mut AARCH32_DEBUG: u32 = 1;
@@ -771,7 +771,7 @@ fn code_page(pc: u64, mode: u32) -> Option<u32> {
 /// for at most `budget` instructions; else note the page's heat and entry,
 /// and compile it when hot
 pub fn run(budget: u32) -> Ran {
-    // (AArch32's code with a64_page_aarch32, docs/aarch32-plan.md Q6, R5.3; not
+    // (AArch32's code with a64_page_aarch32, docs/plan/aarch32-plan.md Q6, R5.3; not
     // from inside an IT block: compiled code enters at ITSTATE 0, little-endian)
     if !allowed()
         || budget == 0

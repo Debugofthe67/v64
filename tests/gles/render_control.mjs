@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// renderControl (src/gles/render_control.js; docs/gles-proxy-plan.md E1,
+// renderControl (src/gles/render_control.js; docs/plan/gles-proxy-plan.md E1,
 // E2), through the host's services as a transport drives them, the guest's
 // bytes made by the test encoder:
 // - the configurations as gfxstream packs them (the attributes' row, then

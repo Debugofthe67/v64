@@ -269,7 +269,7 @@ static void matrix(void)
 }
 
 /* YMM state across the kernel's context switches (X64_PROBE_YMM,
- * docs/simd-xsave-plan.md 11.3): when the kernel enabled AVX
+ * docs/plan/simd-xsave-plan.md 11.3): when the kernel enabled AVX
  * (CPUID.1:ECX.OSXSAVE and AVX, XCR0 bits 1 and 2), twice as many threads as
  * CPUs each hold a fingerprint in every YMM register (16 in 64-bit mode, 8 in
  * compatibility mode) across a system call, sched_yield, a migration to

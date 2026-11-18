@@ -1,4 +1,4 @@
-// GLES 3.1's state in the shadow state (docs/gles3-plan.md L5), written
+// GLES 3.1's state in the shadow state (docs/plan/gles3-plan.md L5), written
 // from the GLES 3.1 specification: what a context of version 31 or 32 has
 // beyond GLES 3.0's (gles3_state.js), the commands GLES 3.1 adds, and its
 // forms of 3.0's whose rules it changed. Its handlers come before 3.0's for
@@ -32,7 +32,7 @@ export const GL31 = {
 };
 
 /**
- * The limits GLES 3.1's contexts answer: the specification's minimums, within WebGPU's defaults (docs/gles3-plan.md "限制");
+ * The limits GLES 3.1's contexts answer: the specification's minimums, within WebGPU's defaults (docs/plan/gles3-plan.md "限制");
  * more binding points of storage blocks and atomic counters (dEQP-GLES31 binds counters at 1, six blocks of instance arrays)
  */
 export const LIMITS31 = {

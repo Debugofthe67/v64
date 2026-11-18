@@ -1,4 +1,4 @@
-; FMA (the templates of docs/simd-xsave-plan.md P11 part 2): a polynomial of
+; FMA (the templates of docs/plan/simd-xsave-plan.md P11 part 2): a polynomial of
 ; degree 8 in Horner form, the forms libm's _fma variants use most
 ; (VFMADD213SD, VFMADD132SD, VFMADD231SD; register and memory operands), at
 ; 512 points a round.

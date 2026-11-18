@@ -7,7 +7,7 @@
 // properties), so the handle, the descriptor and the device use quoted names
 // only. src/device_machine.js is the plugin's end of it.
 // See docs/gpu-devices.md, "Adapter plugins", and
-// docs/modern-pc-devices-plan.md, "设备插件".
+// docs/plan/modern-pc-devices-plan.md, "设备插件".
 
 import { LOG_PCI } from "./const.js";
 import { BlockBackend, block_drop_holds } from "./block_backend.js";
@@ -53,7 +53,7 @@ export const AUDIO_PLUGINS = { registry: "V86AudioDevices", option: "audio_devic
 export const USB_PLUGINS = { registry: "V86UsbControllers", option: "usb", dir: "usb", tag: "usb", entry: "./usb/plugin.js" };
 /** @const @type {PluginKind} the TPM 2.0 (docs/tpm.md): one plugin, "tpm" */
 export const TPM_PLUGINS = { registry: "V86TpmDevices", option: "tpm", dir: "tpm", tag: "tpm", entry: "./tpm/plugin.js" };
-/** @const @type {PluginKind} the GLES host of the ranchu machine (docs/gles-proxy-plan.md): one plugin, "gles" */
+/** @const @type {PluginKind} the GLES host of the ranchu machine (docs/plan/gles-proxy-plan.md): one plugin, "gles" */
 export const GLES_PLUGINS = { registry: "V86GlesHosts", option: "ranchu_gpu", dir: "gles", tag: "gles", entry: "./gles/plugin.js" };
 
 /**
@@ -69,7 +69,7 @@ export function default_tpm_wasm_path()
 }
 
 /**
- * The GLES host's GLSL ES compiler (build/glslang.wasm, docs/gles3-plan.md)
+ * The GLES host's GLSL ES compiler (build/glslang.wasm, docs/plan/gles3-plan.md)
  * where gles_glslang_path does not say: beside the bundle, as the plugins
  * @return {string}
  */
@@ -262,7 +262,7 @@ export function device_handle(cpu, owner)
             else io.register_read_consecutive(port, owner, r8_1, r8_2);
         },
         "mmap_register": (address, size, r8, w8, r32, w32) => io.mmap_register(address, size, r8, w8, r32, w32),
-        // an exact range inside a 128 KiB block (docs/arm64-virt-android16-plan.md P1.7)
+        // an exact range inside a 128 KiB block (docs/plan/arm64-virt-android16-plan.md P1.7)
         "mmap_register_range": (address, size, r8, w8, r32, w32) => io.mmap_register_range(address, size, owner, r8, w8, r32, w32),
         "mmap_unregister_range": (address, size) => io.mmap_unregister_range(address, size, owner),
         "allocate_io": size => owner.allocate_io ? owner.allocate_io(size) : allocate_io_ports(cpu, size, owner.name),

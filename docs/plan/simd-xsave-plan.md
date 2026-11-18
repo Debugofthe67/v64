@@ -83,28 +83,28 @@ semantic oracle / positive tests / negative tests / lifecycle tests
 
 | 入口 | 审查所得现状 | 所需改动 |
 | --- | --- | --- |
-| [`gen/x86_table.js`](../gen/x86_table.js)、[`gen/generate_interpreter.js`](../gen/generate_interpreter.js)、[`src/rust/decode_rules.rs`](../src/rust/decode_rules.rs) | `0F38/0F3A` 仍是占位；生成器围绕主表和 `0F` 表组织，并假设现有 opcode 长度。`mandatory_prefix` 让 66 优先于 F2/F3；遇到未列出的强制前缀时只有 `dbg_assert`，release 构建执行无前缀形式 | 扩展 map-aware 编码描述和生成器，不能仅追加数值 opcode；按 5.2 节统一前缀规则 |
-| [`src/rust/cpu/instructions_0f.rs`](../src/rust/cpu/instructions_0f.rs) | `instr_0F38/0F3A` 调用未实现入口；XSAVE/XRSTOR/XSAVEOPT 为未定义指令路径；`0FAE /7`（CLFLUSH）一律 #UD，而 x64 配置公布了 CLFSH | 接入新解码、共享语义及独立功能门控；顺带消除 CLFLUSH 在兼容模式下的双引擎分歧 |
-| [`src/rust/ir/frontend/decode.rs`](../src/rust/ir/frontend/decode.rs)、[`gen/generate_ir_decoder.js`](../gen/generate_ir_decoder.js) | 当前解码围绕单字节及 `0F`，无 VEX 元数据 | 扩展编码身份、立即数、第三源及 VSIB 表达 |
-| [`src/rust/x64/decode.rs`](../src/rust/x64/decode.rs) | 长模式拒绝 C4/C5；`base_opcode` 与后续分发需要支持更多 map；同样 66 优先，未列出的强制前缀只在 64 位模式下 #UD | 保持解释器/page tier 共用解码结果，增加 VEX 与三字节 map；前缀规则与 32 位解码器统一 |
-| [`src/rust/ir/tier0/simd.rs`](../src/rust/ir/tier0/simd.rs)、[`src/rust/ir/tier0/emit.rs`](../src/rust/ir/tier0/emit.rs) | SIMD 缓存围绕 8 个 XMM/v128 | 扩展 YMM 高半依赖、物化、写回和 helper 边界 |
-| [`src/rust/ir/types.rs`](../src/rust/ir/types.rs)、[`src/rust/ir/simd.rs`](../src/rust/ir/simd.rs)、[`src/rust/ir/backend/simd.rs`](../src/rust/ir/backend/simd.rs) | 已有 V128、整数 SIMD、scalar 后端及状态恢复基础 | 表达成对 v128 的 256 位值、跨半区操作和副作用 |
-| [`src/rust/x64/vector.rs`](../src/rust/x64/vector.rs)、[`src/rust/x64/pagegen.rs`](../src/rust/x64/pagegen.rs) | 已有 SSE–SSE3、较完整的 FP 处理及部分原生模板 | 抽取可复用语义，扩展 16 个 YMM 和 page tier |
-| [`gen/state_layout.js`](../gen/state_layout.js) | XMM0–7 与 XMM8–15 分库存放；无 YMM_Hi128/XCR0；固定状态区为 4096 字节 | 追加每核字段并重新生成 Rust/JS 布局；校验空间、范围与快照兼容 |
-| [`src/rust/cpu/misc_instr.rs`](../src/rust/cpu/misc_instr.rs)、`x64/vector.rs` | 分别实现 legacy 与 long-mode FXSAVE/FXRSTOR。legacy 的对齐 #GP 只是 `dbg_assert`；x64 的 FXSAVE 整块写出 512 字节（SDM 规定处理器不写 464–511 字节），并且在非 64 位模式下也存取 XMM8–15 | 提取模式相关的状态编解码，修复影响 XSAVE 的旧路径缺陷（6.2 节） |
-| `instructions_0f.rs`、[`src/rust/x64/system.rs`](../src/rust/x64/system.rs) | CPUID 未公布目标扩展，无 leaf 0xD；两条路径的 CR4 合法位校验不一致（legacy 接受 bit 18 OSXSAVE）。CPU 配置只是布尔值 `X64_TEST_CAPABILITIES`，不进快照；`cpuid_level` 可配置（Windows NT 用 2）。32 位配置的 CPUID 0x80000000 返回 5，即没有有效的扩展 leaf，因此无法报告 LZCNT（0x80000001:ECX[5]） | 集中能力定义并改为能力位图，统一 OSXSAVE、XCR0 和异常规则；32 位配置不补扩展 leaf，也不开放 LZCNT（第 13 节 Q7） |
-| [`src/rust/cpu/smm.rs`](../src/rust/cpu/smm.rs)（基线后合入） | SMI 进入时把 CR4 清零；RSM 原样恢复 CR4，不做合法位校验；`entered_mode()` 会调用 `ir_admission_barrier` | RSM 与 MOV CR4 共用校验，并列入 JIT 失效写入方（6.1 节） |
-| [`src/rust/ir/runtime/sse_fp.rs`](../src/rust/ir/runtime/sse_fp.rs)、[`src/rust/cpu/cpu.rs`](../src/rust/cpu/cpu.rs) | 32 位引擎（解释器、Tier-0、regions）的 SSE/SSE2 算术直接用宿主或 Wasm 运算：不设置任何 MXCSR 状态位，算术不支持 RC/DAZ/FZ（`set_mxcsr` 只打日志），也从不产生 #XM。x64 的 `vector.rs` 基于 SoftFloat，是精确的 | 单列 P4a：建立准确的公共 FP 核心，改造现有 SSE/SSE2 浮点路径（7.4 节） |
-| [`src/rust/ir/runtime/continuation.rs`](../src/rust/ir/runtime/continuation.rs) | selective continuation 保存范围包含 legacy XMM，但没有 YMM 高半 | 扩展捕获/恢复与失效规则，防止 helper 返回后恢复过期高半 |
-| [`lib/softfloat/softfloat.c`](../lib/softfloat/softfloat.c)、[`src/rust/softfloat.rs`](../src/rust/softfloat.rs) | 捆绑的 C SoftFloat 已包含 `f32_mulAdd`、`f64_mulAdd`、`f32_to_f16` 和 `f16_to_f32`，Rust 侧尚未声明 | FMA/F16C 的精确路径直接复用；x86 的 NaN 选择规则在外层实现（9.3 节） |
+| [`gen/x86_table.js`](../../gen/x86_table.js)、[`gen/generate_interpreter.js`](../../gen/generate_interpreter.js)、[`src/rust/decode_rules.rs`](../../src/rust/decode_rules.rs) | `0F38/0F3A` 仍是占位；生成器围绕主表和 `0F` 表组织，并假设现有 opcode 长度。`mandatory_prefix` 让 66 优先于 F2/F3；遇到未列出的强制前缀时只有 `dbg_assert`，release 构建执行无前缀形式 | 扩展 map-aware 编码描述和生成器，不能仅追加数值 opcode；按 5.2 节统一前缀规则 |
+| [`src/rust/cpu/instructions_0f.rs`](../../src/rust/cpu/instructions_0f.rs) | `instr_0F38/0F3A` 调用未实现入口；XSAVE/XRSTOR/XSAVEOPT 为未定义指令路径；`0FAE /7`（CLFLUSH）一律 #UD，而 x64 配置公布了 CLFSH | 接入新解码、共享语义及独立功能门控；顺带消除 CLFLUSH 在兼容模式下的双引擎分歧 |
+| [`src/rust/ir/frontend/decode.rs`](../../src/rust/ir/frontend/decode.rs)、[`gen/generate_ir_decoder.js`](../../gen/generate_ir_decoder.js) | 当前解码围绕单字节及 `0F`，无 VEX 元数据 | 扩展编码身份、立即数、第三源及 VSIB 表达 |
+| [`src/rust/x64/decode.rs`](../../src/rust/x64/decode.rs) | 长模式拒绝 C4/C5；`base_opcode` 与后续分发需要支持更多 map；同样 66 优先，未列出的强制前缀只在 64 位模式下 #UD | 保持解释器/page tier 共用解码结果，增加 VEX 与三字节 map；前缀规则与 32 位解码器统一 |
+| [`src/rust/ir/tier0/simd.rs`](../../src/rust/ir/tier0/simd.rs)、[`src/rust/ir/tier0/emit.rs`](../../src/rust/ir/tier0/emit.rs) | SIMD 缓存围绕 8 个 XMM/v128 | 扩展 YMM 高半依赖、物化、写回和 helper 边界 |
+| [`src/rust/ir/types.rs`](../../src/rust/ir/types.rs)、[`src/rust/ir/simd.rs`](../../src/rust/ir/simd.rs)、[`src/rust/ir/backend/simd.rs`](../../src/rust/ir/backend/simd.rs) | 已有 V128、整数 SIMD、scalar 后端及状态恢复基础 | 表达成对 v128 的 256 位值、跨半区操作和副作用 |
+| [`src/rust/x64/vector.rs`](../../src/rust/x64/vector.rs)、[`src/rust/x64/pagegen.rs`](../../src/rust/x64/pagegen.rs) | 已有 SSE–SSE3、较完整的 FP 处理及部分原生模板 | 抽取可复用语义，扩展 16 个 YMM 和 page tier |
+| [`gen/state_layout.js`](../../gen/state_layout.js) | XMM0–7 与 XMM8–15 分库存放；无 YMM_Hi128/XCR0；固定状态区为 4096 字节 | 追加每核字段并重新生成 Rust/JS 布局；校验空间、范围与快照兼容 |
+| [`src/rust/cpu/misc_instr.rs`](../../src/rust/cpu/misc_instr.rs)、`x64/vector.rs` | 分别实现 legacy 与 long-mode FXSAVE/FXRSTOR。legacy 的对齐 #GP 只是 `dbg_assert`；x64 的 FXSAVE 整块写出 512 字节（SDM 规定处理器不写 464–511 字节），并且在非 64 位模式下也存取 XMM8–15 | 提取模式相关的状态编解码，修复影响 XSAVE 的旧路径缺陷（6.2 节） |
+| `instructions_0f.rs`、[`src/rust/x64/system.rs`](../../src/rust/x64/system.rs) | CPUID 未公布目标扩展，无 leaf 0xD；两条路径的 CR4 合法位校验不一致（legacy 接受 bit 18 OSXSAVE）。CPU 配置只是布尔值 `X64_TEST_CAPABILITIES`，不进快照；`cpuid_level` 可配置（Windows NT 用 2）。32 位配置的 CPUID 0x80000000 返回 5，即没有有效的扩展 leaf，因此无法报告 LZCNT（0x80000001:ECX[5]） | 集中能力定义并改为能力位图，统一 OSXSAVE、XCR0 和异常规则；32 位配置不补扩展 leaf，也不开放 LZCNT（第 13 节 Q7） |
+| [`src/rust/cpu/smm.rs`](../../src/rust/cpu/smm.rs)（基线后合入） | SMI 进入时把 CR4 清零；RSM 原样恢复 CR4，不做合法位校验；`entered_mode()` 会调用 `ir_admission_barrier` | RSM 与 MOV CR4 共用校验，并列入 JIT 失效写入方（6.1 节） |
+| [`src/rust/ir/runtime/sse_fp.rs`](../../src/rust/ir/runtime/sse_fp.rs)、[`src/rust/cpu/cpu.rs`](../../src/rust/cpu/cpu.rs) | 32 位引擎（解释器、Tier-0、regions）的 SSE/SSE2 算术直接用宿主或 Wasm 运算：不设置任何 MXCSR 状态位，算术不支持 RC/DAZ/FZ（`set_mxcsr` 只打日志），也从不产生 #XM。x64 的 `vector.rs` 基于 SoftFloat，是精确的 | 单列 P4a：建立准确的公共 FP 核心，改造现有 SSE/SSE2 浮点路径（7.4 节） |
+| [`src/rust/ir/runtime/continuation.rs`](../../src/rust/ir/runtime/continuation.rs) | selective continuation 保存范围包含 legacy XMM，但没有 YMM 高半 | 扩展捕获/恢复与失效规则，防止 helper 返回后恢复过期高半 |
+| [`lib/softfloat/softfloat.c`](../../lib/softfloat/softfloat.c)、[`src/rust/softfloat.rs`](../../src/rust/softfloat.rs) | 捆绑的 C SoftFloat 已包含 `f32_mulAdd`、`f64_mulAdd`、`f32_to_f16` 和 `f16_to_f32`，Rust 侧尚未声明 | FMA/F16C 的精确路径直接复用；x86 的 NaN 选择规则在外层实现（9.3 节） |
 | `gen/x86_table.js` 的 BSF/BSR、`x64/execute.rs`、`x64/pagegen.rs` | `0F BC/BD` 忽略 F3 前缀，行为等同于不支持 BMI1/LZCNT 的 CPU | TZCNT/LZCNT 是唯一随能力位改变解码结果、而不是变成 #UD 的形式：能力关闭时仍按 BSF/BSR 执行（5.2 节） |
 | 惰性标志：32 位引擎的 `flags_changed`/`last_op1`/`last_result`，x64 page tier 的惰性标志记录 | 只覆盖现有整数指令 | BMI1/BMI2/LZCNT/TZCNT 接入两套机制，未定义标志取固定值（9.2 节） |
-| [`src/cpu.js`](../src/cpu.js) | 多核快照按区间恢复，缺失区间填复位值（SMBASE 是先例）；单核旧快照把 1360 以上的 core 区间清零。INIT 只保留 `INIT_PRESERVED` 中的 PAT、MTRR、MC 和 SMBASE，其余（包括 x87、XMM、MXCSR）都取复位值 | 按 6.4 节加入 XCR0/XSS 的填充与 INIT 规则 |
-| [`tests/nasm/`](../tests/nasm/)、[`tests/x64/`](../tests/x64/) | 已有差分与外部 oracle；NASM fixture 目前只记录 XMM0–7；`qemu_oracle.js` 只解析 `XMM0n=`，并以 `-cpu max` 运行 QEMU | 版本化记录格式，增加 YMM、MXCSR、XCR0、异常与内存副作用；处理 11.1 节列出的 QEMU 缺口 |
+| [`src/cpu.js`](../../src/cpu.js) | 多核快照按区间恢复，缺失区间填复位值（SMBASE 是先例）；单核旧快照把 1360 以上的 core 区间清零。INIT 只保留 `INIT_PRESERVED` 中的 PAT、MTRR、MC 和 SMBASE，其余（包括 x87、XMM、MXCSR）都取复位值 | 按 6.4 节加入 XCR0/XSS 的填充与 INIT 规则 |
+| [`tests/nasm/`](../../tests/nasm/)、[`tests/x64/`](../../tests/x64/) | 已有差分与外部 oracle；NASM fixture 目前只记录 XMM0–7；`qemu_oracle.js` 只解析 `XMM0n=`，并以 `-cpu max` 运行 QEMU | 版本化记录格式，增加 YMM、MXCSR、XCR0、异常与内存副作用；处理 11.1 节列出的 QEMU 缺口 |
 
 现有 IR 是唯一的 32 位 JIT，旧 Legacy JIT 已移除。long mode 使用独立 page tier，
 不能假设修改 32 位 IR 就同时完成 64 位支持。沿用
-[`docs/ir-design.md`](ir-design.md) 和 [`docs/x86-64.md`](x86-64.md) 的分工，
+[`docs/ir-design.md`](../ir-design.md) 和 [`docs/x86-64.md`](../x86-64.md) 的分工，
 本项目不以建设 64 位 region 管线为前置条件。
 
 兼容模式（LMA=1、CS.L=0）由两个引擎共同执行：在 `X64_COMPAT_JIT` 下，编译过的代码经
@@ -121,7 +121,7 @@ semantic oracle / positive tests / negative tests / lifecycle tests
 具体拆文件方式在 P0 确定。不要手工修改生成后的解释器文件或 coverage JSON。
 
 VEX、`0F38` 和 `0F3A` 的字段解析与合法性判定只实现一份（例如扩展
-[`src/rust/decode_rules.rs`](../src/rust/decode_rules.rs)），由 32 位解释器生成器、IR 解码和
+[`src/rust/decode_rules.rs`](../../src/rust/decode_rules.rs)），由 32 位解释器生成器、IR 解码和
 x64 解码共同调用，从结构上消除兼容模式下的双引擎分歧。解释器对 VEX 采用两级分派（先 map
 再 opcode），不把 map×pp×L×W 摊平成巨型 match 或 br_table；V8 遇到数万项的 br_table
 曾因 Zone OOM 中止。
@@ -407,8 +407,8 @@ YMM_Hi128、XCR0 和 XSS 应单独成为一个区间；建议在 `state_layout.j
     两者加入 `INIT_PRESERVED`，与 SMBASE 并列。
   - SDM 规定 INIT 不改变 x87/MMX/XMM/YMM/MXCSR，而 v86 现在的 INIT 会把它们取为复位值。
     YMM 按哪条规则处理由第 13 节 Q6 决定，建议连同 XMM、x87、MXCSR 一起按 SDM 修正。
-- 同步 [`src/rust/cpu/context.rs`](../src/rust/cpu/context.rs)、
-  [`src/parallel/machine.js`](../src/parallel/machine.js) 和 state streaming 的保存恢复。
+- 同步 [`src/rust/cpu/context.rs`](../../src/rust/cpu/context.rs)、
+  [`src/parallel/machine.js`](../../src/parallel/machine.js) 和 state streaming 的保存恢复。
 - 每核使用不同 XMM/YMM/XCR0 指纹，覆盖单 Worker 调度、parallel Workers、暂停恢复、
   迁移到新 VM、故障重启和浏览器 worker 生命周期。
 
@@ -658,9 +658,9 @@ x86-64-v3 通用寄存器指令的模板要点：
 
 ### 11.1 独立参考与测试格式
 
-复用 [`tests/rust/sse3.mjs`](../tests/rust/sse3.mjs) 的解释器/Tier-0/region 对照、
-[`tests/rust/compiled_arms.mjs`](../tests/rust/compiled_arms.mjs) 的编译执行计数，
-以及 [`tests/x64/vector_oracle.mjs`](../tests/x64/vector_oracle.mjs) 的外部客体参考方式。
+复用 [`tests/rust/sse3.mjs`](../../tests/rust/sse3.mjs) 的解释器/Tier-0/region 对照、
+[`tests/rust/compiled_arms.mjs`](../../tests/rust/compiled_arms.mjs) 的编译执行计数，
+以及 [`tests/x64/vector_oracle.mjs`](../../tests/x64/vector_oracle.mjs) 的外部客体参考方式。
 
 - 整数/CRC/字符串/BMI 采用独立位级模型，避免直接把实现代码复制进测试。FMA 的参考不能
   与实现共用同一份 SoftFloat：在测试中用大整数或有理数精确算出乘加结果再舍入，作为独立参考。
@@ -799,7 +799,7 @@ make bench-quick
 与 BMI、FMA 的模型对拍）；x64 的 QEMU 对拍需要 QEMU 10.2，`avx-tests` 需要约一小时，留给发布门槛。
 CI 分为快速确定性语义/解码检查与较长的差分、浏览器、OS 集成任务，合并与发布分别设 gate。
 `make all-tests` 不能代替上述专项汇总。发布 gate 按 4.1 节的里程碑，在
-[`tools/release_gate.mjs`](../tools/release_gate.mjs) 中增加 `R-SSE4`、`R-XSAVE`、`R-AVX`、
+[`tools/release_gate.mjs`](../../tools/release_gate.mjs) 中增加 `R-SSE4`、`R-XSAVE`、`R-AVX`、
 `R-x86-64-v3`、`R-XSAVE-ext` 等级，用法与现有的 `R-x64-UP`、`R-q35` 等等级一致。
 
 ## 12. 发布、性能和最终检查表
@@ -817,7 +817,7 @@ CPU feature profile 在 VM 创建时固定并保存到快照；不允许运行�
 确定（第 13 节 Q1）。若增加公开配置，应同时更新 `v86.d.ts`、starter、CPU Worker 和文档，并拒绝不满足
 依赖的能力组合。宿主 SIMD 快路径不可用不应偷偷缩减客体 profile。
 
-更新并人工审核 [`tests/platform/cpu-contract.json`](../tests/platform/cpu-contract.json)，
+更新并人工审核 [`tests/platform/cpu-contract.json`](../../tests/platform/cpu-contract.json)，
 包括 CPUID.0xD、OSXSAVE 动态变化、不同核数和两类 CPU profile。不能只刷新基线掩盖变化。
 同步 `docs/x86-64.md` 的 CPU 能力表及相关 IR/多核说明。
 
@@ -937,7 +937,7 @@ XSAVE 子能力报告进度，不将 AVX 基础、AVX2 普通算术或 XSAVE 指
 | P3、P4b | 中低 | 形式多但语义规整；PCMPxSTRx 和 CRC32 需要独立的位级模型 |
 | P10 | 中低 | TZCNT/LZCNT 的解码随能力位变化；要接入两套惰性标志机制；PDEP/PEXT/MULX 在 Wasm 中没有直接对应的指令 |
 
-全部完成后，按项目惯例把本计划压缩进 [`docs/x86-64.md`](x86-64.md) 的 CPU 能力表和一份
+全部完成后，按项目惯例把本计划压缩进 [`docs/x86-64.md`](../x86-64.md) 的 CPU 能力表和一份
 新的 SIMD 设计文档，然后删除本计划。
 
 ## 14. 实施记录

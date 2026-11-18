@@ -1,4 +1,4 @@
-; v86 CPU benchmark boot for x86-64 images (docs/jit-unification-plan.md
+; v86 CPU benchmark boot for x86-64 images (docs/plan/jit-unification-plan.md
 ; P0.2): a multiboot kernel that enters 64-bit mode with the first 1 GiB
 ; identity mapped, enables x87/SSE (and XSAVE/AVX when CPUID reports them),
 ; installs 64-bit exception stubs that report the vector, then signals

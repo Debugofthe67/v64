@@ -20,7 +20,7 @@ function read_error(message, kind, retryable)
 
 /**
  * A disk read over HTTP sees one version of its file
- * (docs/disk-persistence-plan.md "一致读取"): the first response's ETag (or,
+ * (docs/plan/disk-persistence-plan.md "一致读取"): the first response's ETag (or,
  * without one, its Last-Modified) is kept, every later response of the same
  * file must have the same; otherwise the file changed while it was read
  * (written by another session, or the site published a new image), and the

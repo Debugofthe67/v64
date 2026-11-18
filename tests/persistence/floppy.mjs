@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Floppy disks written back (docs/disk-persistence-plan.md D3): MS-DOS 6.22
+// Floppy disks written back (docs/plan/disk-persistence-plan.md D3): MS-DOS 6.22
 // boots from hda (read_only); fda is a local file, fdb an image of a disk
 // service (tools/disk-service.mjs, in this process), both with disk_option
 // "read_write" (720 KiB FAT12 disks, images/freedos722.img):

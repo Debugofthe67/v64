@@ -266,7 +266,7 @@ function gen_instruction_body_after_fixed_g(encoding, size)
     const instruction_prefix = [];
 
     // without its feature the row does not exist, and its semantics may come
-    // later (docs/simd-xsave-plan.md): #UD after the ModRM byte, before the
+    // later (docs/plan/simd-xsave-plan.md): #UD after the ModRM byte, before the
     // task-switch test, EA and immediate
     if(encoding.unimplemented)
     {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The ARM core's SoftFloat (docs/arm64-virt-android16-plan.md P2.6):
+// The ARM core's SoftFloat (docs/plan/arm64-virt-android16-plan.md P2.6):
 // lib/softfloat/softfloat.c is SoftFloat 3e with the 8086-SSE
 // specialization; this writes it with the ARM-VFPv2 one instead (the
 // differences of source/ARM-VFPv2 in the SoftFloat 3e distribution):

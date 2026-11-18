@@ -15,21 +15,21 @@ SHORT2N/SHORT4N 顶点声明。原版 DxDiag 和三款游戏的功能验证见�
 
 | 阶段 | 交付与验收 | 证据 |
 | --- | --- | --- |
-| G0 | PCI/BAR/PROM、官方驱动跟踪、XP PFIFO 初始化与 Win98 PCI bus 枚举 | [XP 初始化](../tests/acceptance/nv40/g1-xp-9371-initialized.json)、[Win98 PCI](../tests/acceptance/nv40/g0-win98-pci-bus.json) |
-| G1 | 自编 NV VBE ROM、VPLL、光标、gamma、EDID；两驱动桌面/模式切换、DOS 与快照往返 | [桌面](../tests/acceptance/nv40/g1-xp-9371-desktop.json)、[模式/DOS](../tests/acceptance/nv40/g1-native-modes-dos.json) |
-| G2 | DMA/PFIFO/RAMHT/RAMFC、通知/中断及 CPU 2D/GDI/字体；两系统原生 DirectDraw/DxDiag | [XP](../tests/acceptance/nv40/g2-xp-9371-dxdiag-ddraw.json)、[Win98](../tests/acceptance/nv40/g2-win98-8198-dxdiag-ddraw.json)、[字体](../tests/acceptance/nv40/g2-xp-9371-font-reference.json) |
-| G3 | 原生固定功能生成程序、纹理/表面、DxDiag 3D；99 MAX、2000 完整套件与固定帧 | [99/2000 图像复核](../tests/acceptance/nv40/g5-legacy-original-fixed-frame-review.json)、[设备说明](gpu-devices.md#geforce-6800-gt) |
-| G4 | VP/FP 指令、控制流/条件码/地址、半精度别名、顶点纹理、MRT、FP16/32、深度比较/查询；2001/03/05/06 原版套件、图像 | [旧套件](../tests/acceptance/nv40/g5-legacy-original-fixed-frame-review.json)、[03](../tests/acceptance/nv40/g4-03-nine-point-sprite-fixed-frames.json)、[05](../tests/acceptance/nv40/g4-05-current-format-eight-fixed-frames.json)；[06 四图](../tests/acceptance/nv40/g4-06-current-cold-four-fixed-frames.json)、[七项特性](../tests/acceptance/nv40/g4-06-seven-feature-reference-review.json) |
-| G5 | 81.98 下99/2000/2001/03；16-bit RA2、8-bit StarCraft、DOS、桌面返回及正常关机 | [03 九图/生命周期](../tests/acceptance/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)、[RA2](../tests/acceptance/nv40/g5-win98-8198-ra2-16bpp.json)、[StarCraft](../tests/acceptance/nv40/g5-win98-8198-starcraft-8bpp.json) |
-| G6 | 缓存、顶点/常量/索引准备、FIFO/传输热点优化；同配套状态、release、单客体重复采样 | [两次 GT1 渲染窗口](../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)、[方法](profiling.md#native-nv40-guests) |
-| G7 | 管理器集成、驱动/偏差/性能文档、证据复核与本计划精简 | [设备](gpu-devices.md#geforce-6800-gt)、[偏差](gpu-deviations.md#geforce-6800-gt)、[收尾](../tests/acceptance/nv40/g7-final-closeout.json)、[历史完整性检查](../tests/acceptance/nv40/g7-retained-artifact-integrity.json) |
+| G0 | PCI/BAR/PROM、官方驱动跟踪、XP PFIFO 初始化与 Win98 PCI bus 枚举 | [XP 初始化](../../tests/acceptance/nv40/g1-xp-9371-initialized.json)、[Win98 PCI](../../tests/acceptance/nv40/g0-win98-pci-bus.json) |
+| G1 | 自编 NV VBE ROM、VPLL、光标、gamma、EDID；两驱动桌面/模式切换、DOS 与快照往返 | [桌面](../../tests/acceptance/nv40/g1-xp-9371-desktop.json)、[模式/DOS](../../tests/acceptance/nv40/g1-native-modes-dos.json) |
+| G2 | DMA/PFIFO/RAMHT/RAMFC、通知/中断及 CPU 2D/GDI/字体；两系统原生 DirectDraw/DxDiag | [XP](../../tests/acceptance/nv40/g2-xp-9371-dxdiag-ddraw.json)、[Win98](../../tests/acceptance/nv40/g2-win98-8198-dxdiag-ddraw.json)、[字体](../../tests/acceptance/nv40/g2-xp-9371-font-reference.json) |
+| G3 | 原生固定功能生成程序、纹理/表面、DxDiag 3D；99 MAX、2000 完整套件与固定帧 | [99/2000 图像复核](../../tests/acceptance/nv40/g5-legacy-original-fixed-frame-review.json)、[设备说明](../gpu-devices.md#geforce-6800-gt) |
+| G4 | VP/FP 指令、控制流/条件码/地址、半精度别名、顶点纹理、MRT、FP16/32、深度比较/查询；2001/03/05/06 原版套件、图像 | [旧套件](../../tests/acceptance/nv40/g5-legacy-original-fixed-frame-review.json)、[03](../../tests/acceptance/nv40/g4-03-nine-point-sprite-fixed-frames.json)、[05](../../tests/acceptance/nv40/g4-05-current-format-eight-fixed-frames.json)；[06 四图](../../tests/acceptance/nv40/g4-06-current-cold-four-fixed-frames.json)、[七项特性](../../tests/acceptance/nv40/g4-06-seven-feature-reference-review.json) |
+| G5 | 81.98 下99/2000/2001/03；16-bit RA2、8-bit StarCraft、DOS、桌面返回及正常关机 | [03 九图/生命周期](../../tests/acceptance/nv40/g5-win98-8198-03-nine-iq-desktop-return.json)、[RA2](../../tests/acceptance/nv40/g5-win98-8198-ra2-16bpp.json)、[StarCraft](../../tests/acceptance/nv40/g5-win98-8198-starcraft-8bpp.json) |
+| G6 | 缓存、顶点/常量/索引准备、FIFO/传输热点优化；同配套状态、release、单客体重复采样 | [两次 GT1 渲染窗口](../../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)、[方法](../perf/profiling.md#native-nv40-guests) |
+| G7 | 管理器集成、驱动/偏差/性能文档、证据复核与本计划精简 | [设备](../gpu-devices.md#geforce-6800-gt)、[偏差](../gpu-deviations.md#geforce-6800-gt)、[收尾](../../tests/acceptance/nv40/g7-final-closeout.json)、[历史完整性检查](../../tests/acceptance/nv40/g7-retained-artifact-integrity.json) |
 
 ## 原版客体覆盖
 
 | 客体 | 已验证套件 | 图像方法 |
 | --- | --- | --- |
 | XP SP3 / 93.71 | 99 MAX 26项、2000 22项、2001 SE 21项、03 11项、05 16项、06默认6项及补充7 feature/6 batch | 原版 IQ；06 feature 无 IQ 时用原版固定帧率模式的匹配 HUD 帧截图 |
-| XP SP3 / 175.16 | 原版 DxDiag DirectDraw/D3D7/8/9；Warcraft III、KartRider、GTA SA 实际画面与操作 | [DxDiag](../tests/acceptance/nv40/xp-17516-dxdiag.json)、[魔兽3](../tests/acceptance/nv40/xp-17516-warcraft3.json)、[跑跑计时赛](../tests/acceptance/nv40/xp-17516-kartrider.json)、[GTA 新游戏与移动](../tests/acceptance/nv40/xp-17516-gtasa.json)；各自记录退出与关机 |
+| XP SP3 / 175.16 | 原版 DxDiag DirectDraw/D3D7/8/9；Warcraft III、KartRider、GTA SA 实际画面与操作 | [DxDiag](../../tests/acceptance/nv40/xp-17516-dxdiag.json)、[魔兽3](../../tests/acceptance/nv40/xp-17516-warcraft3.json)、[跑跑计时赛](../../tests/acceptance/nv40/xp-17516-kartrider.json)、[GTA 新游戏与移动](../../tests/acceptance/nv40/xp-17516-gtasa.json)；各自记录退出与关机 |
 | Win98 SE / 81.98 | 99 MAX 26项、2000 22项、2001 SE 21项、03 11项 | 原版 IQ，XP/Win98与API代理参照逐图复核 |
 
 成功项目文件、完成窗口、GPU/FIFO/PGRAPH 诊断、原始 BMP、配套 RAM/磁盘及正常关机
@@ -77,18 +77,18 @@ NV_GPU_RENDERER=chrome node tests/devices/geforce_6800_render.mjs
 `NV_CPU_PROFILE=1` 的报告用 `node tools/nv40_profile_report.mjs <out>` 汇总。
 最终 G6 采样从同一活动 GT1 配套状态恢复；颜色图是已完成批次的中间表面，
 用于确认渲染工作，不据此声称完成呈现、默认套件耗时或FPS。
-详细方法、解释范围及配置见 [profiling.md](profiling.md#native-nv40-guests)。
+详细方法、解释范围及配置见 [profiling.md](../perf/profiling.md#native-nv40-guests)。
 
 ## 限制与可选阶段
 
-当前验证范围和明确拒绝的状态见 [gpu-deviations.md](gpu-deviations.md#geforce-6800-gt)。
+当前验证范围和明确拒绝的状态见 [gpu-deviations.md](../gpu-deviations.md#geforce-6800-gt)。
 这不是周期精确NV40或物理显卡分数等价；NVIDIA驱动暴露的硬件能力可能大于已经验证的组合。
 
 - A1：i440BX/AGP/GART，仅在官方驱动必须依赖AGP时触发；本次PCI验收未触发。
 - V1 的 packed YUYV/UYVY、颜色键和原生 PVIDEO 通知路径已在 175.16 后续修复中接通，
-  见 [PVIDEO fixture](../tests/acceptance/nv40/pvideo-native-counter.json)；planar/精确滤波仍待验证。
+  见 [PVIDEO fixture](../../tests/acceptance/nv40/pvideo-native-counter.json)；planar/精确滤波仍待验证。
 - P1：3D扫描输出免回读合成。
 - O1：用所有者OpenGL游戏验收ICD；W1：Vista/7 WDDM。
 
 以上仍为独立可选阶段，不计入本次G0–G7。
-完整逐次实施记录和来源保留在 [实施历史](geforce-6800-implementation-history.md)，当前事实以本页与fixture为准。
+完整逐次实施记录和来源保留在 [实施历史](../geforce-6800-implementation-history.md)，当前事实以本页与fixture为准。

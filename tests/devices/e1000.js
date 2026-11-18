@@ -3,7 +3,7 @@
 // The e1000 network card (net_device.type "e1000", an Intel 82540EM, the
 // plugin of src/net_adapters/e1000/), driven through its registers and
 // descriptor rings in guest memory; no guest code runs, the test moves the
-// machine clock (docs/modern-pc-devices-plan.md, N1): PCI identity, the
+// machine clock (docs/plan/modern-pc-devices-plan.md, N1): PCI identity, the
 // EEPROM (EERD and Microwire), the PHY over MDIC and auto-negotiation,
 // transmit (legacy, context and data descriptors, checksum offload, TSO,
 // VLAN, ring wrap), receive (filters, buffers across descriptors, FCS, the

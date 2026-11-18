@@ -1,5 +1,5 @@
 /*
- * A QEMU 9.2 TCG plugin for docs/arm64-virt-android16-plan.md P2.10 (built
+ * A QEMU 9.2 TCG plugin for docs/plan/arm64-virt-android16-plan.md P2.10 (built
  * and run by tests/a64/trace_replay.mjs): on qemu-system-aarch64 with one
  * vCPU, it samples instructions the guest runs at EL0 and writes for each
  * one the state before it, the memory it read or wrote (address, size,

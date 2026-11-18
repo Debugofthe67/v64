@@ -1,4 +1,4 @@
-// GLES batches (docs/gles-proxy-plan.md "渲染器通道", E2): what the GLES
+// GLES batches (docs/plan/gles-proxy-plan.md "渲染器通道", E2): what the GLES
 // host sends the page, written with GX's writer (GXWriter, GLES_MAGIC:
 // src/graphics_adapters/renderer_protocol.js has the records) and read
 // back here: by the page's executor (E3) and by the tools that look at a

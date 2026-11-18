@@ -2,7 +2,7 @@
 // gen/isa_forms.json, whose decode facts (map, pp, opcode, ModRM.reg group,
 // VEX.L, VEX.W, VEX.vvvv, register/memory forms, immediates) come from
 // iced-x86 through tools/isa_forms. Their semantics come in phases of
-// docs/simd-xsave-plan.md (AVX_128).
+// docs/plan/simd-xsave-plan.md (AVX_128).
 //
 // A VEX row's key is 0xC4_MM_PP_OO: the map (1: 0F, 2: 0F38, 3: 0F3A), VEX.pp
 // (0: none, 1: 66, 2: F3, 3: F2) and the opcode byte. Its `vex` lists which
@@ -51,7 +51,7 @@ export function vex_accepts(row, { l, w, long, memory, group })
 }
 
 // The VEX forms that have their semantics (crate::cpu::avx), by phase of
-// docs/simd-xsave-plan.md; the others are #UD (unimplemented). AVX: the
+// docs/plan/simd-xsave-plan.md; the others are #UD (unimplemented). AVX: the
 // VEX.128 and VEX.LIG forms of these instructions.
 const AVX_128 = new Set([
     // P5 part 1: data movement, logic, VZEROUPPER, VLDMXCSR and VSTMXCSR

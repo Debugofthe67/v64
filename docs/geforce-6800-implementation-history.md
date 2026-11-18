@@ -1,7 +1,7 @@
 # GeForce 6800 GT 实施历史
 
 本页保存 G7 整理前的原始实施计划与逐次记录，其中“未完成”“待验证”等表示当时状态。
-当前验收、保留偏差与可选阶段以 [实施计划](geforce-6800-plan.md) 和链接 fixture 为准。
+当前验收、保留偏差与可选阶段以 [实施计划](plan/geforce-6800-plan.md) 和链接 fixture 为准。
 
 <!-- Original plan begins below; SHA256: 9dd9f4e342add533246d0d009e2098ddb0fbf613f9f467e73a39074804c0544c -->
 

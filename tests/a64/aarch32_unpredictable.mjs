@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // v86's choices among AArch32's CONSTRAINED UNPREDICTABLE behaviours at EL0
-// (docs/arm32.md, docs/aarch32-plan.md): the cases of
+// (docs/arm32.md, docs/plan/aarch32-plan.md): the cases of
 // tests/a64/aarch32/unpredictable.a32.S under tests/a64/aarch32/el0.c with
 // profile v3, interpreted and on the page tier (a64_page_aarch32 1, native,
 // and 2, helper calls only; compiling at the first boundary). QEMU 9.2 takes

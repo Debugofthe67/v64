@@ -1,4 +1,4 @@
-//! The A64 interpreter (docs/arm64-virt-android16-plan.md P2.2-P2.4, P2.9):
+//! The A64 interpreter (docs/plan/arm64-virt-android16-plan.md P2.2-P2.4, P2.9):
 //! integer data processing, branches, loads and stores, exclusives, CRC32
 //! and the system instructions. `interpret_one` executes the instruction at
 //! the PC: an instruction that faults has written no state, and the
@@ -1306,7 +1306,7 @@ pub fn interpret_one() -> Flow {
         take_sync(Exception::SoftwareStep(unsafe { STEPPED_EXCLUSIVE_LOAD }));
         return Flow::Set;
     }
-    // (AArch32 at EL0: its own instructions; docs/aarch32-plan.md)
+    // (AArch32 at EL0: its own instructions; docs/plan/aarch32-plan.md)
     if cpu::aarch32() {
         let flow = crate::aarch64::a32::interpret_one(address);
         if stepping && !matches!(flow, Flow::Set | Flow::Retry) {

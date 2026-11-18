@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// virtio-blk on a disk image in a container format (docs/disk-image-formats-plan.md,
+// virtio-blk on a disk image in a container format (docs/plan/disk-image-formats-plan.md,
 // the merge of disk-formats with arm64): a QCOW2 image built in memory
 // (tests/image/tiny_qcow2.mjs) behind the virt machine's virtio-blk, the
 // test the driver through the virtio-mmio registers and a queue in guest

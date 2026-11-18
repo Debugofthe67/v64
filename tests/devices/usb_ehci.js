@@ -3,7 +3,7 @@
 // EHCI (usb.controller "ehci", src/usb/ehci.js, docs/usb.md): ICH9's EHCI1
 // with its three UHCI companions, driven through the registers and the
 // schedules in guest memory, no guest code; the test moves the machine
-// clock (docs/modern-pc-devices-plan.md U3). The PCI functions and the
+// clock (docs/plan/modern-pc-devices-plan.md U3). The PCI functions and the
 // legacy support handoff, the capability registers, the ports' owners
 // (CONFIGFLAG, Port Owner: the high-speed USB disk stays, the full-speed
 // tablet goes to its companion), the asynchronous schedule (control

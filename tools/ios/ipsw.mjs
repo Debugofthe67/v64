@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // An iPhone IPSW's images, decrypted with the user's key file
-// (docs/iphone4-plan.md S0; src/ios/ipsw.js). The key file comes from
+// (docs/plan/iphone4-plan.md S0; src/ios/ipsw.js). The key file comes from
 // --keys or IPHONE4_KEYS (build/ios/keys/, never committed).
 //
 //   node tools/ios/ipsw.mjs info <ipsw>

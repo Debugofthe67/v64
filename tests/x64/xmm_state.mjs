@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The XMM registers the x64 page tier keeps in v128 locals within a block
-// (docs/jit-unification-plan.md P4.17, x64_xmm_locals) are what the guest
+// (docs/plan/jit-unification-plan.md P4.17, x64_xmm_locals) are what the guest
 // sees wherever it leaves compiled code: a hot SSE loop, whose block holds
 // XMM registers it wrote, loads from a 2 MiB page that is not present until
 // the #PF handler maps it (the fault leaves mid-block and the load retries);

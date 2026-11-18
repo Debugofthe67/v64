@@ -644,7 +644,7 @@ test("hot plug and snapshots: a drive on one side only is a hot plug event for t
     for(const port of [3, 4, 5]) pw(port, PX.SERR, -1);
 });
 
-// a disk image (docs/disk-image-formats-plan.md P0): a QCOW2 disk of 1 MiB,
+// a disk image (docs/plan/disk-image-formats-plan.md P0): a QCOW2 disk of 1 MiB,
 // its second cluster damaged
 const { build_qcow2 } = await import("../image/tiny_qcow2.mjs");
 await emulator.attach_sata_drive(3, { buffer: build_qcow2({ size: 1 << 20, data: [[0, extra.subarray(0, 65536)]], damaged: [65536] }).buffer, format: "qcow2", disk_error: "report" });
@@ -680,7 +680,7 @@ test("a QCOW2 disk: reads; a failed read or write ends a queued or DMA command w
 emulator.detach_sata_drive(3);
 pw(3, PX.SERR, -1);
 
-// the drive's disk_error policy (docs/disk-persistence-plan.md D0): sata3
+// the drive's disk_error policy (docs/plan/disk-persistence-plan.md D0): sata3
 // with the default ("stop"), sata4 with "report"; their reads and writes
 // fail on request
 class FlakyDrive
@@ -746,7 +746,7 @@ emulator.detach_sata_drive(4);
 pw(3, PX.SERR, -1);
 pw(4, PX.SERR, -1);
 
-// a drive written back (docs/disk-persistence-plan.md D1): a buffer object
+// a drive written back (docs/plan/disk-persistence-plan.md D1): a buffer object
 // of one's own with the backend contract, recording what the controller
 // asks of it
 class RecordingDrive extends FlakyDrive

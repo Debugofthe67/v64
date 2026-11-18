@@ -522,7 +522,7 @@ assert.equal(call("vkGetSemaphoreCounterValue", { device: DEVICE, semaphore: SEM
 assert.equal(read32(mem_base + 64), 7, "the command buffer, recorded before the snapshot, runs after it");
 console.log("PASS: snapshots");
 
-// gralloc's buffers (Android: docs/arm64-virt-android16-plan.md P11.4): the
+// gralloc's buffers (Android: docs/plan/arm64-virt-android16-plan.md P11.4): the
 // modifier and foreign queue extensions without the dma-buf ones (Mesa's
 // venus on Linux would take swapchain images for dma-bufs), one modifier
 // (linear), dma-buf images importable all the same, a virgl resource imported as

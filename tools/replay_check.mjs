@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The byte-identity check of the JITs' generated code
-// (docs/jit-unification-plan.md P2.0, cross-phase rule 4): records of
+// (docs/plan/jit-unification-plan.md P2.0, cross-phase rule 4): records of
 // compilations of the x64 page tier (src/rust/x64/replay.rs) replayed in a
 // base build and in the working tree, under fixed pseudo addresses, must give
 // the same bytes. (IR Tier-0's, *.t0r, went with it in P7.5.) The records are

@@ -1,4 +1,4 @@
-/* CPULOAD32 (docs/jit-unification-plan.md P0.12): a timed 32-bit workload
+/* CPULOAD32 (docs/plan/jit-unification-plan.md P0.12): a timed 32-bit workload
  * for WOW64. Fixed work per round (about 250M instructions, 1.5-2 s at the
  * emulator's speed in 2026-10; the first round also compiles): integer mixing, a pointer chase over
  * 1 MiB, sorting through a comparison function, indirect calls, string

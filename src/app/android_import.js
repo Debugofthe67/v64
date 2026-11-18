@@ -1,5 +1,5 @@
 // @ts-check
-// Android image packages in the VM manager (docs/android-images-plan.md
+// Android image packages in the VM manager (docs/plan/android-images-plan.md
 // I3): what a chosen file is (read on the page: the zip's directory, the
 // start of its boot image and super's metadata) and the browser disk made
 // from it in a worker (android_import_worker.js, build/android-import-worker.js).
@@ -35,7 +35,7 @@ function file_reader(file)
 
 /**
  * The chosen files sorted: the device's package (a Cuttlefish images zip)
- * and a GSI (docs/android-images-plan.md I5), each read on the page
+ * and a GSI (docs/plan/android-images-plan.md I5), each read on the page
  * @param {File[]} files
  * @return {Promise<{device: File | null, gsi: File | null, debug_ramdisk: File | null}>}
  */
@@ -186,7 +186,7 @@ export async function hash_file(file, progress)
 
 /**
  * A package (with a GSI) made into a new image of the disk service
- * (docs/android-images-plan.md I3.2): the image created, then written by
+ * (docs/plan/android-images-plan.md I3.2): the image created, then written by
  * the importer's worker through a write session
  * @param {Blob & {name?: string}} file
  * @param {string} machine the machine's name (the image's)

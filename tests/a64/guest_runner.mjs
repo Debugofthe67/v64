@@ -1,4 +1,4 @@
-// Bare-metal AArch64 guests (docs/arm64-virt-android16-plan.md P0.5): C and
+// Bare-metal AArch64 guests (docs/plan/arm64-virt-android16-plan.md P0.5): C and
 // assembly built with clang --target=aarch64-none-elf and rust-lld against
 // tests/a64/baremetal (an arm64 Image at RAM + 0x80000, a small libc with
 // glibc's printf), run on the fixed QEMU reference and, from A1, on v86. A
@@ -26,7 +26,7 @@ export const QEMU_CPU = "cortex-a35,pmu=off,cntfrq=1000000000";
 export function qemu_binary()
 {
     const qemu = process.env.A64_QEMU || root + "build/a64-ref/qemu-9.2.0-install/bin/qemu-system-aarch64";
-    assert.ok(fs.existsSync(qemu), qemu + " is missing: build QEMU 9.2.0 (docs/arm64-virt-android16-plan.md P0.11)");
+    assert.ok(fs.existsSync(qemu), qemu + " is missing: build QEMU 9.2.0 (docs/plan/arm64-virt-android16-plan.md P0.11)");
     return qemu;
 }
 export const smp = cores => `${cores},sockets=1,cores=${cores},threads=1`;
@@ -209,7 +209,7 @@ export async function reference(directory, { cores = 1, memory = 128, timeout = 
 }
 
 /**
- * The A64 page tier for v86 runs (docs/jit-unification-plan.md J2): A64_JIT=1
+ * The A64 page tier for v86 runs (docs/plan/jit-unification-plan.md J2): A64_JIT=1
  * turns it on, with synchronous publication (the runners drive the slices
  * themselves) and the compile threshold A64_JIT_HOT (default 1: code is
  * compiled at its first block boundary, so even code that runs once runs

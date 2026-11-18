@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The host time of single events in 64-bit code under the x64 page tier
-// (docs/jit-unification-plan.md P4.0): a loop repeating one event N times,
+// (docs/plan/jit-unification-plan.md P4.0): a loop repeating one event N times,
 // timed by the guest's own RDTSC (v86's TSC counts host nanoseconds), against
 // the same loop with a NOP. The events are what compiled code leaves to the
 // interpreter or leaves altogether: steps that continue (CPUID, POPFQ),

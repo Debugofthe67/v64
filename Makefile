@@ -22,7 +22,7 @@ all: build/cpu-worker.js build/v86_app.js build/libv86.js build/libv86.mjs build
 all-debug: build/cpu-worker.js build/libv86-debug.js build/libv86-debug.mjs build/v86-debug.wasm glbridge
 browser: build/cpu-worker.js build/v86_app.js
 
-# CPU benchmark suite (tests/bench): one IR core against another, see docs/cpu-benchmarks.md.
+# CPU benchmark suite (tests/bench): one IR core against another, see docs/perf/cpu-benchmarks.md.
 .PHONY: bench-build bench bench-quick bench-same-source replay-check replay-record
 bench-build:
 	node tools/bench/build.mjs
@@ -35,7 +35,7 @@ bench-quick: bench-build build/v86.wasm build/libv86.mjs
 
 # The same C sources as i686 code on Tier-0 and as x86-64 code on the x64
 # page tier, alternating in one session, then the S gate
-# (docs/jit-unification-plan.md P0.4, cross-phase rule 2)
+# (docs/plan/jit-unification-plan.md P0.4, cross-phase rule 2)
 bench-same-source: bench-build build/v86.wasm build/libv86.mjs
 	node tests/bench/run.mjs --same-source --quick --out build/bench/same-source.json $(BENCH_ARGS)
 	node tests/bench/gate.mjs --level S build/bench/same-source.json
@@ -213,7 +213,7 @@ USB_PLUGINS=build/v86-usb.js
 USB_COMMON=src/cjs.js src/const.js src/lib.js src/log.js src/device_machine.js
 # the TPM's (tpm: docs/tpm.md), with its module (bios/libtpms.wasm, tools/libtpms/build.sh) beside it
 TPM_PLUGINS=build/v86-tpm.js build/libtpms.wasm
-# the ranchu machine's GLES host (ranchu_gpu "host": docs/gles-proxy-plan.md)
+# the ranchu machine's GLES host (ranchu_gpu "host": docs/plan/gles-proxy-plan.md)
 # the GLES host's, with its GLSL ES compiler (bios/glslang.wasm, tools/glslang/build.sh) beside it
 GLES_PLUGINS=build/v86-gles.js build/glslang.wasm
 DEVICE_PLUGINS=$(GRAPHICS_ADAPTER_PLUGINS) $(NET_ADAPTER_PLUGINS) $(AUDIO_DEVICE_PLUGINS) $(USB_PLUGINS) $(TPM_PLUGINS) $(GLES_PLUGINS)
@@ -444,7 +444,7 @@ build/v86.wasm: $(RUST_FILES) build/softfloat.o build/zstddeclib.o Cargo.toml
 	@if [ "$(WASM_OPT)" != "false" ]; then $(WASM_OPT) && wasm-opt -O2 --strip-debug build/v86.wasm -o build/v86.wasm; fi
 	BLOCK_SIZE=K ls -l build/v86.wasm
 
-# An A/B arm (docs/jit-unification-plan.md P3.0a, docs/profiling.md): the
+# An A/B arm (docs/plan/jit-unification-plan.md P3.0a, docs/perf/profiling.md): the
 # release core with build-time switch defaults, beside the others in
 # build/bench/arms, for the measurements whose processes take one setting
 # (tools/owner_perf.mjs --arms, XP, Windows 8.1 and Windows 98):
@@ -481,7 +481,7 @@ build/v86-fallback.wasm: $(RUST_FILES) build/softfloat.o build/zstddeclib.o Carg
 	cargo rustc --release $(CARGO_FLAGS_SAFE)
 	cp build/wasm32-unknown-unknown/release/v86.wasm build/v86-fallback.wasm || true
 
-# The ARM core (docs/arm64-virt-android16-plan.md P1.0): the same crate with
+# The ARM core (docs/plan/arm64-virt-android16-plan.md P1.0): the same crate with
 # the feature aarch64 and its own cargo target directory, so that the cores
 # do not rebuild each other; SoftFloat with the ARM specialization
 # (build/softfloat_arm.o) instead of the x86 one
@@ -708,7 +708,7 @@ q35-guest-tests: build/v86-debug.wasm
 q35-hotplug-tests: build/v86-debug.wasm
 	./tests/devices/pcie_hotplug.mjs
 
-# The e1000 network card (docs/modern-pc-devices-plan.md N1): the plugin's
+# The e1000 network card (docs/plan/modern-pc-devices-plan.md N1): the plugin's
 # device through its registers (from the source tree and as build/v86-e1000.js),
 # then Linux 4.16's driver on images/linux4.iso, on one core and on two
 e1000-tests: build/v86-debug.wasm build/libv86.mjs
@@ -717,7 +717,7 @@ e1000-tests: build/v86-debug.wasm build/libv86.mjs
 	./tests/devices/e1000_guest.mjs
 	CPU_CORES=2 ./tests/devices/e1000_guest.mjs
 
-# The HD Audio controller (docs/sound.md, docs/modern-pc-devices-plan.md H1):
+# The HD Audio controller (docs/sound.md, docs/plan/modern-pc-devices-plan.md H1):
 # the plugin's device through its registers, then Alpine x86_64's drivers
 # playing through it (i440FX, Q35, two cores; the pinned ISO is downloaded
 # on first use, as for the x64 linux targets), and what headless Chrome plays
@@ -730,7 +730,7 @@ hd-audio-tests: build/v86-debug.wasm build/libv86.mjs
 	CPU_CORES=2 ./tests/devices/hd_audio_guest.mjs
 	TIMEOUT_MS=1500000 node tests/app/browser_runner.mjs tests/devices/hd_audio_browser.html autoplay=1
 
-# USB (docs/usb.md, docs/modern-pc-devices-plan.md U1 to U4): UHCI, EHCI,
+# USB (docs/usb.md, docs/plan/modern-pc-devices-plan.md U1 to U4): UHCI, EHCI,
 # xHCI, the HID tablet and USB disks through the controllers' registers,
 # schedules and rings, then Alpine x86_64's uhci-hcd, ehci-pci, xhci-pci,
 # usbhid and usb-storage
@@ -942,7 +942,7 @@ api-tests: build/v86-debug.wasm
 	#./tests/api/reboot-buildroot.js # https://github.com/copy/v86/issues/636
 	./tests/api/pic.js
 
-# Disk images in container formats (docs/disk-image-formats-plan.md): the
+# Disk images in container formats (docs/plan/disk-image-formats-plan.md): the
 # readers against images of qemu-img and qemu-io (QEMU_IMG, QEMU_IO; the
 # samples are made in build/disk-image-samples), the devices and guests;
 # the browser tests in headless Chrome (CHROME), on the page and in the CPU Worker
@@ -966,10 +966,10 @@ disk-image-browser-tests: build/libv86.mjs build/cpu-worker.js build/v86.wasm $(
 	./tests/image/browser_runner.mjs worker=0
 	./tests/image/browser_runner.mjs worker=1
 
-# Disk persistence (docs/disk-persistence-plan.md): disk_option, disk_error,
+# Disk persistence (docs/plan/disk-persistence-plan.md): disk_option, disk_error,
 # FLUSH, the consistent reads of a read_only disk; the browser tests in
 # headless Chrome (CHROME), on the page and in the CPU Worker
-# The VM manager (docs/vm-manager-plan.md G2-G4): src/app/ as ES modules
+# The VM manager (docs/plan/vm-manager-plan.md G2-G4): src/app/ as ES modules
 # outside Closure, bundled by esbuild into build/v86_app.js (build/libv86.mjs
 # stays its own file: index.html's import map names it "v86"), checked by tsc
 # against v86.d.ts. The tools are package.json's devDependencies (npm ci).
@@ -1031,7 +1031,7 @@ ios-install-assets-refresh: ios-install-fixtures
 app-check: node_modules/.bin/tsc
 	node_modules/.bin/tsc -p tsconfig.json
 
-# the VM manager plan (docs/vm-manager-plan.md), U0: the shared modules
+# the VM manager plan (docs/plan/vm-manager-plan.md), U0: the shared modules
 # (src/browser/vm_options.js, query_compat.js) give the options
 # the pages give (index.html's addresses, debug.html's addresses and form),
 # made by Node from the modules as by the pages
@@ -1387,7 +1387,7 @@ x64-extended-guest-tests: build/libv86.mjs build/v86.wasm
 platform-release-gate:
 	node tools/release_gate.mjs $(GATE_ARGS)
 
-# The local gates of docs/jit-unification-plan.md (P0.9, tools/jit_gate.mjs):
+# The local gates of docs/plan/jit-unification-plan.md (P0.9, tools/jit_gate.mjs):
 # jit-gate before each commit, jit-gate-full at a milestone's exit
 .PHONY: jit-gate jit-gate-full core-split-check jit-core-tests
 jit-gate:
@@ -1407,9 +1407,9 @@ jit-switch-tests: build/v86-debug.wasm
 	./tests/api/jit-switches.js
 
 # build/v86.wasm of a base revision (default HEAD) against the working tree's,
-# function by function (docs/arm64-virt-android16-plan.md P0.7)
+# function by function (docs/plan/arm64-virt-android16-plan.md P0.7)
 # The generated code of both JITs, byte for byte, against a base
-# (docs/jit-unification-plan.md P2.0): REPLAY_ARGS, e.g. --base REV;
+# (docs/plan/jit-unification-plan.md P2.0): REPLAY_ARGS, e.g. --base REV;
 # replay-record saves recordings of the benchmarks' compilations
 replay-check: build/v86-ir-test-release.wasm
 	node tools/replay_check.mjs $(REPLAY_ARGS) $(foreach f,$(wildcard build/replay/*.t0r build/replay/*.x6r),--records $(f))
@@ -1419,7 +1419,7 @@ replay-record: build/v86-ir-test-release.wasm build/libv86.mjs bench-build
 core-split-check:
 	node tools/core_split_check.mjs $(CORE_SPLIT_ARGS)
 
-# The ARM64 plan's local gates (docs/arm64-virt-android16-plan.md P0.11,
+# The ARM64 plan's local gates (docs/plan/arm64-virt-android16-plan.md P0.11,
 # tools/a64_gate.mjs): a64-gate before each commit, a64-gate-full at a
 # milestone's exit; the fixed QEMU reference comes from tools/a64_qemu/build.sh
 .PHONY: a64-gate a64-gate-full a64-qemu-reference a64-reference-tests a64-kvm-unit-tests-qemu
@@ -1447,7 +1447,7 @@ a64-kvm-unit-tests-qemu:
 # The release levels R-a64-* and R-android (tools/release_gate.mjs): the
 # targets that have no tests yet print A64_PENDING and the milestone that
 # brings them, which the release gate reports as pending
-A64_PENDING = @echo "A64_PENDING $@: arrives with $(1) (docs/arm64-virt-android16-plan.md)"
+A64_PENDING = @echo "A64_PENDING $@: arrives with $(1) (docs/plan/arm64-virt-android16-plan.md)"
 .PHONY: a64-decode-tests a64-isa-tests a64-native-tests a64-trace-tests a64-portable-tests a64-system-tests a64-mmu-tests \
 	a64-kvm-unit-tests a64-litmus-tests a64-virt-device-tests a64-api-tests a64-guest-quick-tests a64-guest-tests \
 	a64-lifecycle-guest-tests a64-multicore-guest-tests a64-page-tier-tests a64-jit-guest-tests a64-gpu-guest-tests \
@@ -1557,7 +1557,7 @@ a64-multicore-guest-tests: build/v86-arm64.wasm
 # and MMU oracles with every instruction compiled (A64_JIT=1, threshold 1;
 # A64_MMU=1: the bare-metal runtime turns the MMU on), the FP oracle with
 # a64_relaxed_fma off and at its default; litmus on the page tier)
-# (docs/aarch32-plan.md: profile v3's AArch32 EL0) the instructions against
+# (docs/plan/aarch32-plan.md: profile v3's AArch32 EL0) the instructions against
 # QEMU's cortex-a35 one by one, the EL0 cases (exits, the debug registers),
 # the cases and random programs on the page tier against the interpreter,
 # v86's CONSTRAINED UNPREDICTABLE choices against their values (QEMU's differ),
@@ -1577,7 +1577,7 @@ a32-tests: a32-system-tests build/v86-arm64.wasm
 	A64_PROFILE=v3 A64_WORKLOAD=aarch32 A64_JIT=1 A64_JIT_SWITCHES=a64_page_aarch32=1 A64_CORES=1 node tests/a64/linux_boot.mjs
 	A64_PROFILE=v3 A64_WORKLOAD=aarch32 A64_JIT=1 A64_JIT_SWITCHES=a64_page_aarch32=1 A64_PARALLEL=1 A64_CORES=4 node tests/a64/linux_boot.mjs
 
-# cpu_type "arm32" (docs/arm32.md, docs/aarch32-plan.md part 2): PL1 at
+# cpu_type "arm32" (docs/arm32.md, docs/plan/aarch32-plan.md part 2): PL1 at
 # bare metal against QEMU's cortex-a15, the ranchu machine's devices, Alpine
 # armv7's initramfs stage on 1/2/4 cores with the page tier (against the
 # reference) and its lifecycle, kvm-unit-tests arm
@@ -1704,7 +1704,7 @@ a64-android-prep-tests: build/v86-arm64.wasm build/v86-arm64-parallel.wasm
 	done
 	A64_KERNEL=androidish A64_JIT=1 A64_STAGE=initramfs A64_CORES=2 A64_MEMORY_MB=1024 A64_EXTENDED_MEMORY=3221225472 \
 		node tests/a64/linux_boot.mjs
-# Android 16 (docs/arm64-virt-android16-plan.md P10): the pinned Cuttlefish
+# Android 16 (docs/plan/arm64-virt-android16-plan.md P10): the pinned Cuttlefish
 # build's materials (tools/a64_android.mjs: its downloads, about 1 GiB, with
 # --download), on the QEMU reference to sys.boot_completed=1 (P10.3) and the
 # GKI bridge's expected output (P10.6); then on v86 the bridge and Android to
@@ -1721,7 +1721,7 @@ android-reference-tests: android-materials
 	A64_ANDROID_TARGET=qemu A64_ANDROID_SCENARIO=cts node tests/a64/android_boot.mjs
 	A64_ANDROID_TARGET=qemu A64_ANDROID_SCENARIO=pagesize A64_ANDROID_PAGE_SIZE=16k node tests/a64/android_boot.mjs
 	for cores in 1 4; do A64_KERNEL=gki A64_LINUX_QEMU=1 A64_STAGE=initramfs A64_CORES=$$cores node tests/a64/linux_boot.mjs || exit 1; done
-# Official Android images (docs/android-images-plan.md, release level
+# Official Android images (docs/plan/android-images-plan.md, release level
 # R-android-images): the image library's tests, then (long) the layouts
 # the importer makes booted on QEMU (A64_ANDROID_ACCEL, hvf on this Mac:
 # Cuttlefish as built, super shrunk with blank userdata, the BP4A GSI on
@@ -1806,7 +1806,7 @@ x64-differential-tests: build/v86-debug.wasm
 
 # The x64 page tier (x64::pagegen/pages): QEMU and interpreter references,
 # and random programs compared with the interpreter.
-# WOW64 (IA-32e compatibility mode) code under the JIT, docs/jit-unification-plan.md
+# WOW64 (IA-32e compatibility mode) code under the JIT, docs/plan/jit-unification-plan.md
 # M4's gate set: compiled 32-bit code with remapped and patched pages (and,
 # until P7.5, pages compiled from long-mode frames, x64_long_visit). On the owner's Windows
 # 8.1 image the set adds PROBE32 (tests/x64/windows_boot.mjs) and CPULOAD32
@@ -1842,7 +1842,7 @@ x64-page-tier-tests: build/v86-debug.wasm
 	for seed in 1 2 3; do SSE_INT_SEED=$$seed node tests/x64/sse_int_template.mjs || exit 1; done
 
 # The x64 page tier on legacy protected-mode code (x64_page_legacy32,
-# docs/jit-unification-plan.md P7.3): the differential tests written for IR
+# docs/plan/jit-unification-plan.md P7.3): the differential tests written for IR
 # Tier-0 (ir-tier0-tests until P7.5 deleted it; the tier0_ names stay), run
 # on it: random programs of each instruction kind against the interpreter
 # (tier0_fuzz.mjs, FUZZ_KIND), faults, interrupts, the step profile and the
@@ -1923,7 +1923,7 @@ x64-guest-tests: build/v86-debug.wasm
 	X64_HIGH_MEMORY=134217728 X64_LINUX_QEMU=1 X64_LINUX_TIMEOUT=180000 node tests/x64/linux_boot.mjs
 	X64_HIGH_MEMORY=134217728 X64_JIT=1 X64_LINUX_TIMEOUT=1800000 node tests/x64/linux_boot.mjs
 
-# The real-guest acceptance of docs/simd-xsave-plan.md 11.3 (P12): Alpine
+# The real-guest acceptance of docs/plan/simd-xsave-plan.md 11.3 (P12): Alpine
 # x86_64 running glibc 2.39's x86-64-v3 code (ld.so's levels, glibc-hwcaps,
 # the IFUNC choices and their results as QEMU's) and the YMM registers across
 # context switches, page tier: x86-64-v3 with the XSAVE family on one core,
@@ -1973,7 +1973,7 @@ build/v86-ir-test-release.wasm: $(RUST_FILES) build/softfloat.o build/zstddeclib
 	cargo rustc --release --features ir-test-hooks $(CARGO_FLAGS)
 	cp build/wasm32-unknown-unknown/release/v86.wasm $@
 
-# The parallel build's test core (docs/jit-unification-plan.md P5.0): the
+# The parallel build's test core (docs/plan/jit-unification-plan.md P5.0): the
 # replay identity of the generated code with atomic guest memory
 build/v86-ir-test-parallel.wasm: $(RUST_FILES) build/softfloat.o build/zstddeclib.o Cargo.toml tools/parallel_wasm.mjs
 	CARGO_TARGET_DIR=build/parallel-test cargo rustc --release --features ir-test-hooks,parallel $(CARGO_FLAGS_PARALLEL)
@@ -2028,7 +2028,7 @@ multicore-linux-jit-tests-release: build/smp/affinity_probe build/libv86.mjs bui
 
 .PHONY: multicore-linux-jit-tests multicore-linux-jit-tests-release
 
-# SSSE3 to x86-64-v3 and XSAVE (docs/simd-xsave-plan.md). gen/isa_forms.json
+# SSSE3 to x86-64-v3 and XSAVE (docs/plan/simd-xsave-plan.md). gen/isa_forms.json
 # lists the target instruction forms, generated from the pinned iced-x86 like
 # the x64 decode oracle; gen/cpu_features.js holds the CPUID features of the
 # plan and their dependencies.
@@ -2053,7 +2053,7 @@ decode-rules-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build
 	node tests/decode/vex_modes.mjs
 	node tests/decode/vex_modes.mjs build/v86-ir-test-release.wasm
 
-# The XSAVE feature set (docs/simd-xsave-plan.md P2): the 32-bit engines,
+# The XSAVE feature set (docs/plan/simd-xsave-plan.md P2): the 32-bit engines,
 # the x64 engine and compatibility mode, snapshots, INIT and reset
 xsave-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-debug.wasm
 	node tests/rust/xsave.mjs
@@ -2063,7 +2063,7 @@ xsave-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-de
 	node tests/smp/xstate_lifecycle.mjs
 	TEST_RELEASE_BUILD=1 node tests/smp/xstate_lifecycle.mjs
 
-# SSSE3 (docs/simd-xsave-plan.md P3): the 32-bit engines against a model of
+# SSSE3 (docs/plan/simd-xsave-plan.md P3): the 32-bit engines against a model of
 # the SDM (with Wasm SIMD, debug, and without SIMD), the x64 engine against
 # QEMU and the model
 ssse3-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-debug.wasm build/v86-fallback.wasm
@@ -2074,7 +2074,7 @@ ssse3-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-de
 	TEST_RELEASE_BUILD=1 node tests/x64/ssse3.mjs
 
 # Exact SSE floating point in the 32-bit engines against an independent model
-# (docs/simd-xsave-plan.md 7.4, P4a), and what Tier-0 knows about registers.
+# (docs/plan/simd-xsave-plan.md 7.4, P4a), and what Tier-0 knows about registers.
 .PHONY: sse-fp-tests
 sse-fp-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-debug.wasm build/v86-fallback.wasm
 	node tests/rust/sse_fp.mjs
@@ -2082,7 +2082,7 @@ sse-fp-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-d
 	node tests/rust/sse_fp.mjs build/v86-debug.wasm
 	node tests/ir/differential/sse_fp_tracking.mjs
 
-# SSE4.1 and SSE4.2 (docs/simd-xsave-plan.md P4b): the 32-bit engines against a
+# SSE4.1 and SSE4.2 (docs/plan/simd-xsave-plan.md P4b): the 32-bit engines against a
 # model of the SDM (with Wasm SIMD, debug, and without SIMD), the x64 engine
 # against QEMU and the model
 .PHONY: sse4-tests
@@ -2093,7 +2093,7 @@ sse4-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-deb
 	node tests/x64/sse4.mjs
 	TEST_RELEASE_BUILD=1 node tests/x64/sse4.mjs
 
-# AVX (docs/simd-xsave-plan.md P5-P6): the 32-bit engines against a model of
+# AVX (docs/plan/simd-xsave-plan.md P5-P6): the 32-bit engines against a model of
 # the SDM (with Wasm SIMD, debug, and without SIMD; floating point with every
 # MXCSR setting in avx_fp.mjs), the x64 engine and compatibility mode against
 # QEMU and the model
@@ -2108,7 +2108,7 @@ avx-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-debu
 	node tests/x64/avx.mjs
 	TEST_RELEASE_BUILD=1 node tests/x64/avx.mjs
 
-# BMI1, BMI2, TZCNT, LZCNT and MOVBE (docs/simd-xsave-plan.md P10): the
+# BMI1, BMI2, TZCNT, LZCNT and MOVBE (docs/plan/simd-xsave-plan.md P10): the
 # 32-bit engines against a bit-level model of the SDM (release and debug
 # builds), the x64 engine (interpreted, page tier, compatibility-mode Tier-0)
 # against QEMU and the model
@@ -2119,7 +2119,7 @@ bmi-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-debu
 	node tests/x64/bmi.mjs
 	TEST_RELEASE_BUILD=1 node tests/x64/bmi.mjs
 
-# FMA and F16C (docs/simd-xsave-plan.md P11): the 32-bit engines against the
+# FMA and F16C (docs/plan/simd-xsave-plan.md P11): the 32-bit engines against the
 # exact model of tests/rust/sse_fp_model.mjs (release and debug builds), the
 # x64 engine (interpreted, page tier, compatibility-mode Tier-0) against QEMU
 # and the model
@@ -2131,7 +2131,7 @@ fma-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-debu
 	node tests/x64/fma.mjs
 	TEST_RELEASE_BUILD=1 node tests/x64/fma.mjs
 
-# The legacy SSE exception conditions in the 32-bit engines (docs/simd-xsave-plan.md
+# The legacy SSE exception conditions in the 32-bit engines (docs/plan/simd-xsave-plan.md
 # 3.3, P4a): CR4.OSFXSR for XMM forms only, 16-byte alignment, their order
 .PHONY: sse-fault-tests
 sse-fault-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v86-debug.wasm build/v86-fallback.wasm
@@ -2141,7 +2141,7 @@ sse-fault-tests: build/libv86.mjs build/jit-capacity.bin build/v86.wasm build/v8
 
 .PHONY: isa-forms isa-forms-check isa-hot-forms decode-rules-tests xsave-tests ssse3-tests
 
-# docs/iphone4-plan.md "测试": the iOS firmware tools on samples the tests
+# docs/plan/iphone4-plan.md "测试": the iOS firmware tools on samples the tests
 # make themselves (made-up keys, no Apple files)
 .PHONY: ios-tests ios-pvrtc-tests ios-amc-tests
 ios-tests:
@@ -2181,7 +2181,7 @@ build/ios-pvrtc-test: tests/ios/pvrtc.c tools/ios/guest/pvrtc.h
 	mkdir -p build
 	$(CC) -std=c99 -O2 -Wall -Wextra -o $@ $<
 
-# docs/gles-proxy-plan.md "测试": the GLES host's protocol tables against the
+# docs/plan/gles-proxy-plan.md "测试": the GLES host's protocol tables against the
 # pinned specs' shapes, the connection stream, renderControl, the shadow
 # state against GLES 2.0's rules, the batches (no guest, no page); the
 # plugin builds

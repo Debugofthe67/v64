@@ -1,5 +1,5 @@
 {
- "about": "The v86-aarch64-v1.1 CPU profile (docs/arm64-virt-android16-plan.md, 'CPU profile' and P0.3): every ID register, the IMPLEMENTATION DEFINED choices and the differences allowed against the QEMU cortex-a35 reference. tools/cpu_contract.mjs takes the a64 profiles' expected values from this file and compares the reference's registers with it; fields are [name, high bit, low bit, value].",
+ "about": "The v86-aarch64-v1.1 CPU profile (docs/plan/arm64-virt-android16-plan.md, 'CPU profile' and P0.3): every ID register, the IMPLEMENTATION DEFINED choices and the differences allowed against the QEMU cortex-a35 reference. tools/cpu_contract.mjs takes the a64 profiles' expected values from this file and compares the reference's registers with it; fields are [name, high bit, low bit, value].",
  "profile": "v86-aarch64-v1.1",
  "revision": 1,
  "architecture": "Armv8.0-A",
@@ -18,7 +18,7 @@
   "profile": "v86-aarch64-v2",
   "cpu_profile": "generic-arm64",
   "llvm_mattr": "+v8a,+fp-armv8,+neon,+aes,+sha2,+crc,+pan",
-  "about": "v1.1 and FEAT_PAN (optional in Armv8.0; docs/arm64-virt-android16-plan.md, profile v2 and appendix F3): PSTATE.PAN, MSR PAN (immediate and register), SPSR_EL1.PAN, SCTLR_EL1.SPAN; no PAN2 (AT S1E1RP/WP) or PAN3 (EPAN). HWCAP is v1.1's (PAN has none). tests/a64/pan.mjs checks it against QEMU's -cpu max",
+  "about": "v1.1 and FEAT_PAN (optional in Armv8.0; docs/plan/arm64-virt-android16-plan.md, profile v2 and appendix F3): PSTATE.PAN, MSR PAN (immediate and register), SPSR_EL1.PAN, SCTLR_EL1.SPAN; no PAN2 (AT S1E1RP/WP) or PAN3 (EPAN). HWCAP is v1.1's (PAN has none). tests/a64/pan.mjs checks it against QEMU's -cpu max",
   "id_space": { "S3_0_C0_C7_1": "0x0000000000100000" },
   "linux_cpu_features": ["Privileged Access Never"]
  },
@@ -26,7 +26,7 @@
   "profile": "v86-aarch64-v3",
   "cpu_profile": "generic-arm64-compat32",
   "llvm_mattr": "+v8a,+fp-armv8,+neon,+aes,+sha2,+crc,+pan",
-  "about": "v2 and AArch32 at EL0 (docs/aarch32-plan.md part 1): A32, T32 with IT blocks, VFPv4 and Advanced SIMD with the crypto instructions, CP15's EL0 registers. The AArch32 ID registers are the reference's (cortex-a35) for an AArch32 at EL0 only, as Cortex-A76 reports them: no AArch32 EL1 modes (ID_PFR1.ProgMod 0), no SETEND (ID_ISAR1.Endian 0: no mixed endianness), no SMC (ID_ISAR4.SMC 0: no EL3). tests/a64/aarch32_oracle.mjs and aarch32_el0.mjs check the instructions against the reference. id_space: v1.1's registers that differ (v2's PAN included)",
+  "about": "v2 and AArch32 at EL0 (docs/plan/aarch32-plan.md part 1): A32, T32 with IT blocks, VFPv4 and Advanced SIMD with the crypto instructions, CP15's EL0 registers. The AArch32 ID registers are the reference's (cortex-a35) for an AArch32 at EL0 only, as Cortex-A76 reports them: no AArch32 EL1 modes (ID_PFR1.ProgMod 0), no SETEND (ID_ISAR1.Endian 0: no mixed endianness), no SMC (ID_ISAR4.SMC 0: no EL3). tests/a64/aarch32_oracle.mjs and aarch32_el0.mjs check the instructions against the reference. id_space: v1.1's registers that differ (v2's PAN included)",
   "id_space": {
    "S3_0_C0_C4_0": "0x1100000001000012",
    "S3_0_C0_C7_1": "0x0000000000100000",
@@ -62,7 +62,7 @@
   "compat_hwcap": {
    "names": "half thumb fastmult vfp edsp neon vfpv3 tls vfpv4 idiva idivt lpae evtstrm",
    "hwcap2": "aes pmull sha1 sha2 crc32",
-   "why": "Linux's compat_elf_hwcap from these registers (docs/aarch32-plan.md Q0.4, checked in Q5.1 with a 32-bit /proc/cpuinfo)"
+   "why": "Linux's compat_elf_hwcap from these registers (docs/plan/aarch32-plan.md Q0.4, checked in Q5.1 with a 32-bit /proc/cpuinfo)"
   }
  },
  "id_space_rules": ["op0=3, op1=0, CRn=0, CRm=0: MIDR_EL1 (op2=0), MPIDR_EL1 (op2=5), REVIDR_EL1 (op2=6); every other op2 is UNDEF at every EL (as QEMU)", "op0=3, op1=0, CRn=0, CRm=1-7: the registers listed; every unallocated encoding reads 0 at EL1 and is UNDEF at EL0 (Linux emulates EL0 reads with HWCAP_CPUID); Linux 6.18 reads ID_AA64MMFR3_EL1, MMFR4, ISAR3 and PFR2 unconditionally", "EL0 access to the ID registers is UNDEF (EC 0x00); there is no FEAT_IDST"],

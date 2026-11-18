@@ -35,7 +35,7 @@
 //! the instruction atomic with respect to every other core's accesses here.
 //!
 //! The frames, the lock and the store are the engine both cores share
-//! (crate::extended, docs/arm64-virt-android16-plan.md P8.5); this module is
+//! (crate::extended, docs/plan/arm64-virt-android16-plan.md P8.5); this module is
 //! the x86 core's part: the access caches' frames, the page-tier keys, the
 //! aperture and the 32-bit TLBs of compatibility mode (crate::isa's
 //! extended_* hooks), the exports.

@@ -1,5 +1,5 @@
 // SHA-256 (FIPS 180-4), synchronous: the identity of a disk image's metadata
-// (docs/disk-image-formats-plan.md P1). crypto.subtle is asynchronous and
+// (docs/plan/disk-image-formats-plan.md P1). crypto.subtle is asynchronous and
 // missing on pages that are not a secure context (http:// on a LAN).
 
 const K = new Int32Array([

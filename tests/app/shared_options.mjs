@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The shared modules as ES modules (docs/vm-manager-plan.md U0): Node
+// The shared modules as ES modules (docs/plan/vm-manager-plan.md U0): Node
 // imports src/browser/vm_options.js and query_compat.js, as the
 // pages do, and makes each start that tests/app/legacy_options.mjs recorded
 // in the VM manager (index.html: the addresses) and the debug page

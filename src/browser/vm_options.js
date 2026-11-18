@@ -1,4 +1,4 @@
-// A page's V86 options (docs/vm-manager-plan.md, U0): the settings of a
+// A page's V86 options (docs/plan/vm-manager-plan.md, U0): the settings of a
 // profile and of the old page's form, normalized as the old page always did
 // it, and the options new V86() gets for them. The VM manager (index.html,
 // an ES module outside Closure) and the debug page (debug.html,
@@ -265,7 +265,7 @@ export function apply_form(settings, form, new_query_args, page)
             new_query_args.set("hdb.empty", String(size));
         }
         // (or an image's URL; read write: the guest's changes written back to
-        // it, which needs a disk service's URL, docs/disk-persistence-plan.md:
+        // it, which needs a disk service's URL, docs/plan/disk-persistence-plan.md:
         // a file chosen above can only be read)
         const disk_from_url = name =>
         {

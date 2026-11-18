@@ -4,7 +4,7 @@
 Workstation: a library of virtual machines kept in the browser, a wizard
 that makes new ones, a settings dialog for their hardware, and a console
 that runs one machine per tab. The plan and its implementation record are
-in [vm-manager-plan.md](vm-manager-plan.md) (in Chinese).
+in [vm-manager-plan.md](plan/vm-manager-plan.md) (in Chinese).
 
 ## The library
 
@@ -75,7 +75,7 @@ the machines and disks you want to keep.
 
 The wizard's source **An Android image package** makes an Android machine
 from Google's own images, as Android Studio's AVD manager does
-(docs/android-images-plan.md):
+(docs/plan/android-images-plan.md):
 
 1. Choose an Android version in the catalog: one entry for each version
    that boots on v64, newest first. Android 17 (Google's GSI, QPR1, on
@@ -100,14 +100,14 @@ No kernel, initrd or command line is filled in: v64's bootloader reads them
 from the disk's boot partitions at each power on (Settings: **Android**:
 the device model, the GPU, the vendor ramdisk, SELinux, the display, and
 **Wipe user data…**). Imported images draw with their own GPU drivers on virtio-gpu's
-gfxstream (docs/gfxstream-plan.md; the graphics proxy's WebGPU renderer):
+gfxstream (docs/plan/gfxstream-plan.md; the graphics proxy's WebGPU renderer):
 the desktop in about 20 minutes on 4 cores the first time (the kernel's
 log in the console's Kernel console; a userdebug image's shell in its
 serial terminal, `androidboot.console` being ttyAMA0). Without WebGPU,
 choose SwiftShader in Settings, Android (the CPU draws: Android starts, its
 desktop is slow). The Cuttlefish phone runs 64-bit apps only (its 64-bit
 zygote, also under a GSI); 32-bit apps need AArch32 and another device
-(docs/aarch32-plan.md).
+(docs/plan/aarch32-plan.md).
 
 An **Android Emulator system image** zip (the SDK's
 `system-images/android-<api>/<tag>/<abi>` package, as Android Studio
@@ -133,7 +133,7 @@ A hard disk's image is one of:
 | An image of the disk service | in the service's directory | yes |
 
 **Read only** keeps the guest's changes in memory and leaves the image as it
-was; **read write** writes them into the image (docs/disk-persistence-plan.md).
+was; **read write** writes them into the image (docs/plan/disk-persistence-plan.md).
 A browser disk takes its whole size of the browser's storage for this site
 at once; written back, it needs the CPU in its Worker (the default).
 

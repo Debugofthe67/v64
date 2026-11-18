@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The QCOW2 reader (docs/disk-image-formats-plan.md P1, P2) against the RAW
+// The QCOW2 reader (docs/plan/disk-image-formats-plan.md P1, P2) against the RAW
 // that qemu-img converts the same image to: every sample read whole and in
 // random ranges, through a local file read in ranges (as a URL in Node) and
 // from memory; the features that are refused; damaged images, each with an

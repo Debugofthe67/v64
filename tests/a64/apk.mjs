@@ -1,5 +1,5 @@
 // A minimal Android app for P11's "install and start an app"
-// (docs/arm64-virt-android16-plan.md P11.2): package org.v86.hello, no code
+// (docs/plan/arm64-virt-android16-plan.md P11.2): package org.v86.hello, no code
 // (android:hasCode="false"), one launcher activity that is the framework's
 // own android.app.Activity, which shows an empty window titled with the
 // app's label. Built here without the SDK: the manifest in Android's binary

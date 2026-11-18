@@ -1,4 +1,4 @@
-// Litmus tests of the A64 cores (docs/arm64-virt-android16-plan.md P3.9),
+// Litmus tests of the A64 cores (docs/plan/arm64-virt-android16-plan.md P3.9),
 // bare metal on 2 or 4 cores (tests/a64/litmus.mjs): every core turns the
 // MMU on (RAM normal write-back, devices nGnRnE), then for ROUNDS rounds
 // each of

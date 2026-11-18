@@ -1,4 +1,4 @@
-//! T32 (Thumb-2) at EL0 (docs/aarch32-plan.md Q3): the decoder of the 16-bit
+//! T32 (Thumb-2) at EL0 (docs/plan/aarch32-plan.md Q3): the decoder of the 16-bit
 //! and 32-bit encodings onto a32.rs's operations, and ITSTATE (IT blocks).
 //! The PC reads as the instruction's address + 4 (literals: aligned down to
 //! a word); a 32-bit instruction is (first halfword) << 16 | second. The

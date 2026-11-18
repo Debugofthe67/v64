@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// FLDCW in compiled legacy-mode code (docs/jit-unification-plan.md M8,
+// FLDCW in compiled legacy-mode code (docs/plan/jit-unification-plan.md M8,
 // pages::x64_page_fldcw): a hot loop converts values with FISTP under each
 // rounding mode in turn (FNSTCW, the RC field set, FLDCW, FISTP, FLDCW of
 // the saved word, as compilers truncate) and once in a while lowers the

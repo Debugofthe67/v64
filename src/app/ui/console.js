@@ -1,5 +1,5 @@
 // @ts-check
-// The console (docs/vm-manager-plan.md "控制台", U2 and U4): one virtual
+// The console (docs/plan/vm-manager-plan.md "控制台", U2 and U4): one virtual
 // machine in this tab, started from the library (?vm=<id>) or from an old
 // page's address (?profile=custom with its images and query arguments, as
 // the old page starts it). The toolbar's menus (power, keys, removable devices, view,
@@ -303,7 +303,7 @@ export async function open_console(root, target)
                 }
             }
             if(config.display.proxy || config.ios?.gles_proxy) await load_graphics_proxy();
-            // (an emulator image's GLES on the host's GPU, docs/gles-proxy-plan.md
+            // (an emulator image's GLES on the host's GPU, docs/plan/gles-proxy-plan.md
             // E5: the WebGPU renderer's bundle; without WebGPU the guest's CPU
             // draws, this start only: a suspended machine resumes with its own)
             let android_gpu = null;

@@ -17,7 +17,7 @@
 // desktop: host and in-guest CPU load of the idle desktop, see host_window),
 // WIN_CPULOAD32=<rounds> (after the desktop: the timed WOW64 workload
 // tests/x64/windows_cpuload32.c as LOAD32.EXE, an X64_WIN_CPULOAD32 line with
-// each round's time; docs/jit-unification-plan.md P0.12). While it runs, a line written to
+// each round's time; docs/plan/jit-unification-plan.md P0.12). While it runs, a line written to
 // <out>/command.txt is executed: "key <scancodes hex>", "type <text>",
 // "run <command line>", "enter", "space", "password", "shot", "rips",
 // "diag" (each core's registers and last faults), "mem <core> <linear
@@ -1419,7 +1419,7 @@ try
             {
                 const avx = text.match(/X64_WIN_AVX arch=\d+ avx=(\d)(?: avx2=(\d) fma=(\d) threads=(\d+) steps=(\d+) faults=(\d+) xstate=(\d+) compute_bad=(\d+) bad=(\d+))?/);
                 // (QueryPerformanceFrequency: the HPET's 14318180 Hz, the ACPI
-                // PM timer's 3579545 Hz, else the TSC; docs/jit-unification-plan.md
+                // PM timer's 3579545 Hz, else the TSC; docs/plan/jit-unification-plan.md
                 // open question 4)
                 const qpf = text.match(/X64_WIN_BEGIN arch=\d+ processors=\d+ architecture=\d+ qpf=(\w+)/);
                 report.results[arch] = {qpf: qpf ? parseInt(qpf[1], 16) : null,
@@ -1437,7 +1437,7 @@ try
         {
             report.desktop_s = elapsed();
             event("desktop");
-            // (tools/bench/jit_stats.mjs, docs/jit-unification-plan.md P0.7)
+            // (tools/bench/jit_stats.mjs, docs/plan/jit-unification-plan.md P0.7)
             if(jit_stats_enabled()) print_jit_stats(vm, {script: "windows_boot", phase: "desktop", wasm: process.env.WASM_PATH || null, desktop_s: report.desktop_s, cores});
             for(let attempt = 0; process.env.WIN_LAUNCHER && !launcher_ready && attempt < 4; attempt++)
             {
@@ -1541,7 +1541,7 @@ try
         assert.equal(r.packages, 1); assert.equal(r.cores, cores); assert.equal(r.smt_cores, 0);
         assert.equal(r.progress, cores * 64);
         if(arch === 64) assert.ok(BigInt("0x" + r.high_block) >> 32n > 0n, "x64 top-down allocation above 4 GiB");
-        // the YMM state (docs/simd-xsave-plan.md 11.3): 8 rounds of 3 steps
+        // the YMM state (docs/plan/simd-xsave-plan.md 11.3): 8 rounds of 3 steps
         // (one migrates, one faults) on 2N threads; x64 GetThreadContext
         const features = feature_request === "default" ?
             Object.keys(CPU_FEATURES).filter(name => CPU_FEATURES[name]["released"] && CPU_FEATURES[name]["profiles"].includes("x86_64")) :

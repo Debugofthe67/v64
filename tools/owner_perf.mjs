@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The owner's workloads, one core against another (docs/jit-unification-plan.md:
+// The owner's workloads, one core against another (docs/plan/jit-unification-plan.md:
 // the risk "Windows images and Win98 states are only on the owner's machine",
 // P0.12, P0.15): sessions alternate the arms (A B B A ...), and the report has
 // the revision, the host, the JIT switches and each workload's samples and

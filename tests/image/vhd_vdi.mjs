@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// VHD and VDI (docs/disk-image-formats-plan.md P3) against qemu-img: fixed
+// VHD and VDI (docs/plan/disk-image-formats-plan.md P3) against qemu-img: fixed
 // and dynamic images read whole and in ranges as qemu-img reads them (the
 // VHD's size from its CHS geometry or exact, as QEMU decides), large sparse
 // ones beyond 4 GiB and across 2^32 sectors; damaged footers, headers and

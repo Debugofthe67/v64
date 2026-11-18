@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// A guest on a QCOW2 disk (docs/disk-image-formats-plan.md P1): MS-DOS 6.22
+// A guest on a QCOW2 disk (docs/plan/disk-image-formats-plan.md P1): MS-DOS 6.22
 // (images/msdos622.img, put in a QCOW2 image of its non-zero clusters,
 // tests/image/tiny_qcow2.mjs) boots from it, read in ranges from a file,
 // on the IDE disk of i440FX and the AHCI disk of Q35. A file written by the

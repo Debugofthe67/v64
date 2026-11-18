@@ -1,4 +1,4 @@
-// The AArch32 single-instruction oracle's driver (docs/aarch32-plan.md Q0.3,
+// The AArch32 single-instruction oracle's driver (docs/plan/aarch32-plan.md Q0.3,
 // tests/a64/aarch32_oracle.mjs): each case of the generated binary is one
 // instruction followed by SVC #0, run at EL0 with registers from its seed
 // (those of its pointer mask at the data buffer, of its small mask small),

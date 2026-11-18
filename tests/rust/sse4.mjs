@@ -1,4 +1,4 @@
-// SSE4.1 and SSE4.2 integer forms in the 32-bit engines (docs/simd-xsave-plan.md
+// SSE4.1 and SSE4.2 integer forms in the 32-bit engines (docs/plan/simd-xsave-plan.md
 // 7.2, 7.3, P4b) against a model of the SDM's pseudocode written here
 // (tests/rust/sse4_model.mjs, independent of src/rust/cpu/simd_int.rs):
 // register and memory sources, the destination as the source and as XMM0

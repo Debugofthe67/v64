@@ -1,5 +1,5 @@
 #!/bin/sh
-# The GLES host's GLSL ES compiler (docs/gles3-plan.md L1): glslang, built
+# The GLES host's GLSL ES compiler (docs/plan/gles3-plan.md L1): glslang, built
 # for WebAssembly with Emscripten, with v86_glslang.cpp's interface:
 # bios/glslang.wasm (src/gles/glslang.js loads it). Pinned source, checked;
 # es_spirv.patch lets ES 1.00/3.00 reach SPIR-V under Vulkan relaxed rules;

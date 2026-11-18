@@ -10,9 +10,9 @@ L 约 3–4 周，XL 超过一个月（与 [ARM64 virt 与 Android 16 计划](ar
 按指引从官方页面下载后拖进来），v64 识别它、建好磁盘、按设备型号配好硬件，然后由 v64 自己从磁盘引导，
 不再要求用户填写内核、initrd、命令行与磁盘。
 
-现在 Android 16 能在 v64 上运行（[aarch64.md](aarch64.md)），但启动材料由 `tools/a64_android.mjs` 在 node 里
+现在 Android 16 能在 v64 上运行（[aarch64.md](../aarch64.md)），但启动材料由 `tools/a64_android.mjs` 在 node 里
 做好，用户在设置里手填内核与 initrd 的 URL、命令行与磁盘；Android 预设声明的安装方式 `"android"`
-在向导里没有对应的来源（[src/app/ui/wizard.js](../src/app/ui/wizard.js) 24–30、204–209）。
+在向导里没有对应的来源（[src/app/ui/wizard.js](../../src/app/ui/wizard.js) 24–30、204–209）。
 
 ## 别人怎么做（2026-10-23 调研）
 
@@ -33,7 +33,7 @@ L 约 3–4 周，XL 超过一个月（与 [ARM64 virt 与 Android 16 计划](ar
    槽位、GPU 模式、vendor ramdisk 的取法）。开机时 v64 从磁盘的 GPT 读 boot、init_boot、vendor_boot 与
    vbmeta，拼 initrd（vendor ramdisk、通用 ramdisk、bootconfig 尾）、生成 bootconfig（Cuttlefish 启动器与
    U-Boot 写的键，vbmeta 摘要按 libavb 的规则从盘上算）与命令行，和 `tools/a64_android.mjs` 今天做的
-   一样。启动代码在创建 CPU 之前已经异步读盘（[src/browser/starter.js](../src/browser/starter.js) `done()` 1165–1187 读 hda
+   一样。启动代码在创建 CPU 之前已经异步读盘（[src/browser/starter.js](../../src/browser/starter.js) `done()` 1165–1187 读 hda
    的第一个扇区），引导器就放在那里；CPU Worker 下由 Worker 里的实例执行。
 2. **一套共用的镜像库（I1）。** `a64_android.mjs` 里的解析与改写全是字节操作（boot 与 vendor_boot 头 v3/v4、
    LZ4 legacy、cpio、bootconfig、Android sparse、AVB、LP 元数据、erofs、GPT），移到 `src/android/` 的 ES 模块，
@@ -46,7 +46,7 @@ L 约 3–4 周，XL 超过一个月（与 [ARM64 virt 与 Android 16 计划](ar
    - v64 自己的材料（`a64_android.mjs` 的输出目录与 `manifest.json`）：只供开发与自动化测试，不出现在目录里。
 4. **磁盘在 Worker 里组装，按实际数据写。** sparse 的 FILL 与 DONT_CARE 不写；浏览器磁盘用 OPFS 的同步
    访问句柄在专用 Worker 里按位置写（现在只有 CPU Worker 里的 `OpfsDisk` 这样写，
-   [src/opfs_disk.js](../src/opfs_disk.js) 150–182），磁盘服务用会话写入。Chrome 把新浏览器磁盘的**名义大小**整个计入
+   [src/opfs_disk.js](../../src/opfs_disk.js) 150–182），磁盘服务用会话写入。Chrome 把新浏览器磁盘的**名义大小**整个计入
    配额（vm-manager-plan.md 971–973），而 Cuttlefish 的盘名义上 17.5 GB（super 与 userdata 各 8 GiB）：
    组装时把 super 缩到已用加余量（改写 LP 元数据的块设备大小），userdata 的大小由用户选（默认 4 GiB）。
 5. **导入的镜像一律不改，显卡靠 gfxstream。** 不改镜像时，gfxstream 之前只有 SwiftShader（软件渲染，在 v64 上
@@ -71,13 +71,13 @@ L 约 3–4 周，XL 超过一个月（与 [ARM64 virt 与 Android 16 计划](ar
 
 | 部分 | 位置 | 本计划怎么用 |
 | --- | --- | --- |
-| Android 材料的生成 | [tools/a64_android.mjs](../tools/a64_android.mjs)（1414 行）：boot 头 210–246、LZ4 249–280、cpio 283–297、bootconfig 300–322、sparse 325–409、AVB 415–511、LP 519–560、erofs 565–799、`super_replace` 811–876、Venus 900–909、GPT 1042–1085、`launcher_bootconfig` 1090–1147、`main` 1149–1348 | 移进共用库；工具改用它 |
-| 已有的通用件 | SHA-256 [src/image/sha256.js](../src/image/sha256.js)；CRC-32C [src/image/vhdx.js](../src/image/vhdx.js) 47；inflate [src/virt/inflate.js](../src/virt/inflate.js)（整块，不流式）；Range 读 [src/image/source.js](../src/image/source.js)；tar 成员 [src/image/ova.js](../src/image/ova.js) | 复用；zip 与流式解压另写（node 侧 `tools/a64_cts.mjs` 26–110 已有 zip64 读法可参照） |
-| ARM 引导 | [src/virt/loader.js](../src/virt/loader.js) `load_linux` 74–115；[src/virt/dtb.js](../src/virt/dtb.js) chosen 224–229；`src/arm/cpu.js` 369–378、692–696 | 引导器产出的 kernel、initrd、cmdline 走同一条路 |
-| 选项到 Worker | [src/browser/cpu_worker.js](../src/browser/cpu_worker.js) 71–93 | 新的 `android` 选项要带过去 |
-| 磁盘 | 浏览器磁盘 [src/app/browser_disks.js](../src/app/browser_disks.js)（`create_disk` 截断建盘；`import_disk` 在页面上顺序写并算 SHA-256，没有按位置写）；磁盘服务 [tools/disk-service.mjs](../tools/disk-service.mjs)（列表、建盘、会话写，无上传） | 组装器在 Worker 里按位置写 OPFS；磁盘服务加流式导入 |
-| 向导 | [src/app/ui/wizard.js](../src/app/ui/wizard.js)（来源、系统、名称、硬盘、摘要五步）；预设 [guest_presets.js](../src/app/guest_presets.js) 155–178 | 加“Android 镜像”来源与进度对话框 |
-| 部署 | `.github/workflows/pages.yml`（wrangler pages deploy）、[tools/pages_dist.mjs](../tools/pages_dist.mjs)（`_headers` 的 COOP/COEP） | 目录 JSON 随站点发布（站点保持纯静态，没有服务端函数） |
+| Android 材料的生成 | [tools/a64_android.mjs](../../tools/a64_android.mjs)（1414 行）：boot 头 210–246、LZ4 249–280、cpio 283–297、bootconfig 300–322、sparse 325–409、AVB 415–511、LP 519–560、erofs 565–799、`super_replace` 811–876、Venus 900–909、GPT 1042–1085、`launcher_bootconfig` 1090–1147、`main` 1149–1348 | 移进共用库；工具改用它 |
+| 已有的通用件 | SHA-256 [src/image/sha256.js](../../src/image/sha256.js)；CRC-32C [src/image/vhdx.js](../../src/image/vhdx.js) 47；inflate [src/virt/inflate.js](../../src/virt/inflate.js)（整块，不流式）；Range 读 [src/image/source.js](../../src/image/source.js)；tar 成员 [src/image/ova.js](../../src/image/ova.js) | 复用；zip 与流式解压另写（node 侧 `tools/a64_cts.mjs` 26–110 已有 zip64 读法可参照） |
+| ARM 引导 | [src/virt/loader.js](../../src/virt/loader.js) `load_linux` 74–115；[src/virt/dtb.js](../../src/virt/dtb.js) chosen 224–229；`src/arm/cpu.js` 369–378、692–696 | 引导器产出的 kernel、initrd、cmdline 走同一条路 |
+| 选项到 Worker | [src/browser/cpu_worker.js](../../src/browser/cpu_worker.js) 71–93 | 新的 `android` 选项要带过去 |
+| 磁盘 | 浏览器磁盘 [src/app/browser_disks.js](../../src/app/browser_disks.js)（`create_disk` 截断建盘；`import_disk` 在页面上顺序写并算 SHA-256，没有按位置写）；磁盘服务 [tools/disk-service.mjs](../../tools/disk-service.mjs)（列表、建盘、会话写，无上传） | 组装器在 Worker 里按位置写 OPFS；磁盘服务加流式导入 |
+| 向导 | [src/app/ui/wizard.js](../../src/app/ui/wizard.js)（来源、系统、名称、硬盘、摘要五步）；预设 [guest_presets.js](../../src/app/guest_presets.js) 155–178 | 加“Android 镜像”来源与进度对话框 |
+| 部署 | `.github/workflows/pages.yml`（wrangler pages deploy）、[tools/pages_dist.mjs](../../tools/pages_dist.mjs)（`_headers` 的 COOP/COEP） | 目录 JSON 随站点发布（站点保持纯静态，没有服务端函数） |
 
 ## 设计
 
@@ -360,12 +360,12 @@ vendor 由设备树 `/firmware/android/fstab/vendor` 在第一阶段挂载，/da
 | --- | --- | --- |
 | I8.1 | gfxstream 完成后：设备型号的默认 GPU 档位改为 gfxstream；验收：选官方 Cuttlefish zip 与官方 GSI 都进入桌面并通过 A9 场景 | S |
 | I8.2 | gfxstream 之前的界面提示：SwiftShader 档只保证开机，说明桌面需要 GPU 支持 | S |
-| I8.3 | 文档：[vm-manager.md](vm-manager.md)（Android 一节、目录、下载）、[aarch64.md](aarch64.md)（引导器、导入）、vm-manager-plan.md 记录“目录”的新决定；release_gate 增加导入与引导器的级别 | S |
+| I8.3 | 文档：[vm-manager.md](../vm-manager.md)（Android 一节、目录、下载）、[aarch64.md](../aarch64.md)（引导器、导入）、vm-manager-plan.md 记录“目录”的新决定；release_gate 增加导入与引导器的级别 | S |
 
 进度（2026-10-24）：I8.1 的代码完成（`949f8fe0`）：Android 16 预设的显示是 virtio-gpu 的 gfxstream、GPU 档位 gfxstream，
 向导不再把导入的包改成 SwiftShader；官方 Cuttlefish zip 在 gfxstream 下通过 A9 场景（gfxstream-plan G5）；官方 GSI（BP4A 加 Cuttlefish 设备包）
-2026-10-25 也通过（`boot_completed` 991 s，重启后 477 s；gfxstream-plan G5 的进度）。I8.2 不再需要（默认已有 GPU），向导改为说明没有 WebGPU 时选 SwiftShader。I8.3 完成：[vm-manager.md](vm-manager.md) 的 Android 一节（目录、
-下载与拖入、导入、gfxstream、模拟器镜像），[aarch64.md](aarch64.md) 的引导器与导入，vm-manager-plan.md 记下“目录”的
+2026-10-25 也通过（`boot_completed` 991 s，重启后 477 s；gfxstream-plan G5 的进度）。I8.2 不再需要（默认已有 GPU），向导改为说明没有 WebGPU 时选 SwiftShader。I8.3 完成：[vm-manager.md](../vm-manager.md) 的 Android 一节（目录、
+下载与拖入、导入、gfxstream、模拟器镜像），[aarch64.md](../aarch64.md) 的引导器与导入，vm-manager-plan.md 记下“目录”的
 新决定（负责人 2026-10-23 的要求，旧首页的系统按钮仍不恢复），`tools/release_gate.mjs` 的级别 `R-android-images`
 （镜像库、QEMU 上的导入布局、Chrome 里的向导）与 `R-arm32-android`。
 

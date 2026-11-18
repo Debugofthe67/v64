@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The A64 page tier's FP fast path (docs/arm64-virt-android16-plan.md P6,
+// The A64 page tier's FP fast path (docs/plan/arm64-virt-android16-plan.md P6,
 // "A64 JIT 的语义红线"; J2): a hot loop of the four scalar multiply-adds,
 // divisions, multiplications and additions, and of vector FMLA and FMLS (4S,
 // 2S, 2D), with FPSR.IXC set (tests/a64/fma.c)

@@ -1,5 +1,5 @@
 {
-  "about": "The frozen Alpine performance baseline (docs/arm64-virt-android16-plan.md P9.4): tools/a64_jit_metrics.mjs's medians",
+  "about": "The frozen Alpine performance baseline (docs/plan/arm64-virt-android16-plan.md P9.4): tools/a64_jit_metrics.mjs's medians",
   "build": "vA6-2-gd4f03ada",
   "release_build": true,
   "date": "2026-10-17",

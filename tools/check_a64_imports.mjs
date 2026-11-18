@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The boundaries of the two Wasm cores (docs/arm64-virt-android16-plan.md
-// "Wasm core", P0.11; docs/jit-unification-plan.md cross-phase rule 12),
+// The boundaries of the two Wasm cores (docs/plan/arm64-virt-android16-plan.md
+// "Wasm core", P0.11; docs/plan/jit-unification-plan.md cross-phase rule 12),
 // checked on the code of every Rust file (comments and strings stripped):
 //
 // - `feature = "aarch64"` is written only in src/rust/lib.rs, which selects

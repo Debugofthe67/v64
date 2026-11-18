@@ -2,7 +2,7 @@
 
 // The e1000 network card with a real driver: Linux 4.16's e1000 (built into
 // images/linux4.iso) on net_device.type "e1000", the fetch backend's network
-// (docs/modern-pc-devices-plan.md, N1, "验收"). The driver probes the card
+// (docs/plan/modern-pc-devices-plan.md, N1, "验收"). The driver probes the card
 // (EEPROM, PHY), the link comes up, DHCP, ARP, ICMP and DNS go through it;
 // TCP both ways against an endpoint in this test, checked by MD5 (the
 // guest's md5sum); the link down and up, a reboot and a snapshot. Prints the

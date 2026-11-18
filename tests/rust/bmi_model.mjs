@@ -1,4 +1,4 @@
-// A model of BMI1, BMI2, TZCNT, LZCNT and MOVBE (docs/simd-xsave-plan.md
+// A model of BMI1, BMI2, TZCNT, LZCNT and MOVBE (docs/plan/simd-xsave-plan.md
 // 9.2, P10) from the SDM's operations, written apart from src/rust/cpu/bmi.rs:
 // BigInt bit by bit. Each instruction gives its result(s) and its flags as
 // { value, defined }: `defined` the flags the SDM specifies, the others

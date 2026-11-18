@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The first A64 program prints through the PL011 (docs/arm64-virt-android16-plan.md
+// The first A64 program prints through the PL011 (docs/plan/arm64-virt-android16-plan.md
 // A1): a bare-metal guest writes a line to the UART's data register while
 // it polls the flag register, on QEMU and on v86; both serial outputs and
 // the result blocks are equal.

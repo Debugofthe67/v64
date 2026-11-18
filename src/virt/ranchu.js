@@ -1,4 +1,4 @@
-// The ranchu machine (machine_type "ranchu", docs/aarch32-plan.md R6): the
+// The ranchu machine (machine_type "ranchu", docs/plan/aarch32-plan.md R6): the
 // Android emulator's board, which the SDK's system images (kernel-ranchu,
 // ramdisk.img, system.img, userdata.img) are built for. The virt machine's
 // RAM, PL011, generic timer and virtio-mmio slots; a GICv2 with cpu_type

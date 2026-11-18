@@ -200,7 +200,7 @@ PluginDisplaySource.prototype.invalidate = function()
 
 /**
  * The configured display adapter: v86's side of a plugin's device. On the
- * virt machine (docs/arm64-virt-android16-plan.md P7.1) there is no VGA and
+ * virt machine (docs/plan/arm64-virt-android16-plan.md P7.1) there is no VGA and
  * no port I/O: the device is a function of the PCIe host at
  * options.pci_id, or on a virtio-mmio slot (options.transport).
  * @constructor

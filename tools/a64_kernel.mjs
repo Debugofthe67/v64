@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Linux kernels of other configurations for the ARM core
-// (docs/arm64-virt-android16-plan.md P8.6: the 16 and 64 KiB page kernels;
+// (docs/plan/arm64-virt-android16-plan.md P8.6: the 16 and 64 KiB page kernels;
 // P9.1, P9.2: the androidish kernel, with binder, and the test programs
 // built against its headers):
 // linux-6.18.35, the stock kernel's release (its tarball's sha256 pinned),

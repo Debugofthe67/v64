@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Unmodified Alpine Linux 3.24.3 armv7 on cpu_type "arm32" (docs/aarch32-plan.md
+// Unmodified Alpine Linux 3.24.3 armv7 on cpu_type "arm32" (docs/plan/aarch32-plan.md
 // R5.2) and on the reference, QEMU 9.2's cortex-a15 on the 32-bit virt board
 // (tests/a32/runner.mjs's machine): the netboot release's kernel (a zImage),
 // initramfs and modloop, pinned and downloaded once into build/a32-linux/.

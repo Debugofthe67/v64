@@ -1,4 +1,4 @@
-// A model of SSE4.1 and SSE4.2 (docs/simd-xsave-plan.md 7.2, 7.3) written
+// A model of SSE4.1 and SSE4.2 (docs/plan/simd-xsave-plan.md 7.2, 7.3) written
 // from the SDM's pseudocode, independent of src/rust/cpu: byte vectors in and
 // out (16 bytes, little-endian lanes, read as BigInts); floating point with
 // tests/rust/sse_fp_model.mjs (exact arithmetic under MXCSR); PCMPxSTRx after

@@ -12,7 +12,7 @@
 //! Code in read-only device memory (the UEFI firmware's flash) has keys from
 //! DEVICE_KEY_BASE on; mapping changes of device memory retire it
 //! (retire_device_code).
-//! With x64_page_compat32 (docs/jit-unification-plan.md P7.2), 32-bit code
+//! With x64_page_compat32 (docs/plan/jit-unification-plan.md P7.2), 32-bit code
 //! in compatibility mode runs here too: its functions have the key of their
 //! page with COMPAT_KEY, so a page run in both modes has a function for each.
 //! With x64_page_legacy32 (P7.3), so does 32-bit code in legacy protected
@@ -592,7 +592,7 @@ fn is_extended(page: u32) -> bool { physical_key(page) >= extended::CODE_KEY_BAS
 fn is_device(page: u32) -> bool { physical_key(page) >= DEVICE_KEY_BASE }
 
 /// Multi-page functions of legacy-mode code (the JIT switch
-/// x64_page_clusters, docs/jit-unification-plan.md P7.3b, as Tier-0's
+/// x64_page_clusters, docs/plan/jit-unification-plan.md P7.3b, as Tier-0's
 /// neighbour clusters): span_members
 static mut CLUSTERS: bool = true;
 #[no_mangle]
@@ -2848,7 +2848,7 @@ pub fn x64_page_shift(a: u64, count: u32, flags: u32, kind: u32) -> u64 {
     r & 0xFFFF_FFFF | f << 32
 }
 
-/// Compatibility mode (docs/jit-unification-plan.md P7.2): a shift or
+/// Compatibility mode (docs/plan/jit-unification-plan.md P7.2): a shift or
 /// rotate as the 32-bit interpreter computes it, EFLAGS included
 /// (cpu::arith on its lazy EFLAGS, materialized before and after): `kind` =
 /// ALU group code | width << 8 (8, 16 or 32), `count` as its instruction

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The VM manager's configuration (src/app/vm_config.js, docs/vm-manager-plan.md
+// The VM manager's configuration (src/app/vm_config.js, docs/plan/vm-manager-plan.md
 // U1): the defaults, the migration, every check of validate_config, and
 // config_to_options: each of the old page's
 // profiles as a configuration gives the options the old page gives it
@@ -476,7 +476,7 @@ test("config_to_options: the backends, arm64, a file not chosen yet", () =>
     assert.equal(o.acpi, false);
     assert.equal(o.cpu_profile, undefined, "the CPU type's default model");
     assert.deepEqual(check_config(a), []);
-    // (the model with 32-bit programs: docs/aarch32-plan.md Q7.1)
+    // (the model with 32-bit programs: docs/plan/aarch32-plan.md Q7.1)
     a.cpu.profile = "generic-arm64-compat32";
     assert.equal(config_to_options(a, ENV).cpu_profile, "generic-arm64-compat32");
     assert.deepEqual(check_config(a), []);

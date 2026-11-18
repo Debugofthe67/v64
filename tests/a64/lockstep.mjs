@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A bare-metal guest in lockstep on QEMU and v86 (docs/arm64-virt-android16-plan.md
+// A bare-metal guest in lockstep on QEMU and v86 (docs/plan/arm64-virt-android16-plan.md
 // P2, a debugging aid): QEMU runs it with its execlog plugin logging every
 // instruction and the registers it changed (X0-X30, SP, CPSR's NZCV, V0-V31,
 // FPSR); v86 then single-steps it (a64_step) and logs the same. The first

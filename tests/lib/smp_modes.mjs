@@ -1,4 +1,4 @@
-// The execution modes of the SMP tests (SMP_MODES; docs/jit-unification-plan.md
+// The execution modes of the SMP tests (SMP_MODES; docs/plan/jit-unification-plan.md
 // M7 acceptance: the SMP matrix includes the page tier). "pages" is the
 // default configuration since Legacy32's flip: 32-bit protected-mode code in
 // the x64 page tier (x64_page_legacy32; IR Tier-0's "tier0" mode went with it

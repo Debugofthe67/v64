@@ -1,4 +1,4 @@
-// AArch32 EL0 debug cases of docs/aarch32-plan.md Q1.5
+// AArch32 EL0 debug cases of docs/plan/aarch32-plan.md Q1.5
 // (tests/a64/aarch32_el0.mjs, A64_AARCH32_DRIVER=debug
 // A64_AARCH32_CASES=qdebug): software step through A32 and T32 code (an IT
 // block, a 32-bit instruction, a load exclusive: ESR's EX), breakpoints on an

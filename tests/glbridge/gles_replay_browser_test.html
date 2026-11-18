@@ -6,7 +6,7 @@
 <script type="module">
 // A boot's GLES batches as the GLES host sent them (tests/a32/android_boot.mjs
 // with A32_ANDROID_GPU=host records them: each a u32 length, then the batch),
-// run through the GLES executor on a real GPU (docs/gles-proxy-plan.md E3).
+// run through the GLES executor on a real GPU (docs/plan/gles-proxy-plan.md E3).
 // Every post's frame is kept; the last one, and every tenth, go to
 // build/browser-test-output/ as PNGs (gles-replay-<n>.png). PASS: every
 // batch ran without the executor's or WebGPU's errors, and a frame was posted.

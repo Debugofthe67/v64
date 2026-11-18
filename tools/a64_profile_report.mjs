@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The profile completeness report of docs/arm64-virt-android16-plan.md P9.4
+// The profile completeness report of docs/plan/arm64-virt-android16-plan.md P9.4
 // (G-Alpine) for tests/platform/a64-profile.json's profile:
 //
 // - encodings: every class of the Arm ARM's encoding index in

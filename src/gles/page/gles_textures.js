@@ -1,4 +1,4 @@
-// The GLES executor's texels (docs/gles-proxy-plan.md "执行器", E3): every
+// The GLES executor's texels (docs/plan/gles-proxy-plan.md "执行器", E3): every
 // color image is held as RGBA8 (WebGPU has no packed or luminance formats),
 // so what the guest sends is expanded here: RGBA, RGB, LUMINANCE_ALPHA,
 // LUMINANCE, ALPHA and BGRA_EXT bytes, the 4444, 5551 and 565 packings, and

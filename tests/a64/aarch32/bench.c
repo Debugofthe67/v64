@@ -1,4 +1,4 @@
-// The EL1 driver of tests/a64/aarch32_bench.mjs (docs/aarch32-plan.md
+// The EL1 driver of tests/a64/aarch32_bench.mjs (docs/plan/aarch32-plan.md
 // Q6.4): one kernel of tests/bench (bench_main(iterations)), built for A64
 // and run here at EL1, or built for A32 or T32 (BENCH32: its flat binary,
 // linked at EL0's alias of BENCH32_PHYSICAL, el0_map.h) and run at EL0;

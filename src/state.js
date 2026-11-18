@@ -5,7 +5,7 @@ import { CPU } from "./cpu.js";
 import { check_no_disk_holds } from "./block_backend.js";
 
 // Version 8 (and the stream's 9): the NE2000 and the SB16 are plugins
-// (docs/modern-pc-devices-plan.md M1), their slots tagged. Versions 6 and 7,
+// (docs/plan/modern-pc-devices-plan.md M1), their slots tagged. Versions 6 and 7,
 // from before, are read too: their untagged state[59] and state[61] are the
 // NE2000's and the SB16's own states, which their plugins read as they are
 // (src/device_plugin.js). An older v86 refuses 8 and 9 ("Version mismatch")

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// The JIT switch registry (docs/jit-unification-plan.md, cross-phase rule 1;
+// The JIT switch registry (docs/plan/jit-unification-plan.md, cross-phase rule 1;
 // src/rust/jit_switches.rs, src/jit_switches.js):
 // - a module on its own reads each switch's default, refuses unknown ids,
 //   unknown names and values out of range, and reads back what it set;

@@ -1,5 +1,5 @@
 //! Guest RAM beyond the wasm32 backing store, "extended RAM": the engine
-//! both cores share (docs/x86-64.md; docs/arm64-virt-android16-plan.md
+//! both cores share (docs/x86-64.md; docs/plan/arm64-virt-android16-plan.md
 //! P8.5). Guest physical [base, base + pages * 4 KiB) lives in a host store
 //! (JavaScript ArrayBuffers, shared with vCPU workers: `js::extended_load`
 //! and `js::extended_store` copy one page, src/extended_memory.js) and is

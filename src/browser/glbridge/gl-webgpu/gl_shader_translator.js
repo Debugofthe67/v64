@@ -20,7 +20,7 @@
 // exist, in which slots, packed how -- is only decidable once both stages are
 // known. That split matches GL's own semantics exactly.
 //
-// See docs/opengl-webgpu-plan.md E1/E3.
+// See docs/plan/opengl-webgpu-plan.md E1/E3.
 
 (function(global) {
     "use strict";

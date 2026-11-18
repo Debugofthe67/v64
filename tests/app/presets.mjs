@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The wizard's guest presets (src/app/guest_presets.js) and the settings
-// dialog's rules (src/app/vm_model.js), docs/vm-manager-plan.md U3: every
+// dialog's rules (src/app/vm_model.js), docs/plan/vm-manager-plan.md U3: every
 // preset's configuration passes validate_config and the library's checks
 // (check_machine_options, check_disk_options), the verified ones name their
 // basis; Android's gives the options the Android test starts with; and no
@@ -168,7 +168,7 @@ test("Android 7.1's emulator image: the options of tests/a32/android_boot.mjs (A
     assert.equal(config.machine.type, "ranchu");
     assert.equal(config.android, null);
     assert.deepEqual(problems(config), []);
-    // (its GPU modes, docs/gles-proxy-plan.md E5: the host's GPU or the
+    // (its GPU modes, docs/plan/gles-proxy-plan.md E5: the host's GPU or the
     // guest's CPU, "swiftshader" the guest's as before; not Cuttlefish's)
     for(const gpu_mode of ["host", "guest", "swiftshader"])
     {

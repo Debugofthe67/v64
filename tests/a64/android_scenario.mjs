@@ -1,4 +1,4 @@
-// A9's acceptance on a booted Android 16 (docs/arm64-virt-android16-plan.md
+// A9's acceptance on a booted Android 16 (docs/plan/arm64-virt-android16-plan.md
 // P11), over adb, the same steps on the QEMU reference and on v86
 // (tests/a64/android_boot.mjs A64_ANDROID_SCENARIO=a9):
 //

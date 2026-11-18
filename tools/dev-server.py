@@ -7,11 +7,11 @@
 # (index.html with more than one CPU core, src/parallel).
 #
 # It also starts the local disk service (tools/disk-service.mjs,
-# docs/disk-persistence-plan.md) on 127.0.0.1:8471 for the images in
+# docs/plan/disk-persistence-plan.md) on 127.0.0.1:8471 for the images in
 # images/ (V86_DISK_DIR another directory; V86_DISK_SERVICE=0 none), for
 # this page's origins only: the page's "read write" hard disks are
 # http://127.0.0.1:8471/<name>, written back to <directory>/<name>. The VM
-# manager may create new images there (--allow-create, docs/vm-manager-plan.md).
+# manager may create new images there (--allow-create, docs/plan/vm-manager-plan.md).
 import contextlib
 import http.server
 import io

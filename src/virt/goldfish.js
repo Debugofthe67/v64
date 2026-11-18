@@ -1,5 +1,5 @@
 // The Android emulator's goldfish devices, as the ranchu machine has them
-// (docs/aarch32-plan.md R6.2; src/virt/ranchu.js): what its system images'
+// (docs/plan/aarch32-plan.md R6.2; src/virt/ranchu.js): what its system images'
 // kernels drive (Linux 3.10's drivers/video/goldfishfb.c,
 // drivers/input/keyboard/goldfish_events.c, drivers/power/goldfish_battery.c,
 // drivers/staging/goldfish/goldfish_audio.c, drivers/platform/goldfish/
@@ -918,7 +918,7 @@ GoldfishPipe.prototype.wake_reader = function(pipe)
     }
 };
 
-// A snapshot keeps each channel with its service's state (docs/gles-proxy-plan.md
+// A snapshot keeps each channel with its service's state (docs/plan/gles-proxy-plan.md
 // E5); a channel whose service keeps none is closed at the restore (its client
 // sees its pipe closed), as every channel was before (a list of channels)
 const PIPE_STATE_VERSION = 2;

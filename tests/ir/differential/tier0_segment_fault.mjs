@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Accesses through a null segment selector in compiled 32-bit code
-// (docs/jit-unification-plan.md P7.2(3)): a hot loop loads a data segment
+// (docs/plan/jit-unification-plan.md P7.2(3)): a hot loop loads a data segment
 // based at 0x1000 into ES, so its code runs with other than flat segments,
 // loads a null selector into DS, ES, FS or GS in turn, reads through it (#GP,
 // whose handler counts it and skips the 3-byte read), and reloads the

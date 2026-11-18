@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CTS modules for Android 16 on the virt machine (docs/arm64-virt-android16-plan.md
+// CTS modules for Android 16 on the virt machine (docs/plan/arm64-virt-android16-plan.md
 // P12.3): the CTS of the image's release, android-cts-16.1_r1 (Android 16
 // QPR2, 2025-12-02; the image is BP4A.251205.006), is one zip of 23.8 GB,
 // more than this machine keeps, so only what is used comes over: the zip's

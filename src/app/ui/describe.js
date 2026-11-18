@@ -1,5 +1,5 @@
 // @ts-check
-// A configuration for people (docs/vm-manager-plan.md): where an image is,
+// A configuration for people (docs/plan/vm-manager-plan.md): where an image is,
 // and the hardware table of the library's summary and the settings list.
 
 import { format_size } from "./dom.js";
@@ -67,7 +67,7 @@ export function hardware_rows(c)
     }
     if(c.android)
     {
-        // (docs/android-images-plan.md I2: the kernel and initrd from the disk's boot partitions)
+        // (docs/plan/android-images-plan.md I2: the kernel and initrd from the disk's boot partitions)
         // (an emulator image's: its GLES drawn by the host's GPU, or the guest draws)
         rows.push(["Android boot", "from the first disk (" + c.android.device + "), " + (/^ranchu_/.test(c.android.device) ?
             "the emulator's disks, " + (c.android.gpu_mode === "host" ? "the host's GPU draws GLES " + c.android.gles_version : "the guest draws") :

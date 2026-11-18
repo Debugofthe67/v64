@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The GLES host's shader path on a corpus (docs/gles3-plan.md L1): glslang's
+// The GLES host's shader path on a corpus (docs/plan/gles3-plan.md L1): glslang's
 // check pass against what dEQP expects of each shader case, then for the
 // programs that link the whole way to WGSL: the code pass (SPIR-V),
 // glsl_program.js's interface and bindings, vx_naga, and naga's validation
@@ -362,7 +362,7 @@ if(!verbose && disagreements.length) console.log(disagreements.slice(0, 10).map(
 console.log(JSON.stringify(stats));
 if(option("--wgsl")) fs.writeFileSync(option("--wgsl"), JSON.stringify(wgsl_out));
 fs.rmSync(scratch, { recursive: true, force: true });
-// (what L1 reached, docs/gles3-plan.md: a fall below it is a regression)
+// (what L1 reached, docs/plan/gles3-plan.md: a fall below it is a regression)
 const deqp_programs = stats.programs - OWN.length;
 const regressed = own_failures || stats.wgsl_errors || deqp_programs > 0 && (stats.agree < 0.98 * stats.programs || stats.naga_errors > 2);
 if(regressed) console.log("FAIL: below L5's results (own cases, 98% agreement with dEQP, 2 vx_naga errors, no WGSL errors)");

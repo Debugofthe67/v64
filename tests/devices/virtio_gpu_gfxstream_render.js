@@ -2,7 +2,7 @@
 
 // gfxstream on a real renderer (headless Chrome's WebGPU,
 // tests/x64/gpu_remote_renderer.mjs): Android's gralloc buffers as Vulkan
-// sees them (docs/gfxstream-plan.md G3), the steps of
+// sees them (docs/plan/gfxstream-plan.md G3), the steps of
 // tests/a64/android/vkahb.c played by hand: a virtio-gpu resource
 // (RESOURCE_CREATE_3D, as minigbm makes an AHB), an image of it
 // (VkImportColorBufferGOOGLE in vkAllocateMemory), cleared on the GPU, then

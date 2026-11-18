@@ -1,5 +1,5 @@
 // @ts-check
-// The VM manager's side of a disk service (docs/vm-manager-plan.md "磁盘服务
+// The VM manager's side of a disk service (docs/plan/vm-manager-plan.md "磁盘服务
 // 的创建与列出", tools/disk-service.mjs): its images (list), a new image
 // (create), and whether a URL is a disk service at all (probe). Its images
 // are a configuration's images of kind "url" with disk_option "read_write".

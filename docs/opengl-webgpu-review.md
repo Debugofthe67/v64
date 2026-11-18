@@ -13,7 +13,7 @@
 
 审查对象：Windows XP 客体的 `opengl32.dll` 代理（OpenGL 1.1–2.1 + WGL），以及宿主的 `gl-webgpu` 执行器、GLSL/ARB 翻译器和固定管线生成器。
 基线：v86 `e92fd4f0`（`ios6` 分支；`gl-webgpu/` 中只有 `gl_shader_translator.js` 与 `master` 不同，多了 GLES 3.x L0 的 240 行），retro-gaming-site `43c4d1e`。日期 2026-10-29。
-性质：本文保留修复前的审查基线，已提交；当前修复进度和验收结果见 [`opengl-webgpu-plan.md`](opengl-webgpu-plan.md)。它是 [`d3d-webgpu-review.md`](d3d-webgpu-review.md) 的姊妹篇。两条路径共用 `v86gl.sys`、`v86gl_device.js`、`graphics_proxy.js`、`v86_network_bridge.js` 和 `webgpu_host.js`，交叉问题在文中注明。
+性质：本文保留修复前的审查基线，已提交；当前修复进度和验收结果见 [`opengl-webgpu-plan.md`](plan/opengl-webgpu-plan.md)。它是 [`d3d-webgpu-review.md`](d3d-webgpu-review.md) 的姊妹篇。两条路径共用 `v86gl.sys`、`v86gl_device.js`、`graphics_proxy.js`、`v86_network_bridge.js` 和 `webgpu_host.js`，交叉问题在文中注明。
 
 2026-10-31 的 C 退出记录：S1-1 已用真实 XP 冷启动、新驱动/DLL、GLSL 探针和 Cube 2 worker Complex 地图验证修复（超过 100 万次绘制、233 次链接，无宿主或 GPU 校验错误）。后续 D/E/F/G 结果见顶部最终复核和验收记录。
 
@@ -481,7 +481,7 @@ game.exe
 | glGet 的回答 | 一部分在客体本地回答 | 另一部分由宿主回答 | 光源位置、裁剪平面、光栅位置两边的空间不同（对象空间 vs 眼空间），整数换算不同（S2-9、S2-15） |
 | 极限值与扩展串 | 客体有一份，并夹取到宣称值 | 宿主另有一份 | 两边不一致（ARB 96 vs 28，纹理单元 16 vs 8） |
 
-GLES 方案（`docs/gles-proxy-plan.md`）在同一个问题上做了明确选择：状态、错误、程序信息都放在 CPU 侧的影子（`src/gles/gles_shadow.js`，跑在 CPU worker 里），页面只负责渲染。只有 ReadPixels、Finish 和同步等待才需要页面。XP 的 GL 路径是唯一一条“页面权威、同步回答”的路径，也正是它在 worker 模式下坏了。阶段 3 建议向 GLES 的架构收敛。
+GLES 方案（`docs/plan/gles-proxy-plan.md`）在同一个问题上做了明确选择：状态、错误、程序信息都放在 CPU 侧的影子（`src/gles/gles_shadow.js`，跑在 CPU worker 里），页面只负责渲染。只有 ReadPixels、Finish 和同步等待才需要页面。XP 的 GL 路径是唯一一条“页面权威、同步回答”的路径，也正是它在 worker 模式下坏了。阶段 3 建议向 GLES 的架构收敛。
 
 ### 5.2 宿主执行器
 
@@ -778,8 +778,8 @@ D3D 审查用 Wine 的一致性测试作参照（它们在真实 Windows 上运�
 | --- | --- |
 | 1 | 状态归属选 (b)：CPU 侧权威，与 GLES 的架构一致 |
 | 2 | 同意下载 Mesa 作为第二参照 |
-| 3 | GLSL 前端分两步：glslang 先做检查与反射；代码生成是否也换成 glslang，由不超过一周的试验决定（见 [`opengl-webgpu-plan.md`](opengl-webgpu-plan.md) §0.1） |
-| 4 | 不先上 worker 模式的最小修复，所有修复放在一个计划里完成：[`opengl-webgpu-plan.md`](opengl-webgpu-plan.md) |
+| 3 | GLSL 前端分两步：glslang 先做检查与反射；代码生成是否也换成 glslang，由不超过一周的试验决定（见 [`opengl-webgpu-plan.md`](plan/opengl-webgpu-plan.md) §0.1） |
+| 4 | 不先上 worker 模式的最小修复，所有修复放在一个计划里完成：[`opengl-webgpu-plan.md`](plan/opengl-webgpu-plan.md) |
 
 下表是做决定之前的原始问题和建议，保留备查。
 

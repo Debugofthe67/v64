@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Exceptions and the system controls of the A64 core against QEMU
-// (docs/arm64-virt-android16-plan.md P3.2): every fault point records the
+// (docs/plan/arm64-virt-android16-plan.md P3.2): every fault point records the
 // syndrome (ESR_EL1), FAR_EL1 where the class defines it, ELR_EL1,
 // SPSR_EL1, X0-X7 and NZCV as the exception left them, and the vector it
 // came through; QEMU's records and v86's must be equal. The cases run at

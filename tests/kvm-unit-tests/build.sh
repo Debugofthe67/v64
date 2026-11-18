@@ -5,7 +5,7 @@
 # usage: build.sh [ARCH [TEST.flat...]]
 #   ARCH defaults to i386; the tests default to the ones in `make kvm-unit-test`
 #   ARCH arm64-4k, arm64-16k or arm64-64k: upstream's arm64 tests with that
-#   translation granule (docs/arm64-virt-android16-plan.md P0.6), built from
+#   translation granule (docs/plan/arm64-virt-android16-plan.md P0.6), built from
 #   the pinned upstream checkout KUT_ARM64_SRC (default build/a64-ref/
 #   kvm-unit-tests at $kut_arm64_commit): this copy's lib/ is years older
 #   than upstream's arm/ and lib/arm*.
@@ -27,7 +27,7 @@ case "$arch" in arm64-*|arm)
     fi
     if [ $# -eq 0 ] && [ "$arch" = arm ]
     then
-        # (ARCH arm: the 32-bit tests, cpu_type arm32's: docs/aarch32-plan.md R5.1)
+        # (ARCH arm: the 32-bit tests, cpu_type arm32's: docs/plan/aarch32-plan.md R5.1)
         # (upstream's timer, cache, debug and fpu tests are arm64's)
         set -- arm/selftest.flat arm/psci.flat arm/gic.flat arm/pmu.flat arm/pl031.flat arm/spinlock-test.flat arm/sieve.flat
     elif [ $# -eq 0 ]

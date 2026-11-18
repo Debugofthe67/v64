@@ -1,4 +1,4 @@
-// v64's Android bootloader (docs/android-images-plan.md I2): from the
+// v64's Android bootloader (docs/plan/android-images-plan.md I2): from the
 // first disk's GPT, the slot's boot, init_boot, vendor_boot and vbmeta
 // partitions (and those vbmeta chains), what the device's bootloader hands
 // the kernel (boot.js): the kernel, the initrd with bootconfig, the command

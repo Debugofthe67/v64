@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// virtio-blk's failed requests and FLUSH (docs/disk-persistence-plan.md D0),
+// virtio-blk's failed requests and FLUSH (docs/plan/disk-persistence-plan.md D0),
 // the test the driver through the virtio-mmio registers and a queue in
 // guest RAM (as tests/a64/device_io_reset.mjs). The disk's writes complete
 // after a delay the test sets per write; its reads and writes fail on

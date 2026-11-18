@@ -391,7 +391,7 @@ else {
         disable_jit: +process.env.DISABLE_JIT,
         // the references are hardware results: exact x87 arithmetic and flags
         x87_fast_math: false,
-        // the generated tests include the forms of docs/simd-xsave-plan.md
+        // the generated tests include the forms of docs/plan/simd-xsave-plan.md
         // that are implemented so far
         cpu_features: ["SSSE3", "SSE4.1", "SSE4.2"],
         ...FORCE_JIT ? { jit_switches: { x64_legacy_heat: 1, x64_legacy_recompile_misses: 1 } } : {},

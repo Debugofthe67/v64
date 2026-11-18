@@ -1,4 +1,4 @@
-// AArch32 EL0 cases of docs/aarch32-plan.md Q2.3, Q3.2, Q3.3
+// AArch32 EL0 cases of docs/plan/aarch32-plan.md Q2.3, Q3.2, Q3.3
 // (tests/a64/aarch32_el0.mjs, A64_AARCH32_CASES=q3): branches and
 // interworking in both directions (B, BL, BX, BLX, loads of the PC, the
 // ALU's writes of it), CBZ and CBNZ, TBB and TBH, conditional branches,

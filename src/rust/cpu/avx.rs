@@ -1,7 +1,7 @@
-//! AVX: the VEX-encoded SIMD instructions (docs/simd-xsave-plan.md, P5-P6).
+//! AVX: the VEX-encoded SIMD instructions (docs/plan/simd-xsave-plan.md, P5-P6).
 //! One executor serves the 32-bit interpreter (crate::cpu::vex) and the x64
 //! engine (crate::x64::vector); the IR region tiers' helper too until
-//! docs/jit-unification-plan.md M11 deleted them.
+//! docs/plan/jit-unification-plan.md M11 deleted them.
 //! An engine decodes the instruction (decode_rules::vex_row: the row exists,
 //! has its semantics and accepts the VEX fields), calls `check` once all of
 //! its bytes are fetched and before its operand's segment is checked, then

@@ -1,4 +1,4 @@
-// What the renderer can do, as OpenGL reports it (docs/opengl-webgpu-plan.md
+// What the renderer can do, as OpenGL reports it (docs/plan/opengl-webgpu-plan.md
 // C3: the capabilities come from one place). The page's executor and the CPU
 // side's shadow (gl_shadow.js) both answer from here. A capabilities object
 // is { limits, features } as the WebGPU adapter reports them -- plain data:

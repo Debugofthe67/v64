@@ -7,7 +7,7 @@ L 约 3–4 周，XL 超过一个月（与 [ARM64 virt 与 Android 16 计划](ar
 渲染控制、合成）转发到宿主 GPU 用的协议。目标是**不修改**官方镜像也能用 GPU 绘制 Android 16：
 Cuttlefish 官方镜像，以及搭配 Cuttlefish vendor 的官方 GSI（例如 `aosp_arm64-exp-BP2A.250605.031.A3`）。
 现在的 Venus 路线要往 odm 注入我们编译的 Mesa venus 驱动、改写 odm 的 hash tree 与 vbmeta，再用
-`initrd-venus.img` 改几个 bootconfig 键（[aarch64.md](aarch64.md)、[tools/a64_android.mjs](../tools/a64_android.mjs)
+`initrd-venus.img` 改几个 bootconfig 键（[aarch64.md](../aarch64.md)、[tools/a64_android.mjs](../../tools/a64_android.mjs)
 117–120、898–911）；gfxstream 用的是 Cuttlefish vendor 里本来就有的客体驱动。
 
 Venus 不撤：它服务 Linux 客体的 Mesa venus，也是 gfxstream 完成前 Android 的路线。两者共用
@@ -40,19 +40,19 @@ Vulkan 模型与 VX 执行器（Vulkan 到 WebGPU），只是前端协议不同�
 
 | 部分 | 位置 | 对 gfxstream 的意义 |
 | --- | --- | --- |
-| virtio-gpu 设备、级别、capset 表 | [virtio_gpu_device.js](../src/graphics_adapters/virtio_gpu/virtio_gpu_device.js) `LEVELS` 58–77、capset 列表 360、GET_CAPSET 760–781 | 新级别 `gfxstream` 与新 capset 在这里声明 |
+| virtio-gpu 设备、级别、capset 表 | [virtio_gpu_device.js](../../src/graphics_adapters/virtio_gpu/virtio_gpu_device.js) `LEVELS` 58–77、capset 列表 360、GET_CAPSET 760–781 | 新级别 `gfxstream` 与新 capset 在这里声明 |
 | CONTEXT_INIT 分派 | 同文件 `command_3d` 1388–1402 | 按 capset 建上下文，现为 virgl 与 Venus 两种 |
 | SUBMIT_3D | 同文件 1449–1472 | gfxstream 上下文命令（建上下文、ping、同步导出）从这里进来 |
 | 围栏 | 同文件 `notify`/`enqueue`/`drain`/`respond` 530–663 | 现在全部按控制队列顺序完成，没有按环的围栏队列；gfxstream 依赖按环的时间线（见 G1） |
 | blob 与映射 | 同文件 `create_blob` 897–932、`map_blob` 938–975 | ASG 环与 host-visible 的 Vulkan 内存都是 HOST3D blob |
-| host-visible 内存 | 同文件 207–214（venus 级 128 MiB）、386–412（BAR）、1014–1084 | 直接复用；环的读取与 Venus 的 `run_ring`（[venus.js](../src/graphics_adapters/virtio_gpu/venus.js) 557–601）同理 |
-| Vulkan 模型 | [venus_vk.js](../src/graphics_adapters/virtio_gpu/venus_vk.js)、`venus_vk_resources.js`、`venus_vk_commands.js`、`venus_vk_pipeline.js`（共约 2600 行，125 个处理函数） | 对象、提交、等待、内存镜像、快照记录；要拆成与协议无关的模型，两种前端共用 |
-| 设备能力 | [venus_device_info.js](../src/graphics_adapters/virtio_gpu/venus_device_info.js) | Vulkan 1.1、WebGPU 的限制与格式；gfxstream 前端报同一组能力 |
-| 渲染器与 VX | [renderer_protocol.js](../src/graphics_adapters/renderer_protocol.js)、[svga_renderer.js](../src/browser/glbridge/svga_renderer.js)、[vx_executor.js](../src/browser/glbridge/vx/vx_executor.js)（2819 行）、naga（SPIR-V 到 WGSL） | 不改协议即可复用；ANGLE 在 VX 上目前得到 GLES 3.0（[gpu-deviations.md](gpu-deviations.md) 98） |
+| host-visible 内存 | 同文件 207–214（venus 级 128 MiB）、386–412（BAR）、1014–1084 | 直接复用；环的读取与 Venus 的 `run_ring`（[venus.js](../../src/graphics_adapters/virtio_gpu/venus.js) 557–601）同理 |
+| Vulkan 模型 | [venus_vk.js](../../src/graphics_adapters/virtio_gpu/venus_vk.js)、`venus_vk_resources.js`、`venus_vk_commands.js`、`venus_vk_pipeline.js`（共约 2600 行，125 个处理函数） | 对象、提交、等待、内存镜像、快照记录；要拆成与协议无关的模型，两种前端共用 |
+| 设备能力 | [venus_device_info.js](../../src/graphics_adapters/virtio_gpu/venus_device_info.js) | Vulkan 1.1、WebGPU 的限制与格式；gfxstream 前端报同一组能力 |
+| 渲染器与 VX | [renderer_protocol.js](../../src/graphics_adapters/renderer_protocol.js)、[svga_renderer.js](../../src/browser/glbridge/svga_renderer.js)、[vx_executor.js](../../src/browser/glbridge/vx/vx_executor.js)（2819 行）、naga（SPIR-V 到 WGSL） | 不改协议即可复用；ANGLE 在 VX 上目前得到 GLES 3.0（[gpu-deviations.md](../gpu-deviations.md) 98） |
 | 显示 | `set_scanout_blob`、`present`、`render`（1090–1206、1602–1676） | 客户端合成走现有的 KMS 路径；每次 3D 呈现都要回读（G-31），是性能瓶颈 |
 | 协议生成 | `tools/venus_protocol_gen.mjs`、`venus_protocol.js`（15133 行，Mesa 26.1.6） | gfxstream 的编码同样从代码生成器的输入生成 |
 | 测试 | `tests/devices/virtio_gpu_venus.js`（假 VX 渲染器）、`tests/x64/gpu_remote_renderer.mjs`（无头 Chrome 里的真渲染器）、`tests/a64/android_boot.mjs`（`A64_ANDROID_GPU=venus`） | 各加 gfxstream 的对应用例 |
-| 未声明 | [third_party/virtio/virtio_gpu.h](../third_party/virtio/virtio_gpu.h) 318–323 定义了 `GFXSTREAM_VULKAN 3`；[gpu-devices.md](gpu-devices.md) 1651–1655 记为“需要宿主的 gfxstream” | 本计划完成后改写这两处 |
+| 未声明 | [third_party/virtio/virtio_gpu.h](../../third_party/virtio/virtio_gpu.h) 318–323 定义了 `GFXSTREAM_VULKAN 3`；[gpu-devices.md](../gpu-devices.md) 1651–1655 记为“需要宿主的 gfxstream” | 本计划完成后改写这两处 |
 
 ## 设计
 
@@ -65,7 +65,7 @@ Vulkan 模型与 VX 执行器（Vulkan 到 WebGPU），只是前端协议不同�
 - gralloc：minigbm（`libminigbm_gralloc`、`mapper.minigbm.so`），缓冲是 virtio-gpu 资源。
 - 合成：ranchu HWC。它在 `ro.hardware.vulkan` 不是 `pastel` 时用 gfxstream 的宿主合成（renderControl
   的 compose），设 `hwcomposer.mode=client` 则由 SurfaceFlinger 用 GPU 合成后经 DRM/KMS 翻页
-  （[tools/a64_android.mjs](../tools/a64_android.mjs) 24–26 的记录）。G0 确定官方启动器在该模式下用哪一种。
+  （[tools/a64_android.mjs](../../tools/a64_android.mjs) 24–26 的记录）。G0 确定官方启动器在该模式下用哪一种。
 - 传输：`gltransport=virtio-gpu-asg`（Address Space Graphics 环，放在 HOST3D blob 里）。
 
 ### 宿主侧（v64 新增）
@@ -94,7 +94,7 @@ gfxstream.js（传输：上下文、ASG 环的读取与 ping、同步导出）
   `GFXSTREAM_COMPOSER`（9）的上下文，由 G0 的轨迹决定。capset 内容（协议版本、环与缓冲大小、
   `noRenderControlEnc`、`alwaysBlob`、`externalSync`、`blobAlignment`、`deferredMapping`、
   `colorBufferMemoryIndex`、格式位图）照固定版本的上游头文件填，只公布实现了的能力
-  （[gpu-deviations.md](gpu-deviations.md) 的规则）。
+  （[gpu-deviations.md](../gpu-deviations.md) 的规则）。
 - **传输**：SUBMIT_3D 里的 gfxstream 上下文命令（`GFXSTREAM_CONTEXT_CREATE`、`CONTEXT_PING`、
   `CONTEXT_PING_WITH_RESPONSE`、`CREATE_EXPORT_SYNC`、`CREATE_IMPORT_SYNC_VK`、`CREATE_EXPORT_SYNC_VK`、
   `CREATE_QSRI_EXPORT_VK`、`RESOURCE_CREATE_3D`、`PLACEHOLDER_COMMAND_VK`；数值取自固定版本的
@@ -155,7 +155,7 @@ bootconfig 的 GPU 键，不改分区）。
 验收：参考宿主进入桌面；轨迹语料与命令清单入库；本计划的未定项（capset 组合、合成方式）定稿。
 
 进度（2026-10-24）：
-- 版本固定与协议：完成，记在 [gfxstream-protocol.md](gfxstream-protocol.md)。Cuttlefish 15581820 的清单给出
+- 版本固定与协议：完成，记在 [gfxstream-protocol.md](../gfxstream-protocol.md)。Cuttlefish 15581820 的清单给出
   `device/google/cuttlefish` `4d368849`、mesa `d4b6f1eb`（客体的 gfxstream Vulkan 驱动与传输在 mesa 的
   `src/gfxstream/guest`，不在 gfxstream 仓库）、gfxstream `7e9d595b`、ANGLE `ff25cbdf`、minigbm `b7c93249`。
   capset：3 Vulkan、8 GLES、9 composer（字段布局已记）；execbuffer 命令表（CONTEXT_CREATE/PING、同步、
@@ -167,7 +167,7 @@ bootconfig 的 GPU 键，不改分区）。
   `virtio-gpu-rutabaga,gfxstream-vulkan=on,x-gfxstream-composer=on,hostmem=256M`。客体里 HWC 带 renderControl
   编码器（composer capset），GLES 是 ANGLE（没有宿主 GLES）。macOS 上 Cuttlefish 自己的启动器不提供 gfxstream。
 - 参考宿主与轨迹：命令清单完成——官方镜像从第一个 gfxstream 上下文到桌面发出的 Vulkan 命令与次数（v86 上
-  `A64_ANDROID_GFXSTREAM_TRACE=1` 记录）写进 [gfxstream-protocol.md](gfxstream-protocol.md) 的“What the official
+  `A64_ANDROID_GFXSTREAM_TRACE=1` 记录）写进 [gfxstream-protocol.md](../gfxstream-protocol.md) 的“What the official
   image sends”。参考宿主（QEMU 的 rutabaga 加 gfxstream 宿主）不做：协议由客体自己的编码器对照（G2 的对照程序与
   向量）检验，官方镜像在 v86 上到桌面并通过 A9 场景是端到端的检验；macOS 上要另建 Linux 虚拟机、rutabaga、
   gfxstream 宿主与 lavapipe（A3/A5 记录的 aarch64 崩溃），投入大而不再改变实现。
@@ -191,7 +191,7 @@ bootconfig 的 GPU 键，不改分区）。
 处理者，blob 的 `venus` 标记改成所属处理者。Venus 的设备测试（`tests/devices/virtio_gpu_venus.js`、
 `venus_protocol.js`）逐字不变即是这一步的门禁。gfxstream 的 ASG blob（blob id 0、host3d、可映射）与 Venus 的共享内存
 blob 同类，映射与脏页的路径可以共用。宿主在空闲时把 `host_state` 置为 `NEED_NOTIFY`（0），客体每次刷新都会 ping
-（[gfxstream-protocol.md](gfxstream-protocol.md)），设备不必在 CPU 的时间片之间轮询环。
+（[gfxstream-protocol.md](../gfxstream-protocol.md)），设备不必在 CPU 的时间片之间轮询环。
 
 进度（2026-10-24）：完成。级别 `gfxstream`、两个 capset（3、9）、上下文类型表、`gfxstream.js` 的传输：一个
 virtio-gpu 上下文（一个客体进程）可有多个 ASG 环（每个线程的流一个，按 blob 的资源号，同宿主的
@@ -292,8 +292,8 @@ SET_SCANOUT 0 时撤下图层。Venus 与 gfxstream 的扫描输出（RESOURCE_C
 - 场景：沿用 `tests/a64/android_scenario.mjs` 的 A9 场景（桌面、触摸打开 Gallery、Wi-Fi 与 HTTP、APK 安装与
   启动、重启），加 `A64_ANDROID_GPU=gfxstream`；dEQP-VK 与 dEQP-GLES3 抽样（appendix F 的工具）。
 - VM 管理器：Android 预设默认 `display.vulkan: "gfxstream"`；向导导入官方镜像时不再需要 initrd-venus。
-- 文档：[aarch64.md](aarch64.md) 的 Android 一节、[gpu-devices.md](gpu-devices.md) 的 gfxstream 一节与
-  “Not done”、[gpu-deviations.md](gpu-deviations.md) 新增条目。
+- 文档：[aarch64.md](../aarch64.md) 的 Android 一节、[gpu-devices.md](../gpu-devices.md) 的 gfxstream 一节与
+  “Not done”、[gpu-deviations.md](../gpu-deviations.md) 新增条目。
 
 验收：两种官方镜像都进入桌面并通过 A9 场景；指标与 Venus 并列记录（冷启动、桌面、帧、应用启动）。
 
@@ -308,7 +308,7 @@ Worker、页层、1536 MB 下通过 A9 场景（`A64_ANDROID_SCENARIO=a9 A64_AND
 2026-10-25 在同样的配置下通过 A9 场景：`boot_completed` 991 s，SELinux enforcing，QuickstepLauncher 在前台，GLES 同上
 （`Virtio-GPU GFXStream (v86 WebGPU)`，OpenGL ES 3.0），Wi-Fi 与 HTTP（关开之后也通），触摸打开 Gallery，APK 安装
 Success、启动 25.6 s，重启后 477 s 再到 `boot_completed`、应用与 /data 都在，无应用崩溃。文档：
-[gpu-devices.md](gpu-devices.md) 的 gfxstream 一节与 [gpu-deviations.md](gpu-deviations.md) 的 G-59 至 G-63。
+[gpu-devices.md](../gpu-devices.md) 的 gfxstream 一节与 [gpu-deviations.md](../gpu-deviations.md) 的 G-59 至 G-63。
 dEQP 抽样（2026-10-25，从 A10 的桌面状态恢复，`A64_ANDROID_SCENARIO=deqp`，与 Venus 同一份
 `build/a64-android/deqp-sample` 的 1334 个 GLES3 用例）：通过 1233、不支持 94、失败 5、质量警告 2，与 Venus 的计数相同；
 失败的也是 Venus 的那 5 个（3 个显式 lod 或梯度的阴影查找，2 个 `fbo.invalidate` 之后把多重采样的颜色缓冲 blit 到窗口；

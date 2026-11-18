@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// One connection's stream (src/gles/gles_stream.js; docs/gles-proxy-plan.md E1):
+// One connection's stream (src/gles/gles_stream.js; docs/plan/gles-proxy-plan.md E1):
 // - the client flags, then commands, written whole, split at every byte
 //   and in random pieces: the same commands decoded, the same replies;
 // - a reply that waits (a promise) keeps the replies in the commands'

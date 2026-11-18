@@ -3,7 +3,7 @@
 // USB disks (usb.mass_storage, src/usb/mass_storage.js, docs/usb.md): a
 // disk image as a USB stick behind the UHCI controller, driven through the
 // controller's registers and a schedule in guest memory, no guest code; the
-// test moves the machine clock (docs/modern-pc-devices-plan.md U2).
+// test moves the machine clock (docs/plan/modern-pc-devices-plan.md U2).
 // Enumeration, GET_MAX_LUN, Bulk-Only Transport (CBW, data, CSW, tags,
 // residues, the cases where host and device disagree, an invalid CBW and the
 // reset recovery), the SCSI commands (INQUIRY, TEST UNIT READY, READ

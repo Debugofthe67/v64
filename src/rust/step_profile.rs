@@ -1,4 +1,4 @@
-//! The step profile (docs/jit-unification-plan.md P0.5): which instructions
+//! The step profile (docs/plan/jit-unification-plan.md P0.5): which instructions
 //! compiled code leaves to the interpreter (the x64 page tier's; IR Tier-0's
 //! too until P7.5), keyed by StepKey v1. Off by default (the JIT switch
 //! step_profile); while it is on, every step decodes its instruction's
@@ -28,7 +28,7 @@
 //! Bits 13 and 15 are 0. Bits 0-17 alone are the x64 page tier's earlier key,
 //! which x64_page_profile_get still reads (x64::pages).
 //!
-//! Events that are not steps share the store (docs/jit-unification-plan.md
+//! Events that are not steps share the store (docs/plan/jit-unification-plan.md
 //! P4.0) with the stepper Event: bits 0-7 the event (the `event` module),
 //! 8-15 its detail, 25-27 the mode; note_event counts them while the profile
 //! is on.

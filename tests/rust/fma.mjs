@@ -1,4 +1,4 @@
-// FMA and F16C in the 32-bit engines (docs/simd-xsave-plan.md 9.3, P11)
+// FMA and F16C in the 32-bit engines (docs/plan/simd-xsave-plan.md 9.3, P11)
 // against tests/rust/sse_fp_model.mjs (exact rational arithmetic, independent
 // of SoftFloat and cpu/simd_fp.rs). Every FMA form (VFMADD, VFMSUB, VFNMADD,
 // VFNMSUB 132/213/231 PS/PD/SS/SD; VFMADDSUB, VFMSUBADD 132/213/231 PS/PD;

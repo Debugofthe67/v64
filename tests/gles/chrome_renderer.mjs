@@ -1,4 +1,4 @@
-// A renderer channel to a real GPU for Node tests (docs/gles-proxy-plan.md
+// A renderer channel to a real GPU for Node tests (docs/plan/gles-proxy-plan.md
 // E3): headless Chrome (WebGPU) runs the page's renderer
 // (tests/glbridge/gles_remote_renderer.html: V86SVGARenderer, its GLES
 // executor) and the channel's messages cross over HTTP: the page long-polls

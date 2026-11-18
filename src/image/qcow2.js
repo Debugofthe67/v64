@@ -1,4 +1,4 @@
-// QCOW2 images, versions 2 and 3 (docs/disk-image-formats-plan.md P1, P2;
+// QCOW2 images, versions 2 and 3 (docs/plan/disk-image-formats-plan.md P1, P2;
 // the format: https://www.qemu.org/docs/master/interop/qcow2.html): the
 // active disk through the L1 and L2 tables, with data, unallocated, zero and
 // compressed (deflate, zstd) clusters, and a parent (backing file) the

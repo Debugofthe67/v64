@@ -433,7 +433,7 @@ CPU.prototype.physical_limit = 0x1000000000;
 
 /**
  * Where a device's DMA to [address, address + length) goes (the machine's
- * DMA facade, docs/arm64-virt-android16-plan.md P1.6)
+ * DMA facade, docs/plan/arm64-virt-android16-plan.md P1.6)
  * @param {number} address
  * @param {number} length
  * @return {number} the offset of one contiguous plain-RAM backing,
@@ -1050,7 +1050,7 @@ CPU.prototype.validate_physical_state = function(state)
 /**
  * The features cpu_type "x86_64" has when cpu_features is not given: every
  * released one of its profile (the owner's decision of 2026-10-17, which
- * replaced docs/simd-xsave-plan.md Q1's "the old CPU unless asked")
+ * replaced docs/plan/simd-xsave-plan.md Q1's "the old CPU unless asked")
  */
 const X86_64_DEFAULT_FEATURES = Object.keys(CPU_FEATURES).filter(name =>
     CPU_FEATURES[name]["released"] && CPU_FEATURES[name]["profiles"].includes("x86_64"));
@@ -1060,7 +1060,7 @@ const X86_64_DEFAULT_FEATURES = Object.keys(CPU_FEATURES).filter(name =>
  * explicit nonempty list of extension names or a named preset. Omitting it
  * selects every released feature for x86_64 and no extensions for x86. A
  * feature that cpuid_level cannot report is left out, with the features that
- * require it (docs/simd-xsave-plan.md 6.1); an unknown feature, one the CPU
+ * require it (docs/plan/simd-xsave-plan.md 6.1); an unknown feature, one the CPU
  * profile cannot have or one without its requirements is an error.
  * @param {Array<string>|string|undefined} requested
  * @param {boolean} x86_64
@@ -1116,7 +1116,7 @@ export function resolve_cpu_features(requested, x86_64, cpuid_level)
 
 /**
  * The features of the setting cpu_features whose milestone is not released
- * yet (docs/simd-xsave-plan.md 4.1): they are for tests and development, and
+ * yet (docs/plan/simd-xsave-plan.md 4.1): they are for tests and development, and
  * their instructions may still be #UD
  * @param {Array<string>|string|undefined} requested
  * @return {Array<string>}
@@ -1388,7 +1388,7 @@ CPU.prototype.validate_state = function(state)
 /**
  * A snapshot's hard disks must be the images this machine has: the changes
  * of a disk image in a container format are not applied to another image
- * (docs/disk-image-formats-plan.md P1). Checked before anything is restored.
+ * (docs/plan/disk-image-formats-plan.md P1). Checked before anything is restored.
  * @param {!Array<*>} state
  */
 CPU.prototype.validate_disk_states = function(state)
@@ -1882,7 +1882,7 @@ CPU.prototype.core_runnable = function(core)
  */
 /**
  * Whether the guest turned the machine off (ACPI S5 or S4): the machine's
- * power hook (src/main.js; docs/arm64-virt-android16-plan.md P1.8)
+ * power hook (src/main.js; docs/plan/arm64-virt-android16-plan.md P1.8)
  * @return {boolean}
  */
 CPU.prototype.powered_off = function()
@@ -2970,7 +2970,7 @@ CPU.prototype.configure_jit_backend = function(settings)
         throw new Error("This core has no JIT; rebuild build/v86.wasm");
     // (the IR region tiers' settings, ir_region_budget, ir_opt_level,
     // ir_passes_disabled, ir_verify, ir_dump, ir_stats and ir_page_mode, are
-    // deprecated and have no effect: docs/jit-unification-plan.md M11
+    // deprecated and have no effect: docs/plan/jit-unification-plan.md M11
     // deleted the region tiers, and the x64 page tier compiles all code)
     const enabled = !settings.disable_jit;
     if(!exports["jit_set_enabled"](enabled ? 1 : 0))
@@ -2990,10 +2990,10 @@ CPU.prototype.get_jit_info = function()
 {
     const exports = this.wm.exports;
     // (the page tier's counters, through jitrt's jit_stat: client 0,
-    // docs/jit-unification-plan.md P5.10)
+    // docs/plan/jit-unification-plan.md P5.10)
     const stat = exports["jit_stat"] ? field => exports["jit_stat"](0, field) : null;
     // (the IR region tiers' statistics and settings went with them,
-    // docs/jit-unification-plan.md M11; IR Tier-0's before, P7.5)
+    // docs/plan/jit-unification-plan.md M11; IR Tier-0's before, P7.5)
     return {
         "backend": this.jit_backend,
         "ir_available": !!exports["jit_set_enabled"],
@@ -3023,7 +3023,7 @@ CPU.prototype.get_jit_info = function()
 CPU.prototype.init = function(settings, device_bus)
 {
     // (the V86 constructor checked the options; this is the x86 CPU, of the
-    // PC machines: docs/arm64-virt-android16-plan.md P1.1)
+    // PC machines: docs/plan/arm64-virt-android16-plan.md P1.1)
     const machine_type = check_machine_options(settings).machine_type;
     if(machine_type === "virt" || machine_type === "ranchu")
     {
@@ -3074,7 +3074,7 @@ CPU.prototype.init = function(settings, device_bus)
     this.configure_extended_memory(settings.extended_memory_size || 0, settings.extended_memory_cache);
 
     settings.cpuid_level && this.set_cpuid_level(settings.cpuid_level);
-    // The features of docs/simd-xsave-plan.md (src/cpu_features.js): those
+    // The features of docs/plan/simd-xsave-plan.md (src/cpu_features.js): those
     // cpu_features names (for x86_64 every released one if it names none),
     // and for tests and development the unreleased ones, which warn unless
     // cpu_features_unreleased is set
@@ -3083,7 +3083,7 @@ CPU.prototype.init = function(settings, device_bus)
     const unreleased = unreleased_cpu_features(settings["cpu_features"]);
     if(unreleased.length && !settings["cpu_features_unreleased"])
     {
-        console.warn("cpu_features: " + unreleased.join(", ") + " not released yet (docs/simd-xsave-plan.md): " +
+        console.warn("cpu_features: " + unreleased.join(", ") + " not released yet (docs/plan/simd-xsave-plan.md): " +
             "for tests and development, their instructions may still be #UD");
     }
     this.wm.exports["set_cpu_features"](this.cpu_features);

@@ -1,4 +1,4 @@
-; BMI1, BMI2, LZCNT and MOVBE (the templates of docs/simd-xsave-plan.md P10
+; BMI1, BMI2, LZCNT and MOVBE (the templates of docs/plan/simd-xsave-plan.md P10
 ; part 2): the words of a 4 KiB table, loaded big-endian (MOVBE), each set
 ; bit in turn (TZCNT, BLSR), then LZCNT and a left-aligned copy (SHLX), the
 ; low bits below a count (BZHI), BLSMSK, ANDN and shifts by register (SARX,

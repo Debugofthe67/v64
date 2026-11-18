@@ -1,4 +1,4 @@
-// The virt machine's device tree (docs/arm64-virt-android16-plan.md P4.1): a
+// The virt machine's device tree (docs/plan/arm64-virt-android16-plan.md P4.1): a
 // flattened device tree (devicetree specification v0.4, version 17) of what
 // the machine has, laid out as the reference's (QEMU 9.2 virt, dumpdtb): the
 // same nodes, properties and phandle numbering (the clock 0x8000, the cores

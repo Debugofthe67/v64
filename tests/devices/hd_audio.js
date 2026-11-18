@@ -3,7 +3,7 @@
 // The HD Audio controller (audio_device "hd_audio", the plugin of
 // src/audio_devices/hd_audio/), driven through its registers, rings and
 // buffer descriptor lists in guest memory; no guest code runs, the test moves
-// the machine clock (docs/modern-pc-devices-plan.md, H1): PCI identity on
+// the machine clock (docs/plan/modern-pc-devices-plan.md, H1): PCI identity on
 // i440FX and Q35, the controller reset and the codec's presence, CORB/RIRB
 // and immediate commands, the codec's nodes and verbs, an output stream
 // (rate, LPIB, the DMA position buffer, completion interrupts, wrap, SSYNC,

@@ -1,5 +1,5 @@
 //! The AArch64 core's architectural state and exceptions
-//! (docs/arm64-virt-android16-plan.md P2, P3): the registers in the state
+//! (docs/plan/arm64-virt-android16-plan.md P2, P3): the registers in the state
 //! block (crate::aarch64::state), PSTATE, the banked stack pointers, and
 //! synchronous exception entry and return at EL1. An instruction that faults
 //! has written no state (P2.9): it computes everything, then commits.
@@ -22,7 +22,7 @@ pub const PSTATE_PAN: u32 = 1 << 22;
 /// The bits of `pstate` an SPSR keeps (M[4:0] as AArch64 EL0t/EL1t/EL1h, DAIF, IL, SS, PAN)
 pub const PSTATE_SAVED: u32 = 0x1F | PSTATE_DAIF | PSTATE_IL | PSTATE_SS | PSTATE_PAN;
 
-// AArch32 at EL0 (profile v3, docs/aarch32-plan.md): `pstate` as an
+// AArch32 at EL0 (profile v3, docs/plan/aarch32-plan.md): `pstate` as an
 // AArch32 SPSR lays it out, M[4:0] the User mode (0b10000: M[4] is nRW)
 pub const PSTATE_NRW: u32 = 1 << 4;
 pub const PSTATE_T: u32 = 1 << 5;

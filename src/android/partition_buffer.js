@@ -1,5 +1,5 @@
 // A partition of a disk as a disk of its own (the ranchu machine's virtio
-// disks on an emulator image's GPT disk, docs/android-images-plan.md I6):
+// disks on an emulator image's GPT disk, docs/plan/android-images-plan.md I6):
 // the disk buffer's reads, writes and flushes moved by the partition's
 // start, its size the partition's. A snapshot keeps the disk's state once,
 // with the partition that owns it (the first written one); the others keep

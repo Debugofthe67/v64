@@ -1,5 +1,5 @@
 // What an Android device's bootloader hands the kernel
-// (docs/android-images-plan.md I2): the kernel of boot, the vendor ramdisk,
+// (docs/plan/android-images-plan.md I2): the kernel of boot, the vendor ramdisk,
 // init_boot's generic ramdisk and bootconfig (the vendor_boot's own and the
 // device model's) as the initrd, and the kernel command line. The same for
 // tools/a64_android.mjs and for v64's bootloader reading the disk.

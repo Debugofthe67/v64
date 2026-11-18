@@ -1,5 +1,5 @@
 // @ts-check
-// The library (docs/vm-manager-plan.md "虚拟机库"): the virtual machines of
+// The library (docs/plan/vm-manager-plan.md "虚拟机库"): the virtual machines of
 // this browser on the left, the chosen one's summary on the right: new (the
 // wizard), import, edit settings (the settings dialog), rename, export,
 // delete (with its own browser disks), power on in a new tab, resume; the

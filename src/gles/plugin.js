@@ -1,4 +1,4 @@
-// ranchu_gpu: "host" -- the GLES host (docs/gles-proxy-plan.md): the
+// ranchu_gpu: "host" -- the GLES host (docs/plan/gles-proxy-plan.md): the
 // emulator's GLES protocol decoded on the machine's thread, its services
 // handed to the ranchu machine's goldfish pipe ("opengles",
 // "GLProcessPipe"). Built into build/v86-gles.js; from the source tree,
@@ -18,7 +18,7 @@ register_device_plugin("V86GlesHosts", {
 
     /**
      * Before the machine: glslang compiled and instantiated (asynchronous;
-     * docs/gles3-plan.md)
+     * docs/plan/gles3-plan.md)
      * @param {!Object} options "glslang": build/glslang.wasm's bytes
      * @return {!Promise<?Object>}
      */

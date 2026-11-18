@@ -23,7 +23,7 @@ const VIRTIO_PCI_CAP_DEVICE_CFG = 4;
 const VIRTIO_PCI_CAP_PCI_CFG = 5;
 const VIRTIO_PCI_CAP_SHARED_MEMORY_CFG = 8;
 
-// On the virt machine's generic PCIe host (docs/arm64-virt-android16-plan.md
+// On the virt machine's generic PCIe host (docs/plan/arm64-virt-android16-plan.md
 // P5.7) the capabilities are where QEMU v9.2.0's virtio-pci puts them: in
 // BAR 4, a 64-bit prefetchable memory BAR, the common, ISR, device and
 // notification configuration at 4 KiB steps; and the functions have QEMU's
@@ -213,7 +213,7 @@ export function VirtIO(cpu, options)
     this.cpu = cpu;
 
     /**
-     * The transport (docs/arm64-virt-android16-plan.md P5.1): null for
+     * The transport (docs/plan/arm64-virt-android16-plan.md P5.1): null for
      * virtio-pci, the default, on the machine's PCI bus; or one that brings
      * its own registers and interrupt line (src/virtio_mmio.js). This object
      * is the device's core either way: features, status, the configuration
@@ -299,7 +299,7 @@ export function VirtIO(cpu, options)
     this.pci_id = options.pci_id;
     // How the device signals its interrupt: the PCI function's INTx (the
     // virtio-mmio transport of the virt machine brings its own line,
-    // docs/arm64-virt-android16-plan.md P1.8)
+    // docs/plan/arm64-virt-android16-plan.md P1.8)
     this.irq_line = options.irq_line || (this.transport ? this.transport.irq_line : {
         raise: () => this.pci.raise_irq(this.pci_id),
         lower: () => this.pci.lower_irq(this.pci_id),

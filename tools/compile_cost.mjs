@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // What the x64 page tier's JIT switches cost V8 to compile
-// (docs/profiling.md): records of real compilations (tools/replay_record.mjs
+// (docs/perf/profiling.md): records of real compilations (tools/replay_record.mjs
 // for benchmarks, WIN_RECORD of tests/x64/windows_boot.mjs for Windows) are
 // replayed on a test core (ir-test-hooks: build/v86-ir-test-release.wasm)
 // with their switch bits replaced, once per configuration, and the modules
@@ -8,7 +8,7 @@
 // with TurboFan (node --single-threaded --no-wasm-lazy-compilation). Prints
 // the bytes and both compile times, each relative to the records' switches
 // off (base). How M5 found what a hot recompile costs
-// (docs/jit-unification-plan.md, appendix C).
+// (docs/plan/jit-unification-plan.md, appendix C).
 //
 // Usage: node tools/compile_cost.mjs <records.x6r> [--wasm core.wasm]
 //        [--stride N: every Nth record] [--limit N] [--only name,...]

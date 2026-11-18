@@ -1,4 +1,4 @@
-// A vCPU worker of the ARM core (docs/arm64-virt-android16-plan.md P8.2;
+// A vCPU worker of the ARM core (docs/plan/arm64-virt-android16-plan.md P8.2;
 // the x86 one is src/parallel/vcpu.js): one core of a virt machine whose
 // core 0 and devices run on another thread (src/parallel/machine.js).
 //

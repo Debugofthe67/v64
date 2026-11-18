@@ -1,4 +1,4 @@
-// XML property lists as Apple's firmware carries them (docs/iphone4-plan.md
+// XML property lists as Apple's firmware carries them (docs/plan/iphone4-plan.md
 // S0): BuildManifest.plist and Restore.plist in the IPSW, a DMG's resource
 // fork, the kernelcache's prelink info. The kernel's dialect (OSUnserializeXML)
 // shares repeated values: ID="n" on the first, IDREF="n" on the empty

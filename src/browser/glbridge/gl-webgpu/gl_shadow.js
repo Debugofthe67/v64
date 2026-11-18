@@ -1,4 +1,4 @@
-// The CPU side's OpenGL state (docs/opengl-webgpu-plan.md C3). It lives in
+// The CPU side's OpenGL state (docs/plan/opengl-webgpu-plan.md C3). It lives in
 // the v86gl device (v86gl_device.js), on the thread the CPU runs on, and
 // reads every GL batch in guest memory before the renderer gets it: the
 // guest's synchronous queries are answered there, before the device

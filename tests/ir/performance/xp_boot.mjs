@@ -112,7 +112,7 @@ try {
     console.log(JSON.stringify({event:"page_tier", compiles:e.x64_page_stat(0), legacy_compiles:e.x64_page_stat(37), native:e.x64_page_stat(1),
         steps:e.x64_page_stat(4), retries:e.x64_page_stat(2), activations:e.x64_page_stat(13), pages:e.x64_page_stat(21), bytes:e.x64_page_stat(24),
         memory:e.memory.buffer.byteLength}));
-    // (tools/bench/jit_stats.mjs, docs/jit-unification-plan.md P0.7)
+    // (tools/bench/jit_stats.mjs, docs/plan/jit-unification-plan.md P0.7)
     if(jit_stats_enabled()) print_jit_stats(vm, { script: "xp_boot", wasm, target, milestone, ms: performance.now() - started });
     console.log(JSON.stringify({event:"result", target, completed:target === "time" || !!milestone,
         ms:performance.now()-started, instructions:total, milestone, jit:vm.get_jit_info(), cr4:cpu.cr[4]>>>0}));

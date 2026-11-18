@@ -1,4 +1,4 @@
-//! AArch32's Advanced SIMD at EL0 (docs/aarch32-plan.md Q4.2, Q4.3): the
+//! AArch32's Advanced SIMD at EL0 (docs/plan/aarch32-plan.md Q4.2, Q4.3): the
 //! data processing groups as QEMU's neon-dp.decode divides them (three
 //! registers of the same length, of different lengths, two and a scalar,
 //! two and a shift amount, one and a modified immediate, VEXT, VTBL and

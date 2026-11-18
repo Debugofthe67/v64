@@ -1,5 +1,5 @@
 // The guest JIT workload's V8 part (tests/a64/linux_boot.mjs, A64_WORKLOAD=jit;
-// docs/arm64-virt-android16-plan.md P6.7): calls, numbers, objects, strings,
+// docs/plan/arm64-virt-android16-plan.md P6.7): calls, numbers, objects, strings,
 // regular expressions and typed arrays, hot enough for V8's tiers; a
 // checksum that only depends on exact arithmetic
 let h = 0x811c9dc5;

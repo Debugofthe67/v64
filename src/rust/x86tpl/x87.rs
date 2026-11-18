@@ -1,5 +1,5 @@
 //! Inlined fast-math x87 against the shared f64 shadow cache (moved from the
-//! region backend in docs/jit-unification-plan.md P2.2; the x64 page tier's
+//! region backend in docs/plan/jit-unification-plan.md P2.2; the x64 page tier's
 //! templates use it since M11 deleted the region backend).
 //!
 //! Semantics match `cpu::fpu`'s cached paths: operands are read only from

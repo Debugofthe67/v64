@@ -133,7 +133,7 @@ fn low_ram_hole(addr: u32) -> bool {
 /// lies above RAM (the APIC, the IOAPIC, HPET, PCI memory BARs), except a
 /// device's plain memory (mmio_ram), SMRAM and the extended RAM aperture.
 /// Compiled code leaves an access there to the interpreter, which delivers
-/// the interrupt at the instruction boundary (docs/jit-unification-plan.md
+/// the interrupt at the instruction boundary (docs/plan/jit-unification-plan.md
 /// P3.0b). The legacy VGA window below 1 MiB raises none.
 pub unsafe fn may_interrupt(addr: u32) -> bool {
     addr >= *memory_size

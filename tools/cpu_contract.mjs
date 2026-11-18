@@ -9,7 +9,7 @@
 //   node tools/cpu_contract.mjs          write tests/platform/cpu-contract.json
 //   node tools/cpu_contract.mjs --check  fail if the emulator differs from that file
 //
-// The AArch64 profiles a64-1 and a64-4 (docs/arm64-virt-android16-plan.md
+// The AArch64 profiles a64-1 and a64-4 (docs/plan/arm64-virt-android16-plan.md
 // P0.3) hold the ID registers that tests/a64/id_registers.c reads at EL1,
 // expected from tests/platform/a64-profile.json, not observed: --check
 // compares them with that file and runs the reader on v86's ARM core (P3.1;
@@ -56,7 +56,7 @@ const PROFILES = {
     "legacy-4": { cpu_cores: 4, acpi: true },
     "x64-1": { cpu_type: "x86_64" },
     "x64-4": { cpu_type: "x86_64", cpu_cores: 4, acpi: true },
-    // the released features (docs/simd-xsave-plan.md M1-M5)
+    // the released features (docs/plan/simd-xsave-plan.md M1-M5)
     "x64-v1": { cpu_type: "x86_64", cpu_features: "x86-64-v1" },
     "legacy-v2": { cpu_features: "x86-64-v2" },
     "x64-v2": { cpu_type: "x86_64", cpu_features: "x86-64-v2" },

@@ -1,4 +1,4 @@
-//! Floating point of the AArch64 core (docs/arm64-virt-android16-plan.md
+//! Floating point of the AArch64 core (docs/plan/arm64-virt-android16-plan.md
 //! P2.6, P2.8): SoftFloat 3e with the ARM-VFPv2 specialization
 //! (build/softfloat_arm.c, tools/softfloat_arm.mjs) and the rules the Arm
 //! ARM's pseudocode adds around it: FPCR's RMode, FZ (a denormal input reads

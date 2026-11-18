@@ -1,4 +1,4 @@
-//! BMI1, BMI2, LZCNT and MOVBE (docs/simd-xsave-plan.md 9.2, P10): the
+//! BMI1, BMI2, LZCNT and MOVBE (docs/plan/simd-xsave-plan.md 9.2, P10): the
 //! general-purpose register instructions' results and flags, shared by the
 //! three engines. Values are operand-size integers (`bits`: 16, 32 or 64) in
 //! the low bits of a u64. Flags are cpu::FLAG_*'s positions (OF, SF, ZF, AF,

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// BMI1, BMI2, TZCNT, LZCNT and MOVBE in the x64 engine (docs/simd-xsave-plan.md
+// BMI1, BMI2, TZCNT, LZCNT and MOVBE in the x64 engine (docs/plan/simd-xsave-plan.md
 // 9.2, P10): in 64-bit mode (VEX.W1: 64-bit operands; R8-R15 through VEX.R,
 // VEX.B and VEX.vvvv; 32-bit results zero-extended; memory sources) and in
 // compatibility mode (32-bit operands, VEX.W ignored), against
@@ -309,7 +309,7 @@ check(expected_qemu, "QEMU");
 const FEATURES = {cpu_type: "x86_64", cpu_features: ["SSSE3", "SSE4.1", "SSE4.2", "BMI1", "BMI2", "LZCNT", "MOVBE"], cpu_features_unreleased: true};
 for(const [label, options] of [["interpreted", {}],
     ["x64 page tier", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true}],
-    // (compatibility-mode code in the page tier, docs/jit-unification-plan.md P7.2)
+    // (compatibility-mode code in the page tier, docs/plan/jit-unification-plan.md P7.2)
     ["x64 page tier, compat32", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true,
         jit_switches: {x64_page_compat32: 1}}]])
 {

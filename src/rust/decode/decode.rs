@@ -62,7 +62,7 @@ pub struct Encoding {
     /// The CPUID feature without which the row does not exist (crate::cpu::
     /// features; 0: always)
     pub feature: u32,
-    /// #UD even with the feature (docs/simd-xsave-plan.md: semantics later)
+    /// #UD even with the feature (docs/plan/simd-xsave-plan.md: semantics later)
     pub unimplemented: bool,
     /// A VEX row: the VEX fields it accepts (decode_rules::vex; 0: a legacy row)
     pub vex: u16,

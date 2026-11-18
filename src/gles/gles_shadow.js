@@ -1,6 +1,6 @@
 import { pvrtc_bytes } from "./pvrtc.js";
 import { paletted_layout } from "./paletted.js";
-// The shadow state (docs/gles-proxy-plan.md "影子状态", E2): OpenGL ES 2.0's
+// The shadow state (docs/plan/gles-proxy-plan.md "影子状态", E2): OpenGL ES 2.0's
 // state machine, written from the GLES 2.0 specification, on the CPU side,
 // so that the guest's queries are answered without waiting for the page:
 // glGetError and the errors' rules, glGet* and glIsEnabled, the objects'
@@ -125,7 +125,7 @@ function Context(api, group)
     /**
      * GLSL ES 1.00 through glslang, the program drawn on the page as GLES
      * 3.x's (api 20: a GLES 2.0 context of a host that has glslang;
-     * docs/gles3-plan.md L3); a GLES 2.0 context of api 2 has gl-webgpu's
+     * docs/plan/gles3-plan.md L3); a GLES 2.0 context of api 2 has gl-webgpu's
      * front end
      */
     this.glslang = api === 20 || api >= 30;

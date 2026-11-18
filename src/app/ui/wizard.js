@@ -1,12 +1,12 @@
 // @ts-check
-// The new machine wizard (docs/vm-manager-plan.md "新建虚拟机向导", U3):
+// The new machine wizard (docs/plan/vm-manager-plan.md "新建虚拟机向导", U3):
 // 1 where the system comes from (a CD, a floppy, an installed hard disk, a
 // kernel and initrd, an Android image package, iPhone firmware, or later), 2 the system (a preset of
 // src/app/guest_presets.js: all the hardware), 3 the name, 4 the hard disk
 // (a new empty one and where it goes: a browser disk, the disk service,
 // memory), 5 the summary: finish, or customize the hardware in the settings
 // dialog first. The browser disk and the disk service's image are made only
-// when the wizard finishes. An Android image package (docs/android-images-plan.md
+// when the wizard finishes. An Android image package (docs/plan/android-images-plan.md
 // I3) becomes a browser disk then, in a worker (src/app/android_import.js):
 // its images as they are, booted by v64's bootloader with SwiftShader.
 
@@ -521,7 +521,7 @@ export function open_wizard(options)
                         "; its disk: " + format_size(a.info.disk_size(a.userdata_gib)) : "reading…")) : null,
                 gsi && gsi.abilist32 ? h("p", null, h("small.reason", null, "The GSI lists 32-bit ABIs (" + gsi.abilist32 + "), but this device runs " +
                     "only the 64-bit zygote: Android starts, 32-bit apps do not run (they need AArch32 and a device with a 32-bit zygote: " +
-                    "docs/aarch32-plan.md).")) : null,
+                    "docs/plan/aarch32-plan.md).")) : null,
                 a.error ? h("p.error", null, a.error) : null,
                 a.gsi ? h("button", { type: "button", onclick: () => { a.gsi = null; take_files([]); } }, "Without the GSI") : null);
             zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("over"); });
@@ -666,7 +666,7 @@ export function open_wizard(options)
             ];
         };
 
-        // (a browser disk counts its whole size against the site's storage at once: measured in Chrome, docs/vm-manager-plan.md U6)
+        // (a browser disk counts its whole size against the site's storage at once: measured in Chrome, docs/plan/vm-manager-plan.md U6)
         const quota_note = () =>
         {
             const note = h("small.reason", { role: "status" }, "A browser disk takes its whole size of the browser's storage for this site at once.");

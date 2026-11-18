@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The disk service client's synchronous requests (docs/disk-persistence-plan.md
+// The disk service client's synchronous requests (docs/plan/disk-persistence-plan.md
 // D2, src/disk_service.js): in a worker, reads and writes to the local disk
 // service are synchronous XMLHttpRequests. Node has none: this test gives it
 // one (a worker thread makes the request, this thread waits with

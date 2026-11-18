@@ -292,7 +292,7 @@ try
         if(serial.includes("Kernel panic") || serial.includes("not implemented")) throw new Error("Guest kernel reported a failure");
         if(/localhost login:/.test(serial) && !command_sent)
         {
-            // (the boot's wall time, for the boot budget of docs/simd-xsave-plan.md 12.2)
+            // (the boot's wall time, for the boot budget of docs/plan/simd-xsave-plan.md 12.2)
             console.log("X64_LINUX_LOGIN_MS " + Math.round(performance.now() - started));
             emulator.serial0_send("root\n");
             command_sent = true;

@@ -1,4 +1,4 @@
-// The guest's writes to a disk image (docs/disk-image-formats-plan.md P0):
+// The guest's writes to a disk image (docs/plan/disk-image-formats-plan.md P0):
 // in memory, by the offset the guest sees (not the container file's), in
 // 256-byte blocks (the smallest the emulated hardware writes: no write ever
 // updates part of a block) packed into 16 MiB chunks, as the lazily loaded

@@ -90,7 +90,7 @@ fault("cross-page FXSAVE no partial write","fxsave64 [0x600F00]");
 fault("cross-page FXRSTOR no partial state","fxrstor64 [0x600F00]");
 // VMASKMOVPS/PD across into the absent page: lanes there that the mask
 // (XMM9's sign bits) does not select are not accessed; a selected one faults
-// before any lane is stored (docs/simd-xsave-plan.md 8)
+// before any lane is stored (docs/plan/simd-xsave-plan.md 8)
 const AVX = "mov rax,cr4\nbts rax,18\nmov cr4,rax\nxor ecx,ecx\nmov eax,7\nxor edx,edx\nxsetbv";
 for(const [suffix, size, selections] of [["ps", 4, [[0, 1], [0, 2], [3]]], ["pd", 8, [[0], [0, 1]]]])
     for(const lanes of selections)
@@ -112,7 +112,7 @@ fault("VEX.256 aligned store at 16 bytes #GP", `${AVX}\nvmovntdq [0x600FD0],ymm8
 // index register, scale and address size vary. After it, the high halves of
 // both go to XMM15 and XMM0. A gather loads each selected element in turn,
 // clearing its mask; it zeroes the mask beyond the elements first and the
-// destination beyond them last (docs/simd-xsave-plan.md 9)
+// destination beyond them last (docs/plan/simd-xsave-plan.md 9)
 const HALVES = "vextracti128 xmm15,ymm8,1\nvextracti128 xmm0,ymm9,1";
 // (the fill's dwords, D0 to D7, and mask elements)
 const [D1, D2, D3, D4, D5, D6, D7] = [1, 2, 3, 4, 5, 6, 7].map(n => 0xD0D0D0D0 + n * 0x01010101), ALL = 0xFFFFFFFF, SIGN = 0x80000000;

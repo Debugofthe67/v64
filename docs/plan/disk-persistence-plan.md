@@ -16,8 +16,8 @@ a6674aa4 的代码。
 
 原方案的方向、`read_only` 为默认和“不支持就报错”的原则保留。需要修改或补充的是：
 
-1. **命名与已有字段冲突。** 软驱控制器的 `read_only`（[`src/floppy.js:191`](../src/floppy.js)，
-   在 952 行拒绝写入）和 `virtio_disks[].readonly`（[`src/virtio_blk.js:65`](../src/virtio_blk.js)，
+1. **命名与已有字段冲突。** 软驱控制器的 `read_only`（[`src/floppy.js:191`](../../src/floppy.js)，
+   在 952 行拒绝写入）和 `virtio_disks[].readonly`（[`src/virtio_blk.js:65`](../../src/virtio_blk.js)，
    报告 `VIRTIO_BLK_F_RO`）都表示客户机不能写，与 `disk_option: "read_only"`（客户机可写、
    源不变）相反。本文保留已定的名字，但文档与类型声明称其为“源镜像策略”，并把两者组合
    的矛盾配置列为启动错误。见[语义](#语义)。
@@ -25,12 +25,12 @@ a6674aa4 的代码。
    “完成”与“持久”两级，并把关闭标签页的保证落在“完成”上。见
    [写入完成、FLUSH 与写缓存](#写入完成flush-与写缓存)。
 3. **现代客户机在 IDE/AHCI 盘上不会发 FLUSH。** IDENTIFY 第 82、85 字未报告写缓存
-   （[`src/ide.js:2685`](../src/ide.js) 的 `feat_82` 只有第 14 位），SET FEATURES 什么都接受
+   （[`src/ide.js:2685`](../../src/ide.js) 的 `feat_82` 只有第 14 位），SET FEATURES 什么都接受
    （1508 行），NCQ 的 FUA 位被忽略。原方案的“flush 等待此前所有写入”在这些盘上几乎
    不会被触发；DOS、Windows 9x 等旧系统本来就不发 FLUSH。需要按模式报告写缓存，并由
    后端自行定时 flush。
-4. **快照完全没有覆盖。** 现在 IDE 把 buffer 整个放进状态（[`src/ide.js:2937`](../src/ide.js)）：
-   同步 buffer 保存整盘，异步 buffer 保存写过的块（[`src/buffer.js:405`](../src/buffer.js)）；
+4. **快照完全没有覆盖。** 现在 IDE 把 buffer 整个放进状态（[`src/ide.js:2937`](../../src/ide.js)）：
+   同步 buffer 保存整盘，异步 buffer 保存写过的块（[`src/buffer.js:405`](../../src/buffer.js)）；
    站点的 Windows 98 状态就带着 C 盘的修改层。`read_write` 下内存状态只与源镜像的某一个
    版本匹配，必须定义保存与恢复规则。见[快照](#快照save_state-与-initial_state)。
 5. **只读读者也会读到混合数据。** 一个 `read_only` 会话读取的源若被另一个 `read_write`
@@ -38,12 +38,12 @@ a6674aa4 的代码。
    [单写者与一致读取](#单写者与一致读取)。
 6. **单写者和重试需要具体机制。** 块写入本身是幂等的，真正的危险是旧会话迟到的写入落在
    新会话之后。用租约加递增的 epoch 隔离旧写者，而不是只靠请求去重。
-7. **错误没有通道。** `block_write` 的回调没有错误参数（[`src/block_backend.js:79`](../src/block_backend.js)），
+7. **错误没有通道。** `block_write` 的回调没有错误参数（[`src/block_backend.js:79`](../../src/block_backend.js)），
    设备层虽有 ATA ERR、AHCI TFES、`VIRTIO_BLK_S_IOERR` 编码，后端失败却无法上报。原方案
    的“失败必须明确上报”要落到一个策略：默认暂停虚拟机并通知宿主，可选报告给客户机。
    见[错误处理](#错误处理)。
 8. **ArrayBuffer 来源与表格不符。** `SyncBuffer` 直接写入调用方传入的 ArrayBuffer
-   （[`src/buffer.js:78`](../src/buffer.js)，858 行不复制），所以“原镜像不变”对它现在并不成立。
+   （[`src/buffer.js:78`](../../src/buffer.js)，858 行不复制），所以“原镜像不变”对它现在并不成立。
    本文把 ArrayBuffer 定义为没有持久来源的内存镜像。
 9. **浏览器不能原地改写用户电脑上的文件。** 用户选取的文件只能经 `createWritable` 在关闭时
    整体替换，同步原地读写只对浏览器私有存储（OPFS）开放。所以浏览器里写回本机镜像经
@@ -97,7 +97,7 @@ a6674aa4 的代码。
 - **支持写盘的磁盘服务**：服务器上的，或运行在用户自己电脑上的本机磁盘服务
   （`127.0.0.1`），两者实现同一个[磁盘协议](#磁盘协议服务器与本机磁盘服务)。可以 `read_write`。
   磁盘服务的网址同时也是普通的可读网址，`read_only` 或旧版 v86 照常按 Range 读取。
-- **Node 中的本地路径**：Node 中 `url` 本来就是本地文件路径（[`src/lib.js`](../src/lib.js) 用
+- **Node 中的本地路径**：Node 中 `url` 本来就是本地文件路径（[`src/lib.js`](../../src/lib.js) 用
   `fs` 读取），可以 `read_write`，直接写回这个文件。
 
 ```js
@@ -158,7 +158,7 @@ v86 只在 `read_write` 时向网址发出“打开写会话”请求，只有�
 - 服务器端可以用日志做自身的崩溃恢复，但写入只有在后端保证任何读者都能读到时才算完成；
   只保存一份独立修改层不能算作写回源镜像。
 - FLUSH 只需等待在它之前已发出的写入，然后让后端 flush。现在的
-  [`block_when_writes_done`](../src/block_backend.js) 等到在途写入归零，持续写入时可能一直
+  [`block_when_writes_done`](../../src/block_backend.js) 等到在途写入归零，持续写入时可能一直
   等不到；改为按序号等待更早的写入。
 
 ### 向客户机报告写缓存
@@ -166,14 +166,14 @@ v86 只在 `read_write` 时向网址发出“打开写会话”请求，只有�
 “完成”相当于数据进入了宿主的页缓存，也就是一块易失的写缓存。按实情报告它，客户机才会
 在需要时发 FLUSH：
 
-- **IDE 与 AHCI（共用 [`IDEInterface`](../src/ide.js)）。** `read_write` 盘在 IDENTIFY 第 82 字
+- **IDE 与 AHCI（共用 [`IDEInterface`](../../src/ide.js)）。** `read_write` 盘在 IDENTIFY 第 82 字
   第 5 位报告支持写缓存，第 85 字第 5 位报告已启用；SET FEATURES 02h/82h 开关写缓存，并在
   快照中保存这个状态。客户机关闭写缓存后，每个写入在持久之后才完成。AHCI NCQ 写入
   （WRITE FPDMA QUEUED）带 FUA 位时，该写入持久之后才完成。首版不报告 WRITE DMA FUA EXT
   （第 84 字第 6 位）。`read_only` 盘的 IDENTIFY 不变，已有安装和快照看到的硬件不变。
   Linux 的 libata 把未报告的写缓存经 SCSI 缓存模式页报成 WCE=0，块层随即丢弃 flush，所以
   现在 Linux 在这些盘上不发 FLUSH；Windows 同样按缓存模式页决定，实施时用 trace 确认。
-- **virtio-blk。** 已协商 `VIRTIO_BLK_F_FLUSH`（[`src/virtio_blk.js:64`](../src/virtio_blk.js)），
+- **virtio-blk。** 已协商 `VIRTIO_BLK_F_FLUSH`（[`src/virtio_blk.js:64`](../../src/virtio_blk.js)），
   Linux 驱动按回写缓存处理并发送 flush，不需要改动。
 - **后端定时 flush。** 旧系统可能从不发 FLUSH。`read_write` 后端在最后一次未持久的写入之后
   的一个时限内自行 flush（空闲 1 秒，持续写入时最长 5 秒），并在 `stop()`、`destroy()`、
@@ -204,8 +204,8 @@ v86 只在 `read_write` 时向网址发出“打开写会话”请求，只有�
 - 机器在保存后继续运行并写盘，generation 就变了，那份快照随之作废。因此 `read_write` 的
   快照实际只用于“保存后关机”（休眠）；页面对 `read_write` 盘提供“保存并关机”，而不是
   可反复回滚的快照。
-- 现在 IDE 恢复时不检查镜像身份（[`src/ide.js:2977`](../src/ide.js)），virtio-blk 只对内存中的镜像
-  检查 SHA-256（[`src/virtio_blk.js:179`](../src/virtio_blk.js)）。本计划只对 `read_write` 强制身份
+- 现在 IDE 恢复时不检查镜像身份（[`src/ide.js:2977`](../../src/ide.js)），virtio-blk 只对内存中的镜像
+  检查 SHA-256（[`src/virtio_blk.js:179`](../../src/virtio_blk.js)）。本计划只对 `read_write` 强制身份
   检查；`read_only` 的身份检查属于格式计划 P1，不改变站点现有状态的恢复行为。
 - 有写入因故障挂起（见[错误处理](#错误处理)）时拒绝保存，避免状态等待一个不会结束的 I/O。
 
@@ -221,7 +221,7 @@ v86 只在 `read_write` 时向网址发出“打开写会话”请求，只有�
 - **一致读取。** `read_only` 记下第一次响应的 ETag（读不到时用 Last-Modified），之后每个
   Range 响应都核对；不一致说明源在会话中被改动（另一会话写入，或网站更新了镜像），该盘
   按读取失败处理，绝不拼出不同时刻的数据。核对响应而不是在请求里加 `If-Match`：
-  [`load_file`](../src/lib.js) 已带自定义请求头 `X-Accept-Encoding`，跨站时本来就要 CORS 预检，
+  [`load_file`](../../src/lib.js) 已带自定义请求头 `X-Accept-Encoding`，跨站时本来就要 CORS 预检，
   不少静态托管只放行列出的请求头，加一个新请求头可能让现在能用的读取失败。跨站时 ETag
   须经 `Access-Control-Expose-Headers` 公开才读得到，Last-Modified 不需要；两者都读不到时
   与现在一样不核对。
@@ -234,7 +234,7 @@ v86 只在 `read_write` 时向网址发出“打开写会话”请求，只有�
 - 后端回调改为错误优先：`set(start, data, fn(error))`、`flush(fn(error))`、读取同理。旧的
   buffer 从不传错误，保持兼容。读取错误的通道与格式计划 P0 的错误契约是同一件事，一次做完。
 - 设备编码：IDE 置 ERR 并在错误寄存器置 ABRT（与 QEMU 的 `ide_rw_error` 相同）；AHCI 置
-  TFES，NCQ 命令经现有的 `ncq_failed`（[`src/ahci.js:1158`](../src/ahci.js)）进入错误日志；
+  TFES，NCQ 命令经现有的 `ncq_failed`（[`src/ahci.js:1158`](../../src/ahci.js)）进入错误日志；
   virtio-blk 返回 `VIRTIO_BLK_S_IOERR`。
 - 逐盘选项 `disk_error: "stop" | "report"`，默认 `stop`（已决定）。网络抖动在浏览器里很常见，直接把
   I/O 错误交给客户机，Linux 可能把文件系统改为只读，Windows 在分页 I/O 失败时可能蓝屏：
@@ -248,7 +248,7 @@ v86 只在 `read_write` 时向网址发出“打开写会话”请求，只有�
 
 ### 后端契约
 
-写回后端放进设备现在使用的 buffer 位置，[`block_backend.js`](../src/block_backend.js) 已在 111
+写回后端放进设备现在使用的 buffer 位置，[`block_backend.js`](../../src/block_backend.js) 已在 111
 行调用 buffer 自带的 `flush`，设备层只需加入错误和写缓存的改动。
 
 | 操作 | 要求 |
@@ -264,11 +264,11 @@ v86 只在 `read_write` 时向网址发出“打开写会话”请求，只有�
 - 偏移和长度按设备扇区对齐（硬盘 512 字节），不是内存修改层的 256 字节块。
 - **最好能同步完成。** Promise 的回调要等当前 CPU 时间片结束才运行；SeaBIOS 的 AHCI 驱动
   逐条轮询，Windows 8.1 在 Q35 上的 BIOS 磁盘阶段异步读取时约 180 秒，在 CPU Worker 中改用
-  `FileReaderSync` 同步读取后约 20 秒（[sata.md](sata.md#disk-backends)）。Node 后端同步完成。
+  `FileReaderSync` 同步读取后约 20 秒（[sata.md](../sata.md#disk-backends)）。Node 后端同步完成。
   浏览器里的写回都经磁盘服务，是网络请求：CPU Worker 允许同步 XHR，对 `127.0.0.1` 的本机
   磁盘服务可用它同步完成，代价是请求期间 CPU 线程阻塞，D2 中测量后决定；远程服务器只用
   异步请求，在 Q35 上 BIOS 阶段会像现在的网址磁盘一样慢。
-- CPU Worker 只能接收数据描述（[`encode_worker_file`](../src/browser/cpu_worker.js) 按固定字段
+- CPU Worker 只能接收数据描述（[`encode_worker_file`](../../src/browser/cpu_worker.js) 按固定字段
   转发并拒绝带方法的对象）：新增 `disk_option`、`disk_error`、`token` 三个字段，后端在 Worker
   内构建。
 
@@ -321,7 +321,7 @@ v86 只在 `read_write` 时向网址发出“打开写会话”请求，只有�
 - `read_only`：内存修改层不变，写过的块不会被淘汰。
 - `read_write`：没有修改层，读缓存有上限并可淘汰。写入在完成回调之前更新缓存；每个块记录
   最近一次写入的序号，读取结果只在发起读取之后没有对该块的写入时才放进缓存，较早开始的读取
-  因此不能覆盖较新的写入。这取代 [`handle_read`](../src/buffer.js) 在修改层模式下用写过的块
+  因此不能覆盖较新的写入。这取代 [`handle_read`](../../src/buffer.js) 在修改层模式下用写过的块
   覆盖读取结果的做法。
 - **Get hard disk image** 对 `read_write` 盘先 flush，再从源导出（磁盘服务的网址、Node 的本地
   文件），不再拼接修改层。
@@ -341,7 +341,7 @@ flowchart LR
     H --> L["本机磁盘服务 127.0.0.1"]
 ```
 
-策略在磁盘初始化时解析，入口是 [`add_file`](../src/browser/starter.js)（764 行）、
+策略在磁盘初始化时解析，入口是 [`add_file`](../../src/browser/starter.js)（764 行）、
 `attach_sata_drive`（1758 行）和 `virtio_disks`（833 行）；`read_only` 走现有 `buffer_from_object`，
 `read_write` 构建写回后端。具体模块文件名在实施时确定。
 
@@ -374,11 +374,11 @@ D0 与格式计划 P0 的错误契约合并实施。D1 先于浏览器端，是�
 | 入口 | Node、浏览器 CPU Worker、`cpu_worker=0`；IDE、AHCI（含 NCQ）、virtio-blk；SATA 热插拔拔出时释放租约 |
 | 回归 | 现有测试全部通过 |
 
-复用 [`tests/devices/ahci_lifecycle.mjs`](../tests/devices/ahci_lifecycle.mjs)（异步后端、FLUSH
-顺序、带在途 I/O 拔盘）、[`tests/devices/device_io_reset.mjs`](../tests/devices/device_io_reset.mjs)、
-[`tests/devices/disk_write_cache.js`](../tests/devices/disk_write_cache.js)、
-[`tests/devices/q35_guest.js`](../tests/devices/q35_guest.js)、[`tests/api/state.js`](../tests/api/state.js)
-和 [`tests/smp/disk_fixture.mjs`](../tests/smp/disk_fixture.mjs)，新增后端与协议的独立测试。
+复用 [`tests/devices/ahci_lifecycle.mjs`](../../tests/devices/ahci_lifecycle.mjs)（异步后端、FLUSH
+顺序、带在途 I/O 拔盘）、[`tests/devices/device_io_reset.mjs`](../../tests/devices/device_io_reset.mjs)、
+[`tests/devices/disk_write_cache.js`](../../tests/devices/disk_write_cache.js)、
+[`tests/devices/q35_guest.js`](../../tests/devices/q35_guest.js)、[`tests/api/state.js`](../../tests/api/state.js)
+和 [`tests/smp/disk_fixture.mjs`](../../tests/smp/disk_fixture.mjs)，新增后端与协议的独立测试。
 重的浏览器会话用无头 Chrome，不在 Claude 应用的内置浏览器里跑。
 
 ## 后续单独考虑：在浏览器里保留修改
@@ -432,7 +432,7 @@ D0 与格式计划 P0 的错误契约合并实施。D1 先于浏览器端，是�
 
 **实现。**
 
-- 选项：新模块 [`src/disk_options.js`](../src/disk_options.js)。`check_disk_options` 在 V86 构造函数中、
+- 选项：新模块 [`src/disk_options.js`](../../src/disk_options.js)。`check_disk_options` 在 V86 构造函数中、
   加载任何文件之前同步检查（CPU Worker 中再查一次），`attach_sata_drive` 在挂接前检查（并与机器已有
   的盘比较）。规则：`disk_option`、`disk_error`、`token` 写在 V86 选项顶层报错；取值不对报错；
   `disk_option` 只用于硬盘（`hda`、`hdb`、SATA 盘、`virtio_disks`），`disk_error` 用于硬盘与光驱，
@@ -444,7 +444,7 @@ D0 与格式计划 P0 的错误契约合并实施。D1 先于浏览器端，是�
   分片与 `.zst`：只能读；自带对象：需实现后端契约；Node 本地文件：D1；网址：D2）。格式计划的
   `check_image_options` 改为调用同一检查。`encode_worker_file` 转发 `disk_error`、`token`。检查通过的
   策略放在盘的 buffer 上（`disk_name`、`disk_error`），设备层从那里读取。
-- 错误策略（[`src/block_backend.js`](../src/block_backend.js)）：读写与 flush 失败时先触发 `disk-error`
+- 错误策略（[`src/block_backend.js`](../../src/block_backend.js)）：读写与 flush 失败时先触发 `disk-error`
   事件（`disk`、`operation`、`offset`、`length`、`reason`、`retryable`、`policy`），再按策略：
   `report` 立即交给设备的错误编码；`stop`（默认）把请求挂在 CPU 上（`cpu.disk_holds`），经
   `v86.stop()` 暂停机器。`v86.run()` 按原顺序重试挂起的请求，不可重试的则在此时报告给客户机；
@@ -456,7 +456,7 @@ D0 与格式计划 P0 的错误契约合并实施。D1 先于浏览器端，是�
 - FLUSH 按序号等待：每个写入取递增序号，FLUSH 记下发出时的最大序号，等序号不大于它的写入都结束
   （完成或报告失败）后再调用 buffer 的 `flush`；之后发出的写入不再拖住它。挂起（`stop`）的写入
   仍算未结束，排在它后面的 FLUSH 一直等到它被重试成功。
-- 一致读取（[`src/buffer.js`](../src/buffer.js) 的 `check_response_version`）：`AsyncXHRBuffer` 与
+- 一致读取（[`src/buffer.js`](../../src/buffer.js) 的 `check_response_version`）：`AsyncXHRBuffer` 与
   `AsyncXHRPartfileBuffer`（每个分片文件各记各的）记下第一个带 ETag（没有时用 Last-Modified）的
   响应，之后每个 Range 响应核对；不一致时该次读取以 `changed`（不可重试）失败。请求不变，不加
   `If-Match`。同时补上原来没有通道的读取失败：4xx 状态（原来请求永远不结束）、对 Range 请求回
@@ -503,7 +503,7 @@ D0 与格式计划 P0 的错误契约合并实施。D1 先于浏览器端，是�
 
 **实现。**
 
-- 新模块 [`src/disk_writeback.js`](../src/disk_writeback.js)：
+- 新模块 [`src/disk_writeback.js`](../../src/disk_writeback.js)：
   - `NodeFileDisk`：Node 中 `url` 的本地文件，`fs.openSync(url, "r+")`，带位置参数的 `readSync`/`writeSync`、
     `fdatasyncSync`，同步完成（`async` 忽略，从不整份读入）。打开时检查：不能以写方式打开、大小不是
     512 的整数倍、与描述的 `size` 不符、本进程中已有一块盘在写回同一文件（设备号加 inode，跨机器）均
@@ -521,14 +521,14 @@ D0 与格式计划 P0 的错误契约合并实施。D1 先于浏览器端，是�
     恢复到写回盘拒绝。
   - `check_loaded_disks`：所有盘加载后按设备号与 inode 再查一次同一文件被两块盘绑定（符号链接、
     相对路径等字符串不同的情况）；Node 中有本地文件的盘时预先加载 `node:fs`，供恢复时同步取引用。
-- 选项（[`src/disk_options.js`](../src/disk_options.js)）：Node 中字符串 `url` 可以 `read_write`；自带对象实现
+- 选项（[`src/disk_options.js`](../../src/disk_options.js)）：Node 中字符串 `url` 可以 `read_write`；自带对象实现
   后端契约（`flush`、`close`、`mark`、`generation`、`get_state`、`set_state`、`check_state`）即可 `read_write`，
   缺哪些方法在错误信息中列出；`read_write` 盘的 buffer 带 `writeback` 标志。
 - 设备层：`read_write` 盘（`writeback`）的 IDENTIFY 第 82 字第 5 位报告写缓存、第 85 字第 5 位报告已启用；
   SET FEATURES 02h/82h 开关它（其他盘与其他子命令照旧只接受），开关保存在 IDE 状态第 29 项（旧状态
   缺省为开）；关闭时每个写入在 buffer 的 `flush` 完成之后才完成（`block_write` 的 `durable`）；AHCI NCQ
   写入的 FUA（FIS 设备寄存器第 7 位）同样。`read_only` 盘的 IDENTIFY 不变。
-- 生命周期（[`starter.js`](../src/browser/starter.js)）：`stop()` 之后 flush 写回盘（机器已停时也 flush），
+- 生命周期（[`starter.js`](../../src/browser/starter.js)）：`stop()` 之后 flush 写回盘（机器已停时也 flush），
   `destroy()` flush 并关闭，`detach_sata_drive` 关闭该盘，`export_disk_image` 先 flush 再从文件读出；启动
   失败时关闭已打开的写回文件。
 - `v86.d.ts`：`disk_option` 的说明改为现状（Node 本地文件与带契约的自带对象可写回，磁盘服务为 D2）。
@@ -576,7 +576,7 @@ D0 与格式计划 P0 的错误契约合并实施。D1 先于浏览器端，是�
   `-Epoch`、`-Sequence`、`-Offset`，请求体为数据，写入源文件后才回答）、`flush`（`fdatasync`）、`mark`
   （flush 后记下 generation，快照用）、`close`（flush 后释放租约）。错误以 JSON `{code, error}` 回答：
   `writer`、`epoch`、`lease`（409）、`no_space`（507）、`token`（401）、`origin`（403）、`request`（400）。
-- 参考服务 [`tools/disk-service.mjs`](../tools/disk-service.mjs)（无依赖，可作为模块 `create_disk_service`
+- 参考服务 [`tools/disk-service.mjs`](../../tools/disk-service.mjs)（无依赖，可作为模块 `create_disk_service`
   在测试中使用）：服务一个目录下的镜像；每个镜像有 UUID、generation、epoch，保存在
   `<目录>/.v86-disk-service.json`（写入临时文件、fsync、改名）；每次写入使 generation 递增，`mark` 之后的
   第一次写入在写数据之前先递增并落盘状态文件；源文件被外部改动（大小或纳秒 mtime 与服务记录的不同）
@@ -585,7 +585,7 @@ D0 与格式计划 P0 的错误契约合并实施。D1 先于浏览器端，是�
   晚到、但序号小于一个与之重叠的已应用写入的写入不再应用（迟到的旧写入不能覆盖新数据）。来源核对：
   POST 带 `Origin` 时必须是 `--origin` 给出的来源或服务自身；`--token` 时会话操作需要
   `Authorization: Bearer`。
-- 客户端 [`src/disk_service.js`](../src/disk_service.js)（`DiskServiceDisk`，`fetch`，页面、CPU Worker 与 Node
+- 客户端 [`src/disk_service.js`](../../src/disk_service.js)（`DiskServiceDisk`，`fetch`，页面、CPU Worker 与 Node
   通用）：`load` 发 `open`，回答没有协议响应头（静态服务器）时报“只能读取，不能写回”及办法，`fetch`
   失败（不可达或跨站 CORS 不放行）时报原因并提示 `--origin`；容量非整扇区、与 `size` 不符报错。写入：
   范围重叠的写入串行；网络错误与 5xx（507 除外）重试 4 次、每次最长 30 秒，沿用会话、epoch 与序号；
@@ -637,10 +637,10 @@ D0 与格式计划 P0 的错误契约合并实施。D1 先于浏览器端，是�
   `eject_fda`/`eject_fdb` 时，取出的写回盘先 flush 再关闭；`stop()`、`destroy()`、快照准备也覆盖软盘
   （`disk_buffers` 包括软驱）。快照中软盘的状态是引用；`validate_disk_states` 在恢复之前核对软驱的盘，
   `FloppyDrive.set_state` 经 `restore_disk_state`。
-- 软盘的错误：ISA DMA（[`src/dma.js`](../src/dma.js)）把镜像的读写错误交给软驱控制器（原来读取失败时会把
+- 软盘的错误：ISA DMA（[`src/dma.js`](../../src/dma.js)）把镜像的读写错误交给软驱控制器（原来读取失败时会把
   `undefined` 当数据写进内存），控制器以异常结束（ST0 ABNTERM）报告给客户机，并触发 `disk-error`
   （`policy: "report"`）。
-- 页面入口（[`src/browser/main.js`](../src/browser/main.js)、`index.html`、`debug.html`）：自定义启动的查询参数
+- 页面入口（[`src/browser/main.js`](../../src/browser/main.js)、`index.html`、`debug.html`）：自定义启动的查询参数
   `hda.disk_option`、`hdb.disk_option`、`fda.disk_option`（及 `*.disk_error`；`token` 不放进网址）；有写回盘时
   显示“Save and power off”：保存状态（下载 `v86state.bin`）后 `destroy()`（写回盘 flush 并关闭），状态栏说明
   用同样的盘加载该状态即可继续；`disk-error` 事件弹出提示：盘符、操作、偏移、长度、原因，`stop` 下给出
@@ -708,7 +708,7 @@ D0–D3 按“实施阶段”完成。以下未做，或与计划不同，需要
 
 **1. D2 的同步 XHR：测量后采用。**
 
-- 测量（[`tests/persistence/sync_xhr_bench.html`](../tests/persistence/sync_xhr_bench.html)，无头 Chrome，CPU Worker）：MS-DOS 6.22
+- 测量（[`tests/persistence/sync_xhr_bench.html`](../../tests/persistence/sync_xhr_bench.html)，无头 Chrome，CPU Worker）：MS-DOS 6.22
   在写回本机磁盘服务的盘上（`tests/app/browser_runner.mjs service=1` 的 `dos.img`），先引导到提示符，再执行一条写约 1.7 MB 的
   `copy`（COMMAND.COM 拼 8 次，再拼 4 次）和一条把它读到 `NUL` 的 `copy`。DOS 的磁盘读写全部经 BIOS，BIOS 逐条轮询命令完成。
   同步版与当前提交的异步版（同一树的另一份 `cpu-worker.js`）交替各跑 2 次，取中位数（秒）：
@@ -722,13 +722,13 @@ D0–D3 按“实施阶段”完成。以下未做，或与计划不同，需要
 
   Q35 上 SeaBIOS 的 AHCI 驱动经 SMM 轮询，异步回答要等一批指令结束，写入慢 13 倍、读取慢 7 倍；IDE 上约 3 倍。引导时间
   大部分是 POST，差别小。
-- 决定与实现（[`src/disk_service.js`](../src/disk_service.js)）：在 Worker 中（没有 `window`、有 `XMLHttpRequest`），对本机
+- 决定与实现（[`src/disk_service.js`](../../src/disk_service.js)）：在 Worker 中（没有 `window`、有 `XMLHttpRequest`），对本机
   （`127.0.0.1`、`localhost`、`[::1]`）的磁盘服务，缓存未命中的读取与写入用同步 XHR，完成后才回调，与 Node 本地文件一样；
   同步请求只试一次、最多 2 秒（请求期间 CPU 线程阻塞，不能像异步那样等 30 秒），没有回答、网络错误或 5xx（507 除外）时改走
   原来的异步路径及其重试（读取可重复；写入沿用同一序号，服务只应用一次）；拒绝（409 租约、507）立即作为错误回调；与一个
   在途写入重叠的写入不走同步，等它完成后异步发出。打开、续租、flush、mark、close 仍是异步。页面里（`cpu_worker=0`）与远程
   服务不变。
-- 测试：[`tests/persistence/disk_service_sync.mjs`](../tests/persistence/disk_service_sync.mjs)（新，加入
+- 测试：[`tests/persistence/disk_service_sync.mjs`](../../tests/persistence/disk_service_sync.mjs)（新，加入
   `make disk-persistence-tests`）给 Node 一个同步 XHR（工作线程发请求、本线程 `Atomics.wait`；服务也在那个线程里，本线程等待时
   它照常回答）：读与写在 `get`/`set` 返回前完成，缓存命中不发请求，写入完成时已在文件中；同步请求无回答、回答丢失（服务已
   应用）、503 时改走异步，数据正确、写入只应用一次；重叠写入等待在途写入、后者的数据为准；租约丢失立即报错且不可重试；
@@ -737,14 +737,14 @@ D0–D3 按“实施阶段”完成。以下未做，或与计划不同，需要
 
 **2. 软盘的 `disk_error: "stop"`：已实现，默认与硬盘相同。**
 
-- 原以为要回退 ISA DMA 的状态（D3 偏差 1）；实际只需重试镜像操作本身：[`src/dma.js`](../src/dma.js) 的 `do_read`/`do_write`
+- 原以为要回退 ISA DMA 的状态（D3 偏差 1）；实际只需重试镜像操作本身：[`src/dma.js`](../../src/dma.js) 的 `do_read`/`do_write`
   在镜像失败时把错误连同“再试一次”交给软驱控制器，重试读到同一内存地址、写同样的数据，DMA 寄存器在发起时已推进到传输
   完成后的值；挂起期间机器停着、快照被拒，客户机看不到中间状态。重置后重试的读取不再发出，写入照样落盘而不回答（与
   `block_backend.js` 中挂起的写入相同）。
-- 软驱控制器（[`src/floppy.js`](../src/floppy.js)）改用 `block_backend.js` 的 `block_failed`（导出）：`stop` 挂起传输、命令停在执行阶段、
+- 软驱控制器（[`src/floppy.js`](../../src/floppy.js)）改用 `block_backend.js` 的 `block_failed`（导出）：`stop` 挂起传输、命令停在执行阶段、
   机器停下，`run()` 重试或把不可重试的错误报告给客户机（ABNTERM）；`report` 与原来相同；事件相同。盘被取出（`eject_fda`、
   `set_fda` 换盘）时，它挂起的传输以错误结束（`disk_removed`），如同拔出软盘。
-- [`src/disk_options.js`](../src/disk_options.js) 不再拒绝软盘的 `"stop"`，软盘的默认值随硬盘为 `"stop"`（计划“错误处理”的决定；
+- [`src/disk_options.js`](../../src/disk_options.js) 不再拒绝软盘的 `"stop"`，软盘的默认值随硬盘为 `"stop"`（计划“错误处理”的决定；
   `report` 默认只是因为没有实现）。内存中的软盘镜像不会失败，只有写回的软盘（Node 文件、磁盘服务）受影响。`v86.d.ts` 随之更新。
 - 测试：`tests/persistence/floppy.mjs` 增加 `stop`：服务中断时机器停下（`disk-error`，`policy: "stop"`、可重试），客户机不报错，
   `save_state` 被拒；服务恢复后 `run()`，命令完成、服务端镜像有文件；挂起时弹出软盘，客户机看到“Abort, Retry, Fail”。原来的
@@ -753,7 +753,7 @@ D0–D3 按“实施阶段”完成。以下未做，或与计划不同，需要
 
 **3. D4：不做。** 所有者 2026-10-18 选定本机磁盘服务（见上节“页面的读写选项”），不做直接写所选文件，测量不再需要。
 “在浏览器里保留修改”（[后续单独考虑](#后续单独考虑在浏览器里保留修改)）已由 VM 管理器计划 U6 的“浏览器磁盘”实现：
-`opfs:` 网址的镜像在 OPFS 中，`read_write` 写回该镜像（[`src/opfs_disk.js`](../src/opfs_disk.js)），快照引用沿用本文的身份与
+`opfs:` 网址的镜像在 OPFS 中，`read_write` 写回该镜像（[`src/opfs_disk.js`](../../src/opfs_disk.js)），快照引用沿用本文的身份与
 generation 规则（[vm-manager-plan.md](vm-manager-plan.md) U6）。
 
 **4. 仍未做。**

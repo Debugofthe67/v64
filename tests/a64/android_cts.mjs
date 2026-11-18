@@ -1,4 +1,4 @@
-// A CTS subset on a booted Android 16 (docs/arm64-virt-android16-plan.md
+// A CTS subset on a booted Android 16 (docs/plan/arm64-virt-android16-plan.md
 // P12.3), over adb, the same on the QEMU reference and on v86
 // (tests/a64/android_boot.mjs A64_ANDROID_SCENARIO=cts): native gtest
 // modules of CTS 16.1_r1 (tools/a64_cts.mjs fetches them), their arm64 files

@@ -14,7 +14,7 @@
 // first control command, and again after a device reset.
 //
 // On a machine without VGA (the virt machine's, machine.has_vga false;
-// docs/arm64-virt-android16-plan.md P7.1) it is virtio-gpu-pci (class 0380)
+// docs/plan/arm64-virt-android16-plan.md P7.1) it is virtio-gpu-pci (class 0380)
 // or a virtio-mmio device: no VGA core, no frame buffer BAR or ROM; until the
 // driver's first command the screen is blank. The host visible memory is
 // then BAR 2, 64 bits wide (the capabilities are in BAR 4, as QEMU's).
@@ -76,7 +76,7 @@ const LEVELS = {
     "venus": { features: [VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_EDID, VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_RESOURCE_BLOB,
         VIRTIO_GPU_F_CONTEXT_INIT, VIRTIO_F_RING_INDIRECT_DESC], three_d: true, gl43: true, blob: true, hostmem: true, venus: true },
     // gfxstream's contexts in place of virgl's (gfxstream.js; Android's
-    // official images: docs/gfxstream-plan.md): its capsets only, as
+    // official images: docs/plan/gfxstream-plan.md): its capsets only, as
     // rutabaga's gfxstream component offers them; a context without a
     // capset is gfxstream's too, and a pipe resource its process pipe
     "gfxstream": { features: [VIRTIO_GPU_F_VIRGL, VIRTIO_GPU_F_EDID, VIRTIO_GPU_F_RESOURCE_UUID, VIRTIO_GPU_F_RESOURCE_BLOB,
@@ -389,7 +389,7 @@ export function VirtioGPU(machine, options)
     /** @type {Venus} Vulkan, at level venus */
     this.venus = LEVELS[this.level].venus ? new Venus(this, new VulkanModel({ host_visible_size: VENUS_MEMORY_SIZE, gpu: this })) : null;
     /** @type {!Array<!Object>} the kinds of context besides virgl's, each of
-     * its capsets (CONTEXT_INIT): Venus (docs/gfxstream-plan.md G1) */
+     * its capsets (CONTEXT_INIT): Venus (docs/plan/gfxstream-plan.md G1) */
     /** @type {Gfxstream} gfxstream's contexts, at level gfxstream */
     this.gfxstream = LEVELS[this.level].gfxstream ? new Gfxstream(this, new VulkanModel({ host_visible_size: VENUS_MEMORY_SIZE, gpu: this })) : null;
     this.kinds = [this.venus, this.gfxstream].filter(Boolean);
@@ -702,7 +702,7 @@ VirtioGPU.prototype.unmap_all = function()
 /**
  * A request's lane of answers: a fence on a context's ring its own (that
  * timeline's, as rutabaga's fence contexts), the rest one lane in order
- * (docs/gfxstream-plan.md G1)
+ * (docs/plan/gfxstream-plan.md G1)
  * @param {!Uint8Array} bytes the request
  * @return {string}
  */
@@ -1298,7 +1298,7 @@ VirtioGPU.prototype.present = function(scanout, resource, x, y, width, height)
     if(direct)
     {
         // (the renderer copies it to the page's screen on the GPU: no
-        // readback, docs/gfxstream-plan.md G4)
+        // readback, docs/plan/gfxstream-plan.md G4)
         scanout.direct = resource.id;
         this.virgl.present_surface(/** @type {!Resource3D} */ (resource), scanout.x + x, scanout.y + y, width, height, x, y, scanout.width, scanout.height);
         return;

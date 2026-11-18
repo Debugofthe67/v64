@@ -1,4 +1,4 @@
-// renderControl (opcodes 10000 on: docs/gles-proxy-plan.md, E1): the
+// renderControl (opcodes 10000 on: docs/plan/gles-proxy-plan.md, E1): the
 // emulator's EGL on the host, as gfxstream's host/RenderControl.cpp and
 // FrameBuffer answer the guest's libEGL_emulation and gralloc: the
 // renderer's version and strings, the EGL configurations, contexts, window
@@ -293,7 +293,7 @@ const HANDLERS = {
     },
     "rcSelectChecksumHelper": () => {},
     // (fences signal when the commands before them ran: in the order of
-    // the channel, so at once here; docs/gles-proxy-plan.md "影子状态")
+    // the channel, so at once here; docs/plan/gles-proxy-plan.md "影子状态")
     "rcCreateSyncKHR": (rc, conn, [type, attribs, num_attribs, destroy_when_signaled, glsync_out, syncthread_out]) =>
     {
         const handle = rc.handle();

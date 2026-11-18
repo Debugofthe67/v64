@@ -1,4 +1,4 @@
-/* Freestanding Linux user probe for aarch64 (docs/arm64-virt-android16-plan.md
+/* Freestanding Linux user probe for aarch64 (docs/plan/arm64-virt-android16-plan.md
  * "aarch64 probe", P0.4): the multicore OS contract of tests/x64/linux_probe.c
  * on arm64's system call ABI (svc #0, asm-generic numbers), with arm64's own
  * checks. No libc; the page size comes from AT_PAGESZ.
@@ -750,7 +750,7 @@ void entry(word *stack)
     initial_stack = stack;
     reference = argument("ref=qemu") != 0;
     value_compare = argument("parallel") != 0;
-    /* (v86's profile v3, docs/aarch32-plan.md: AArch32 at EL0, as the reference) */
+    /* (v86's profile v3, docs/plan/aarch32-plan.md: AArch32 at EL0, as the reference) */
     aarch32_profile = argument("aarch32") != 0;
     int disk = !argument("nodisk");
     out("A64_PROBE_START arch=aarch64\n");

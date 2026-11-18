@@ -1,5 +1,5 @@
 // @ts-check
-// The settings dialog's panels of the machine itself (docs/vm-manager-plan.md
+// The settings dialog's panels of the machine itself (docs/plan/vm-manager-plan.md
 // "设置对话框"): general, memory, processor, machine and firmware, advanced.
 
 import { confirm, h } from "../dom.js";
@@ -13,7 +13,7 @@ import { uefi_vars_template } from "../../vm_config.js";
 export const CPU_LABELS = { x86: "x86 (32-bit, up to SSE3)", x86_64: "x86_64 (64-bit, every instruction set)", arm64: "arm64 (64-bit ARM)",
     arm32: "ARM (32-bit, ARMv7-A)" };
 /**
- * The CPU models (cpu.profile; docs/iphone4-plan.md "CPU 型号"): the name the
+ * The CPU models (cpu.profile; docs/plan/iphone4-plan.md "CPU 型号"): the name the
  * panel shows, and what the model is for
  */
 export const CPU_PROFILE_LABELS = {

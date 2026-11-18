@@ -1,4 +1,4 @@
-// Write-back disks (docs/disk-persistence-plan.md): disk_option "read_write"
+// Write-back disks (docs/plan/disk-persistence-plan.md): disk_option "read_write"
 // writes the guest's changes into the image itself. This file has what a
 // write-back backend needs beyond the buffers of src/buffer.js (the backend
 // contract: load, byteLength, get, set, flush, close, mark, generation,
@@ -135,7 +135,7 @@ function reference_of(buffer)
 
 /**
  * Check a snapshot's state of a disk before anything is restored (the
- * table of docs/disk-persistence-plan.md "快照")
+ * table of docs/plan/disk-persistence-plan.md "快照")
  * @param {string} name
  * @param {?} buffer
  * @param {*} saved the snapshot's state of the buffer

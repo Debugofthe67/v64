@@ -1,4 +1,4 @@
-// The EL1 driver of tests/a64/aarch32_page_fuzz.mjs (docs/aarch32-plan.md
+// The EL1 driver of tests/a64/aarch32_page_fuzz.mjs (docs/plan/aarch32-plan.md
 // Q6.2): the generated AArch32 program (fuzz.a32.S: its entry at offset 0,
 // bit 0 of the first word saying T32) runs at EL0 on a buffer whose address
 // it gets in R8, ROUNDS times over, and ends with an SVC; the buffer (its

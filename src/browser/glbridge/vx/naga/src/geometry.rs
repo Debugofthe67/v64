@@ -1,4 +1,4 @@
-//! Geometry shaders (GLES 3.2, docs/gles3-plan.md L6) as compute shaders:
+//! Geometry shaders (GLES 3.2, docs/plan/gles3-plan.md L6) as compute shaders:
 //! WebGPU has no geometry stage. A draw with one runs its vertex shader as a
 //! compute shader first (xfb.rs, every output captured: a record a vertex),
 //! then its geometry shader once an input primitive and invocation, here:

@@ -1,4 +1,4 @@
-// virtio-input (virtio 1.2 section 5.8; docs/arm64-virt-android16-plan.md
+// virtio-input (virtio 1.2 section 5.8; docs/plan/arm64-virt-android16-plan.md
 // P5.8, P7.4) as built-in devices of the virt machine: a keyboard, which
 // takes the PS/2 set-1 scancodes of the bus's "keyboard-code"
 // (src/browser/keyboard.js) and sends evdev EV_KEY events; a tablet, which

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Guests on disks written back (docs/disk-persistence-plan.md D1, "验收矩阵"):
+// Guests on disks written back (docs/plan/disk-persistence-plan.md D1, "验收矩阵"):
 // - Linux 4.16 (images/linux4.iso, from the CD drive), on Q35 (AHCI, NCQ)
 //   and i440FX (IDE), hda a local file with disk_option "read_write", hdb a
 //   file read_only: Linux sees hda's write cache enabled, hdb's not; data

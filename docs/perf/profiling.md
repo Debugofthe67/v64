@@ -9,7 +9,7 @@ using file -> import from hex -> tick direction indication, timestamp %s.%f.
 ## Units: retired instructions and the step share s
 
 Every instruction count in measurements and gates is a count of **retired
-instructions** (docs/jit-unification-plan.md, cross-phase rule 3): the
+instructions** (docs/plan/jit-unification-plan.md, cross-phase rule 3): the
 growth of `core_statistics_get(core, 0)`, where a REP instruction counts once
 and a faulting one not at all. `instruction_counter` is only a budget
 counter: steps and REP elements move it differently, and the x64
@@ -36,7 +36,7 @@ profiles (`WIN_CPU_PROFILE`, `--profile-from`).
 The x64 page tier (and IR Tier-0 until P7.5) interprets some instructions one at a time
 inside their page functions ("steps"): forms without a template, accesses
 refused by the fast path, faults. The step profile counts them in one store
-([`src/rust/step_profile.rs`](../src/rust/step_profile.rs)), keyed by
+([`src/rust/step_profile.rs`](../../src/rust/step_profile.rs)), keyed by
 StepKey v1, a u32 whose fields are the opcode and its map, VEX's pp and L,
 the F2/F3, 66 and REX.W prefixes, ModRM.reg for opcodes it extends (groups,
 x87), a retry bit (the x64 page tier refused an access), the mode (real,
@@ -47,8 +47,8 @@ The source file has the exact layout.
 It is off by default: on, every step decodes its instruction into a hash
 table. Turn it on with the JIT switch `step_profile` (`JIT_SWITCHES=step_profile=1`,
 the V86 option `jit_switches`, or `set_jit_switches` from
-[`src/jit_switches.js`](../src/jit_switches.js)) and read it with
-`step_profile()` from [`tools/step_profile.mjs`](../tools/step_profile.mjs),
+[`src/jit_switches.js`](../../src/jit_switches.js)) and read it with
+`step_profile()` from [`tools/step_profile.mjs`](../../tools/step_profile.mjs),
 which also names keys (`"prot32 tier0 0F A2"`). The exports:
 `step_profile_snapshot()` sorts it and returns the number of keys,
 `step_profile_key(i)` and `step_profile_count(i)` read entry `i`,
@@ -123,7 +123,7 @@ costs before M4 (P4.1 ranked with them); with P4.5's switches (on since) a cold
 instruction costs about 58 ns and an STI window (`sti`: STI, NOP in its shadow,
 CLI) 8 ns instead of 96.
 `tools/bench/step_rank.mjs` ranks a workload's classes with these costs
-(docs/jit-unification-plan.md P4.1).
+(docs/plan/jit-unification-plan.md P4.1).
 
 ```sh
 TEST_RELEASE_BUILD=1 node tests/x64/system_bench.mjs [iterations] [rounds] [event...]
@@ -147,7 +147,7 @@ instructions, an activation of compiled code (which leaves when the mode
 changes: with the ledger on, a far transfer to code of another mode leaves
 instead of chaining to it, M11) or one step.
 
-`mode_ledger(exports)` in [`tools/bench/jit_stats.mjs`](../tools/bench/jit_stats.mjs)
+`mode_ledger(exports)` in [`tools/bench/jit_stats.mjs`](../../tools/bench/jit_stats.mjs)
 reads it as `{ mode: { way: retired } }`, flat 32-bit code under
 `"<mode>.flat"`; `JIT_STATS=1` records carry it while it is on, and
 `mode_ledger_reset()` empties it. The count is per Wasm instance: with cores
@@ -157,13 +157,13 @@ in workers, each worker has its own.
 
 IR Tier-0 counted what its code executed, by template kind, with the JIT
 switch `t0_kind_profile` (P3.0a's measure for ranking its template changes);
-it went with Tier-0 in [jit-unification-plan.md](jit-unification-plan.md)
+it went with Tier-0 in [jit-unification-plan.md](../plan/jit-unification-plan.md)
 P7.5. The step profile above and the mode ledger below cover the page tier.
 
 ## The code of a page function: tools/page_code.mjs
 
 What a page function costs is easiest to see in the host code V8 makes of
-it. [`tools/page_code.mjs`](../tools/page_code.mjs) runs a benchmark on the
+it. [`tools/page_code.mjs`](../../tools/page_code.mjs) runs a benchmark on the
 test core (`build/v86-ir-test-release.wasm`, ir-test-hooks), records what the
 x64 page tier compiles (`--isa i686` its legacy-mode code, IR Tier-0's until P7.5), takes the last record
 whose page holds the given instruction bytes and replays it at
@@ -178,7 +178,7 @@ P4.20–P4.23) came from comparing this for the page tier and Tier-0 on the
 same-source benchmarks.
 
 Where the time goes inside such a function, per host instruction:
-[`tools/page_profile.mjs`](../tools/page_profile.mjs) runs the benchmark the
+[`tools/page_profile.mjs`](../../tools/page_profile.mjs) runs the benchmark the
 same way under V8's sampling profiler (`node --prof`, a tick every 50 µs),
 saves the last module whose page holds the bytes, prints that module's
 TurboFan code and the ticks that fell in the optimized function of the same
@@ -197,7 +197,7 @@ What the code costs V8 to compile matters as much while Windows boots: a
 page function first runs as Liftoff code, and only the ones V8 finds hot are
 compiled again by TurboFan, on background threads. When that work grows,
 functions stay longer in Liftoff code, and the guest runs slower although
-each function is better code. [`tools/compile_cost.mjs`](../tools/compile_cost.mjs)
+each function is better code. [`tools/compile_cost.mjs`](../../tools/compile_cost.mjs)
 measures it per JIT switch: the records of real compilations
 (`tools/replay_record.mjs` for the benchmarks; for a Windows boot
 `WIN_RECORD=<file>` of `tests/x64/windows_boot.mjs` with
@@ -261,7 +261,7 @@ scene is profiled again and again without booting:
   `tools/bench/step_rank.mjs <counts log> <time log>` ranks what 64-bit code
   leaves compiled code for from two runs of one workload, the step profile on
   in the first (`--counts-window`/`--time-window t120,t210`: the difference of
-  two records; docs/jit-unification-plan.md P4.1).
+  two records; docs/plan/jit-unification-plan.md P4.1).
 
 Use the release build (`TEST_RELEASE_BUILD=1`): the source tree runs the debug
 wasm. Runs from one state differ by about 10% in frames per second; compare
@@ -321,7 +321,7 @@ window and a particular feature scene are different workloads. End profiling
 before saving a large RAM checkpoint, then finish any archive work before
 starting the next measured window.
 
-The [final NV40 repeated windows](../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
+The [final NV40 repeated windows](../../tests/acceptance/nv40/g6-xp-9371-06-final-gt1-work-windows.json)
 use an already active original GT1 process, with no input during measurement.
 Their paired state, software hashes, actual color-batch observations, isolation,
 archive verification and unsuccessful earlier diagnostics are retained. The
@@ -344,6 +344,6 @@ evolving render targets or establish benchmark FPS.
 
 The harness itself costs the host about 5–8%: screenshots, logs, and the
 WebSocket channel to the renderer page in headless Chrome
-([`tests/x64/gpu_remote_renderer.mjs`](../tests/x64/gpu_remote_renderer.mjs);
+([`tests/x64/gpu_remote_renderer.mjs`](../../tests/x64/gpu_remote_renderer.mjs);
 3DMark06 on Windows 8.1, 2026-10-02). A browser page has none of it, so node
 runs understate what a page reaches by about that much.

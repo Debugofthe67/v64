@@ -1,4 +1,4 @@
-// Disk image samples for the format tests (docs/disk-image-formats-plan.md,
+// Disk image samples for the format tests (docs/plan/disk-image-formats-plan.md,
 // "验收矩阵"), made by an independent tool: qemu-img and qemu-io (QEMU_IMG,
 // QEMU_IO; Homebrew's by default). A RAW image of 64 MiB with random, zero
 // and patterned regions is converted to each format; others are written

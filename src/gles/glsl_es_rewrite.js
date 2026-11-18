@@ -1,4 +1,4 @@
-// A shader's source as glslang's SPIR-V pass takes it (docs/gles3-plan.md,
+// A shader's source as glslang's SPIR-V pass takes it (docs/plan/gles3-plan.md,
 // "着色器的数据流"): the check pass has already judged the source at its own
 // version, so this only rewrites what Vulkan's relaxed rules read
 // differently, token by token (comments and line breaks kept):

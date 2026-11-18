@@ -1,4 +1,4 @@
-//! The stage 1 MMU of the AArch64 core (docs/arm64-virt-android16-plan.md
+//! The stage 1 MMU of the AArch64 core (docs/plan/arm64-virt-android16-plan.md
 //! P3.3-P3.5): VMSAv8-64 translation of the EL1&0 regime with the 4 KiB
 //! granule (16 and 64 KiB too with profiles v1.1 and v2, the default), TBI, ASIDs, the TLB
 //! (tlb.rs), AT and TLBI. Where the Arm ARM leaves a choice this follows

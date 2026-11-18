@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The A64 page tier's access cache across ASID switches and TLBIs
-// (docs/jit-unification-plan.md P6.4; tests/a64/asid.c): the same output on
+// (docs/plan/jit-unification-plan.md P6.4; tests/a64/asid.c): the same output on
 // QEMU, the interpreter, and the page tier with a64_asid_tag 0, 1 and 2 (auto)
 import assert from "node:assert/strict";
 import { build, reference, actual } from "./guest_runner.mjs";

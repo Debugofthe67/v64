@@ -1,4 +1,4 @@
-// The GICv2 (the ranchu board's, docs/aarch32-plan.md R4.2) against QEMU's
+// The GICv2 (the ranchu board's, docs/plan/aarch32-plan.md R4.2) against QEMU's
 // virt with gic-version=2: the distributor's banked and shared registers,
 // ITARGETSR, the CPU interface, the virtual timer's PPI, SGIs by GICD_SGIR
 // (to this core, and from core 1 with its source in GICC_IAR), the

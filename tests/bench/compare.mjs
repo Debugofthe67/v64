@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Compares two configurations of one core (docs/jit-unification-plan.md P0.8):
+// Compares two configurations of one core (docs/plan/jit-unification-plan.md P0.8):
 // N sessions of tests/bench/run.mjs, each with the arm under test (the JIT
 // switches of --switches-a) and the baseline arm (--switches-b) on the same
 // core, the runner alternating the arms' order within each benchmark; then

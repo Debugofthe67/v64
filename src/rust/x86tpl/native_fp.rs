@@ -1,4 +1,4 @@
-//! Native SSE floating point in compiled code (docs/simd-xsave-plan.md 7.4):
+//! Native SSE floating point in compiled code (docs/plan/simd-xsave-plan.md 7.4):
 //! Wasm's IEEE arithmetic, admitted only where it gives exactly the results
 //! and MXCSR effects of cpu::simd_fp (whose interpreter fast path applies the
 //! same rule). The page tier emits these checks (the region backend too until M11); a refused

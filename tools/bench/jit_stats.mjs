@@ -1,5 +1,5 @@
 // One JIT statistics record for the measuring scripts
-// (docs/jit-unification-plan.md P0.7): tests/bench/run.mjs,
+// (docs/plan/jit-unification-plan.md P0.7): tests/bench/run.mjs,
 // tests/ir/performance/xp_boot.mjs and tests/x64/windows_boot.mjs write the
 // same record with JIT_STATS=1. It says what ran (the core file, the JIT
 // switches) and what the JITs did, with the definitions of cross-phase rule 3:
@@ -27,7 +27,7 @@ export const LEDGER_MODES = ["real", "vm86", "prot16", "prot32", "compat16", "co
 export const LEDGER_WAYS = ["interpreted", "tier0_native", "tier0_step", "region_native", "page_native", "page_step", "page_retry"];
 
 /**
- * The mode ledger of a core's exports (docs/jit-unification-plan.md P0.6):
+ * The mode ledger of a core's exports (docs/plan/jit-unification-plan.md P0.6):
  * { mode: { way: retired } }, 32-bit code with flat segments under
  * "<mode>.flat", nonzero counts only; empty while the switch mode_ledger is off
  */

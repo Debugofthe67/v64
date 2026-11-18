@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// VMDK and OVA (docs/disk-image-formats-plan.md P4) against qemu-img: each
+// VMDK and OVA (docs/plan/disk-image-formats-plan.md P4) against qemu-img: each
 // subformat qemu-img makes (monolithicSparse, streamOptimized,
 // monolithicFlat, twoGbMaxExtentSparse, twoGbMaxExtentFlat), zeroed grains,
 // a child with its parent (CID), large sparse disks and extents across 2 GiB;

@@ -1,4 +1,4 @@
-// The root filesystem DMG's encryption (docs/iphone4-plan.md S0): FileVault's
+// The root filesystem DMG's encryption (docs/plan/iphone4-plan.md S0): FileVault's
 // "encrcdsa" version 2 format as vfdecrypt reads it. The header (big-endian)
 // gives the chunk size, the plain data's size and where the chunks start;
 // each chunk is AES-128-CBC with IV = HMAC-SHA1(chunk number, big-endian

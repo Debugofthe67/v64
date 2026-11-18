@@ -6,7 +6,7 @@
 本计划给 v86 的 ARM 客体加上 OpenGL ES 的 GPU 加速：客体的 GLES 调用编码后交给宿主，在页面上用 WebGPU 执行。
 它服务两类客体，宿主侧只写一次：
 
-1. **32 位 Android**：`ranchu` 上的 Android 7.1（[arm32.md](arm32.md)）。镜像自带 Android 模拟器的 GLES 客体栈，
+1. **32 位 Android**：`ranchu` 上的 Android 7.1（[arm32.md](../arm32.md)）。镜像自带 Android 模拟器的 GLES 客体栈，
    客体一个文件都不用改。**先做它。**
 2. **iOS**：[iphone4-plan.md](iphone4-plan.md) 的 S5。v86 自己写客体侧的库，复用同一个宿主。
 
@@ -40,7 +40,7 @@
     （`src/graphics_adapters/virtio_gpu/gfxstream.js`）、Vulkan 解码器；进程管道 `pipe:GLProcessPipe` 已经能回答
     （virtio-gpu 的 pipe 资源上）；
   - 没有的：rc 命令（10000 起）只计数、跳过、不回复。Android 16 的官方模式在客体内合成，不发 renderControl
-    （[gpu-deviations.md](gpu-deviations.md) 的 G-59 与 “Not done” 中 renderControl 一行）。
+    （[gpu-deviations.md](../gpu-deviations.md) 的 G-59 与 “Not done” 中 renderControl 一行）。
 - **GL→WebGPU 执行器已经有**（`src/browser/glbridge/gl-webgpu/`，服务 XP 的 OpenGL 代理）：
   - 有 GL 1.1–2.1 的状态机、GLSL 1.10/1.20 前端、固定功能、ARB 程序；`gl_executor.js` 约 9900 行；
   - 它把权威的 GL 状态放在执行器里，在送来查询的那次端口写入中同步回答 `glGet*`。这对 GLES 不适用，
@@ -52,7 +52,7 @@
 
 1. **一套协议、一个宿主。** 解码器、renderControl、影子状态与执行器由 Android 与 iOS 共用。
 2. **解码器由规格文件生成。** 规格文件是 emugl/gfxstream 的 `*.in`、`*.attrib`、`*.types`：每个调用的参数、
-   指针参数的方向与长度表达式。来源只用一份：gfxstream 在 [gfxstream-protocol.md](gfxstream-protocol.md) 里
+   指针参数的方向与长度表达式。来源只用一份：gfxstream 在 [gfxstream-protocol.md](../gfxstream-protocol.md) 里
    已经固定的提交。模拟器要运行所有老镜像，GLES 的操作码只增不改，所以新规格是老编码器的超集；API 25 的编码器
    用到哪些命令，由 E1 的开机核对（没有未知操作码）。老版本的 `device/generic/goldfish-opengl` 只作参考。
    同一个生成器还输出：
@@ -198,7 +198,7 @@
 ### 渲染器通道
 
 GLES 批次走现有渲染器（`svga_renderer.js`）的通道，新增 stream `"gles"`。顺序、完成与渲染器丢失的规则与
-D9WG、GX 相同（[gpu-devices.md](gpu-devices.md) 的 “Architecture”）。`ranchu` 与 `s5l8930` 现在没有渲染器通道：
+D9WG、GX 相同（[gpu-devices.md](../gpu-devices.md) 的 “Architecture”）。`ranchu` 与 `s5l8930` 现在没有渲染器通道：
 GLES 插件在启用时向页面申请一个。`starter.js` 现在只为显示适配器插件建这条通道
 （`graphics_adapter_renderer`），要推广到设备插件。没有渲染器（页面没有 WebGPU）时：
 - Android 明确要求宿主模式（`gpu_mode: "host"`，见下一节的“启用”）就报错；VM 管理器在这种页面上用 `"guest"`，
@@ -266,7 +266,7 @@ iOS 的用户进程没有内核驱动就无法映射设备寄存器，而为 iOS
 复核时已经有答案的，见“复核结论”：renderControl 的命令清单、客体认识的主机特性字符串、进程归属的做法、内核的
 pipe 版本 2。剩下的：
 
-- 规格文件：确认 [gfxstream-protocol.md](gfxstream-protocol.md) 固定的提交里 GLES 与 renderControl 的规格齐全，
+- 规格文件：确认 [gfxstream-protocol.md](../gfxstream-protocol.md) 固定的提交里 GLES 与 renderControl 的规格齐全，
   生成器以它为唯一来源；
 - `qemu.gles=1` 下镜像需要的属性（`ro.opengles.version` 等）与启动链（`qemu-props`、EGL 的加载规则）；
 - gralloc.ranchu 对颜色缓冲的用法（格式、CPU 写入、FBPost）；GLAsyncSwap、GLDMA、GrallocSync 的开关方式；
@@ -386,7 +386,7 @@ pipe 版本 2。剩下的：
     - 在支持的用例中通过率 ≥ 97%；`state_query` 与 `negative_api` ≥ 99%；
     - 没有崩溃、挂起或超时；
     - 每个失败归类：要么修掉，要么作为偏差记入 gpu-deviations.md。
-  - 参照：Android 16 在 Venus 上的 GLES3 抽样，在支持的用例中通过 99.5%（[aarch64.md](aarch64.md)）。
+  - 参照：Android 16 在 Venus 上的 GLES3 抽样，在支持的用例中通过 99.5%（[aarch64.md](../aarch64.md)）。
 - **APK**：都是开源的，能合法下载或从源码构建，满足 32 位与 API 25：
   - **自建测试 APK**（源码进仓库，照 `tests/a32/android/v86arm32.c` 与 `tests/a64/apk.mjs` 的做法）：
     NativeActivity 画固定的 GLES 1.1 与 GLES 2.0 场景（纹理、混合、FBO、ETC1），用于像素比较；
@@ -418,8 +418,8 @@ pipe 版本 2。剩下的：
   - 不用图形日志重放：XP 上恢复时长达 70 秒的黑屏就是它造成的。
 - **界面**：VM 管理器中 Android 7.1 的设置项“GPU”，选项为“主机（WebGPU）”（`gpu_mode: "host"`）和
   “客体（CPU 绘制）”（`"guest"`）。页面有 WebGPU 时默认用主机。`make app-tests` 增加用例。
-- **文档**：[arm32.md](arm32.md) 与 [gpu-devices.md](gpu-devices.md) 增加 GLES 一节，偏差记入
-  [gpu-deviations.md](gpu-deviations.md)。
+- **文档**：[arm32.md](../arm32.md) 与 [gpu-devices.md](../gpu-devices.md) 增加 GLES 一节，偏差记入
+  [gpu-deviations.md](../gpu-deviations.md)。
 
 验收：快照往返后画面与状态一致；性能报告写进文档。
 
@@ -456,7 +456,7 @@ Android 16 现在用客体内的 ANGLE：GLES 在客体里翻译成 Vulkan，再
 但界面慢：
 - Launcher3 的一帧在热状态下约 0.8–1.4 秒；
 - 新画面要几秒；
-- 一个 GL 应用持续约 14 fps（[aarch64.md](aarch64.md)）。
+- 一个 GL 应用持续约 14 fps（[aarch64.md](../aarch64.md)）。
 
 这几个数是在 Venus 模式下测的（aarch64.md 的 “Known defects”）。现在默认的官方 gfxstream 模式还没有同样的
 帧时间数据，E7 的决定要在这个模式下重测。
@@ -537,7 +537,7 @@ CI 只跑 eslint、构建与 `make ci-tests`：`make gles-tests` 加进 `ci-test
   命令也都在，是 2017 年的构建。
 - **进程**：`libOpenglSystemCommon` 打开 `pipe:GLProcessPipe`，再用 `rcSetPuid` 报告。
 - **内核**：Linux 3.10.0+（2017 年 5 月构建），有 `CONFIG_GOLDFISH_PIPE` 与 `goldfish_pipe_v2.c`，`CONFIG_ARM_LPAE`。
-- **v86**：pipe 报版本 1，服务只有 qemud 的三个；gfxstream 的 rc 命令不解码（[gpu-deviations.md](gpu-deviations.md)
+- **v86**：pipe 报版本 1，服务只有 qemud 的三个；gfxstream 的 rc 命令不解码（[gpu-deviations.md](../gpu-deviations.md)
   的 “Not done”），进程管道已能回答；渲染器通道只建给显示适配器插件；`gl_executor.js` 在送来查询的端口写入中
   同步回答。
 - **对初稿的修正**：
@@ -553,7 +553,7 @@ CI 只跑 eslint、构建与 `make ci-tests`：`make gles-tests` 加进 `ci-test
 
 ### E0 结论（2026-10-27）
 
-对照 gfxstream 固定的提交 `7e9d595b`（[gfxstream-protocol.md](gfxstream-protocol.md)）与 `armeabi-v7a-25_r18` 的镜像：
+对照 gfxstream 固定的提交 `7e9d595b`（[gfxstream-protocol.md](../gfxstream-protocol.md)）与 `armeabi-v7a-25_r18` 的镜像：
 
 - **规格文件**：唯一来源是宿主的 `codegen/gles1`、`codegen/gles2`、`codegen/renderControl`（各自的 `.in`、
   `.attrib`、`.types`）。
@@ -767,10 +767,10 @@ CI 只跑 eslint、构建与 `make ci-tests`：`make gles-tests` 加进 `ci-test
 ## 规范与实现参考
 
 - [gfxstream](https://android.googlesource.com/platform/hardware/google/gfxstream/)（Apache-2.0）：宿主的 GLES 解码器与
-  renderControl、客体的编码器与规格文件；v86 已固定的提交见 [gfxstream-protocol.md](gfxstream-protocol.md)
+  renderControl、客体的编码器与规格文件；v86 已固定的提交见 [gfxstream-protocol.md](../gfxstream-protocol.md)
 - [device/generic/goldfish-opengl](https://android.googlesource.com/device/generic/goldfish-opengl/)（Apache-2.0）：
   Android 7.1 时代的客体编码器与规格文件
 - [Android 模拟器的 GPU 仿真文档](https://android.googlesource.com/platform/external/qemu/+/refs/heads/emu-master-dev/android/android-emugl/DESIGN)（emugl 的设计说明）
 - Khronos：OpenGL ES 1.1、2.0 规范与 GLSL ES 1.00 规范；dEQP（VK-GL-CTS）
-- v86 内部：[arm32.md](arm32.md)、[virt.md](virt.md)（ranchu）、[gpu-devices.md](gpu-devices.md)（渲染器通道、gfxstream）、
-  [gfxstream-protocol.md](gfxstream-protocol.md)、[glbridge.md](glbridge.md)、[iphone4-plan.md](iphone4-plan.md)
+- v86 内部：[arm32.md](../arm32.md)、[virt.md](../virt.md)（ranchu）、[gpu-devices.md](../gpu-devices.md)（渲染器通道、gfxstream）、
+  [gfxstream-protocol.md](../gfxstream-protocol.md)、[glbridge.md](../glbridge.md)、[iphone4-plan.md](iphone4-plan.md)

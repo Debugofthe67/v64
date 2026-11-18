@@ -1,4 +1,4 @@
-//! The machine's cores and how they run (docs/arm64-virt-android16-plan.md
+//! The machine's cores and how they run (docs/plan/arm64-virt-android16-plan.md
 //! P3.9: cooperative SMP; P8.2 runs them in workers): one core at a time in
 //! the state block, the others' state in their saved copies, switched in a
 //! round robin of bounded turns; waiting (WFI, WFE), events (SEV, the event
@@ -724,7 +724,7 @@ pub fn a64_boot(entry_low: u32, entry_high: u32, x0_low: u32, x0_high: u32) {
 pub fn a64_machine_state(which: u32, size: bool) -> u32 {
     let (pointer, length) = match which {
         0 => crate::aarch64::gic::state_bytes(),
-        // (the GICv2's own state, docs/aarch32-plan.md R4.2)
+        // (the GICv2's own state, docs/plan/aarch32-plan.md R4.2)
         2 => crate::aarch64::gic::v2_state_bytes(),
         _ => psci::state_bytes(),
     };

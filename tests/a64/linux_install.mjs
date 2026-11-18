@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Alpine 3.24 aarch64 installed to a virtio-blk disk on v86
-// (docs/arm64-virt-android16-plan.md P5.4, A3), in one machine session:
+// (docs/plan/arm64-virt-android16-plan.md P5.4, A3), in one machine session:
 // 1. from the ISO, `setup-disk -m sys` (no swap, no boot loader: the machine
 //    boots its kernel directly, as the reference does) installs onto an
 //    empty disk from a local repository disk, offline (the virt ISO has no

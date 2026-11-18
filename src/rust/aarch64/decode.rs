@@ -1,4 +1,4 @@
-//! The A64 decoder (docs/arm64-virt-android16-plan.md P2.1): an instruction
+//! The A64 decoder (docs/plan/arm64-virt-android16-plan.md P2.1): an instruction
 //! word to an `Inst`, following the encoding index of the Arm ARM (DDI 0487
 //! L.b, C4.1). Every encoding is implemented, a HINT (a NOP unless
 //! implemented), or UNDEF: unallocated, or a feature profile v86-aarch64-v1

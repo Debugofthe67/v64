@@ -1,5 +1,5 @@
 //! The x86 core's side of the code both cores share
-//! (docs/arm64-virt-android16-plan.md P1.0): lib.rs names this module
+//! (docs/plan/arm64-virt-android16-plan.md P1.0): lib.rs names this module
 //! `crate::isa` in the x86 core (aarch64::isa_hooks in the ARM core), and the
 //! shared modules reach the ISA only through it. The hooks of crate::parallel
 //! (set_active, attach, sync, poll) hold what was x86 in its bodies, inlined

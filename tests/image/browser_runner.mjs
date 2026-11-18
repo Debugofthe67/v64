@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Disk images in headless Chrome (docs/disk-image-formats-plan.md, "运行入口"):
+// Disk images in headless Chrome (docs/plan/disk-image-formats-plan.md, "运行入口"):
 // tests/image/disk_image_browser_test.html, on the page and in the CPU
 // Worker, with the images read over HTTP Range requests from this server
 // (status 206, Content-Range, a strong ETag, as a static server answers).

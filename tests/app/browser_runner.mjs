@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The VM manager's pages in headless Chrome (docs/vm-manager-plan.md): a
+// The VM manager's pages in headless Chrome (docs/plan/vm-manager-plan.md): a
 // static server for the repository (no caching), a page that reports its
 // result in an element #result starting with PASS or FAIL (the server adds
 // the script that sends it here), and Chrome with a profile of its own.

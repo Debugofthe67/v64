@@ -1,4 +1,4 @@
-//! The AdvSIMD templates of the A64 page tier (docs/jit-unification-plan.md
+//! The AdvSIMD templates of the A64 page tier (docs/plan/jit-unification-plan.md
 //! P6.3b): vector forms as Wasm SIMD (v128) operations on the V registers
 //! in the state block, emitted only by a core built with simd128 (as
 //! src/rust/x64/pagegen.rs's vector templates). The integer and bitwise

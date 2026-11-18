@@ -1,7 +1,7 @@
 // Disabling the JIT at run time (jit_set_enabled) stops the page tier: a hot
 // loop runs in the interpreter for 128 CPU frames without a compilation or an
 // activation of compiled code; re-enabling compiles and enters it. (Until M11
-// of docs/jit-unification-plan.md this tested the region tiers' promotion.)
+// of docs/plan/jit-unification-plan.md this tested the region tiers' promotion.)
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { V86 } from "../../build/libv86.mjs";

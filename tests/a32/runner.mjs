@@ -1,4 +1,4 @@
-// Bare-metal AArch32 guests for cpu_type "arm32" (docs/aarch32-plan.md R2,
+// Bare-metal AArch32 guests for cpu_type "arm32" (docs/plan/aarch32-plan.md R2,
 // R3): C and assembly built with clang --target=armv7a-none-eabi (ARMv8-A's
 // AArch32, VFP and Advanced SIMD, hard float) against tests/a32/baremetal
 // and the AArch64 guests' libc, a raw image at RAM + 0x10000; run on QEMU

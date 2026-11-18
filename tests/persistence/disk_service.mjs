@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The disk protocol (docs/disk-persistence-plan.md D2): tools/disk-service.mjs
+// The disk protocol (docs/plan/disk-persistence-plan.md D2): tools/disk-service.mjs
 // and its client, src/disk_service.js, in Node (fetch):
 // - the service: reads as a static server (206, Content-Range, ETag the
 //   generation, no-store), 416; a write session: open (the protocol

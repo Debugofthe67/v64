@@ -16,11 +16,11 @@
 //
 //     apk add --no-network --repository /mnt/repo/v3.23/main --repository /mnt/repo/v3.23/community 'mesa-dri-gallium<26' ...
 //
-// --set jit: the guest JIT workloads of docs/arm64-virt-android16-plan.md
+// --set jit: the guest JIT workloads of docs/plan/arm64-virt-android16-plan.md
 // P6.7 (V8 in nodejs, HotSpot in openjdk21, luajit, pcre2's JIT).
 //
 // --set aarch32 (--arch armv7): 32-bit Arm programs for the AArch32
-// processes of docs/aarch32-plan.md Q5.1 (tests/a64/linux_boot.mjs with
+// processes of docs/plan/aarch32-plan.md Q5.1 (tests/a64/linux_boot.mjs with
 // A64_WORKLOAD=aarch32).
 //
 // --set sys: what `setup-disk -m sys` installs, from the mirror's index
@@ -69,7 +69,7 @@ export const KBUILD_PACKAGES = ["build-base", "bash", "bison", "flex", "gawk", "
     "linux-headers", "findutils", "diffutils", "sed", "xz", "tar", "gmp-dev", "mpc1-dev", "mpfr-dev", "e2fsprogs",
     // (P9.2: the test images the VM makes: a minimal SELinux policy with libsepol's CIL compiler, erofs, f2fs)
     "libsepol-dev", "erofs-utils", "f2fs-tools"];
-/** 32-bit userland for profile v3's AArch32 processes (docs/aarch32-plan.md Q5.1;
+/** 32-bit userland for profile v3's AArch32 processes (docs/plan/aarch32-plan.md Q5.1;
  * --arch armv7): BusyBox and musl's dynamic linker, OpenSSL (NEON and the
  * crypto instructions), Lua, xz, SQLite */
 export const AARCH32_PACKAGES = ["busybox", "musl-utils", "openssl", "lua5.4", "xz", "sqlite"];

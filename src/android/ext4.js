@@ -1,6 +1,6 @@
 // An empty filesystem for an Android partition that the system expects
 // formatted but whose image the SDK does not ship, or ships too small (the
-// ranchu machine's /cache, docs/aarch32-plan.md R6.3; API 28's userdata,
+// ranchu machine's /cache, docs/plan/aarch32-plan.md R6.3; API 28's userdata,
 // whose userdata.img is 1 MiB that the emulator grows): the ext2 layout
 // (revision 1, 4 KiB blocks, 256-byte inodes, file types in directories,
 // sparse superblocks), which Linux's ext4 driver mounts as ext4 (fstab's

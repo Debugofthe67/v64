@@ -1,4 +1,4 @@
-// Browser disks (docs/vm-manager-plan.md "浏览器磁盘（OPFS）", U6): an image
+// Browser disks (docs/plan/vm-manager-plan.md "浏览器磁盘（OPFS）", U6): an image
 // in the browser's private file system (OPFS), named by its url
 // "opfs:v86/disks/<id>.img". With disk_option "read_write" OpfsDisk writes
 // the guest's changes into it, as NodeFileDisk (src/disk_writeback.js) does

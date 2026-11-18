@@ -1,4 +1,4 @@
-// Exact SSE floating point in the 32-bit engines (docs/simd-xsave-plan.md
+// Exact SSE floating point in the 32-bit engines (docs/plan/simd-xsave-plan.md
 // 7.4, P4a, P4b): every SSE/SSE2/SSE3/SSE4.1 floating-point form (ROUND and
 // DPPS/DPPD with tests/rust/sse4_model.mjs's use of the model), with register and
 // memory sources, against the model of tests/rust/sse_fp_model.mjs (exact
@@ -11,7 +11,7 @@
 // interpreter, then hot under the page tier, whose native paths
 // (x86tpl::native_fp) must be refused exactly where they would differ.
 // Then the same cases run as 64-bit code in long mode under the x64 page
-// tier (docs/jit-unification-plan.md P4.18: its templates with JIT_SWITCHES
+// tier (docs/plan/jit-unification-plan.md P4.18: its templates with JIT_SWITCHES
 // x64_sse_fast_check=1, else the forms it takes before P4.18).
 import assert from "node:assert/strict";
 import fs from "node:fs";

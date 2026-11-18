@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The 32-bit arm kvm-unit-tests of docs/aarch32-plan.md R5.1 (upstream
+// The 32-bit arm kvm-unit-tests of docs/plan/aarch32-plan.md R5.1 (upstream
 // arm/unittests.cfg's entries for arm; its timer, cache, debug and fpu
 // tests are arm64's, the gicv2 ones need a GICv2, pci-test the PCIe host
 // the 32-bit virt has not), built by build.sh arm and run by run.mjs.

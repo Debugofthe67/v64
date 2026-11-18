@@ -1,5 +1,5 @@
 // @ts-check
-// The VM manager's library (docs/vm-manager-plan.md, "存储与持久化", U1):
+// The VM manager's library (docs/plan/vm-manager-plan.md, "存储与持久化", U1):
 // the configurations in IndexedDB (the database v86-vm-manager: the store
 // vms by id, handles, the FileSystemFileHandles of the files the
 // configurations name, and prefs, the manager's preferences such as its disk

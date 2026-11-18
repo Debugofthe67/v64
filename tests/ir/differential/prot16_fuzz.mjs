@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 16-bit differential fuzzing (docs/jit-unification-plan.md P7.7(6), P7.8):
+// 16-bit differential fuzzing (docs/plan/jit-unification-plan.md P7.7(6), P7.8):
 // random 16-bit programs run hot in a loop in a 16-bit code segment of
 // protected mode, real mode or virtual-8086 mode (FUZZ_MODE prot16, real or
 // v86; so their page is compiled by the x64 page tier with x64_page_prot16

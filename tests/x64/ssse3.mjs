@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SSSE3 in the x64 engine (docs/simd-xsave-plan.md P3): the MMX and XMM forms
+// SSSE3 in the x64 engine (docs/plan/simd-xsave-plan.md P3): the MMX and XMM forms
 // in 64-bit mode (XMM8-15 through REX, which MMX registers ignore) and in
 // compatibility mode, with register and memory sources, against QEMU and the
 // SDM model of tests/rust/ssse3_model.mjs; #GP(0) for a misaligned XMM memory
@@ -200,7 +200,7 @@ const check = (result, label) => {
 check(expected, "QEMU");
 for(const [label, options] of [["interpreted", {}],
     ["x64 page tier", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true}],
-    // (compatibility-mode code in the page tier, docs/jit-unification-plan.md P7.2)
+    // (compatibility-mode code in the page tier, docs/plan/jit-unification-plan.md P7.2)
     ["x64 page tier, compat32", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true,
         jit_switches: {x64_page_compat32: 1}}]])
 {

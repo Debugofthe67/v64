@@ -1,7 +1,7 @@
 # gfxstream over virtio-gpu: the protocol v64 implements
 
 The guest side of the official Android images' GPU path, as read from the
-sources of the pinned build (docs/gfxstream-plan.md G0). v64's host side
+sources of the pinned build (docs/plan/gfxstream-plan.md G0). v64's host side
 (the plan's G1-G5) implements this; the guest is not changed.
 
 ## Pinned sources

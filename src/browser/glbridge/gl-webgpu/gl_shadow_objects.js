@@ -1,5 +1,5 @@
 // The GL shadow's textures, renderbuffers and framebuffer objects
-// (docs/opengl-webgpu-plan.md C3): their names, what each texture level and
+// (docs/plan/opengl-webgpu-plan.md C3): their names, what each texture level and
 // renderbuffer holds (size and internal format), what each framebuffer
 // object has attached, and the bindings -- so glCheckFramebufferStatus is
 // answered on the CPU side, by EXT_framebuffer_object's rules.

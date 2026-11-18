@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The A64 page tier's Alpine metrics (docs/jit-unification-plan.md P6.6b,
-// docs/arm64-virt-android16-plan.md P6 "验收（A4）", measured as P0.9 says):
+// The A64 page tier's Alpine metrics (docs/plan/jit-unification-plan.md P6.6b,
+// docs/plan/arm64-virt-android16-plan.md P6 "验收（A4）", measured as P0.9 says):
 // Alpine's initramfs stage with the probe (tests/a64/linux_boot.mjs) on 1, 2
 // and 4 cores, interpreted and with the page tier, each the median of
 // --sessions runs (3). Per configuration: probe_done_ms, the whole run's ms,
@@ -87,7 +87,7 @@ if(baseline)
 {
     const describe = spawnSync("git", ["-C", ROOT, "describe", "--tags", "--always", "--dirty"], { encoding: "utf8" }).stdout.trim();
     fs.writeFileSync(path.resolve(baseline), JSON.stringify({
-        about: "The frozen Alpine performance baseline (docs/arm64-virt-android16-plan.md P9.4): tools/a64_jit_metrics.mjs's medians",
+        about: "The frozen Alpine performance baseline (docs/plan/arm64-virt-android16-plan.md P9.4): tools/a64_jit_metrics.mjs's medians",
         build: describe, release_build: !!+process.env.TEST_RELEASE_BUILD, date: new Date().toISOString().slice(0, 10), sessions,
         results: Object.fromEntries(Object.entries(results).map(([name, r]) => [name, r.median])),
     }, null, 2) + "\n");

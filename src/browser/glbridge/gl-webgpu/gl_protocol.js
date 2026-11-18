@@ -1,4 +1,4 @@
-// The OpenGL protocol, once (docs/opengl-webgpu-plan.md C1): the VGL2 records
+// The OpenGL protocol, once (docs/plan/opengl-webgpu-plan.md C1): the VGL2 records
 // openglproxy's opengl32.dll writes and gl_executor.js reads -- every opcode,
 // the control records, the flat argument lists, the fixed headers of the
 // hand-written records and the constants both sides use. The guest's

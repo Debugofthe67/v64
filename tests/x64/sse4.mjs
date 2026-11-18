@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SSE4.1 and SSE4.2 integer forms in the x64 engine (docs/simd-xsave-plan.md
+// SSE4.1 and SSE4.2 integer forms in the x64 engine (docs/plan/simd-xsave-plan.md
 // P4b): in 64-bit mode (XMM8-15 through REX, PEXTRQ/PINSRQ through REX.W,
 // register destinations zero-extended to 64 bits) and in compatibility mode,
 // with register and memory sources, against QEMU and the SDM model of
@@ -572,7 +572,7 @@ const expected = await reference(directory, {length});
 check(expected, "QEMU");
 for(const [label, options] of [["interpreted", {}],
     ["x64 page tier", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true}],
-    // (compatibility-mode code in the page tier, docs/jit-unification-plan.md P7.2)
+    // (compatibility-mode code in the page tier, docs/plan/jit-unification-plan.md P7.2)
     ["x64 page tier, compat32", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true,
         jit_switches: {x64_page_compat32: 1}}]])
 {

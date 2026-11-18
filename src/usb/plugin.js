@@ -1,6 +1,6 @@
 // usb: { controller: "uhci" | "ehci" | "xhci", tablet: true, mass_storage } --
 // a USB host controller and its devices (docs/usb.md,
-// docs/modern-pc-devices-plan.md U1 to U4): UHCI (PIIX3's on i440FX, ICH9's
+// docs/plan/modern-pc-devices-plan.md U1 to U4): UHCI (PIIX3's on i440FX, ICH9's
 // on Q35), ICH9's EHCI with its three UHCI companions (the plugin's PCI
 // function is the EHCI's, 7; the companions are functions 0 to 2), or xHCI
 // (QEMU's qemu-xhci); the HID tablet on the first port,

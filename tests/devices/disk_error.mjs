@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// What a failed disk request does (docs/disk-persistence-plan.md D0, "错误处理"):
+// What a failed disk request does (docs/plan/disk-persistence-plan.md D0, "错误处理"):
 // an IDE disk whose backend fails reads and writes on request, driven
 // through the ports while the guest (a boot sector spinning in `jmp $`)
 // runs.

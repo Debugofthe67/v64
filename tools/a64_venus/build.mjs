@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Mesa's venus Vulkan driver for Android (docs/arm64-virt-android16-plan.md
+// Mesa's venus Vulkan driver for Android (docs/plan/arm64-virt-android16-plan.md
 // P11.4): the prebuilt Cuttlefish image has no Mesa, so the guest's driver
 // is built here with the Android NDK. Mesa 26.1.6 is the version
 // src/graphics_adapters/virtio_gpu/venus_protocol.js was generated from, so

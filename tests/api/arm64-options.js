@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // The guest CPU and machine combinations of new V86()
-// (docs/arm64-virt-android16-plan.md P1.1, src/machine_options.js):
+// (docs/plan/arm64-virt-android16-plan.md P1.1, src/machine_options.js):
 // - cpu_type x86 and x86_64 run on machine_type i440fx (their default) and
 //   q35, cpu_type arm64 and arm32 on virt (their default) and ranchu (the
 //   Android emulator's board); every other combination fails
@@ -59,7 +59,7 @@ assert.throws(() => check_machine_options({ machine_type: "pc" }), /machine_type
 assert.throws(() => check_machine_options({ experimental_x64: true }), /experimental_x64 was replaced/);
 console.log("PASS unknown cpu_type and machine_type");
 
-// the CPU model (cpu_profile, docs/iphone4-plan.md "CPU 型号"; the arm64 profiles of docs/aarch32-plan.md Q7.2)
+// the CPU model (cpu_profile, docs/plan/iphone4-plan.md "CPU 型号"; the arm64 profiles of docs/plan/aarch32-plan.md Q7.2)
 for(const cpu_profile of ["generic-arm64-v1", "generic-arm64-v1.1", "generic-arm64", "generic-arm64-compat32"])
 {
     assert.equal(check_machine_options({ cpu_type: "arm64", cpu_profile }).cpu_profile, cpu_profile);

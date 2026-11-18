@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Machines whose disks are written back to a disk service
-// (docs/disk-persistence-plan.md D2; tools/disk-service.mjs in this
+// (docs/plan/disk-persistence-plan.md D2; tools/disk-service.mjs in this
 // process), in Node, driven through the IDE ports (no guest code runs),
 // the AHCI controller of Q35 and virtio-blk on the virt machine:
 // - IDE: a write is in the service's file when the command completes,

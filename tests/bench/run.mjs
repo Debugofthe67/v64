@@ -139,12 +139,12 @@ for(const bench of manifest.benchmarks) {
                 note(m.arm, s);
                 row.arms[m.arm.label].warm_ms.push(s.ms);
             }
-            // (tools/bench/jit_stats.mjs, docs/jit-unification-plan.md P0.7)
+            // (tools/bench/jit_stats.mjs, docs/plan/jit-unification-plan.md P0.7)
             if(jit_stats_enabled())
             {
                 for(const m of machines) row.arms[m.arm.label].jit_stats = jit_stats(m.vm, { script: "bench", benchmark: bench.name, arm: m.arm.label, wasm: m.arm.wasm });
             }
-            // (docs/jit-unification-plan.md P0.8: the step profile slows
+            // (docs/plan/jit-unification-plan.md P0.8: the step profile slows
             // every step, so it runs in one more round, not timed)
             if(fallbacks) {
                 const m = machines[0], memory = m.cpu.wasm_memory;

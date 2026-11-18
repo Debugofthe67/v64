@@ -1,4 +1,4 @@
-// AVX floating point in the 32-bit engines (docs/simd-xsave-plan.md 8, P5
+// AVX floating point in the 32-bit engines (docs/plan/simd-xsave-plan.md 8, P5
 // part 3): the VEX form of every SSE/SSE2/SSE3/SSE4.1 floating-point form of
 // tests/rust/sse_fp_cases.mjs against the same model (exact rational
 // arithmetic, independent of SoftFloat and cpu/simd_fp.rs), with VEX's

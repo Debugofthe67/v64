@@ -1,4 +1,4 @@
-// The step profile (docs/jit-unification-plan.md P0.5): the instructions
+// The step profile (docs/plan/jit-unification-plan.md P0.5): the instructions
 // compiled code leaves to the interpreter, from the x64 page tier (and IR
 // Tier-0 until P7.5 deleted it: stepper 0) in one store keyed by StepKey v1 (src/rust/step_profile.rs, which
 // documents the layout). Turn it on with the JIT switch step_profile; it
@@ -6,7 +6,7 @@
 
 export const MODES = ["real", "vm86", "prot16", "prot32", "compat16", "compat32", "long64"];
 export const STEPPERS = ["tier0", "x64page", "event"];   // ("tier0": none since P7.5)
-// Events that are not steps (stepper "event", docs/jit-unification-plan.md
+// Events that are not steps (stepper "event", docs/plan/jit-unification-plan.md
 // P4.0; src/rust/step_profile.rs's event module): the event, then names of
 // its details by number
 export const EVENTS = {

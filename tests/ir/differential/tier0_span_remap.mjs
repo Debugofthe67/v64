@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A remapped page of a multi-page function (docs/jit-unification-plan.md
+// A remapped page of a multi-page function (docs/plan/jit-unification-plan.md
 // P7.3b, x64_page_clusters): a hot loop on one page calls into the next
 // linear page and back, so the page tier compiles both into one function,
 // and every 64th iteration points the second page's PTE at another physical

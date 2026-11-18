@@ -52,7 +52,7 @@ instructions per second (a REP string instruction counts once).
 
 ## Gates and comparisons
 
-The gates of [jit-unification-plan.md](jit-unification-plan.md) (cross-phase
+The gates of [jit-unification-plan.md](../plan/jit-unification-plan.md) (cross-phase
 rule 2) judge the medians of several sessions, never one session: a quick
 session moves single benchmarks by 5–15% even between identical cores.
 

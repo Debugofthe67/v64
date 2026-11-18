@@ -539,7 +539,7 @@ export const DEVICE_EXTENSIONS = {
     "VK_KHR_create_renderpass2": 1,
     "VK_KHR_depth_stencil_resolve": 1,
     "VK_KHR_dynamic_rendering": 1,
-    // gralloc's buffers on Android (P11.4 of docs/arm64-virt-android16-plan.md):
+    // gralloc's buffers on Android (P11.4 of docs/plan/arm64-virt-android16-plan.md):
     // the driver imports a dma-buf as its virtio-gpu resource
     // (VkImportMemoryResourceInfoMESA), whose GX surface the image then is;
     // one modifier, linear (images are textures here, with no layout of

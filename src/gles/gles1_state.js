@@ -1,4 +1,4 @@
-// OpenGL ES 1.1's own state (docs/gles-proxy-plan.md E4), written from the
+// OpenGL ES 1.1's own state (docs/plan/gles-proxy-plan.md E4), written from the
 // GLES 1.1 specification: the matrix stacks and their operations, the
 // current color, normal, texture coordinates and point size, the client
 // arrays (the encoder's *PointerData/*PointerOffset), lights, the light

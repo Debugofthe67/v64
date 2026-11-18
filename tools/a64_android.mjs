@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Android 16 boot materials for the virt machine
-// (docs/arm64-virt-android16-plan.md P10.1, P10.5): the pinned Cuttlefish
+// (docs/plan/arm64-virt-android16-plan.md P10.1, P10.5): the pinned Cuttlefish
 // arm64-only phone build (aosp_cf_arm64_only_phone-userdebug 15581820 from
 // ci.android.com's aosp-android-latest-release branch: BP4A.251205.006,
 // the build of the android-16.0.0_r4 tag, source android16-qpr2-release)
@@ -50,7 +50,7 @@
 //   (as odm's); userdata blank and fstab.cf.ext4.hctr2 (f2fs's block is the
 //   page: the image's 4 KiB-block f2fs does not mount on a 16K kernel, so
 //   first boot makes ext4 there);
-// - with --gsi <zip> (docs/android-images-plan.md I0.2, I5): a Generic
+// - with --gsi <zip> (docs/plan/android-images-plan.md I0.2, I5): a Generic
 //   System Image's system.img (from ci.android.com's or the GSI release
 //   page's aosp_arm64 zip, raw ext4) as system_a, in free space in super,
 //   every metadata copy's extent changed; its vbmeta.img (verification
@@ -75,7 +75,7 @@
 // on the PL011 (androidboot.console=ttyAMA0).
 //
 // The image formats, the device model (partitions, bootconfig, GPU modes)
-// and the bootloader's work are src/android/'s (docs/android-images-plan.md
+// and the bootloader's work are src/android/'s (docs/plan/android-images-plan.md
 // I1), which v64's own bootloader and importer use too; this tool keeps the
 // files, the downloads and the 16K modules.
 //
@@ -89,7 +89,7 @@
 //   (--release --no-venus: Cuttlefish's images as they are, I0.2's official
 //   reference: vendor_boot's own ramdisk, SwiftShader, super unchanged;
 //   --shrink-super: super to its partitions and 64 MiB; --userdata-mb <n>:
-//   userdata blank, n MiB, formatted at first boot: docs/android-images-plan.md
+//   userdata blank, n MiB, formatted at first boot: docs/plan/android-images-plan.md
 //   I4.3's disk)
 //   (--download: fetch the missing artifacts into build/a64-android/dl/ first;
 //   --extract: then boot them on QEMU with HVF, the host's CPU, and write the
@@ -122,7 +122,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") + 
  * default, the plan's), and Android 14's phone with a 32-bit second
  * architecture (aosp_cf_arm64_phone-userdebug from the aosp-android14-gsi
  * branch: zygote64_32, armeabi-v7a in ro.product.cpu.abilist; for 32-bit
- * apps on arm64, docs/aarch32-plan.md Q5.2); each with its artifacts (sizes
+ * apps on arm64, docs/plan/aarch32-plan.md Q5.2); each with its artifacts (sizes
  * and sha256, the server's MD5 checked at download time) and directories */
 const BUILDS = {
     a16: {
@@ -274,7 +274,7 @@ function unpack_images()
     fs.writeFileSync(stamp, String(fs.statSync(zip).mtimeMs));
 }
 
-// the image library (src/android/, docs/android-images-plan.md I1) over
+// the image library (src/android/, docs/plan/android-images-plan.md I1) over
 // files: reads through a descriptor kept open
 const readers = new Map();
 function file_reader(file)
@@ -314,7 +314,7 @@ function unsparse_into(file, fd, offset, limit = Infinity, skip = [])
     });
 }
 
-/** the Venus driver on odm (docs/arm64-virt-android16-plan.md P11.4 V3; see
+/** the Venus driver on odm (docs/plan/arm64-virt-android16-plan.md P11.4 V3; see
  * the top): odm's image with the driver, read back */
 function odm_with_driver(odm, driver)
 {
@@ -446,7 +446,7 @@ async function main()
     const driver = args.venus && fs.existsSync(VENUS_DRIVER) ? fs.readFileSync(VENUS_DRIVER) : null;
     const venus = driver && { record: replace("odm", "vbmeta", odm_with_driver(super_partition(super_read, lp, vbmeta_of("vbmeta"), "odm"), driver)) };
     // (--zygote64-32, with --gsi: a 32-bit second architecture for 32-bit
-    // apps, docs/aarch32-plan.md Q5.2: vendor's build.prop with ro.zygote
+    // apps, docs/plan/aarch32-plan.md Q5.2: vendor's build.prop with ro.zygote
     // zygote64_32, vendor's and odm's with the 32-bit ABIs, from which init
     // makes ro.product.cpu.abilist32 (the first of product, odm, vendor,
     // system that has a list: odm's); the GSI brings app_process32, the
@@ -569,7 +569,7 @@ async function main()
         for(const file of modules_16k.missing) console.log(`16K: ${file} has no 16K module (left as it was, not in modules.dep)`);
     }
     // (--shrink-super: super to its partitions' end and 64 MiB, its block
-    // device's size in every metadata copy; docs/android-images-plan.md I4.3)
+    // device's size in every metadata copy; docs/plan/android-images-plan.md I4.3)
     if(args.shrink_super) super_patches.push(...lp_resize(lp, lp_end(lp) * SECTOR + (64 << 20)));
     // the bootloader's work (src/android/boot.js): the vbmeta digest,
     // bootconfig, the initrd and the command line

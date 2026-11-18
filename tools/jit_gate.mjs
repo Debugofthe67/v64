@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The local gates of docs/jit-unification-plan.md (P0.9; the GitHub CI is left
+// The local gates of docs/plan/jit-unification-plan.md (P0.9; the GitHub CI is left
 // alone for now, open question 1):
 //
 // make jit-gate, before each commit:

@@ -1,5 +1,5 @@
 // Directed bare-metal checks of the reference's platform behaviour that the
-// v86 virt machine copies (docs/arm64-virt-android16-plan.md P0.2): PSCI over
+// v86 virt machine copies (docs/plan/arm64-virt-android16-plan.md P0.2): PSCI over
 // HVC (version, features, an unknown function), HVC with a non-zero
 // immediate, SMC, and loads from physical addresses with nothing mapped.
 //

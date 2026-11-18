@@ -1,4 +1,4 @@
-// Hard disk images by their descriptor (docs/disk-image-formats-plan.md P0):
+// Hard disk images by their descriptor (docs/plan/disk-image-formats-plan.md P0):
 // the options a disk's descriptor may have, the format from its signature
 // and structure ("auto"), the source of its bytes and the format's reader.
 // Without a format (or with "raw") a disk keeps the buffers of src/buffer.js.
@@ -65,7 +65,7 @@ export function check_image_options(name, file, hard_disk)
     }
     if(FORMATS_LATER[format])
     {
-        throw new DiskImageError(name + ": the format " + format + " is not supported yet (docs/disk-image-formats-plan.md " +
+        throw new DiskImageError(name + ": the format " + format + " is not supported yet (docs/plan/disk-image-formats-plan.md " +
             FORMATS_LATER[format] + ")", "unsupported");
     }
     if(!DISK_IMAGE_FORMATS.includes(format))
@@ -320,7 +320,7 @@ function format_name(name)
 /**
  * Open an image file and its parents: a parent is given by the caller
  * (backing), never loaded by the name an image has for it; a missing parent
- * is an error, not zeros (docs/disk-image-formats-plan.md P2)
+ * is an error, not zeros (docs/plan/disk-image-formats-plan.md P2)
  * @param {string} name
  * @param {!Object} file
  * @param {!Object} settings
@@ -365,7 +365,7 @@ export async function open_image(name, file, settings, depth = 0, chain = [])
     if(!Reader)
     {
         throw new DiskImageError(label + ": the format " + format + " is not supported" +
-            (FORMATS_LATER[format] ? " yet (docs/disk-image-formats-plan.md " + FORMATS_LATER[format] + ")" : ""), "unsupported");
+            (FORMATS_LATER[format] ? " yet (docs/plan/disk-image-formats-plan.md " + FORMATS_LATER[format] + ")" : ""), "unsupported");
     }
     const reader = new Reader(source, label, Object.assign({}, settings,
         { open_extent_source: extent => extent_source(label, file, extent, settings) }));
@@ -467,7 +467,7 @@ export function set_buffer_sector_size(name, buffer, sector_size)
 /**
  * An OVF package (an OVA archive): its disks as descriptors (the archive's,
  * with archive_member), the hardware as v86 options, notes for what v86
- * does not have (docs/disk-image-formats-plan.md P4)
+ * does not have (docs/plan/disk-image-formats-plan.md P4)
  * @param {!Object} file the archive's descriptor (url, buffer)
  * @param {!Object} settings
  * @return {!Promise<!Object>}

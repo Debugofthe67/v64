@@ -285,7 +285,7 @@ VMware's "VMware SVGA 3D" on `graphics_adapter: "vmware_svga"` (D3D9 to
 D3D11) and viogpudo on `"virtio_gpu"` (2D only). This section covers the
 guest setup. What the drivers need from the device, and what works, is in
 [gpu-devices.md](gpu-devices.md#guest-drivers); how to measure a running
-guest is in [profiling.md](profiling.md). The examples use the Windows test
+guest is in [profiling.md](perf/profiling.md). The examples use the Windows test
 harness, `tests/x64/windows_boot.mjs`, whose options are listed at the top of
 that file.
 
@@ -406,7 +406,7 @@ headless Chrome with WebGPU), and `WIN_SVGA_LEVEL` pins a level.
 #### 5.4.5 3DMark06 states
 
 Measurements start from saved states, so that a scene runs again and again
-without booting ([profiling.md](profiling.md)).
+without booting ([profiling.md](perf/profiling.md)).
 
 - **One state per adapter and level.** The PCI device is part of a snapshot:
   a restore refuses a snapshot from another `graphics_adapter` (and a

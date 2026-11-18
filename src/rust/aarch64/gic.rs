@@ -1,4 +1,4 @@
-//! The GICv3 of the virt machine (docs/arm64-virt-android16-plan.md P4.2):
+//! The GICv3 of the virt machine (docs/plan/arm64-virt-android16-plan.md P4.2):
 //! the distributor (GICD), one redistributor (GICR, RD and SGI frames) and
 //! one CPU interface (the ICC_* system registers) per core, decoded here in
 //! Rust. The configuration is the reference's (QEMU 9.2 virt, gic-version=3,
@@ -15,7 +15,7 @@
 //! changed signal of another core kicks that core.
 //!
 //! The same state behind a GICv2's registers (a64_gic_set_version(2): the
-//! ranchu board's Linux 3.10, docs/aarch32-plan.md R4.2, R6): the
+//! ranchu board's Linux 3.10, docs/plan/aarch32-plan.md R4.2, R6): the
 //! distributor without affinity routing (the SGIs' and PPIs' registers
 //! banked per core, ITARGETSR, GICD_SGIR and the SGIs' source cores) and a
 //! memory-mapped CPU interface (GICC) at GICC_BASE whose priority logic is

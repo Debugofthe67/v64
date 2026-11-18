@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // src/android/ on the real images, when they are here (each part skipped
-// otherwise; docs/android-images-plan.md I1, I2): Cuttlefish's image zip
+// otherwise; docs/plan/android-images-plan.md I1, I2): Cuttlefish's image zip
 // and the GSI's zip read as zips, super's metadata written again as it was,
 // and the bootloader's work from tools/a64_android.mjs's disk.img giving
 // that tool's initrd.img, initrd-venus.img and command line.

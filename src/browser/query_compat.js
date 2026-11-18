@@ -1,4 +1,4 @@
-// The old page's address (docs/vm-manager-plan.md, U0): ?profile=, ?hda.url=
+// The old page's address (docs/plan/vm-manager-plan.md, U0): ?profile=, ?hda.url=
 // and the rest, as the page's settings, and a start's settings from the
 // profile, the address and the form (src/browser/vm_options.js). Sites and
 // bookmarks link to these addresses; the VM manager and the debug page both
@@ -120,7 +120,7 @@ export function apply_query_args(settings, query_args)
             };
         }
 
-        // the disks' policies (docs/disk-persistence-plan.md): hda.disk_option=read_write
+        // the disks' policies (docs/plan/disk-persistence-plan.md): hda.disk_option=read_write
         // with a disk service's URL writes the guest's changes back; hda.disk_error=report
         // (the settings' names as properties, as main.js had them for its ADVANCED build)
         for(const [name, disk] of [["hda", settings.hda], ["hdb", settings.hdb], ["fda", settings.fda]])

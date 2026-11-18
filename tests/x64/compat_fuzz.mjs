@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Random 32-bit programs in IA-32e compatibility mode (WOW64's), each looped
 // until its code pages are compiled by the x64 page tier with
-// x64_page_compat32 (docs/jit-unification-plan.md P7.2), then compared with
+// x64_page_compat32 (docs/plan/jit-unification-plan.md P7.2), then compared with
 // the same guest run by the interpreters alone: the eight GPRs, EFLAGS and
 // the data pages must be identical. As tests/x64/page_fuzz.mjs for 64-bit
 // code: templated forms of every width, memory operands (base, index,

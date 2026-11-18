@@ -1,4 +1,4 @@
-// AArch32 at PL1 against QEMU's cortex-a15 (docs/aarch32-plan.md R2): the
+// AArch32 at PL1 against QEMU's cortex-a15 (docs/plan/aarch32-plan.md R2): the
 // modes and their banked registers, CPSR and the SPSRs, the exceptions'
 // entry (vectors at VBAR, modes, return addresses, fault status) and
 // returns, LDM and STM of the User registers, User mode's view, CP15 at

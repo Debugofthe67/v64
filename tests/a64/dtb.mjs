@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The virt machine's device tree against the reference's
-// (docs/arm64-virt-android16-plan.md P4.1): src/virt/dtb.js's tree and
+// (docs/plan/arm64-virt-android16-plan.md P4.1): src/virt/dtb.js's tree and
 // QEMU 9.2's dumpdtb for the same machine (1, 2 and 4 cores, a kernel
 // command line and an initrd), both decompiled by dtc with sorted nodes and
 // properties, must differ only by the allowed differences of

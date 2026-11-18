@@ -1,4 +1,4 @@
-// glslang for the GLES host (docs/gles3-plan.md, "着色器的数据流"): the
+// glslang for the GLES host (docs/plan/gles3-plan.md, "着色器的数据流"): the
 // module tools/glslang/build.sh builds (bios/glslang.wasm; its interface
 // tools/glslang/v86_glslang.cpp), synchronous once instantiated, as the
 // shadow state answers glCompileShader and glLinkProgram at once.

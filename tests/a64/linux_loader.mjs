@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The virt machine's Linux loader (docs/arm64-virt-android16-plan.md P4.6):
+// The virt machine's Linux loader (docs/plan/arm64-virt-android16-plan.md P4.6):
 // src/virt/loader.js unpacks Alpine's EFI zboot vmlinuz-virt with its own
 // inflate (src/virt/inflate.js) to the Image the host's gunzip gives
 // (tests/lib/alpine_image.mjs, the manifest's SHA-256), and places the

@@ -1,4 +1,4 @@
-; A minimal SELinux policy for the androidish kernel (docs/arm64-virt-android16-plan.md
+; A minimal SELinux policy for the androidish kernel (docs/plan/arm64-virt-android16-plan.md
 ; P9.2), compiled by tests/a64/cil2bin.c in tools/a64_kernel.mjs's VM: one user,
 ; role and type for every process and object; the classes the kernel knows and
 ; this policy does not are allowed (handleunknown), so that the probe runs in

@@ -1,5 +1,5 @@
 // The virt machine's PL031 real-time clock at 0x0901_0000
-// (docs/arm64-virt-android16-plan.md P4.5), as the reference's (QEMU 9.2
+// (docs/plan/arm64-virt-android16-plan.md P4.5), as the reference's (QEMU 9.2
 // hw/rtc/pl031.c): seconds since the epoch from the machine clock's wall
 // time (MachineClock.wall_time), the load register setting them, always
 // enabled, an alarm (the match register) whose interrupt is SPI 2 (INTID

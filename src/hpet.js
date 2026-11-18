@@ -121,7 +121,7 @@ export function HPET(cpu)
     this.reset();
 }
 
-/** A register read, for the step profile (docs/jit-unification-plan.md P4.0: what QueryPerformanceCounter reads) */
+/** A register read, for the step profile (docs/plan/jit-unification-plan.md P4.0: what QueryPerformanceCounter reads) */
 HPET.prototype.note_read = function()
 {
     const note = this.cpu.wm?.exports["step_profile_note_event"];

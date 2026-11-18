@@ -1,4 +1,4 @@
-// AArch32 EL0 cases of docs/aarch32-plan.md Q4.4 (tests/a64/aarch32_el0.mjs,
+// AArch32 EL0 cases of docs/plan/aarch32-plan.md Q4.4 (tests/a64/aarch32_el0.mjs,
 // A64_AARCH32_CASES=q4): CPACR_EL1.FPEN traps floating point and Advanced
 // SIMD at EL0 (EC 0x07, CV 1, COND 0xE) when it is 00 or 01; an encoding
 // that is UNDEFINED is UNDEFINED first; an instruction that fails its

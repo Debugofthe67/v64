@@ -1,4 +1,4 @@
-// The AArch32 MMU against QEMU's cortex-a15 (docs/aarch32-plan.md R3): the
+// The AArch32 MMU against QEMU's cortex-a15 (docs/plan/aarch32-plan.md R3): the
 // short descriptors (sections and supersections, small and large pages,
 // AP[2:0], XN and PXN, the domains, TTBCR.N and TTBR1, SCTLR.AFE's access
 // flag, TEX remap and Device memory's alignment, ASIDs and TLB maintenance)

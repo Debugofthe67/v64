@@ -1,4 +1,4 @@
-/* The real-guest acceptance probe of docs/simd-xsave-plan.md 11.3 (P12):
+/* The real-guest acceptance probe of docs/plan/simd-xsave-plan.md 11.3 (P12):
  * linked against Ubuntu 24.04's glibc 2.39 (libc.so.6, libm.so.6 and
  * libhwprobe.so, see below) and run through glibc's ld.so in Alpine x86_64
  * (musl) by tests/x64/linux_boot.mjs (X64_LINUX_GLIBC=1). It prints:

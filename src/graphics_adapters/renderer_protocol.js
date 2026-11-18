@@ -39,7 +39,7 @@ export const GX = {
     SURFACE_IMPORT: 13,     // sid, D9WG handle
     SURFACE_EXPORT: 14,     // sid, D9WG handle
     CLEAR_RTV_INTEGER: 15,  // cid, render target view, signed, 4 values (DX's clear has floats)
-    // a scanout shown without a readback (docs/gfxstream-plan.md G4): the
+    // a scanout shown without a readback (docs/plan/gfxstream-plan.md G4): the
     // surface's rectangle copied on the GPU into the page's screen, at (dx, dy)
     // of a screen of width x height; sid 0 hides it again
     SURFACE_PRESENT: 16,    // sid, x, y, w, h, dx, dy, width, height
@@ -114,7 +114,7 @@ export const VX = {
     SET_DEPTH_BIAS: 49,     // constant factor, clamp, slope factor (f32)
 };
 
-/** GLES batch header magic: "GE10" (the GLES host's, src/gles/, docs/gles-proxy-plan.md) */
+/** GLES batch header magic: "GE10" (the GLES host's, src/gles/, docs/plan/gles-proxy-plan.md) */
 export const GLES_MAGIC = 0x30314547;
 
 /**

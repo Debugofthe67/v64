@@ -1,6 +1,6 @@
 # Modern PC devices: the test matrix
 
-What the devices of [modern-pc-devices-plan.md](modern-pc-devices-plan.md)
+What the devices of [modern-pc-devices-plan.md](plan/modern-pc-devices-plan.md)
 were verified with: the media, firmware and drivers, the guests' results,
 and Windows 11's requirements against them (stage C1). Each device's own
 document has the details: [networking.md](networking.md) (e1000),

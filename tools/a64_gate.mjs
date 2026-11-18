@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The local gates of docs/arm64-virt-android16-plan.md (P0.11; GitHub CI comes
+// The local gates of docs/plan/arm64-virt-android16-plan.md (P0.11; GitHub CI comes
 // later, the owner's decision of 2026-10-09), beside make jit-gate:
 //
 // make a64-gate, before each commit:

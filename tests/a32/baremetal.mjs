@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The bare-metal AArch32 guests (tests/a32/runner.mjs) on QEMU's cortex-a15
-// and on v86 (cpu_type "arm32"): each the same output (docs/aarch32-plan.md
+// and on v86 (cpu_type "arm32"): each the same output (docs/plan/aarch32-plan.md
 // R2-R4). system.c: the modes, the exceptions, CP15, VFP's enables; mmu.c:
 // the short and long descriptors; platform.c: PSCI, the timers and the
 // GICv3 CPU interface, a second core.

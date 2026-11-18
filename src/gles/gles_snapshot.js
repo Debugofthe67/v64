@@ -1,4 +1,4 @@
-// GLES state in snapshots (docs/gles-proxy-plan.md E5): what the GLES host
+// GLES state in snapshots (docs/plan/gles-proxy-plan.md E5): what the GLES host
 // keeps (renderControl's objects, the shadow state, the connections) and
 // what the page's executor keeps (its shadow, color buffers, surfaces and
 // the GPU's contents read back) packed into what v86's snapshots hold: a

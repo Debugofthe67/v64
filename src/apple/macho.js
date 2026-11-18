@@ -1,5 +1,5 @@
 // Mach-O, the format of XNU's kernelcache and of iOS's binaries
-// (docs/iphone4-plan.md S0, S1): the header, the load commands v86 needs
+// (docs/plan/iphone4-plan.md S0, S1): the header, the load commands v86 needs
 // (segments and their sections, the symbol table, LC_UNIXTHREAD's entry
 // point, the UUID, the dylibs) and the symbols. 32- and 64-bit, little-endian.
 

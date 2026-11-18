@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Android 16 on the virt machine (docs/arm64-virt-android16-plan.md P10.3,
+// Android 16 on the virt machine (docs/plan/arm64-virt-android16-plan.md P10.3,
 // P10.7, P11): tools/a64_android.mjs's Image, initrd.img and disk.img (the
 // pinned Cuttlefish arm64-only phone, direct kernel boot, unlocked, SELinux
 // enforcing) booted on the QEMU reference or on v86. The first boot each
@@ -93,7 +93,7 @@ const jit = !!+process.env.A64_JIT;
 const parallel = !!+process.env.A64_PARALLEL;
 const scenario = process.env.A64_ANDROID_SCENARIO || "";
 // A64_ANDROID_BOOTLOADER=1 (v86): the android option in place of kernel, initrd and cmdline: v64's
-// bootloader reads them from disk.img (docs/android-images-plan.md I2.3), the vendor ramdisk the tool's
+// bootloader reads them from disk.img (docs/plan/android-images-plan.md I2.3), the vendor ramdisk the tool's
 const bootloader = !!+process.env.A64_ANDROID_BOOTLOADER;
 assert.ok(!bootloader || target === "v86" && page_size === 4096, "A64_ANDROID_BOOTLOADER=1: v86, 4K (the 16K kernel is not on the disk)");
 // A64_ANDROID_CONSOLE=0 (QEMU): no console (a user build's: ro.debuggable=0), boot_completed from the kernel's log
@@ -454,7 +454,7 @@ const sink = new PictureSink();
 // renderer in a headless Chrome (tests/x64/gpu_remote_renderer.mjs, GL_CHROME)
 // A64_ANDROID_GPU=gfxstream (v86, A64_ANDROID_BOOTLOADER=1): virtio-gpu's
 // level gfxstream, the image's own driver (vulkan.ranchu: gpu mode
-// gfxstream's bootconfig), docs/gfxstream-plan.md
+// gfxstream's bootconfig), docs/plan/gfxstream-plan.md
 const gpu_level = process.env.A64_ANDROID_GPU || "";
 assert.ok(!gpu_level || gpu_level === "venus" || gpu_level === "gfxstream", "A64_ANDROID_GPU: venus or gfxstream");
 assert.ok(gpu_level !== "gfxstream" || bootloader, "A64_ANDROID_GPU=gfxstream: with A64_ANDROID_BOOTLOADER=1");

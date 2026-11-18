@@ -185,7 +185,7 @@ pub enum Way {
 const WAYS: usize = 7;
 /// x64::state::ExecutionMode
 const MODES: usize = 7;
-/// The mode ledger (docs/jit-unification-plan.md P0.6, the JIT switch
+/// The mode ledger (docs/plan/jit-unification-plan.md P0.6, the JIT switch
 /// mode_ledger, off by default): retired instructions (cross-phase rule 3:
 /// what core_statistics_get(core, 0) counts) by mode, by whether 32-bit code
 /// ran with flat segments (index 1), and by Way. While it is on, its sum

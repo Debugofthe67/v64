@@ -1,4 +1,4 @@
-/* f2fs with fscrypt across a reboot (docs/arm64-virt-android16-plan.md P9.2;
+/* f2fs with fscrypt across a reboot (docs/plan/arm64-virt-android16-plan.md P9.2;
  * Android's file-based encryption): "setup" adds a 64-byte key to the
  * filesystem, sets a v2 policy (AES-256-XTS contents, AES-256-CTS names) on
  * an empty directory and writes two files into it, one in a subdirectory;

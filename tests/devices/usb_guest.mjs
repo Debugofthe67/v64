@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // USB with real drivers: Alpine 3.24 x86_64's uhci-hcd and usbhid on usb:
-// { controller: "uhci", tablet: true } (docs/modern-pc-devices-plan.md U1,
+// { controller: "uhci", tablet: true } (docs/plan/modern-pc-devices-plan.md U1,
 // "验收"; the pinned virt ISO, tests/lib/alpine_image.mjs). The tablet is
 // enumerated (sysfs: its IDs, its product, a HID input device); the page's
 // pointer arrives as absolute events (/dev/input/event*: ABS_X, ABS_Y over

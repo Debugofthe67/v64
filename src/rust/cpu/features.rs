@@ -1,4 +1,4 @@
-//! The CPU features of docs/simd-xsave-plan.md (SSSE3 to x86-64-v3 and the
+//! The CPU features of docs/plan/simd-xsave-plan.md (SSSE3 to x86-64-v3 and the
 //! XSAVE family) that this machine has, fixed when it is created (settings
 //! `cpu_features`, src/cpu.js). CPUID reports them, and the decoders and
 //! executors test them: an opcode row whose feature is absent does not exist

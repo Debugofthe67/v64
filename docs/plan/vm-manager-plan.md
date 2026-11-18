@@ -3,7 +3,7 @@
 状态：全部完成（U0–U7，2026-10-21，`ui` 分支），见[附录](#附录实施记录)。计划写于 2026-10-18，依据
 `arm64` 分支 03a7249f。
 
-本计划用一个仿 VMware Workstation 的虚拟机管理器替换现在的 [`index.html`](../index.html)：
+本计划用一个仿 VMware Workstation 的虚拟机管理器替换现在的 [`index.html`](../../index.html)：
 页面有虚拟机库、新建向导、硬件设置对话框和运行控制台，用户在页面里创建磁盘，配置 CPU、
 内存、机器类型、要加载的 ISO、显卡、网卡、声卡、ACPI 等，把配置保存下来以后再开机。模拟器
 本身不改，新页面只是 `V86` 选项的另一种来源。
@@ -16,15 +16,15 @@
 
 - **一个页面，两种状态。** `index.html` 的 `boot_options` 是选择系统与设置，开机后隐藏它，
   显示 `runtime_options`（控制按钮）、屏幕和 `runtime_infos`（信息面板）。所有逻辑在
-  [`src/browser/main.js`](../src/browser/main.js)（4152 行），其中：
+  [`src/browser/main.js`](../../src/browser/main.js)（4152 行），其中：
   - `onload`（288 行起）：内含 137 个系统配置（计划初稿误记为 138）（`oses`，319 行起）。首页按钮有 92 个，
     其余只能经 `?profile=` 打开；
   - `start_emulation`（2264 行起）：把表单与查询参数变成 `settings`，再变成 `V86` 选项；
   - `init_ui`（3014 行起）：运行时的按钮与信息面板；
   - `init_filesystem_panel` 与 `debug_start`。
 - **构建。** `index.html` 加载 `build/v86_all.js`。它用 Closure ADVANCED 把核心、`lib/`、
-  `src/browser/` 和 `main.js` 一起编译（[`Makefile`](../Makefile) 199 行）。
-  [`debug.html`](../debug.html) 以未编译的 ES 模块加载同一份 `main.js`，带页内调试器。
+  `src/browser/` 和 `main.js` 一起编译（[`Makefile`](../../Makefile) 199 行）。
+  [`debug.html`](../../debug.html) 以未编译的 ES 模块加载同一份 `main.js`，带页内调试器。
 - **设置项。**
   - 镜像：
     - 光盘、软盘 A/B、硬盘 1/2（文件、空盘、网址加 `read_only`/`read_write`）；
@@ -64,7 +64,7 @@
 - **页面直接访问模拟器内部的地方有 15 处。** 例如取回磁盘镜像用
   `emulator.v86.cpu.disk_device("hda").buffer`（3416 行），光驱状态用 `emulator.v86.cpu.devices.cdrom`，
   CPU 在 Worker 中时改走 `worker_controller.device_info`。页面用到的公开方法中，`get_diagnostics`、
-  `get_disk_fda`、`get_disk_fdb` 已实现，但 [`v86.d.ts`](../v86.d.ts) 没有声明。
+  `get_disk_fda`、`get_disk_fdb` 已实现，但 [`v86.d.ts`](../../v86.d.ts) 没有声明。
 
 ## 构建方式：Closure 之外的 ES 模块
 
@@ -73,13 +73,13 @@
 在同一个边界上。理由如下。
 
 1. **没有改名问题。** `libv86.mjs` 对外的选项名和方法名保持原样：编译后的文件里 `memory_size`、
-   `cpu_cores` 原样出现，[`tests/api`](../tests/api) 也是这样传选项的。新页面的配置、IndexedDB 中的
+   `cpu_cores` 原样出现，[`tests/api`](../../tests/api) 也是这样传选项的。新页面的配置、IndexedDB 中的
    记录和导出的文件都是普通对象，不需要处处加引号。
 2. **修改即生效。** 开发时页面以 `<script type="module">` 直接加载 `src/app/` 的源码，库用已编译
    的 `build/libv86.mjs`（或 `libv86-debug.mjs`）。改界面不需要重新编译库。
 3. **类型检查顺便检查公开接口。** 用 `tsc --checkJs --noEmit` 对照仓库里已有的 `v86.d.ts`。
    界面用到而类型声明里没有的方法，类型检查会报出来。
-4. **语言与浏览器接口不受旧版 Closure 限制。** Closure 固定在 v20210601（[`Makefile`](../Makefile)
+4. **语言与浏览器接口不受旧版 Closure 限制。** Closure 固定在 v20210601（[`Makefile`](../../Makefile)
    458 行），只接受 ES2020，内置 externs 没有 File System Access 与 OPFS。新页面可以用类字段、
    私有字段、顶层 `await`，以及 `showOpenFilePicker`、`navigator.storage.getDirectory`，
    不需要写 externs。
@@ -251,7 +251,7 @@ Chrome 中从向导建好的虚拟机启动到提示符。
 - 上限随 `cpu_type` 变化。
 
 **规则只有一份。** 哪些项可用由
-[`src/machine_options.js`](../src/machine_options.js) 决定：`CPU_TYPES`、`MACHINE_TYPES`、
+[`src/machine_options.js`](../../src/machine_options.js) 决定：`CPU_TYPES`、`MACHINE_TYPES`、
 `PC_ONLY`、`VIRT_ONLY`、`VIRT_GRAPHICS_ADAPTERS`。U0 把这些表导出（或加一个
 `allowed_options(cpu_type, machine_type)`）。新页面把这个纯模块当作数据直接导入，对话框据此
 禁用不适用的项，并说明原因，例如“virt 机器没有 VGA”。这些表格之外的组合限制也放在同一处：
@@ -261,7 +261,7 @@ Chrome 中从向导建好的虚拟机启动到提示符。
 - ne2k 不在 virt 上。
 
 保存前做完整校验：先把配置转换成选项，再运行 `check_machine_options` 和
-[`src/disk_options.js`](../src/disk_options.js) 的检查。错误显示在对应的面板上，不用 `alert`。
+[`src/disk_options.js`](../../src/disk_options.js) 的检查。错误显示在对应的面板上，不用 `alert`。
 
 ### 控制台（运行页）
 
@@ -429,7 +429,7 @@ JSON，带格式名与版本号，按版本迁移（`vm_config.js` 的 `migrate`
 hda: { url: "opfs:v86/disks/6c1f.img", disk_option: "read_write" }
 ```
 
-启动校验（[`src/disk_options.js`](../src/disk_options.js)）对它的规则：
+启动校验（[`src/disk_options.js`](../../src/disk_options.js)）对它的规则：
 
 - 文件不存在时报错，不悄悄新建；
 - 在 Node 中或 CPU 不在 Worker 中时报错，见下文；
@@ -439,7 +439,7 @@ hda: { url: "opfs:v86/disks/6c1f.img", disk_option: "read_write" }
 ### 后端
 
 浏览器磁盘在库里有一个后端 `OpfsDisk`（新文件 `src/opfs_disk.js`，进 Closure 的核心文件列表）。
-它照 [`src/disk_writeback.js`](../src/disk_writeback.js) 的 `NodeFileDisk` 写，满足同一份后端契约
+它照 [`src/disk_writeback.js`](../../src/disk_writeback.js) 的 `NodeFileDisk` 写，满足同一份后端契约
 （`BACKEND_CONTRACT`），两者把文件描述符换成 OPFS 的同步访问句柄
 （`FileSystemSyncAccessHandle`）：
 
@@ -500,7 +500,7 @@ U6 中核实，写进文档。
 
 ## 磁盘服务的创建与列出
 
-[`tools/disk-service.mjs`](../tools/disk-service.mjs) 现在只能打开已有的镜像。新增两个操作，用法与
+[`tools/disk-service.mjs`](../../tools/disk-service.mjs) 现在只能打开已有的镜像。新增两个操作，用法与
 现有操作相同：POST，以 `X-V86-Disk-Op` 区分，核对 `Origin`，配了 `--token` 时要求令牌，回答
 JSON。
 
@@ -594,7 +594,7 @@ JSON。
 | U1 | `vm_config.js`（格式 v1、默认值、迁移、校验）与 `vm_store.js` | Node 测试覆盖纯函数：默认值、迁移、每条校验规则、`config_to_options`；无头 Chrome 中做保存、重新加载、导出、导入的往返，配置逐字段相同 |
 | U2 | 开发依赖与 `make app`、`make app-check`（G3，下载前请负责人确认）；`build/v86_app.js`、新 `index.html`、`legacy.html`、`app_debug.html`；路由；库的列表、新建（默认配置）、导入、改名、删除；控制台能从配置开机；`v86.d.ts` 补上未声明的方法，新增光驱状态的公开方法（G1） | `make app-check` 无错；无头 Chrome：`?profile=` 打开的会话与旧页面的 `V86` 选项相同（比较两页记录的选项）；从库开机 FreeDOS（`images/freedos722.img`）到提示符 |
 | U3 | 向导、[客户机预设](#客户机预设)（含验证状态、安装方式、安装后的清单）、设置对话框及全部硬件面板；规则驱动的禁用与说明；保存前完整校验；磁盘服务的 `create`、`list` 与管理器的探测、首选项 | 每个预设生成的配置都通过 `check_machine_options`，仓库中有镜像的预设从向导启动到提示符；对话框中不能组合出被拒的配置（遍历机器、CPU、显卡、网卡的组合）；校验错误显示在对应面板。磁盘服务：`create` 的每条规则（未开 `--allow-create`、名字、已存在、大小、空间、令牌、来源）各有测试；新建的镜像在 Linux 客户机中格式化、写入、`sync` 后，直接读服务目录里的文件核对 |
-| U4 | 控制台：工具栏、菜单、状态栏、抽屉，覆盖[功能对照](#功能对照)中的全部运行时功能；磁盘错误对话框；`read_write` 盘的关闭提示 | 对照表逐项在无头 Chrome 中验证；`read_write` 盘经磁盘服务写回（复用 [`tests/persistence/browser_runner.mjs`](../tests/persistence/browser_runner.mjs) 的服务与核对方法） |
+| U4 | 控制台：工具栏、菜单、状态栏、抽屉，覆盖[功能对照](#功能对照)中的全部运行时功能；磁盘错误对话框；`read_write` 盘的关闭提示 | 对照表逐项在无头 Chrome 中验证；`read_write` 盘经磁盘服务写回（复用 [`tests/persistence/browser_runner.mjs`](../../tests/persistence/browser_runner.mjs) 的服务与核对方法） |
 | U5 | 挂起与恢复（OPFS 状态文件）、文件句柄、空间检查与 `persist()`；同一虚拟机的单标签页锁 | 无头 Chrome：挂起，关闭页面，重新打开后恢复，客户机继续运行；第二个标签页开同一台虚拟机被拒；配置改过后恢复前提示 |
 | U6 | 浏览器磁盘：`OpfsDisk` 后端与启动校验；新建、导入（网址、本地文件）、导出、删除；身份与 generation；空间检查与 `persist()` | 无头 Chrome 中：Linux 客户机（`images/buildroot-bzimage68.bin`）在新建的浏览器磁盘上格式化、写文件、`sync`，关机，关闭页面，重新打开后开机，文件仍在；不 `sync` 只等定时 flush 也在；导入后 SHA-256 与源相同，导出的文件与盘内容相同；第二个标签页打开同一块盘时给出“正被使用”；挂起后盘被另一会话改过，恢复被拒；注入 `QuotaExceededError` 时虚拟机暂停并提示；`cpu_worker=0` 与 Node 中启动报错 |
 | U7 | 收尾：功能对照逐项完成；文档（`Readme.md` 与 `docs/`）；删除 `legacy.html` 与 `build/v86_all.js` 目标；`debug.html` 改为加载新页面并保留调试器（`cpu_worker=0`），或保留为只含调试器的页面 | 对照表全部打勾；`make all`、`make app`、`make app-check` 与本地门禁通过；删除后旧页面的测试改指新页面 |
@@ -659,30 +659,30 @@ JSON。
 **实现。**
 
 - 基线（95836504，提取之前）：`start_emulation` 在构造 `V86` 之前查 `window.v86_record_options`，有就把
-  选项交给它并返回。[`tests/app/legacy_options.mjs`](../tests/app/legacy_options.mjs) 起一个静态服务，在
+  选项交给它并返回。[`tests/app/legacy_options.mjs`](../../tests/app/legacy_options.mjs) 起一个静态服务，在
   页面最前面插入记录脚本，在一个无头 Chrome 里用 iframe 依次打开：137 个 `?profile=`、37 组查询参数
-  （[`tests/app/legacy_cases.mjs`](../tests/app/legacy_cases.mjs)：自定义镜像、`m`、`cores`、`cpu_type`、
+  （[`tests/app/legacy_cases.mjs`](../../tests/app/legacy_cases.mjs)：自定义镜像、`m`、`cores`、`cpu_type`、
   `machine_type`、Q35 设备、显存与显卡、多显示器、网卡、relay、调制解调器、`disk_option`、内核、CPU 策略、
   `cdn` 等，以及带配置的组合）和 17 种表单启动（在表单里填值后点开机），`index.html` 与 `debug.html`
   各一遍，共 382 例。记下选项（函数、元素、ArrayBuffer、`undefined` 有标记）、`alert` 的文字、开机后的
   地址（`push_state`）、标题、表单回写的字段。`index.html` 是 ADVANCED 编译的 `v86_all.js`，属性名被
   Closure 改过：构建现在同时写出改名表（`--property_renaming_report build/v86_all.js.properties`），
   记录时按它还原。
-- 提取（[`src/browser/`](../src/browser/)）：
-  - [`profiles.js`](../src/browser/profiles.js)：`get_profiles(host, on_localhost)` 返回 137 个配置（调试页
+- 提取（[`src/browser/`](../../src/browser/)）：
+  - [`profiles.js`](../../src/browser/profiles.js)：`get_profiles(host, on_localhost)` 返回 137 个配置（调试页
     另加的 kvm-unit-tests 仍在 `main.js`，它依赖 `DEBUG`）；用户镜像服务器的 `user_profile_base`、`user_profile`。
-  - [`vm_options.js`](../src/browser/vm_options.js)：默认值与上限常量；`clamp_*`、`set_memory_size`；
+  - [`vm_options.js`](../../src/browser/vm_options.js)：默认值与上限常量；`clamp_*`、`set_memory_size`；
     `DEFAULT_FORM`（`index.html` 未改动时的表单）；`profile_settings`；`apply_form`（表单叠加到配置与地址的
     设置上，并做旧页面的全部规整：内存拆分、x86_64 自动选择、arm64 与 virt、Q35 设备、ACPI、固件、网卡、
     MTU、调制解调器；返回错误文字、标题和要回写的表单字段，不碰 DOM）；`settings_to_options`（`V86` 选项，
     页面的部分经参数传入：CPU Worker、调试构建、`?version`、图形代理、屏幕元素）。
-  - [`query_compat.js`](../src/browser/query_compat.js)：`bool_arg` 等参数读取；`image_host`；
+  - [`query_compat.js`](../../src/browser/query_compat.js)：`bool_arg` 等参数读取；`image_host`；
     `apply_query_args`；`start_settings`（配置、地址、表单合成一次开机的设置，即旧 `start_emulation` 的
     前半段）；`format_query_args`。
   - `main.js` 只剩 DOM：`read_form` 读表单，`start_emulation` 调 `start_settings` 与 `settings_to_options`，
     处理标题、说明链接、`alert`、表单回写和 `push_state`。三个模块在 `Makefile` 的 `PAGE_FILES` 里，只进
     `v86_all.js` 与 `v86_all_debug.js`。
-- 规则表（[`src/machine_options.js`](../src/machine_options.js)）：导出 `PC_ONLY`、`VIRT_ONLY`、
+- 规则表（[`src/machine_options.js`](../../src/machine_options.js)）：导出 `PC_ONLY`、`VIRT_ONLY`、
   `VIRT_GRAPHICS_ADAPTERS`，新增 `GRAPHICS_ADAPTERS`（`graphics_adapter.js` 改用它）、`NET_DEVICE_TYPES`、
   `VIRT_NET_DEVICE_TYPES`、`Q35_ONLY`；`MAX_VRAM_SIZE`、`Q35_ROOT_PORTS_MAX`、`MAX_CORES` 从
   `graphics_adapter.js`、`platform.js` 移来（原处转出）。`allowed_options(cpu_type, machine_type)` 返回可选的
@@ -721,7 +721,7 @@ JSON。
 
 **实现。**
 
-- [`src/app/vm_config.js`](../src/app/vm_config.js)（`// @ts-check`，U2 起由 tsc 检查）：
+- [`src/app/vm_config.js`](../../src/app/vm_config.js)（`// @ts-check`，U2 起由 tsc 检查）：
   - 格式 `v86-vm` 第 1 版，字段按[配置格式](#虚拟机配置格式)一节，另加旧页面配置需要的几项：`machine.bootmenu`、
     `cdrom.disk_error`、软盘的 `disk_option`、`kernel.from_filesystem`（`bzimage_initrd_from_filesystem`）、
     网卡的 `mac_address_translation`、`initial_state`（从状态启动）、`advanced` 的 `ir_tier0`、`x87_fast_math`、
@@ -734,12 +734,12 @@ JSON。
   - `config_to_options`：配置的字段按“配置的设置”和“地址的设置”放进设置，表单按配置填好，再经旧页面的
     `apply_form` 与 `settings_to_options`，规整规则只有一份；有 `initial_state` 时与旧页面一样把机器交给状态。
   - `profile_to_config`：旧页面的配置转成库里的配置（U4 的“加入虚拟机库”）。
-- [`src/app/vm_store.js`](../src/app/vm_store.js)：IndexedDB `v86-vm-manager`（`vms` 以 `id` 为键，`handles` 存
+- [`src/app/vm_store.js`](../../src/app/vm_store.js)：IndexedDB `v86-vm-manager`（`vms` 以 `id` 为键，`handles` 存
   `FileSystemFileHandle`）；`VMStore` 的 `list`、`get`、`put`（先校验，记修改时间）、`delete`（连同它的句柄）、
   `put_handle`、`get_handle`；`export_config`（`.v86vm.json` 的文本，句柄不导出）、`export_file_name`、
   `import_config`（迁移、校验；没有 id 或与库中已有的重复时给新 id）、`files_to_choose`（没有句柄、需要重新
   选取的本地文件）。
-- [`tests/app/browser_runner.mjs`](../tests/app/browser_runner.mjs)：新页面测试共用的无头 Chrome 运行器（静态服务、
+- [`tests/app/browser_runner.mjs`](../../tests/app/browser_runner.mjs)：新页面测试共用的无头 Chrome 运行器（静态服务、
   不缓存，页面在 `#result` 写 PASS/FAIL）。
 
 **决定与偏差。**
@@ -779,18 +779,18 @@ JSON。
   `part=page`、glbridge 的 `cpu_worker_ui`、`performance_recorder_ui`、`tests/app/legacy_options.mjs`）改指 `legacy.html`。
 - `src/app/main.js` 路由：`?vm=<id>` 为库里虚拟机的控制台；`?profile=<id>`（及旧页面的其他查询参数）为直接
   打开的控制台，规则与旧页面的 `onload` 相同（已知配置、用户镜像服务器、带镜像的 `custom`）；其余为库。
-- [`src/app/ui/library.js`](../src/app/ui/library.js)：左栏虚拟机列表与“新建”“导入…”，右栏摘要（硬件表、备注）
+- [`src/app/ui/library.js`](../../src/app/ui/library.js)：左栏虚拟机列表与“新建”“导入…”，右栏摘要（硬件表、备注）
   与“开机”（新标签页打开 `?vm=<id>`）、“改名…”、“导出”、“删除…”。新建为默认配置（向导在 U3）；“编辑设置”
   在 U3 之前禁用。空库时说明库在浏览器存储里、清除站点数据会删掉它。
-- [`src/app/ui/console.js`](../src/app/ui/console.js)：屏幕（与旧页面相同的 `screen_container` 结构）、状态行，
+- [`src/app/ui/console.js`](../../src/app/ui/console.js)：屏幕（与旧页面相同的 `screen_container` 结构）、状态行，
   工具栏只有“库”“关机”（确认后 `destroy()`）“重置”（从状态启动时禁用）“Ctrl+Alt+Del”（菜单、状态栏、抽屉在 U4）。
   库里的虚拟机：本地文件经保存的句柄读取，没有读取权限时在页面上给出按钮，点击后请求；没有句柄（导入的、
   或浏览器不保存句柄）时请用户重新选取，核对大小（不同则拒绝）与名字、修改时间（不同则确认）。地址启动的
   会话沿用旧页面的细节：标题、几个配置开机后自动按键、`c`、`s` 参数、virtio-gpu 随窗口改分辨率、图形代理。
-- [`src/app/emulator_bridge.js`](../src/app/emulator_bridge.js)：唯一 `import { V86 } from "v86"` 的模块；页面的
+- [`src/app/emulator_bridge.js`](../../src/app/emulator_bridge.js)：唯一 `import { V86 } from "v86"` 的模块；页面的
   选项部分（调试构建、`?版本`、图形代理、屏幕）、图形代理的加载、测试钩子 `window.v86_record_options`。
-  [`src/app/ui/dom.js`](../src/app/ui/dom.js)：`h()`、模态对话框（`<dialog>`）、下载、选文件、大小格式。
-  [`src/app/app.css`](../src/app/app.css)：深色，窄屏单栏。
+  [`src/app/ui/dom.js`](../../src/app/ui/dom.js)：`h()`、模态对话框（`<dialog>`）、下载、选文件、大小格式。
+  [`src/app/app.css`](../../src/app/app.css)：深色，窄屏单栏。
 - 公开接口（G1）：新增 `get_cdrom_state()`（`{present, inserted}`，页面与 CPU Worker）；`v86.d.ts` 补上
   `get_cdrom_state`、`get_disk_fda`、`get_disk_fdb`、`get_diagnostics`，以及 tsc 报出的 `emulator-error` 事件
   （旧页面一直在用，类型声明里没有）。
@@ -822,30 +822,30 @@ JSON。
 
 **实现。**
 
-- 磁盘服务（b23b5b2d）：[`tools/disk-service.mjs`](../tools/disk-service.mjs) 新增 `list`（发往服务根网址：名字、大小、修改
+- 磁盘服务（b23b5b2d）：[`tools/disk-service.mjs`](../../tools/disk-service.mjs) 新增 `list`（发往服务根网址：名字、大小、修改
   时间、是否有写者，并告知能否创建与上限）与 `create`（发往新镜像的网址，`X-V86-Disk-Size`）。`create` 只在
   `--allow-create` 时接受（`make run` 的服务带上它）；名字须为目录内的 `.img` 文件名（字母或数字开头，不超过 128 个字符）；
   大小为 512 的正整数倍，不超过 `--max-size`（默认 64 GiB）与卷的剩余空间；以 `wx` 创建，不覆盖已有文件；`ftruncate`
   （稀疏）、`fsync` 文件与目录后登记身份（新 UUID、generation 1）；令牌与来源核对同其他操作；没有删除操作。
-  [`src/app/disk_service_client.js`](../src/app/disk_service_client.js)：`list_images`、`create_image`、`probe`、`new_image_name`。
+  [`src/app/disk_service_client.js`](../../src/app/disk_service_client.js)：`list_images`、`create_image`、`probe`、`new_image_name`。
   虚拟机库的数据库升到第 2 版，新增 `prefs` 表（磁盘服务的地址与令牌）。
-- 预设与规则（b84b9200）：[`src/app/guest_presets.js`](../src/app/guest_presets.js) 的 15 个预设按计划的表格（Windows 95、98、ME
-  分开，另加“其他”），各带硬件、依据、安装方式、安装后的步骤与已知问题。[`src/app/vm_model.js`](../src/app/vm_model.js)：
+- 预设与规则（b84b9200）：[`src/app/guest_presets.js`](../../src/app/guest_presets.js) 的 15 个预设按计划的表格（Windows 95、98、ME
+  分开，另加“其他”），各带硬件、依据、安装方式、安装后的步骤与已知问题。[`src/app/vm_model.js`](../../src/app/vm_model.js)：
   `choices()`（每个控件可取的值，来自 `allowed_options`）与 `change()`（一处改动及其连带的改动，逐条说明：CPU 决定机型，
   Q35 与多核打开 ACPI，超过 2048 MB 改用 x86_64，换到 virt 时去掉它没有的软驱、PC 固件、调制解调器、Sound Blaster、
   CPUID 级别，换网络后端时给出该后端的默认网址）。配置格式（仍为第 1 版，新字段有默认值）增加 virt 机器的设备
   （`virt`：virtio 传输方式、输入设备、console 端口数、vsock、virtio-gpu 的 PCI 槽）、`sound.device: "virtio"`
   与 virt 上最多四张 virtio 网卡（只有一张接后端，`net_device` 的 `count`、`id`），Android 预设由此可以表达。
 - 界面：
-  - [`src/app/ui/wizard.js`](../src/app/ui/wizard.js)：五步——来源（光盘、软盘、已安装的硬盘镜像、内核与 initrd 加系统光盘、稍后安装）、
+  - [`src/app/ui/wizard.js`](../../src/app/ui/wizard.js)：五步——来源（光盘、软盘、已安装的硬盘镜像、内核与 initrd 加系统光盘、稍后安装）、
     系统（预设列表，未验证的带标记，显示依据、安装方式、硬件、安装后步骤、已知问题；来源与预设的常用安装方式不符时提示）、
     名称与备注、硬盘（新建空盘：大小与存放位置——磁盘服务、内存，浏览器磁盘在 U6 之前禁用；或不要硬盘）、摘要（“完成”或
     “自定义硬件…”打开设置对话框）。磁盘服务上的新镜像在“完成”时才创建。
-  - [`src/app/ui/settings.js`](../src/app/ui/settings.js) 与 [`ui/panels/`](../src/app/ui/panels/)：左侧硬件列表（常规、内存、处理器、
+  - [`src/app/ui/settings.js`](../../src/app/ui/settings.js) 与 [`ui/panels/`](../../src/app/ui/panels/)：左侧硬件列表（常规、内存、处理器、
     机器与固件、硬盘、CD/DVD、软驱、网络适配器、声卡、显示、串口、共享文件夹、直接启动、virt 设备、高级），“添加…”与“移除”；
     右侧面板只提供允许的取值，固定的项禁用并写明原因（例如 virt 的 ACPI、多核时的 ACPI、非 Q35 的 HPET）；底部显示上一处
     改动的连带改动。保存前运行 `check_config`，问题标在对应项上并显示在其面板中。
-  - [`src/app/ui/image_picker.js`](../src/app/ui/image_picker.js)：网址、本机文件（Chromium 经 `showOpenFilePicker` 保存句柄，
+  - [`src/app/ui/image_picker.js`](../../src/app/ui/image_picker.js)：网址、本机文件（Chromium 经 `showOpenFilePicker` 保存句柄，
     其他浏览器开机时重新选取）、内存中的空盘或空软盘、磁盘服务的镜像（列出，或“新建镜像…”）、浏览器磁盘（U6）。
   - 库：“新建虚拟机…”为向导，“编辑设置…”为设置对话框，“首选项…”配置磁盘服务（地址、令牌、“测试”、“不使用”）；
     侧栏显示当前的磁盘服务；页面来自本机（localhost、127.0.0.1、[::1]）且未设置时探测 `http://127.0.0.1:8471/`。摘要页显示
@@ -880,11 +880,11 @@ JSON。
 
 **实现。**
 
-- [`src/app/ui/console.js`](../src/app/ui/console.js) 的运行部分：
-  - 工具栏的菜单（[`dom.js`](../src/app/ui/dom.js) 的 `menu_button`：每次打开时按机器的状态生成，方向键移动，Esc 与点外面关闭）：
+- [`src/app/ui/console.js`](../../src/app/ui/console.js) 的运行部分：
+  - 工具栏的菜单（[`dom.js`](../../src/app/ui/dom.js) 的 `menu_button`：每次打开时按机器的状态生成，方向键移动，Esc 与点外面关闭）：
     电源（暂停/运行、重置（从状态启动时禁用）、关机…（确认）、有写回盘时“保存并关机”、把状态存为文件、从文件载入状态）；
     按键（Ctrl+Alt+Del、Alt+Tab、Alt+F4、Ctrl+Esc、Win、Win+R、Ctrl+Alt+F1/F2/Backspace、PrintScreen 与“其他按键…”，
-    由 [`src/app/keys.js`](../src/app/keys.js) 转成扫描码，按下后 100 ms 松开，与旧页面的 Alt+Tab 相同；Del 用小键盘的码，与旧页面的
+    由 [`src/app/keys.js`](../../src/app/keys.js) 转成扫描码，按下后 100 ms 松开，与旧页面的 Alt+Tab 相同；Del 用小键盘的码，与旧页面的
     Ctrl+Alt+Del 相同）；设备（光驱放入镜像或一组文件（文件组成 ISO 9660）、弹出，软驱 A/B 放入、弹出，各盘镜像的下载）；
     视图（全屏、适应窗口、50%–300% 缩放、剧院模式、截图存为 PNG）；输入（鼠标开关、锁定鼠标）；静音按钮（没有扬声器时不显示）；
     工具（性能记录的开始与停止、报告导出，内存转储，抓包（Wireshark 的十六进制导入格式，与旧页面相同））。
@@ -921,7 +921,7 @@ JSON。
 
 **实现。**
 
-- [`src/app/vm_state.js`](../src/app/vm_state.js)：挂起状态存在 OPFS 的 `v86/states/<id>.bin`（V7 流，边生成边写入
+- [`src/app/vm_state.js`](../../src/app/vm_state.js)：挂起状态存在 OPFS 的 `v86/states/<id>.bin`（V7 流，边生成边写入
   `createWritable`，写完才替换原文件）；`storage_space`（`navigator.storage.estimate()` 与 `persisted()`）、`state_estimate`（内存、
   扩展内存、显存再加 16 MiB）；`machine_digest`（配置去掉 id、名字、备注、预设、时间与挂起信息后的 SHA-256）；`hold_machine`、
   `running_machines`（`navigator.locks` 的排他锁 `v86-vm-<id>`）。
@@ -952,7 +952,7 @@ JSON。
 
 **实现。**
 
-- 库：[`src/opfs_disk.js`](../src/opfs_disk.js)（进 Closure 的核心文件列表）。`OpfsDisk` 照 `NodeFileDisk` 写，满足同一份后端契约，
+- 库：[`src/opfs_disk.js`](../../src/opfs_disk.js)（进 Closure 的核心文件列表）。`OpfsDisk` 照 `NodeFileDisk` 写，满足同一份后端契约，
   文件描述符换成 OPFS 的 `FileSystemSyncAccessHandle`：`read`/`write`/`flush`/`getSize` 同步完成，写入在文件里即完成，flush
   之后持久，定时 flush（空闲 1 秒、最长 5 秒），`stop()`、`destroy()`、拔出时 flush 并关闭。身份与 generation 记在
   `v86/disks/<id>.json`（UUID、generation、大小；管理器的标签、来源等字段原样保留）：打开时大小与记录不符则 generation 加一；
@@ -962,7 +962,7 @@ JSON。
   “需要 CPU Worker”。`read_only` 的浏览器磁盘以 `getFile()` 得到的 File 读取（修改在内存，与用户选取的文件相同），页面与 Worker
   都可以。`starter.js` 的 `writeback_backend` 对 `opfs:` 网址建 `OpfsDisk`；启动、`set_fda`/`set_fdb`、`set_cdrom`、`attach_sata_drive`
   的只读浏览器磁盘先换成 File。`check_disk_policy` 在 Node 中拒绝 `opfs:` 网址。
-- 管理器：[`src/app/browser_disks.js`](../src/app/browser_disks.js)——列出、新建（`createWritable` 后 `truncate`）、从网址（流式 `fetch`）或本地
+- 管理器：[`src/app/browser_disks.js`](../../src/app/browser_disks.js)——列出、新建（`createWritable` 后 `truncate`）、从网址（流式 `fetch`）或本地
   文件（`File.stream()`）导入（边写边算 SHA-256，写完重读副本再算一遍，不符则删除并报错；大小不是整扇区也拒绝）、导出（Chromium 用
   `showSaveFilePicker` 流式写出，其他浏览器以 `getFile()` 的 File 下载，不整份读进内存）、删除（正被使用时拒绝）、改标签；新建与导入前
   检查剩余配额，第一次时请求 `persist()`。图像选择器与向导加入“浏览器磁盘”（选已有的、新建空盘、导入），向导的新盘默认放在浏览器
@@ -1006,11 +1006,11 @@ JSON。
   改为构建 `build/v86_app.js`（`make run` 随之），`make update_version` 只改 `index.html`，`cpu-worker-tests` 依赖新页面。
 - 旧页面的测试改指新页面：`tests/persistence/browser_test.html part=page` 的第二段改为新页面以同样的地址启动、电源菜单的
   “保存并关机”；glbridge 的 `cpu_worker_ui_browser_test` 与 `performance_recorder_ui_browser_test` 改为共用
-  [`tests/glbridge/recorder_ui_test.mjs`](../tests/glbridge/recorder_ui_test.mjs)：库里一台 BIOS 为 x87 循环（blob 网址）的虚拟机，经控制台的
+  [`tests/glbridge/recorder_ui_test.mjs`](../../tests/glbridge/recorder_ui_test.mjs)：库里一台 BIOS 为 x87 循环（blob 网址）的虚拟机，经控制台的
   工具菜单记录性能，报告的各项检查不变；U0 的记录器改为录 `index.html`（地址）与 `debug.html`（地址与表单），Node 用模块对两页
   各自生成并比较。
 - 共用模块与库里提到 `v86_all.js` 的注释改写为历史说明（引号规则对任何 ADVANCED 构建仍然必要）。
-- 文档：新增使用说明 [docs/vm-manager.md](vm-manager.md)（库、向导、设置、磁盘与存放位置、控制台、挂起、地址、开发与浏览器支持），
+- 文档：新增使用说明 [docs/vm-manager.md](../vm-manager.md)（库、向导、设置、磁盘与存放位置、控制台、挂起、地址、开发与浏览器支持），
   `Readme.md` 的文档列表、构建要求（npm）与构建说明随之更新；功能对照表逐项打勾。
 
 **决定与偏差。**

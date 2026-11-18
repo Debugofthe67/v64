@@ -1,6 +1,6 @@
 /* Compile a CIL policy to a binary one with libsepol's CIL compiler (Alpine
  * 3.24 has libsepol but no checkpolicy or secilc): tools/a64_kernel.mjs runs it
- * in its VM for tests/a64/minimal.cil (docs/arm64-virt-android16-plan.md P9.2).
+ * in its VM for tests/a64/minimal.cil (docs/plan/arm64-virt-android16-plan.md P9.2).
  *
  *   cil2bin in.cil out.bin [policy version, 33] */
 #include <stdio.h>

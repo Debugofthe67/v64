@@ -1,4 +1,4 @@
-// PNG screenshots compared (docs/gles-proxy-plan.md E3: the host GPU's
+// PNG screenshots compared (docs/plan/gles-proxy-plan.md E3: the host GPU's
 // home screen against the guest's own rendering): a PNG read back to RGBA
 // (8-bit RGB or RGBA, any filter, not interlaced), and SSIM over the
 // luminance in 8 by 8 windows (Wang et al. 2004's constants), 1 for the

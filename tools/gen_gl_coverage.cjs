@@ -26,6 +26,6 @@ for (const row of rows) {
     const tests = row.tests.slice(0, 2).map(file => "[" + file.replace(/_test\.js$/, "") + "](../../../../tests/glbridge/" + file + ")").join(", ");
     lines.push("| " + row.opcode + " | `" + row.name + "` | `" + (P.SIGNATURES[row.name] ? "gl" + P.SIGNATURES[row.name][0] : row.name) + "` | " + row.kind + (row.note && row.note !== "C" ? " (" + row.note + ")" : "") + " | " + tests + " |");
 }
-lines.push("", "The guest exports 831 entry points, including aliases. CPU-owned display lists,", "attribute stacks, selection/feedback, names and queries have their own behavioral", "suites above; the DLL owns WGL, client memory access and encoding. Whole-program", "XP/worker/local and cold whole-VM restore evidence is described in", "[the implementation plan](../../../../docs/opengl-webgpu-plan.md#阶段-g客体内验收与收尾约-2-周之后持续).", "");
+lines.push("", "The guest exports 831 entry points, including aliases. CPU-owned display lists,", "attribute stacks, selection/feedback, names and queries have their own behavioral", "suites above; the DLL owns WGL, client memory access and encoding. Whole-program", "XP/worker/local and cold whole-VM restore evidence is described in", "[the implementation plan](../../../../docs/plan/opengl-webgpu-plan.md#阶段-g客体内验收与收尾约-2-周之后持续).", "");
 fs.writeFileSync(path.join(base, "COVERAGE.md"), lines.join("\n"));
 console.log("PASS generated coverage for " + rows.length + " behavior-tested records");

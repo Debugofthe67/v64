@@ -7,7 +7,7 @@
 本计划为 ARM 核心增加 AArch32（A32 与 T32 指令集、VFP 与 Advanced SIMD），分两部分：
 
 - **第一部分（Q0–Q7）**：64 位内核下运行 32 位进程，即 Linux arm64 的 compat 与 Android 的
-  `armeabi-v7a`，作为 arm64 的 CPU profile `v3`。现在的 CPU 只有 AArch64（[aarch64.md](aarch64.md)
+  `armeabi-v7a`，作为 arm64 的 CPU profile `v3`。现在的 CPU 只有 AArch64（[aarch64.md](../aarch64.md)
   “CPU profile”一节把 AArch32 列为不公布），只含 32 位原生库的 APK 安装失败、Linux 的 armhf 程序得到
   ENOEXEC，都是 ARM64 计划的预期（arm64-virt-android16-plan.md 84–86）。
 - **第二部分（R0–R8）**：新的 `cpu_type: "arm32"`，运行 32 位内核（AArch32 的 PL1，即 ARMv7 风格的
@@ -69,7 +69,7 @@ SIGILL）；解释器与页层一致，`tests/a64/aarch32_unpredictable.mjs` 按
 写回且基址在列表中、STM 含 PC 仍 UNDEF。
 
 - **Q7（`f7f822d8`）**：`a64_profile` 成为公开选项（`v86.d.ts`、`src/machine_options.js`），VM 管理器处理器面板的
-  “Instruction sets”（arm64 下 v1、v1.1、v2、v3），Linux arm64 预设用 v3；[aarch64.md](aarch64.md) 的 v3 一节。
+  “Instruction sets”（arm64 下 v1、v1.1、v2、v3），Linux arm64 预设用 v3；[aarch64.md](../aarch64.md) 的 v3 一节。
 - **Q6（`6c53f39d`、`d375a247`、`16fd9fe3`、`2d738c5d`）**：页层编译 AArch32（`a64_page_aarch32`，默认开）。A32 与
   T32 的页各有函数（键的模式 4、6），在 A64 的页框架里（`jit/pagegen/a32.rs`）：R0–R14 与 NZCV 留在内存，帮助调用即
   解释器对已取指令的执行（`pages::a32_page_helper`）；原生的有分支、返回（LDM、POP、LDR 到 PC，目标指令集在任何
@@ -172,14 +172,14 @@ SIGILL）；解释器与页层一致，`tests/a64/aarch32_unpredictable.mjs` 按
 - **R8.1**（`150e8f65`）：VM 管理器的处理器“ARM (32-bit, ARMv7-A)”，两种 ARM CPU 都可选 virt 与 ranchu，预设
   “Linux (ARM 32-bit)”与“Android 7.1 (32-bit, emulator image)”；ranchu 的规则（无显示适配器、无声音、只有
   virtio-mmio）、Android 设备型号决定机器与 CPU；app 测试（presets、machine_rules、向导的 android_emulator）。
-- **R8.2**：文档 [arm32.md](arm32.md)、[virt.md](virt.md) 的 32 位 virt 与 ranchu 两节。
+- **R8.2**：文档 [arm32.md](../arm32.md)、[virt.md](../virt.md) 的 32 位 virt 与 ranchu 两节。
 
 ## 结论
 
 1. **AArch32 放进 arm64，不新增 `cpu_type`。** 这里要的是 AArch32 EL0 跑在 AArch64 EL1 之下：同一个
    内核、同一台 virt 机器，内核按进程决定执行状态（ERET 到 PSTATE.nRW=1 的用户态），与 x86-64 的
    兼容模式是同一种关系。x86 那边，兼容模式也不是单独的 `cpu_type`，而是同一个核心的执行模式
-   （`ExecutionMode::Compatibility32`，[src/rust/x64/state.rs](../src/rust/x64/state.rs) 20–80）；`x86` 与 `x86_64` 两个选项的区别
+   （`ExecutionMode::Compatibility32`，[src/rust/x64/state.rs](../../src/rust/x64/state.rs) 20–80）；`x86` 与 `x86_64` 两个选项的区别
    只是 CPUID 与 MSR 的能力集，核心是同一个 `v86.wasm`。ARM64 计划也早已定下：将来的 AArch32
    （EL0 compat）放在 `v86-arm64.wasm`，与 Linux 的 arm64 架构包含 compat 的做法一致（arm64-virt-android16-plan.md 44、
    324–326；jit-unification-plan.md 169、315）。
@@ -193,7 +193,7 @@ SIGILL）；解释器与页层一致，`tests/a64/aarch32_unpredictable.mjs` 按
    x86 与 x86-64 的关系：两个 `cpu_type`，同一个核心文件（`x86` 与 `x86_64` 都用 `v86.wasm`）。ARM 这边
    `arm32` 与 `arm64` 都用 `v86-arm64.wasm`（ARM 一族一个核心，见 jit-unification-plan.md 169），按
    `cpu_type` 复位到不同的执行状态与 ID 寄存器。现在 `"arm"` 与 `"aarch64"` 这两个名字被
-   [tests/api/arm64-options.js](../tests/api/arm64-options.js) 51–53 拒绝；新名字取 `"arm32"`，与 `"arm64"` 对称。
+   [tests/api/arm64-options.js](../../tests/api/arm64-options.js) 51–53 拒绝；新名字取 `"arm32"`，与 `"arm64"` 对称。
 4. **官方 32 位 Android 8、9 不存在。** 2026-10-23 核对 Google 的 SDK 镜像仓库（`sys-img2-1.xml` 的
    default、google_apis、google_apis_playstore）：`armeabi-v7a` 的官方模拟器镜像到 API 25（Android 7.1.1，
    google_apis `armeabi-v7a-25_r18.zip`，953 MB）为止；API 26–28（Android 8.0、8.1、9）只有 `arm64-v8a`。
@@ -348,7 +348,7 @@ v2 的全部 ARM64 测试不变。
 | --- | --- | --- | --- | --- |
 | Q7.1 | VM 管理器的处理器面板：arm64 下的 profile 选择（“ARMv8.0（64 位）”与“ARMv8.0 加 32 位应用”），预设按系统选；配置校验与迁移 | `src/app/ui/panels/system.js`、`src/app/vm_config.js`、`src/app/guest_presets.js` | app-tests | S |
 | Q7.2 | `a64_profile` 写进公开选项与 `v86.d.ts`（现在只是内部选项，arm64-virt-android16-plan.md 1865） | `v86.d.ts`、`src/machine_options.js` | api 测试 | S |
-| Q7.3 | 文档：[aarch64.md](aarch64.md) 的 CPU profile 一节、已知缺陷与测试表 | 文档 | — | S |
+| Q7.3 | 文档：[aarch64.md](../aarch64.md) 的 CPU profile 一节、已知缺陷与测试表 | 文档 | — | S |
 
 ## 第二部分：`cpu_type: "arm32"`（32 位内核）
 
@@ -467,7 +467,7 @@ R6 也让 64 位的官方模拟器镜像（API 24 起的 `arm64-v8a`，包括 An
 | ID | 任务 | 关键位置 | 门禁/开关 | 规模 |
 | --- | --- | --- | --- | --- |
 | R8.1 | VM 管理器：处理器类型增加“ARM（32 位）”；机器可选 virt 或 ranchu；新预设“Android 7.1（32 位，模拟器镜像）”与“Linux（ARM 32 位）” | `src/app/ui/panels/system.js` 10、`src/app/vm_model.js`、`src/app/guest_presets.js` | app-tests | S |
-| R8.2 | 文档：新 `docs/arm32.md`（或并入 [aarch64.md](aarch64.md) 改名为 ARM 的总文档）、[virt.md](virt.md) 的 32 位 virt 与 ranchu | 文档 | — | S |
+| R8.2 | 文档：新 `docs/arm32.md`（或并入 [aarch64.md](../aarch64.md) 改名为 ARM 的总文档）、[virt.md](../virt.md) 的 32 位 virt 与 ranchu | 文档 | — | S |
 
 ## 里程碑
 

@@ -1,4 +1,4 @@
-// The JIT switches of src/rust/jit_switches.rs (docs/jit-unification-plan.md,
+// The JIT switches of src/rust/jit_switches.rs (docs/plan/jit-unification-plan.md,
 // cross-phase rule 1). The names come from the Wasm module; values are set by
 // name, from the build's JIT_DEFAULTS, the V86 option jit_switches
 // ({ name: value } or "name=value,...") and, in tests, JIT_SWITCHES

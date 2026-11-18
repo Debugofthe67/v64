@@ -1,4 +1,4 @@
-//! AArch32's floating point at EL0 (docs/aarch32-plan.md Q4.1, Q4.4):
+//! AArch32's floating point at EL0 (docs/plan/aarch32-plan.md Q4.1, Q4.4):
 //! VFPv4 as ARMv8 has it (no short vectors, no half-precision arithmetic),
 //! on fp.rs's SoftFloat environment. S0-S31, D0-D31 and Q0-Q15 are views
 //! of V0-V15 (S n: bits 32(n%4) of V n/4; D n: half n%2 of V n/2), and an

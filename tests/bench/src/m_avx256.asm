@@ -1,4 +1,4 @@
-; AVX VEX.256 moves (the templates of docs/simd-xsave-plan.md P6 part 3):
+; AVX VEX.256 moves (the templates of docs/plan/simd-xsave-plan.md P6 part 3):
 ; VMOVDQA/VMOVDQU ymm loads, VMOVNTDQ and VMOVDQU ymm stores (aligned and
 ; not), VMOVUPS between YMM registers over a 4 KiB table; VPXOR (VEX.128)
 ; sums the low halves, VZEROUPPER each round.

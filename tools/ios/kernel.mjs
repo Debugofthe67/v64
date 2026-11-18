@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A decompressed kernelcache, described (docs/iphone4-plan.md S0;
+// A decompressed kernelcache, described (docs/plan/iphone4-plan.md S0;
 // src/apple/macho.js):
 //
 //   node tools/ios/kernel.mjs <kernelcache.macho> info          segments, entry point, UUID

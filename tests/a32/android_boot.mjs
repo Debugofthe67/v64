@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The official Android 7.1.1 emulator image (armeabi-v7a-25_r18, Google
-// APIs) on cpu_type "arm32" and the ranchu machine (docs/aarch32-plan.md
+// APIs) on cpu_type "arm32" and the ranchu machine (docs/plan/aarch32-plan.md
 // R7.1): its kernel-ranchu, ramdisk.img, system.img (read-only, vda), an
 // empty /cache (vdb, src/android/ext4.js) and userdata.img (vdc, its
 // changes kept in memory), the emulator's kernel command line
@@ -16,7 +16,7 @@
 // boot_completed, A32_ANDROID_RESTORE_STATE=<file> that state restored
 // instead of booting (the same disks), A32_ANDROID_LOGCAT=1
 // the log's warnings and errors on the console. A32_ANDROID_DISK=1: as the
-// VM manager boots an imported image (docs/android-images-plan.md I6): the
+// VM manager boots an imported image (docs/plan/android-images-plan.md I6): the
 // zip made into one disk (tools/android_import.mjs's, build/a32-android/
 // disk.img, its changes in memory), booted by the android option (device
 // model ranchu_25_armeabi_v7a: the kernel and ramdisk from its partitions,
@@ -34,7 +34,7 @@
 // (A32_ANDROID_RATE_AFTER=<rate>: the clock's rate changed first;
 // A32_ANDROID_PROBE_SCREEN: shell commands run with it up).
 // A32_ANDROID_GPU=host: the device model's GPU mode "host" (qemu.gles=1,
-// ranchu_gpu "host": the GLES host, docs/gles-proxy-plan.md); the GLES
+// ranchu_gpu "host": the GLES host, docs/plan/gles-proxy-plan.md); the GLES
 // calls' counts go to the run's gles.json, its batches to gles-batches.bin
 // (read by tools/gles/batches.mjs), and an opcode the host does not know,
 // or a command it cannot decode, fails the test. A32_ANDROID_RENDERER=chrome:
@@ -46,18 +46,18 @@
 // A32_ANDROID_BOOT_SHOTS=1: a screenshot every 20 s until the boot completes.
 // A32_ANDROID_GLES_APP=1 (with A32_ANDROID_GPU=host): after the home screen,
 // tests/a32/android/v86gles.c's APK (GLES 2.0, 1.1 and 3.0 scenes read back with
-// glReadPixels: docs/gles-proxy-plan.md E4) is installed and started, and
+// glReadPixels: docs/plan/gles-proxy-plan.md E4) is installed and started, and
 // the pixels it logs are checked against GLES's rules.
 // A32_ANDROID_DEQP=1 (with A32_ANDROID_GPU=host): dEQP-GLES2 and dEQP-EGL
 // from CTS 7.1_r29 (tools/a32_cts.mjs fetches them) on a fourth virtio disk
 // (ext2, mke2fs -d), copied in with su, installed, run by its
-// instrumentation in chunks (the results from its status lines); the subset (docs/gles-proxy-plan.md E4): every
+// instrumentation in chunks (the results from its status lines); the subset (docs/plan/gles-proxy-plan.md E4): every
 // state_query and negative_api case, dEQP-EGL.info, and every ninth other
 // functional case (A32_ANDROID_DEQP_STEP another; A32_ANDROID_DEQP_FILTER a
 // pattern of cases to keep; A32_ANDROID_DEQP_IMAGES=1 the log with its images
 // and shader sources in the instrumentation's output, kept); each case's status into the run's deqp.json.
 // A32_ANDROID_DEQP_SUITE=gles3 (or gles31): that suite's case list in GLES 2's
-// place (docs/gles3-plan.md L4). A32_ANDROID_DEQP_RESUME: an earlier run's
+// place (docs/plan/gles3-plan.md L4). A32_ANDROID_DEQP_RESUME: an earlier run's
 // deqp.json, whose passed and unsupported cases are not run again (the rest,
 // failures among them, are); the run's deqp.json has both. A32_ANDROID_GLES_VERSION: the GLES version
 // the host announces (src/android/devices.js's default otherwise).
@@ -165,7 +165,7 @@ const DEQP_DONE = new Set(["Pass", "NotSupported", "QualityWarning", "Compatibil
 if(process.env.A32_ANDROID_DEQP === "1")
 {
     const { fetch_files, DEQP_FILES } = await import("../../tools/a32_cts.mjs");
-    // (A32_ANDROID_DEQP_SUITE: gles2, or gles3 / gles31 (docs/gles3-plan.md L4): its case list instead of GLES 2's)
+    // (A32_ANDROID_DEQP_SUITE: gles2, or gles3 / gles31 (docs/plan/gles3-plan.md L4): its case list instead of GLES 2's)
     const suite = process.env.A32_ANDROID_DEQP_SUITE || "gles2";
     const [apk, list, egl] = await fetch_files([DEQP_FILES[0], suite + "-master.txt", ...DEQP_FILES.slice(2)], true);
     const prefix = "dEQP-" + suite.toUpperCase();
@@ -417,7 +417,7 @@ try
         }
     };
     // (A32_ANDROID_SCREEN: an activity started, its screen taken: the same
-    // picture in both GPU modes, docs/gles-proxy-plan.md E3's comparison)
+    // picture in both GPU modes, docs/plan/gles-proxy-plan.md E3's comparison)
     // (A32_ANDROID_RATE_AFTER: the machine clock's rate from here on, e.g. 1
     // after a boot at the device model's tenth: how fast the screen can go)
     if(process.env.A32_ANDROID_RATE_AFTER)
@@ -606,7 +606,7 @@ try
         assert.deepEqual(egl.slice(1), ["1", "1", "1", "30f6", "30f2"], "swap intervals, the fence");
         expect("pbuffer", [[255, 255, 0]]);
         expect("shared", [[255, 0, 255]]);
-        // GLES 3.0's scenes (docs/gles3-plan.md L4) where the host announces it
+        // GLES 3.0's scenes (docs/plan/gles3-plan.md L4) where the host announces it
         if(gpu.gles_version !== "2.0")
         {
             assert.match(log, /V86_GLES gles3 OpenGL ES 3\./, "a GLES 3 context");
@@ -630,7 +630,7 @@ try
         // (GLES 3.2's reach through the guest's library, where the host announces it: printed)
         const reach = /V86_GLES gles32 .*/.exec(log);
         if(reach) console.log("gles app: " + reach[0].replace(/^V86_GLES /, ""));
-        // GLES 3.0's frame rate (docs/gles3-plan.md L7), one instanced draw a frame ("fps") and a draw a cube
+        // GLES 3.0's frame rate (docs/plan/gles3-plan.md L7), one instanced draw a frame ("fps") and a draw a cube
         // ("fpsdraws"): the middle cube drawn (not the clear color), the frames in the guest's time; the host's
         // frame rate that time at the clock's rate (a tenth of the host's)
         if(gpu.gles_version !== "2.0")

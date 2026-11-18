@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The mode ledger (docs/jit-unification-plan.md P0.6) with the x64 page tier
+// The mode ledger (docs/plan/jit-unification-plan.md P0.6) with the x64 page tier
 // in legacy mode (written for IR Tier-0, deleted in P7.5): on from
 // the machine's construction (the JIT switch mode_ledger), it must account
 // for every retired instruction (cross-phase rule 3: its sum is

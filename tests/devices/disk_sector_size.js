@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Hard disks with logical sectors of 4096 bytes (docs/disk-image-formats-plan.md,
+// Hard disks with logical sectors of 4096 bytes (docs/plan/disk-image-formats-plan.md,
 // the appendix's "4K 逻辑扇区"), driven through the ports and AHCI's
 // command structures; no guest code runs.
 // - IDE (i440FX), a RAW disk with logical_sector_size 4096 next to a

@@ -5,7 +5,7 @@
 //! the run computes in f64 locals and commits once. The results are exactly
 //! those of the per-form native path (x86tpl::x87), which runs the
 //! instructions one by one when the guard fails. Tier-0 and the page tier's
-//! compatibility mode (docs/jit-unification-plan.md P7.2a) emit them; the
+//! compatibility mode (docs/plan/jit-unification-plan.md P7.2a) emit them; the
 //! caller checks CR0 (#NM) and gp::x87_native_policy first.
 use super::x87::X87Cache;
 use crate::cpu::{fpu, global_pointers as gp};

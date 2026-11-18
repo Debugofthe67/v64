@@ -3,7 +3,7 @@
 The CPU `GLShadow` owns GL state, errors, object names, queries and link metadata.
 This directory executes accepted records and owns GPU resources and asynchronous
 pixel/query results. See [architecture](../../../../docs/glbridge.md) and the
-[implementation plan](../../../../docs/opengl-webgpu-plan.md).
+[implementation plan](../../../../docs/plan/opengl-webgpu-plan.md).
 
 ## Retained rendering differences
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// XSAVE-managed state across the machine's lifecycle (docs/simd-xsave-plan.md
+// XSAVE-managed state across the machine's lifecycle (docs/plan/simd-xsave-plan.md
 // 6.4): per-core XCR0, YMM0_H-YMM15_H, XMM and x87 state round trip through
 // snapshots; INIT keeps them (and the rest resets), RESET sets XCR0 to 1;
 // snapshots from before the XSAVE range restore XCR0 1 and zero YMM halves,

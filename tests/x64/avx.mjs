@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// AVX in the x64 engine (docs/simd-xsave-plan.md 8, P5): the VEX forms in
+// AVX in the x64 engine (docs/plan/simd-xsave-plan.md 8, P5): the VEX forms in
 // 64-bit mode (XMM8-15 through VEX.R, VEX.B and VEX.vvvv, memory operands
 // through VEX.X and VEX.B, RIP-relative ones, the VEX.W1 forms with 64-bit
 // general-purpose operands) and in compatibility mode (the 32-bit
@@ -647,7 +647,7 @@ check(expected, "QEMU");
 const FEATURES = {cpu_features: ["SSSE3", "SSE4.1", "SSE4.2", "XSAVE", "AVX", "AVX2"], cpu_features_unreleased: true};
 for(const [label, options] of [["interpreted", {}],
     ["x64 page tier", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true}],
-    // (compatibility-mode code in the page tier, docs/jit-unification-plan.md P7.2)
+    // (compatibility-mode code in the page tier, docs/plan/jit-unification-plan.md P7.2)
     ["x64 page tier, compat32", {disable_jit: false, experimental_smp_jit: true, ir_sync_publication: true,
         jit_switches: {x64_page_compat32: 1}}]])
 {

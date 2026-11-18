@@ -5,7 +5,7 @@ place of SeaBIOS: OVMF, the X64 build of edk2's virtual machine firmware, as
 QEMU runs it. It needs `cpu_type: "x86_64"`, `acpi: true` and, on i440FX,
 `qemu_compatible: true` (below); it takes the place of `bios` and
 `vga_bios`. Stages F1 and F2 (Secure Boot, below) of
-[modern-pc-devices-plan.md](modern-pc-devices-plan.md).
+[modern-pc-devices-plan.md](plan/modern-pc-devices-plan.md).
 
 ```js
 new V86({
@@ -70,7 +70,7 @@ writable"). A reset keeps the bytes and returns to read array mode.
 
 The bytes are in a buffer object that every program and erase updates as
 well. `vars: { url, disk_option: "read_write" }` writes them back as a disk
-is written back ([disk-persistence-plan.md](disk-persistence-plan.md): a local
+is written back ([disk-persistence-plan.md](plan/disk-persistence-plan.md): a local
 file in Node, a browser disk, a disk service's image): the variables
 outlive the machine. Read only (the default) the changes stay in memory.
 A snapshot holds the store's bytes, or for a store written back its

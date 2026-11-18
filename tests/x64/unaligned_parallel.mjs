@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Hot pages compiled with inline access cache lookups (x64_hot_inline,
-// docs/jit-unification-plan.md P4.14) in the parallel build, whose guest
+// docs/plan/jit-unification-plan.md P4.14) in the parallel build, whose guest
 // memory accesses are atomics that need natural alignment: a hot loop of
 // unaligned loads and stores must give the interpreter's results, and no
 // more retries than with outlined lookups (an inline lookup's unaligned

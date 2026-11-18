@@ -1,4 +1,4 @@
-// Export of a hard disk as a new QCOW2 image (docs/disk-image-formats-plan.md
+// Export of a hard disk as a new QCOW2 image (docs/plan/disk-image-formats-plan.md
 // P5): version 3, clusters of 64 KiB, 16-bit refcounts, no compression, no
 // parent, the clusters that are all zeros left out. The stream is written
 // in order, so the image's layout is decided first: a first pass over the

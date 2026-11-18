@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Export of a disk as a new QCOW2 image (docs/disk-image-formats-plan.md P5):
+// Export of a disk as a new QCOW2 image (docs/plan/disk-image-formats-plan.md P5):
 // qemu-img check finds no errors in it and qemu-img compare finds it equal
 // to the RAW export of the same disk view; the reader of v86 reads it back.
 // Disks: a compressed QCOW2 child on its parent with the guest's writes, a

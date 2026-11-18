@@ -1,4 +1,4 @@
-// A minimal ADB client (docs/arm64-virt-android16-plan.md P10.7): the
+// A minimal ADB client (docs/plan/arm64-virt-android16-plan.md P10.7): the
 // transport protocol of system/adb/protocol.txt over any byte stream with
 // write(bytes) and an on_data callback (a TCP socket to QEMU's forwarded
 // port, or a connection through v86's network adapter to the guest's

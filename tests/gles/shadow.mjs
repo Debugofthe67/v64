@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The shadow state (src/gles/gles_shadow.js; docs/gles-proxy-plan.md E2)
+// The shadow state (src/gles/gles_shadow.js; docs/plan/gles-proxy-plan.md E2)
 // against the OpenGL ES 2.0 specification, through the host as the guest
 // drives it:
 // - the initial state and glGet's conversions (booleans, integers, floats,

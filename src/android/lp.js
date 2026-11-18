@@ -1,7 +1,7 @@
 // The super partition (system/core/fs_mgr/liblp/include/liblp/
 // metadata_format.h): its geometry and metadata, little-endian, and its
 // logical partitions replaced with their hash trees and vbmeta descriptors
-// (docs/android-images-plan.md I1)
+// (docs/plan/android-images-plan.md I1)
 
 import { u32, u64, u64be, put32, put64, put32be, put64be, c_string, latin1, bytes_of, copy, concat, equals, hex, sha256 } from "./bytes.js";
 import { vbmeta_struct, hashtree_descriptor, avb_hashtree, set_hashtree } from "./avb.js";

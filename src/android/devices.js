@@ -1,4 +1,4 @@
-// Android device models (docs/android-images-plan.md I2.1): how a build for
+// Android device models (docs/plan/android-images-plan.md I2.1): how a build for
 // a device boots on the virt machine, as that device's bootloader and
 // launcher would boot it: the disk's partitions, the kernel command line's
 // tail and what goes into bootconfig.
@@ -69,7 +69,7 @@ export const CF_ARM64_ONLY_PHONE = {
         // (host/libs/vm_manager/qemu_manager.cpp; docs/gfxstream-protocol.md):
         // the guest's Vulkan driver gfxstream's (vulkan.ranchu), GLES ANGLE on
         // it, the transport ASG rings in virtio-gpu blobs; for v64's
-        // gfxstream device (docs/gfxstream-plan.md G1-G5). Composition as
+        // gfxstream device (docs/plan/gfxstream-plan.md G1-G5). Composition as
         // Venus's: SurfaceFlinger on the GPU, the HWC scanning out through
         // KMS (the launcher's HWC composes on the host, renderControl's
         // rcCompose); ANGLE gets OpenGL ES 3.0 of VX
@@ -86,7 +86,7 @@ export const CF_ARM64_ONLY_PHONE = {
 /**
  * Cuttlefish's arm64 phone of Android 14 (aosp_cf_arm64_phone from the
  * aosp-android14-gsi branch, vsoc_arm64): a 32-bit second architecture
- * (zygote64_32), for 32-bit apps on arm64 (docs/aarch32-plan.md Q5.2);
+ * (zygote64_32), for 32-bit apps on arm64 (docs/plan/aarch32-plan.md Q5.2);
  * otherwise as the arm64-only phone, tools/a64_android.mjs --build a14
  */
 export const CF_ARM64_PHONE_A14 = /** @type {!Object} */ (Object.assign({}, CF_ARM64_ONLY_PHONE, {
@@ -171,7 +171,7 @@ export function device_bootconfig(device, options)
 
 /**
  * The Android Emulator's system images on the ranchu machine
- * (docs/android-images-plan.md I6, docs/aarch32-plan.md R6): how the
+ * (docs/plan/android-images-plan.md I6, docs/plan/aarch32-plan.md R6): how the
  * emulator boots an SDK image of one API level and ABI: its kernel
  * (kernel-ranchu) and ramdisk, its disks in the emulator's order (the
  * virtio disks vda, vdb, ...: the ramdisk's fstab.ranchu names them) and
@@ -198,7 +198,7 @@ export const RANCHU_25_ARMEABI_V7A = {
     ],
     // (no boot animation: the CPU draws it, which slows the first boot down)
     cmdline: { arm32: true, bootanim: false },
-    // the GPU modes (docs/gles-proxy-plan.md "Android 传输"): "guest" the
+    // the GPU modes (docs/plan/gles-proxy-plan.md "Android 传输"): "guest" the
     // CPU renders (qemu.gles=0); "host" the emulator's GL libraries send
     // GLES to v64's GLES host (ranchu_gpu "host": qemu.gles=1, and
     // ro.opengles.version the GLES version the host announces,
@@ -257,7 +257,7 @@ export const GLES_VERSIONS = { "2.0": "131072", "3.0": "196608", "3.1": "196609"
 /**
  * The GLES version a GLES host announces where nothing says: 3.1, the
  * highest Android 7.1's library goes (3.2 is offered, of which the
- * library passes on part: gpu-deviations.md G-68; docs/gles3-plan.md)
+ * library passes on part: gpu-deviations.md G-68; docs/plan/gles3-plan.md)
  */
 export const DEFAULT_GLES_VERSION = "3.1";
 

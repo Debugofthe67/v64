@@ -1,7 +1,7 @@
 // The Intel 82540EM Gigabit Ethernet controller (PRO/1000 MT Desktop,
 // 8086:100E, subsystem 8086:001E): the card Windows Vista to 11 and Linux
 // drive with their own drivers (nete1g3e.inf, e1000.ko). See
-// docs/modern-pc-devices-plan.md, "N1", and the PCI/PCI-X Family of Gigabit
+// docs/plan/modern-pc-devices-plan.md, "N1", and the PCI/PCI-X Family of Gigabit
 // Ethernet Controllers Software Developer's Manual (8254x); QEMU's e1000.c
 // and VirtualBox's DevE1000.cpp were the references for what drivers expect.
 //

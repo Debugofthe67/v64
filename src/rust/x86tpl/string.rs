@@ -1,4 +1,4 @@
-//! Leaves of the REP string templates (docs/jit-unification-plan.md P3.1b):
+//! Leaves of the REP string templates (docs/plan/jit-unification-plan.md P3.1b):
 //! the bulk operations a REP MOVS or STOS becomes when it is done at once,
 //! for every x86 engine (Tier-0's template, the page tier's Op::Movs and
 //! Op::Stos)

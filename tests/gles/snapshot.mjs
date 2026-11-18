@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GLES state in snapshots (docs/gles-proxy-plan.md E5; src/gles/gles_snapshot.js,
+// GLES state in snapshots (docs/plan/gles-proxy-plan.md E5; src/gles/gles_snapshot.js,
 // gles_host.js, src/virt/goldfish.js):
 // - the packing: Maps, Sets, typed arrays, objects reached twice, classes,
 //   undefined and the numbers JSON has no words for;

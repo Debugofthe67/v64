@@ -1,4 +1,4 @@
-// One connection to the GLES host (docs/gles-proxy-plan.md "协议与生成器",
+// One connection to the GLES host (docs/plan/gles-proxy-plan.md "协议与生成器",
 // E1): the guest's bytes as they come (a pipe's writes, split anywhere),
 // a u32 of client flags first (gfxstream's host/RenderThread.cpp reads it
 // and drops it), then commands, each an opcode and a total size (u32 each,

@@ -1,4 +1,4 @@
-// The glibc part of the x64 Linux acceptance (docs/simd-xsave-plan.md 11.3,
+// The glibc part of the x64 Linux acceptance (docs/plan/simd-xsave-plan.md 11.3,
 // P12), for tests/x64/linux_boot.mjs with X64_LINUX_GLIBC=1: Ubuntu 24.04's
 // glibc 2.39 (the package whose libraries gave plan 5.1's hot forms),
 // tests/x64/linux_glibc_probe.c linked against it, and libhwprobe.so

@@ -1683,7 +1683,7 @@ pub unsafe fn instr_0F37() {
     // getsec
     undefined_instruction();
 }
-/// The three-byte opcode maps (gen/x86_table.js, docs/simd-xsave-plan.md)
+/// The three-byte opcode maps (gen/x86_table.js, docs/plan/simd-xsave-plan.md)
 #[no_mangle]
 pub unsafe fn instr_0F38() {
     let opcode = return_on_pagefault!(read_imm8());

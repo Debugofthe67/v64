@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The code of a page function (docs/profiling.md): records what the x64 page
+// The code of a page function (docs/perf/profiling.md): records what the x64 page
 // tier (with --isa compat32 the i686 build in compatibility mode; with --isa
 // i686, or legacy32, in legacy protected mode: IR Tier-0's code until P7.5)
 // compiles while a benchmark runs on a
@@ -8,7 +8,7 @@
 // (tools/replay_check.mjs' fixed pseudo addresses) and prints the module's
 // Wasm, or with --machine the ARM64/x64 code V8's optimizing compiler makes
 // of it (node --no-liftoff --print-wasm-code). How the page tier's code for
-// M5 was compared with Tier-0's (docs/jit-unification-plan.md, appendix C).
+// M5 was compared with Tier-0's (docs/plan/jit-unification-plan.md, appendix C).
 //
 // Usage: node tools/page_code.mjs <benchmark> <hex bytes> [--isa x86_64|i686|compat32|legacy32]
 //        [--switches name=value,...] [--machine] [--save module.wasm]

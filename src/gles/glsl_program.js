@@ -1,4 +1,4 @@
-// A GLSL ES program linked with glslang (docs/gles3-plan.md, "着色器的数据流"):
+// A GLSL ES program linked with glslang (docs/plan/gles3-plan.md, "着色器的数据流"):
 // GL's view of it from the check pass (the active attributes, uniforms and
 // blocks with GL's names, types and sizes; the locations, by GL's rules),
 // and each stage's SPIR-V from the code pass with the interface and the

@@ -1,4 +1,4 @@
-//! PSCI 1.1 over HVC (docs/arm64-virt-android16-plan.md: the emulator takes
+//! PSCI 1.1 over HVC (docs/plan/arm64-virt-android16-plan.md: the emulator takes
 //! HVC as PSCI/SMCCC, as QEMU does without EL2): the functions QEMU 9.2
 //! implements (target/arm/tcg/psci.c), with the same results; any other
 //! function ID, SMCCC_VERSION included, returns NOT_SUPPORTED.

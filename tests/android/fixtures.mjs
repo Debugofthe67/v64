@@ -1,5 +1,5 @@
 // Small synthetic Android images for src/android/'s tests
-// (docs/android-images-plan.md I1, I3): sparse images, vbmeta structs, super
+// (docs/plan/android-images-plan.md I1, I3): sparse images, vbmeta structs, super
 // with liblp metadata, erofs, zips, boot images, and a Cuttlefish-like images
 // zip (tests/android/library.mjs; tests/android/make_package.mjs writes one
 // for the wizard's browser test).

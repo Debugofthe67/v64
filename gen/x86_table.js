@@ -61,7 +61,7 @@ const TESTS_ASSUME_INTEL = false;
 //   0x0F3Axx, a mandatory prefix in bits 24-31)
 // feature: the CPUID feature (gen/cpu_features.js) without which the row does
 //   not exist: its encoding is #UD, or runs the row a prefix does not select
-// unimplemented: #UD even with the feature (docs/simd-xsave-plan.md: the
+// unimplemented: #UD even with the feature (docs/plan/simd-xsave-plan.md: the
 //   semantics come in later phases)
 // vex: a VEX row (gen/vex_table.js: key 0xC4_MM_PP_OO, the VEX fields it accepts)
 // block_boundary: may change eip in a way not handled by the jit
@@ -896,7 +896,7 @@ for(let i = 0; i < 8; i++)
 // The three-byte maps 0F 38 and 0F 3A: every legacy form in
 // gen/isa_forms.json (checked by gen/cpu_features.js). The rows marked
 // unimplemented get their semantics in later phases of
-// docs/simd-xsave-plan.md.
+// docs/plan/simd-xsave-plan.md.
 {
     const SSSE3 = "SSSE3", SSE4_1 = "SSE4.1", SSE4_2 = "SSE4.2";
     const vector = (opcode, feature, extra = {}) => ({ opcode, e: 1, sse: 1, custom: 1, skip: 1, feature, unimplemented: 1, ...extra });

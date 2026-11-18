@@ -1,4 +1,4 @@
-; AVX2 (the templates of docs/simd-xsave-plan.md P7 part 3): a strlen-like
+; AVX2 (the templates of docs/plan/simd-xsave-plan.md P7 part 3): a strlen-like
 ; scan of a 4 KiB table, 32 bytes a step: VPCMPEQB with a broadcast byte,
 ; VPMINUB, VPCMPGTB, VPOR, VPANDN, VPADDB, VPXOR, VPMINUD, VPCMPEQD, VPAND
 ; and VPMOVMSKB r32, ymm; VPBROADCASTB/D each round.

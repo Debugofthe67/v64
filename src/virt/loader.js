@@ -1,5 +1,5 @@
 // Loading Linux (or a bare-metal program) on the virt machine
-// (docs/arm64-virt-android16-plan.md P4.6): an arm64 Image (the boot
+// (docs/plan/arm64-virt-android16-plan.md P4.6): an arm64 Image (the boot
 // protocol of Documentation/arch/arm64/booting.rst), or an EFI zboot image
 // holding one gzipped (Alpine's vmlinuz-virt), goes where the reference
 // QEMU 9.2 puts it (hw/arm/boot.c): RAM + text_offset (0x80000 when

@@ -1,4 +1,4 @@
-// The probes of tests/a64/browser_caps.html (docs/arm64-virt-android16-plan.md
+// The probes of tests/a64/browser_caps.html (docs/plan/arm64-virt-android16-plan.md
 // P0.8): every result comes from compiling or running a module here, not from
 // the user agent string. Run under Node it checks Node's V8:
 //

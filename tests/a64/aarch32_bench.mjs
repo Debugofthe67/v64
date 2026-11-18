@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// AArch32's speed against A64's (docs/aarch32-plan.md Q6.4): the integer
+// AArch32's speed against A64's (docs/plan/aarch32-plan.md Q6.4): the integer
 // kernels of tests/bench/src, the same C, built for A64 (run at EL1), A32
 // and T32 (armv7, run at EL0 under the 64-bit EL1: tests/a64/aarch32/bench.c)
 // and timed on v86 with the page tier (A64_JIT=1 unless A64_BENCH_JIT=0;

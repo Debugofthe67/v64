@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // src/virt/inflate.js against Node's zlib: stored, fixed and dynamic blocks,
 // gzip; the output limit of QCOW2 and VMDK compressed clusters
-// (docs/disk-image-formats-plan.md P2); damaged streams fail instead of
+// (docs/plan/disk-image-formats-plan.md P2); damaged streams fail instead of
 // giving wrong data.
 
 import assert from "node:assert/strict";

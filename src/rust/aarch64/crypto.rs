@@ -1,4 +1,4 @@
-//! The crypto extension of profile v86-aarch64-v1 (docs/arm64-virt-android16-plan.md
+//! The crypto extension of profile v86-aarch64-v1 (docs/plan/arm64-virt-android16-plan.md
 //! P2.11): AESE, AESD, AESMC, AESIMC; SHA1C/P/M/H/SU0/SU1; SHA256H/H2/SU0/SU1
 //! (PMULL is in simd.rs). Scalar helpers on V registers, as the Arm ARM's
 //! pseudocode writes them; the JIT calls the same ones (P6).

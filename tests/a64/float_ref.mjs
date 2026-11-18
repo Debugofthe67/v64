@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // QEMU's float_convs and float_madds (tests/tcg/multiarch, built from the
 // fixed QEMU source tree as bare-metal guests, -O0 as QEMU builds them)
-// against tests/tcg/aarch64/*.ref (docs/arm64-virt-android16-plan.md P0.5).
+// against tests/tcg/aarch64/*.ref (docs/plan/arm64-virt-android16-plan.md P0.5).
 // The sources and references stay in the QEMU tree (A64_QEMU_SRC, default
 // build/a64-ref/qemu-9.2.0); A64_TARGET=qemu|v86 picks the machine.
 import assert from "node:assert/strict";

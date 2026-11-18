@@ -1,4 +1,4 @@
-// The GLES host (docs/gles-proxy-plan.md): the services a transport
+// The GLES host (docs/plan/gles-proxy-plan.md): the services a transport
 // connects the guest to. Android's goldfish pipe (src/virt/goldfish.js)
 // opens "opengles", one connection per GL thread (a GLESStream whose
 // commands go to renderControl or to the shadow state), and
@@ -56,7 +56,7 @@ export const MAX_IN_FLIGHT = 2;
  */
 export function GLESHost(display, renderer, present, options)
 {
-    /** glslang (the plugin's prepare) and the highest version announced (docs/gles3-plan.md) */
+    /** glslang (the plugin's prepare) and the highest version announced (docs/plan/gles3-plan.md) */
     this.options = options || {};
     /** the screen: a posted frame read back (RGBA rows from the top) */
     this.present = present || (() => {});
@@ -74,7 +74,7 @@ GLESHost.prototype.reset = function()
     this.rc.max_version = { "3.0": 30, "3.1": 31, "3.2": 32 }[this.options.max_version] || 20;
     this.shadow = new GLESShadow(this.rc);
     this.shadow.glslang = this.options.glslang || null;
-    // (buffers' bytes on the CPU side: glMapBufferRange's answers, docs/gles3-plan.md)
+    // (buffers' bytes on the CPU side: glMapBufferRange's answers, docs/plan/gles3-plan.md)
     this.shadow.keep_bytes = true;
     this.writer = new GXWriter(GLES_MAGIC);
     this.next_connection = 1;

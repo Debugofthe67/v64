@@ -1,4 +1,4 @@
-// The GLES backdoor device of arm32 user code (docs/gles-proxy-plan.md
+// The GLES backdoor device of arm32 user code (docs/plan/gles-proxy-plan.md
 // "iOS 传输", E6; the core's side: src/rust/aarch64/backdoor.rs): a process
 // without a driver reaches the GLES host's services ("opengles",
 // "GLProcessPipe", as Android's goldfish pipe does) with UDF #0x8664.

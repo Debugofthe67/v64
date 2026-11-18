@@ -1,4 +1,4 @@
-//! The generic timer of the AArch64 core (docs/arm64-virt-android16-plan.md
+//! The generic timer of the AArch64 core (docs/plan/arm64-virt-android16-plan.md
 //! P4.3): one system counter for the machine at CNTFRQ's 1 GHz, the EL1
 //! virtual and physical timers of each core with their registers and their
 //! interrupt lines (PPIs 27 and 30, level-sensitive, in the GIC), the event

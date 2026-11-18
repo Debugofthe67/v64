@@ -1,4 +1,4 @@
-// newc cpio archives, Android's ramdisks (docs/android-images-plan.md I1)
+// newc cpio archives, Android's ramdisks (docs/plan/android-images-plan.md I1)
 
 import { latin1, bytes_of, concat } from "./bytes.js";
 

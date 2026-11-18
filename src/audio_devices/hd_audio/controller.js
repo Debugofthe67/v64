@@ -10,7 +10,7 @@
 // plays at its format's rate on the machine clock: its buffer descriptor
 // list is read as the time to play it comes, LPIB, the DMA position buffer
 // and the completion interrupts follow, and the samples go to the speaker
-// whether or not the page can play them (docs/modern-pc-devices-plan.md,
+// whether or not the page can play them (docs/plan/modern-pc-devices-plan.md,
 // H1).
 
 import { LOG_DMA } from "../../const.js";

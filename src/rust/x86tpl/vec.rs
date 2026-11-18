@@ -1,4 +1,4 @@
-//! Vector leaves of x86 semantics (docs/jit-unification-plan.md P2.2): the
+//! Vector leaves of x86 semantics (docs/plan/jit-unification-plan.md P2.2): the
 //! table of packed integer and logic operations (Packed) and its emission,
 //! the immediate shifts, the SSE arithmetic, compares and conversions, the
 //! call of the exact SSE helper (x64::helpers::x64_sse_fp) and the

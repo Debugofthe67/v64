@@ -1,4 +1,4 @@
-// Export of a hard disk as the guest sees it (docs/disk-image-formats-plan.md
+// Export of a hard disk as the guest sees it (docs/plan/disk-image-formats-plan.md
 // P2): a RAW stream of the disk's whole size, the image's data with the
 // guest's writes, in order, with progress, cancellation and the writer's
 // backpressure (write may return a promise). Any disk buffer: a disk image

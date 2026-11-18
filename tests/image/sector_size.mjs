@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Logical sectors of 4096 bytes in the image layer (docs/disk-image-formats-plan.md,
+// Logical sectors of 4096 bytes in the image layer (docs/plan/disk-image-formats-plan.md,
 // the appendix's "4K 逻辑扇区"):
 // - the VHDX builder (tests/image/tiny_vhdx.mjs) against qemu-img: its
 //   512-byte images pass qemu-img check and convert to the data written,
