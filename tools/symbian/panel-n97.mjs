@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { V86 } from "../../src/main.js";
 import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
+import { N97_DISPC_BASE } from "../../src/symbian/n97_dispc.js";
 
 const [rom] = process.argv.slice(2);
 if(!rom || process.argv.length !== 3) throw new Error("Usage: node tools/symbian/panel-n97.mjs <rom.xip.bin>");
@@ -33,12 +34,14 @@ try
     const faults = new Set([4, 0xC, 0x10, 0xFFFF0004, 0xFFFF000C, 0xFFFF0010]);
     const advance = instructions => cpu.run_hardware_timers(null, cpu.clock.advance_instructions(instructions));
     const sisa = 0x800B3B40; // missing-modem checkpoint in the AP-only diagnostic
+    let display_interrupts = 0;
     function run_to_return(limit, check_faults = true)
     {
         for(let step = 0; step < limit && pc() !== sisa; step++)
         {
             if(step % 32 === 0) advance(32);
             if(check_faults && faults.has(pc())) assert.fail("retail exception at " + hex(pc()) + " FAR " + hex(field("far_el1")));
+            if(pc() === 0x8013333C) display_interrupts++;
             wasm["a64_worker_slice"](1);
         }
         assert.equal(pc(), sisa, "retail execution returns at the checkpoint");
@@ -156,6 +159,51 @@ try
         return createHash("sha256").update(frame.data).digest("hex");
     }
     const initial = { landscape: check_frame(true), portrait: check_frame(false) };
+
+    function display_register(offset)
+    {
+        const address = N97_DISPC_BASE + offset, io = cpu.io;
+        const owner = io.ranges.findIndex(range => range?.base === address);
+        assert.ok(owner > 0);
+        return Number(io.mmio_read(owner, 0, 4));
+    }
+    // Supply the live kernel DFC queue normally provided by the display
+    // owner. The original DispC constructor and initializer own the DFCs.
+    const dfc_queue = read(0xC8006BB8 + 0x3C);
+    assert.ok(dfc_queue);
+    put(display + 0x704, dfc_queue);
+    const handshake = [], io = cpu.io;
+    const read_mmio = io.mmio_read.bind(io), write_mmio = io.mmio_write.bind(io);
+    io.mmio_read = (owner, offset, access_width) => {
+        const value = read_mmio(owner, offset, access_width);
+        if(io.ranges[owner].base + Number(offset) === N97_DISPC_BASE + 0x14)
+            handshake.push(["read", hex(pc()), Number(value)]);
+        return value;
+    };
+    io.mmio_write = (owner, offset, access_width, value) => {
+        if(io.ranges[owner].base + Number(offset) === N97_DISPC_BASE + 0x10)
+            handshake.push(["write", hex(pc()), Number(value)]);
+        write_mmio(owner, offset, access_width, value);
+    };
+    try { assert.equal(call(0x801335E0, driver), 0, "original DispC software reset returns"); }
+    finally
+    {
+        io.mmio_read = read_mmio;
+        io.mmio_write = write_mmio;
+    }
+    assert.deepEqual(handshake, [["write", "0x801335e8", 2], ["read", "0x801335f0", 0], ["write", "0x80133600", 0]]);
+    assert.equal(display_register(0x14), 0);
+    assert.equal(check_frame(true), initial.landscape);
+    assert.equal(check_frame(false), initial.portrait);
+    assert.equal(call(0x801327D4, driver), 0, "original DispC initializer returns and binds IRQ 131");
+    advance(instructions_per_ms);
+    assert.equal(display_register(0x14), 1);
+    assert.equal(display_register(0x10), 0x2015);
+    assert.deepEqual([0xA4, 0xD0, 0x160].map(display_register), [0x01FF01C0, 0x01FF01C0, 0x01FF01C0]);
+    call(0x80132950, driver);
+    advance(20 * instructions_per_ms);
+    assert.equal(panel.status().pixels_received, width * height);
+
     data.fill(0xD0C1F2);
     for(let y = top; y < top + rows; y++) data.fill(replacement, y * width + left, y * width + left + columns);
     cpu.write_blob_physical(new Uint8Array(data.buffer), plane);
@@ -168,13 +216,6 @@ try
     const update_window = read(read(mode) + 0x64);
     assert.equal(update_window, 0x8013C5A8);
     call(update_window, mode);
-    function display_register(offset)
-    {
-        const address = 0x20024800 + offset, io = cpu.io;
-        const owner = io.ranges.findIndex(range => range?.base === address);
-        assert.ok(owner > 0);
-        return Number(io.mmio_read(owner, 0, 4));
-    }
     assert.equal(display_register(0x80), plane + 4 * (top * width + left));
     assert.equal(display_register(0xAC), 1 + 4 * (width - columns));
     advance(32 * instructions_per_ms);
@@ -194,8 +235,10 @@ try
     advance(20 * instructions_per_ms);
     assert.equal(check_frame(true), landscape);
     assert.equal(check_frame(false), portrait);
+    assert.ok(display_interrupts, "stock display IRQ handler ran after the reset and update");
     assert.equal(lossi.status().dropped, 0);
     console.log(JSON.stringify({ firmware, panel: panel.status(), lossi: lossi.status(),
+        reset: { handshake, ready: display_register(0x14), display_interrupts },
         rgba_sha256: { initial, updated: { landscape, portrait }, blank } }, null, 2));
 }
 finally { await vm.destroy(); }

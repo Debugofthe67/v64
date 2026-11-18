@@ -816,7 +816,8 @@ A64CPU.prototype.run_machine_core = function()
         // an independent runnable processor (and every NAND transaction).
         return iop_busy || iop?.wake_pending() ? 0 :
             Math.min(next, this.devices.n97_os_timer?.poll(this.clock.now()) ?? Infinity,
-                this.devices.n97_touch?.poll(this.clock.now()) ?? Infinity);
+                this.devices.n97_touch?.poll(this.clock.now()) ?? Infinity,
+                this.devices.n97_dispc?.poll(this.clock.now()) ?? Infinity);
     }
     finally
     {

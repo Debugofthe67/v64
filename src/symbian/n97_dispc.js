@@ -14,7 +14,9 @@ const VID1_FIFO_THRESHOLD = 0xD0, VID2_FIFO_THRESHOLD = 0x160;
 const LCD_ENABLE = 1, GO_LCD = 1 << 5, STALL_MODE = 1 << 11;
 const FRAMEDONE = 1, VSYNC = 1 << 1, PROGRAMMED_LINE = 1 << 5, GFX_UNDERFLOW = 1 << 6;
 const IRQ_MASK = 0x7FFF;
-const SYSCONFIG_MASK = 0x331D;
+const SYSCONFIG_MASK = 0x331D, SOFTRESET = 2;
+// Controller reset has a visible busy phase on the machine clock.
+const SOFT_RESET_MS = 0.25;
 const FRAME_MS = 1000 / 60;
 const SHADOW = [CONFIG, BG_COLOR, LINE_NUMBER, TIMING_H, TIMING_V, POL_FREQ, DIVISOR, LCD_SIZE, GFX_BA0, GFX_BA1,
     GFX_POS, GFX_SIZE, GFX_ATTRIBUTES, GFX_FIFO_THRESHOLD, GFX_ROW_INC, GFX_PIXEL_INC, GFX_WINDOW_SKIP, GFX_TABLE_BA,
@@ -29,12 +31,13 @@ export function create_n97_dispc(cpu, hub, set_irq, panel)
     const pixels = new Uint32Array(rgba.buffer), next_pixels = new Uint32Array(pixels.length);
     let landscape = false, width = PANEL_HEIGHT, height = PANEL_WIDTH;
     let frame_at = 0, line_signalled = false, draining = false, scan_pending = true, dirty = true, scanouts = 0;
+    let reset_at = null;
     let wire_pixels = null;
     const get = offset => regs[offset >>> 2];
-    const raster_running = () => (get(CONTROL) & (LCD_ENABLE | STALL_MODE)) === LCD_ENABLE;
+    const raster_running = () => reset_at === null && (get(CONTROL) & (LCD_ENABLE | STALL_MODE)) === LCD_ENABLE;
     const reg = (offset, name, read, write = () => {}) => word(cpu.io, N97_DISPC_BASE + offset, "RAPIDO DISPC " + name, read, write);
     const set = (offset, value) => { regs[offset >>> 2] = value; };
-    const update_irq = () => set_irq(!!(get(IRQSTATUS) & get(IRQENABLE)));
+    const update_irq = () => set_irq(reset_at === null && !!(get(IRQSTATUS) & get(IRQENABLE)));
     const set_flags = flags => { set(IRQSTATUS, get(IRQSTATUS) | flags); update_irq(); };
     function apply_shadow()
     {
@@ -44,6 +47,7 @@ export function create_n97_dispc(cpu, hub, set_irq, panel)
     }
     function reset()
     {
+        reset_at = null;
         regs.fill(0);
         active.fill(0);
         set(SYSCONFIG, 1);
@@ -53,6 +57,21 @@ export function create_n97_dispc(cpu, hub, set_irq, panel)
         hub.last_vblank = hub.next_vblank = 0;
         update_irq();
         invalidate();
+    }
+    function start_raster(now)
+    {
+        frame_at = hub.last_vblank = now;
+        hub.next_vblank = now + FRAME_MS;
+        line_signalled = draining = false;
+        apply_shadow();
+    }
+    function complete_reset(now)
+    {
+        if(reset_at === null || now < reset_at) return;
+        const ready_at = reset_at;
+        reset_at = null;
+        if(raster_running()) start_raster(ready_at);
+        update_irq();
     }
     function invalidate() { scan_pending = dirty = true; }
     function set_slider(open)
@@ -66,19 +85,28 @@ export function create_n97_dispc(cpu, hub, set_irq, panel)
     }
     function line_status()
     {
+        const now = cpu.clock.now();
+        complete_reset(now);
         if(!raster_running() && !draining) return 0;
         const [, lines] = size(active[LCD_SIZE >>> 2]);
-        return Math.max(0, Math.min(lines - 1, Math.floor((cpu.clock.now() - frame_at) / FRAME_MS * lines)));
+        return Math.max(0, Math.min(lines - 1, Math.floor((now - frame_at) / FRAME_MS * lines)));
     }
     // OMAP-compatible DISPC 3.1 and 1 KiB graphics FIFO geometry. The
     // retail code selects its thresholds using REVISION below/at 0x31.
     reg(REVISION, "REVISION", () => 0x31);
     reg(GFX_FIFO_SIZE, "GFX_FIFO_SIZE_STATUS", () => 0x400);
     reg(SYSCONFIG, "SYSCONFIG", () => get(SYSCONFIG), (value, mask) => {
-        if(value & mask & 2) reset();
+        if(value & mask & SOFTRESET)
+        {
+            reset();
+            reset_at = cpu.clock.now() + SOFT_RESET_MS;
+        }
         else set(SYSCONFIG, (get(SYSCONFIG) & ~mask | value & mask) & SYSCONFIG_MASK);
     });
-    reg(SYSSTATUS, "SYSSTATUS", () => 1); // A software reset completes synchronously.
+    reg(SYSSTATUS, "SYSSTATUS", () => {
+        complete_reset(cpu.clock.now());
+        return reset_at === null ? 1 : 0;
+    });
     reg(IRQSTATUS, "IRQSTATUS", () => get(IRQSTATUS), (value, mask) => {
         set(IRQSTATUS, get(IRQSTATUS) & ~(value & mask));
         update_irq();
@@ -88,17 +116,12 @@ export function create_n97_dispc(cpu, hub, set_irq, panel)
         update_irq();
     });
     reg(CONTROL, "CONTROL", () => get(CONTROL), (value, mask) => {
+        const now = cpu.clock.now();
+        complete_reset(now);
         const was_running = raster_running();
         set(CONTROL, get(CONTROL) & ~mask | value & mask);
         if(was_running === raster_running()) return;
-        if(raster_running())
-        {
-            frame_at = cpu.clock.now();
-            hub.last_vblank = frame_at;
-            hub.next_vblank = frame_at + FRAME_MS;
-            line_signalled = draining = false;
-            apply_shadow();
-        }
+        if(raster_running()) start_raster(now);
         else
         {
             // The current raster frame can finish after LCDENABLE clears.
@@ -137,6 +160,7 @@ export function create_n97_dispc(cpu, hub, set_irq, panel)
     }
     function on_vblank()
     {
+        if(reset_at !== null) return;
         if((raster_running() || draining) && panel.expecting_pixels())
         {
             const layout = fetch_layout();
@@ -175,6 +199,8 @@ export function create_n97_dispc(cpu, hub, set_irq, panel)
     }
     function poll(now)
     {
+        complete_reset(now);
+        if(reset_at !== null) return reset_at - now;
         if(!raster_running() && !draining) return 100;
         poll_line(now);
         const next = hub.timer(now);
@@ -253,13 +279,14 @@ export function create_n97_dispc(cpu, hub, set_irq, panel)
         },
         get_state()
         {
-            return [regs.slice(), active.slice(), frame_at, draining, hub.last_vblank, hub.next_vblank, scanouts, line_signalled];
+            return [regs.slice(), active.slice(), frame_at, draining, hub.last_vblank, hub.next_vblank, scanouts, line_signalled, reset_at];
         },
         set_state(state)
         {
             regs.set(state[0]);
             active.set(state[1]);
             [, , frame_at, draining, hub.last_vblank, hub.next_vblank, scanouts, line_signalled] = state;
+            reset_at = state[8] ?? null;
             update_irq();
             invalidate();
         },

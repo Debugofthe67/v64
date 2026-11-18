@@ -71,6 +71,19 @@ function device_probe()
     instructions[skip_erase] = 0x1A000000 | instructions.length - skip_erase - 2; // BNE to display
 
     const buffer = 0x0A000000, dispc = 0x20024800, dimensions = 359 << 16 | 639;
+    function reset_display()
+    {
+        literal(0, dispc);
+        emit(0xE3A01002, 0xE5801010); // STR #2, [DISPC_SYSCONFIG]
+        const asserted = instructions.length;
+        emit(0xE5902014, 0xE3120001); // LDR r2, [DISPC_SYSSTATUS]; TST r2, #1
+        branch(1, asserted); // The original driver waits for reset assertion.
+        emit(0xE3A01000, 0xE5801010); // Clear SYSCONFIG like the original driver.
+        const completed = instructions.length;
+        emit(0xE5902014, 0xE3120001);
+        branch(0, completed);
+    }
+    reset_display();
     literal(0, buffer);
     for(const [left, right] of [[0xF800, 0x07E0], [0x001F, 0xFFFF]])
     {
@@ -126,6 +139,11 @@ function device_probe()
         emit(0xE5932000, 0xE3120C01); // LDR r2, [r3]; TST r2, #0x100 (GENIO40)
         branch(condition, poll);
         loss_word(0x0C, command);
+        if(command === 0x28)
+        {
+            reset_display();
+            literal(0, 0x20032100);
+        }
     }
     branch(14, idle);
     for(const [index, register, value] of loads)

@@ -146,13 +146,64 @@ test("RAPIDO DISPC scans guest RAM, latches GOLCD, and preserves its in-flight f
         dispc(0x40, 0x329);
         advance(16667);
         assert.equal(dispc(0x18) & 0x40, 0x40, "a non-RAM scanout does not access another MMIO device");
-        dispc(0x10, 2);
+        dispc(0x1C, 0x40);
+        assert.equal(icu(8), 131);
+        icu(0x80);
+        const controller = cpu.devices.n97_dispc;
+        const old_state = controller.get_state().slice(0, 8);
+        dispc(0x10, 2, 1);
         assert.equal(dispc(0x10), 1);
-        assert.equal(dispc(0x14), 1);
+        assert.equal(dispc(0x14), 0);
+        dispc(0x14, 1);
+        assert.equal(dispc(0x14), 0, "RESETDONE is read-only");
         assert.equal(dispc(0x40), 0);
         assert.equal(dispc(0x18), 0);
+        assert.equal(dispc(0x1C), 0);
+        assert.equal(icu(8), 0xFFFFFFFF, "software reset withdraws the pending display interrupt");
         draw();
         assert.deepEqual(pixel(x, y), black);
+
+        dispc(0x10, 0); // stock driver clears SYSCONFIG once RESETDONE is low
+        dispc(0x7C, window(640, 360));
+        dispc(0x80, address);
+        dispc(0x88, y << 16 | x);
+        dispc(0x8C, window(2, 2));
+        dispc(0xA0, 0x2AD);
+        dispc(0xAC, 3);
+        dispc(0x1C, 3);
+        dispc(0x40, 0x329);
+        advance(100);
+        assert.equal(dispc(0x14), 0);
+        assert.equal(dispc(0x18), 0, "a queued raster produces no interrupt during reset");
+        draw();
+        assert.deepEqual(pixel(x, y), black);
+        const resetting = await vm.save_state();
+        advance(300);
+        assert.equal(controller.get_state()[8], null, "timer completes the reset without a SYSSTATUS read");
+        assert.equal(dispc(0x14), 1);
+        assert.equal(dispc(0x10), 0, "the early SYSCONFIG write survives");
+        draw();
+        assert.deepEqual(pixel(x, y), red);
+        assert.equal(dispc(0x18) & 3, 0, "no pre-reset drain completion leaks through");
+        advance(16667);
+        assert.equal(dispc(0x18) & 3, 2);
+
+        await vm.restore_state(resetting);
+        assert.equal(dispc(0x14), 0);
+        draw();
+        assert.deepEqual(pixel(x, y), black);
+        advance(300);
+        assert.equal(dispc(0x14), 1);
+        draw();
+        assert.deepEqual(pixel(x, y), red);
+        controller.set_state(old_state);
+        assert.equal(dispc(0x14), 1, "a pre-reset-format snapshot is ready");
+
+        dispc(0x10, 2);
+        await vm.restart("power-on");
+        assert.equal(dispc(0x14), 1, "machine reset begins with a ready controller");
+        assert.equal(dispc(0x40), 0);
+        assert.equal(dispc(0x18), 0);
     }
     finally { await vm.destroy(); }
 });

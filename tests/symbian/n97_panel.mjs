@@ -113,6 +113,19 @@ test("N97 LoSSI selects two timed targets and retains the ViSSI frame while the 
         assert.equal(pixel(0, 0), 0);
         assert.equal(panel.status().pixels_received, 4);
 
+        dispc(0x10, 2);
+        assert.equal(dispc(0x14), 0);
+        draw();
+        assert.deepEqual(sample(), colors, "controller reset preserves D6001 pixels while RESETDONE is low");
+        vm.symbian_set_slider(false);
+        draw();
+        assert.deepEqual([frame.width, frame.height, pixel(359 - y, x), pixel(358 - y, x)], [360, 640, colors[0], colors[2]]);
+        advance(300);
+        assert.equal(dispc(0x14), 1);
+        vm.symbian_set_slider(true);
+        draw();
+        assert.deepEqual(sample(), colors, "D6001 still presents the retained frame after controller reset");
+
         dispc(0x40, 0x308);
         cpu.write_blob_physical(new Uint8Array(8), buffer);
         command(1, 0x28);
