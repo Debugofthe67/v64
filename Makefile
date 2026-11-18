@@ -2164,6 +2164,7 @@ ios-tests:
 	node --test tests/ios/install-components.mjs
 	node --test tests/ios/install-trust.mjs tests/ios/runtime-trust.mjs tests/ios/install-service.mjs tests/ios/install-api.mjs
 	node tests/ios/boot-tree.mjs
+	node tests/ios/n90-ethernet.mjs
 	node tests/ios/spi-dma.mjs
 	node tests/ios/multitouch-device.mjs
 	node tests/ios/sensors.mjs
