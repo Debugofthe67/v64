@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The disk persistence plan in headless Chrome (docs/disk-persistence-plan.md):
+// The disk persistence plan in headless Chrome (docs/plan/disk-persistence-plan.md):
 // tests/persistence/browser_test.html, on the page and in the CPU Worker,
 // with MS-DOS 6.22 (images/msdos622.img) read over HTTP Range requests from
 // this server, which answers as a static server does (206, Content-Range, a

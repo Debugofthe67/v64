@@ -1,6 +1,6 @@
 # The virt machine
 
-> Status: A3 of [arm64-virt-android16-plan.md](arm64-virt-android16-plan.md)
+> Status: A3 of [arm64-virt-android16-plan.md](plan/arm64-virt-android16-plan.md)
 > (virtio-mmio) and A5's PCIe host (P5.6–P5.8, P5.10). The board's layout copies QEMU's
 > `virt-9.2` (the fixed reference, [aarch64.md](aarch64.md)). This document
 > records what the reference does and what v86 deliberately does differently.
@@ -191,7 +191,7 @@ below 4 GiB (no extended RAM). QEMU's reference is `virt-9.2,highmem=off` with
 
 `machine_type: "ranchu"` (`src/virt/ranchu.js`, `src/virt/goldfish.js`) is the
 Android Emulator's board, which the SDK's system images are built for
-(docs/aarch32-plan.md R6; the importer: android-images-plan.md I6). It keeps
+(docs/plan/aarch32-plan.md R6; the importer: android-images-plan.md I6). It keeps
 the virt machine's RAM, PL011, timer and virtio-mmio slots, and adds the
 emulator's goldfish devices; it has no PCIe host. With `cpu_type: "arm32"`
 its GIC is a GICv2 (the 32-bit `kernel-ranchu`, Linux 3.10, has no GICv3
@@ -236,7 +236,7 @@ driver), with `"arm64"` the virt machine's GICv3.
 - **The GPU.** `ranchu_gpu: "host"` (the Android device model's `gpu_mode`
   `"host"`) loads the GLES host (`build/v86-gles.js`, `src/gles/`) and gives
   the pipe its `opengles` and `GLProcessPipe` services; the command line says
-  `qemu.gles=1`. Work in progress: see [gles-proxy-plan.md](gles-proxy-plan.md)
+  `qemu.gles=1`. Work in progress: see [gles-proxy-plan.md](plan/gles-proxy-plan.md)
   (E1: the calls are decoded and answered, nothing is drawn).
 
 ## Testing

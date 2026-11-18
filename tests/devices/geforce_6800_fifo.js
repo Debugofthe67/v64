@@ -144,6 +144,37 @@ const header = (method, count = 1, subc = 0, ni = false) => method | count << 18
     assert.equal(f.fifo.read(0xC00048), 99, "another channel can release a waiting channel's semaphore");
     assert.equal(f.fifo.read(0xC01048), 17);
 }
+{
+    const f = fixture();
+    f.object(0x45000, 0x2303D, 4095, 0x8002);
+    f.handle(0x77, 0x45000, 0, 0);
+    f.handle(0x77, 0x45000, 0, 1);
+    f.regs.set(0x3250, 0);
+    f.regs.set(0x3270, 0xFEC);
+    f.regs.set(0x3210, 0xFEC);
+    f.submit([header(0x60, 3), 0x77, 12, 42, header(0x50), 98, header(0x6C), 77, header(0x50), 99]);
+    for(let i = 0; i < 8; i++) f.fifo.run();
+    f.regs.set(0x3250, 1);
+    f.fifo.run();
+    assert.equal(f.fifo.read(0xC00044), 40);
+    assert.equal(f.fifo.read(0xC00048), 0);
+    const release = [header(0x60, 2), 0x77, 12, header(0x6C), 42, header(0x50), 17];
+    const ram = new DataView(f.ram.buffer);
+    release.forEach((value, i) => ram.setUint32(0x5000 + i * 4, value, true));
+    f.fifo.write(0xC01040, release.length * 4);
+    assert.equal(f.fifo.read(0xC01048), 17, "the releasing channel runs with another channel's prefetch parked");
+    assert.equal(f.fifo.read(0xC00048), 0, "only the releasing channel retired");
+    assert.equal(ram.getUint32(0x800C, true), 42);
+    // Already fetched commands must survive both a pushbuffer overwrite and a snapshot.
+    f.ram.fill(0, 0x1000, 0x1028);
+    const restored = new NVFIFO(f.device);
+    restored.set_state(structuredClone(f.fifo.get_state()));
+    restored.run();
+    assert.equal(restored.read(0xC00048), 99);
+    assert.equal(ram.getUint32(0x800C, true), 77, "the parked release and REF retire on their original channel");
+    assert.equal(f.regs.get(0x2508), 0);
+    assert.equal(restored.faults.length, 0);
+}
 for(const [words, code] of [[[0x20000], 3], [[2, 2], 1], [[0xE0000000], 4], [[header(0x40), 1], 2]])
 {
     const f = fixture(); f.submit(words);

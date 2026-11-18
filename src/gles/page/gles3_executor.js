@@ -1,5 +1,5 @@
 import { decode_pvrtc } from "../pvrtc.js";
-// GLES 3.x's draws on the page (docs/gles3-plan.md L3): what a context of
+// GLES 3.x's draws on the page (docs/plan/gles3-plan.md L3): what a context of
 // api 3 does on the GPU, as methods of the GLES executor (gles_executor.js
 // installs them). Its programs are glslang's (the CPU side links them and
 // sends the link, PROGRAM_LINK): each stage's SPIR-V becomes WGSL through

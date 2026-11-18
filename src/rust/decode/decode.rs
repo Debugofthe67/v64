@@ -62,7 +62,7 @@ pub struct Encoding {
     /// The CPUID feature without which the row does not exist (crate::cpu::
     /// features; 0: always)
     pub feature: u32,
-    /// #UD even with the feature (docs/simd-xsave-plan.md: semantics later)
+    /// #UD even with the feature (docs/plan/simd-xsave-plan.md: semantics later)
     pub unimplemented: bool,
     /// A VEX row: the VEX fields it accepts (decode_rules::vex; 0: a legacy row)
     pub vex: u16,
@@ -352,7 +352,8 @@ pub fn decode(
     let row = rows
         .iter()
         .find(|row| row.group < 0 || modrm.map(|m| (m >> 3 & 7) as i8) == Some(row.group));
-    let early_ud = variant == Variant::Undefined
+    let early_ud = crate::decode_rules::v1_opcode_ud(opcode, modrm, false, false)
+        || variant == Variant::Undefined
         || rows.is_empty()
         || row.is_some_and(|row| !row.exists() || !row.implemented());
     let encoding = if early_ud {

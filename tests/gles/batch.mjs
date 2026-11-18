@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GLES batches (src/gles/gles_host.js, gles_batch.js; docs/gles-proxy-plan.md
+// GLES batches (src/gles/gles_host.js, gles_batch.js; docs/plan/gles-proxy-plan.md
 // E2): what the host sends the renderer channel and when:
 // - records as written and read back (every field, a command's bytes and
 //   its decoded arguments, an update's pixels);

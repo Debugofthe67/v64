@@ -60,34 +60,33 @@ export class NVVideo
         return {base:base+offset,width,height,pitch,luma,chroma,ds,dt,format,key,
             sx:origin&65535,sy:origin>>>16,x:point<<16>>16,y:point>>16,outw,outh};
     }
+    advance_offset(stopped)
+    {
+        const command = this.commands[0];
+        // Deadlines are 12-bit retrace counts. A late command is due now.
+        if(!command || ((this.counter - command[0]) & 4095) >= 2048) return;
+        try {this.plan(command[2]);}
+        catch(error)
+        {
+            if(!(error instanceof RangeError)) throw error;
+            if(this.faults.at(-1) !== error.message) this.faults.push(error.message);
+            return;
+        }
+        if(!stopped) this.active = command[2];
+        this.commands.shift();
+        this.consumer = (this.consumer + 1) & 15;
+        this.device.registers.set(0x8100, this.reg(0x8100) | 0x100);
+        this.device.update_irq();
+    }
     on_vblank()
     {
         // 8B04[27:16] is the display-side sample used by the miniport when
         // choosing the next overlay deadline. Disabling offset scheduling
         // cannot stop that display clock or make its sample stay at zero.
         this.counter=this.counter+1&4095;
-        if(this.reg(0x8B08)&0x10000000)
-        {
-            const command=this.commands[0];
-            // A command may reach the scheduler after its target retrace.
-            // Compare the wrapping deadline, rather than waiting an entire
-            // 4096-retrace revolution for an equality that already passed.
-            if(command&&((this.counter-command[0])&4095)<2048)
-            {
-                try {this.plan(command[2]);}
-                catch(error)
-                {
-                    if(!(error instanceof RangeError)) throw error;
-                    if(this.faults.at(-1)!==error.message) this.faults.push(error.message);
-                    return;
-                }
-                if(!(this.reg(0x8704)&1)) this.active=command[2];
-                this.commands.shift();this.consumer=this.consumer+1&15;
-                this.device.registers.set(0x8100,this.reg(0x8100)|0x100);
-                this.device.update_irq();
-            }
-        }
-        if(this.reg(0x8704)&1) {this.active=null;this.pending=[null,null];return;}
+        const stopped = !!(this.reg(0x8704) & 1);
+        if(this.reg(0x8B08) & 0x10000000) this.advance_offset(stopped);
+        if(stopped) {this.active=null;this.pending=[null,null];return;}
         const next=this.pending[this.last^1]?this.last^1:this.last;
         const job=this.pending[next];if(!job) return;
         try {this.plan(job);}

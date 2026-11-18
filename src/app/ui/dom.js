@@ -1,5 +1,5 @@
 // @ts-check
-// The VM manager's DOM helpers (docs/vm-manager-plan.md G6: no UI framework):
+// The VM manager's DOM helpers (docs/plan/vm-manager-plan.md G6: no UI framework):
 // h() for elements, modal dialogs, and downloads.
 
 /**

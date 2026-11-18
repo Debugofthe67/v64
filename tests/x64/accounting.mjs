@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Instruction accounting under the x64 page tier's P4 switches
-// (docs/jit-unification-plan.md P4 acceptance): system_bench.mjs's guests
+// (docs/plan/jit-unification-plan.md P4 acceptance): system_bench.mjs's guests
 // (steps, retries, exits, cold code, SYSCALL at CPL 3, lazy FPU faults)
 // retire the same instructions, and the mode ledger accounts for all of
 // them, with the page tier off (the reference), on, and on with each
 // switch of `ARMS`. The x64 page tier counts exactly with x64_block_count=0
-// (docs/profiling.md), so these runs set it.
+// (docs/perf/profiling.md), so these runs set it.
 //
 //   node tests/x64/accounting.mjs
 import assert from "node:assert/strict";

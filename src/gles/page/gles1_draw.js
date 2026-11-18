@@ -1,4 +1,4 @@
-// GLES 1.1's draws on the page (docs/gles-proxy-plan.md E4): the shadow's
+// GLES 1.1's draws on the page (docs/plan/gles-proxy-plan.md E4): the shadow's
 // fixed-function state (src/gles/gles1_state.js) turned into gl-webgpu's
 // fixed-function signature and state block (gl_fixed_function.js,
 // gl_state_layout.js: the XP path's generator, shared as it is), and the

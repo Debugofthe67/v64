@@ -36,7 +36,7 @@ impl<X: Default> Default for PageState<X> {
 pub const FREE_RECOMPILES: u32 = 4;
 pub fn backoff(compiles: u32) -> u32 { compiles.saturating_sub(FREE_RECOMPILES).min(16) }
 
-/// Interpreted execution's heat, batched (docs/jit-unification-plan.md
+/// Interpreted execution's heat, batched (docs/plan/jit-unification-plan.md
 /// P4.5b): instructions run outside compiled code on a code page without a
 /// function, not yet added to the page's PageState. While the runtime's
 /// functions are unchanged (`generation`) a miss on that page needs neither

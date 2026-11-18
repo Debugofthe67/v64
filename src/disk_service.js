@@ -1,4 +1,4 @@
-// A disk written back to a disk service (docs/disk-persistence-plan.md
+// A disk written back to a disk service (docs/plan/disk-persistence-plan.md
 // "磁盘协议": a server, or the local disk service on 127.0.0.1; the
 // reference implementation is tools/disk-service.mjs): disk_option
 // "read_write" with the service's URL. All requests go to the image's URL:
@@ -43,7 +43,7 @@ const SYNC_ATTEMPT_MS = 2000;
 
 /**
  * Whether the requests to a disk service may block: in a worker, to this
- * computer (docs/disk-persistence-plan.md, D2's synchronous XHR)
+ * computer (docs/plan/disk-persistence-plan.md, D2's synchronous XHR)
  * @param {string} url
  * @return {boolean}
  */

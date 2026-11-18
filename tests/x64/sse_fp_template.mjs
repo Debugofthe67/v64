@@ -6,7 +6,7 @@
 // vectors of special and random operands under MXCSR values that allow and
 // that refuse the native path, in a loop until the page tier has compiled
 // the code; every result and MXCSR must equal the interpreter's.
-// With x64_sse_fast_check (JIT_SWITCHES; docs/jit-unification-plan.md
+// With x64_sse_fast_check (JIT_SWITCHES; docs/plan/jit-unification-plan.md
 // P4.18) the instructions go through x86tpl::ops::float, which also takes
 // SQRT, MIN and MAX (PS PD SS SD) and RCP and RSQRT (PS SS), tested too,
 // and runs refused ones exactly in place, but those whose register facts

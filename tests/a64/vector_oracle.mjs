@@ -1,5 +1,5 @@
 // Scalar FP, AdvSIMD, crypto and the SIMD&FP loads and stores of the A64
-// interpreter against QEMU (docs/arm64-virt-android16-plan.md P2.5-P2.8,
+// interpreter against QEMU (docs/plan/arm64-virt-android16-plan.md P2.5-P2.8,
 // P2.11), the module behind tests/a64/simd_oracle.mjs, fp_oracle.mjs and
 // crypto_oracle.mjs. Each case is one instruction
 // word: random bits inside one class of the FP/SIMD encoding group that

@@ -1,4 +1,4 @@
-// C4 and C5 in the 32-bit interpreter by mode (docs/simd-xsave-plan.md P1c):
+// C4 and C5 in the 32-bit interpreter by mode (docs/plan/simd-xsave-plan.md P1c):
 // a VEX prefix in protected mode when the next byte would be a register
 // ModRM byte, otherwise LES/LDS; real and virtual-8086 mode have no VEX, and
 // there the register form of LES/LDS is #UD. Prefixes before VEX are #UD at

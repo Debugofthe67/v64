@@ -29,7 +29,7 @@ const dir = assemble("cache", source);
 const config = {length: 40};
 const oracle = await reference(dir, config);
 // (the second arm interprets the 32-bit setup code: ir_tier0 off; it ran it
-// in the region tiers until M11 of docs/jit-unification-plan.md)
+// in the region tiers until M11 of docs/plan/jit-unification-plan.md)
 for(const [backend, ir_tier0] of [["pages", true], ["pages, 32-bit code interpreted", false]])
 {
     let retired = 0, rejected = 0;

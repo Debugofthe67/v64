@@ -1,4 +1,4 @@
-// What the GLES host says about itself (docs/gles-proxy-plan.md): its EGL
+// What the GLES host says about itself (docs/plan/gles-proxy-plan.md): its EGL
 // configurations as renderControl packs them, its strings, the GLES
 // implementation limits and the state's initial values that queries answer.
 // The executor (E3) and the shadow state (E2) keep to the same numbers.
@@ -167,7 +167,7 @@ const GL_SHADING_LANGUAGE_VERSION = 0x8B8C;
  * The extensions each API's contexts have. A short list on purpose: each
  * is something E3 (GLES 2.0) or E4 (GLES 1.1) implements; more when an
  * application needs it. No host feature strings (ANDROID_EMU_*): no
- * checksums, GLES 2.0 at most (docs/gles-proxy-plan.md "协议与生成器").
+ * checksums, GLES 2.0 at most (docs/plan/gles-proxy-plan.md "协议与生成器").
  */
 const EXTENSIONS = {
     1: ["GL_OES_EGL_image", "GL_OES_EGL_image_external", "GL_OES_compressed_paletted_texture", "GL_OES_compressed_ETC1_RGB8_texture", "GL_OES_element_index_uint",
@@ -178,7 +178,7 @@ const EXTENSIONS = {
         "GL_OES_depth24", "GL_OES_packed_depth_stencil", "GL_OES_rgb8_rgba8", "GL_OES_texture_npot", "GL_OES_standard_derivatives",
         "GL_EXT_texture_format_BGRA8888", "GL_EXT_texture_filter_anisotropic", "GL_IMG_texture_compression_pvrtc"],
     // (GLES 3.x: GLES 2.0's, those 3.0 has in its core too: the guest's EGL makes a GLES 2.0 context one of the
-    // highest version announced, and GLES 2.0 programs, dEQP-GLES2 among them, look for them; docs/gles3-plan.md)
+    // highest version announced, and GLES 2.0 programs, dEQP-GLES2 among them, look for them; docs/plan/gles3-plan.md)
     3: ["GL_OES_EGL_image", "GL_OES_EGL_image_external", "GL_OES_EGL_image_external_essl3", "GL_OES_compressed_ETC1_RGB8_texture",
         "GL_OES_element_index_uint", "GL_OES_depth24", "GL_OES_packed_depth_stencil", "GL_OES_rgb8_rgba8", "GL_OES_texture_npot",
         "GL_OES_standard_derivatives", "GL_EXT_texture_format_BGRA8888"],
@@ -192,7 +192,7 @@ export const EXTENSIONS_3 = EXTENSIONS[3];
  * context's API (1: GLES 1.1, 2: GLES 2.0, 30 to 32: GLES 3.0 to 3.2;
  * none current: 2.0's). The extensions end with the host's feature string
  * of the highest version announced (ANDROID_EMU_gles_max_version_3_*),
- * which the guest's libraries look for there (docs/gles3-plan.md).
+ * which the guest's libraries look for there (docs/plan/gles3-plan.md).
  * @param {number} name
  * @param {number} api
  * @param {number=} max_version 20 to 32

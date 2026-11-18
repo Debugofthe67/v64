@@ -1,4 +1,4 @@
-// gfxstream's Vulkan streams (docs/gfxstream-plan.md G2): the commands of
+// gfxstream's Vulkan streams (docs/plan/gfxstream-plan.md G2): the commands of
 // a context's rings in the Vulkan opcode ranges, decoded with
 // gfxstream_protocol.js (generated from the guest's encoder) and run on the
 // Vulkan model Venus has (venus_vk.js: its handlers take objects with the C

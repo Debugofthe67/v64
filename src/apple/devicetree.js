@@ -1,4 +1,4 @@
-// Apple's flattened device tree (docs/iphone4-plan.md S0, S1): a node is
+// Apple's flattened device tree (docs/plan/iphone4-plan.md S0, S1): a node is
 // its property count and child count (u32 each, little-endian), its
 // properties (a 32-byte NUL-padded name, a u32 length, the value padded to
 // 4 bytes) and its children. The length's top bit marks a placeholder that

@@ -1,5 +1,5 @@
 // @ts-check
-// Key combinations for the console's "Send keys" menu (docs/vm-manager-plan.md
+// Key combinations for the console's "Send keys" menu (docs/plan/vm-manager-plan.md
 // "控制台"): "Ctrl+Alt+Del", "Alt+Tab", "Ctrl+Alt+F2", "Win+R" as PC
 // scancodes (set 1, what keyboard_send_scancodes takes): the keys pressed
 // in order, released in the reverse order.

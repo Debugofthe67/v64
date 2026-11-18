@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // The retro-gaming-site's saved states across the move of the NE2000 and the
-// SB16 into plugins (docs/modern-pc-devices-plan.md M1). Each state of the
+// SB16 into plugins (docs/plan/modern-pc-devices-plan.md M1). Each state of the
 // site's game table (app.js GAMES: Windows 98 and XP machines with an NE2000
 // and an SB16, saved before M1 with untagged state[59] and state[61]) is
 // restored as the site's page does (the same options, the site's BIOS):

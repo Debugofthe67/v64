@@ -207,7 +207,7 @@ export function MouseAdapter(bus, screen_container, iphone = false)
 
     /**
      * The touches on the screen, for a multi-touch device (the virt
-     * machine's virtio-input, docs/arm64-virt-android16-plan.md P7.4):
+     * machine's virtio-input, docs/plan/arm64-virt-android16-plan.md P7.4):
      * each one's identifier and place on the screen, and its size
      */
     function send_touches(e)

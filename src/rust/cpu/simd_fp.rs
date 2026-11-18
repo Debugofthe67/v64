@@ -1,4 +1,4 @@
-//! SSE floating point as the processor computes it (docs/simd-xsave-plan.md
+//! SSE floating point as the processor computes it (docs/plan/simd-xsave-plan.md
 //! 7.4): every operation through SoftFloat (its 8086-SSE specialization gives
 //! x86's NaN rules), with MXCSR's rounding mode, DAZ and FZ, its exception
 //! flags, and the fault of an unmasked exception. Shared by the 32-bit

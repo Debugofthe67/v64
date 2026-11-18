@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// An IDE hard disk from a QCOW2 image (docs/disk-image-formats-plan.md P0,
+// An IDE hard disk from a QCOW2 image (docs/plan/disk-image-formats-plan.md P0,
 // P1), driven through the ports; no guest code runs. The image is built in
 // memory (tests/image/tiny_qcow2.mjs): 3 TiB, data around 2^32 sectors.
 // - IDENTIFY reports the virtual size, not the file's; READ SECTORS EXT

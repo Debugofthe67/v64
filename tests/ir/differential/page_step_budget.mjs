@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Small budgets under compiled legacy-mode code (docs/jit-unification-plan.md
+// Small budgets under compiled legacy-mode code (docs/plan/jit-unification-plan.md
 // P7.3; pagegen's budget_flags), run by run_cpu_slice with budgets of 1 to 40
 // instructions, around one unit of the budget above its flag bits (16; below
 // it the interpreter runs the slice). Each slice must end near its budget:

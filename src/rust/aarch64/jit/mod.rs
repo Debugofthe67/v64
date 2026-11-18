@@ -1,5 +1,5 @@
-//! The A64 page tier (docs/jit-unification-plan.md P6, J2;
-//! docs/arm64-virt-android16-plan.md P6): the runtime client (pages) and the
+//! The A64 page tier (docs/plan/jit-unification-plan.md P6, J2;
+//! docs/plan/arm64-virt-android16-plan.md P6): the runtime client (pages) and the
 //! code generator (pagegen), the ARM core's composition of jitrt (with
 //! crate::aarch64::root) and its switches (P6.0):
 //!
@@ -14,7 +14,7 @@
 //! - a64_relaxed_fma: the multiply-adds through relaxed SIMD (only where the
 //!   host fuses them; its default is the host's probe)
 //! - a64_page_aarch32: AArch32's code (EL0's A32 and T32) compiled too
-//!   (docs/aarch32-plan.md Q6; on since its gate, Q6.4); for bisecting,
+//!   (docs/plan/aarch32-plan.md Q6; on since its gate, Q6.4); for bisecting,
 //!   2: helper calls only (the native forms stepped), 3: the native forms
 //!   only (helper calls stepped), 16 + a mask of native kinds run as helper
 //!   calls (32 data processing, 64 MOVW and MOVT, 128 loads and stores, 256

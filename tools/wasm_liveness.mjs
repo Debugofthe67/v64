@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Which locals of a Wasm function are live where control merges: at each
-// loop head and br_table (docs/jit-unification-plan.md M8: the page tier's
+// loop head and br_table (docs/plan/jit-unification-plan.md M8: the page tier's
 // register pressure at its dispatch tables, where V8 spills what does not
 // fit). Takes a module tools/page_code.mjs saved (--save), analyses its
 // largest function (the page function) and prints, per loop and br_table,

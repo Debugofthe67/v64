@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The loader picks the core of the CPU's family and refuses the other
-// (docs/arm64-virt-android16-plan.md P1.3): the ARM core with cpu_type x86 or
+// (docs/plan/arm64-virt-android16-plan.md P1.3): the ARM core with cpu_type x86 or
 // the x86 core with cpu_type arm64 is an error at startup, never a machine
 // that runs the wrong instruction set.
 import assert from "node:assert/strict";

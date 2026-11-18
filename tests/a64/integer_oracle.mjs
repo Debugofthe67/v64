@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Integer, branch, load/store and exclusive instructions of the A64
-// interpreter against QEMU (docs/arm64-virt-android16-plan.md P2.2: at least
+// interpreter against QEMU (docs/plan/arm64-virt-android16-plan.md P2.2: at least
 // 2,000 cases, 0 differences). Each case is one instruction (or a branch
 // with its two outcomes) with random X0-X14 and NZCV; X15 points at a
 // 128-byte window of random memory. The guest (tests/a64/guest_runner.mjs)

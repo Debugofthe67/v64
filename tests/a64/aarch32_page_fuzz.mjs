@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// AArch32's page functions against the interpreter (docs/aarch32-plan.md
+// AArch32's page functions against the interpreter (docs/plan/aarch32-plan.md
 // Q6.2, Q6.3; page_fuzz.mjs's A64 counterpart): random A32 and T32 programs
 // of the forms the page tier compiles natively or by helper calls (data
 // processing with every shift and condition, MOVW and MOVT, multiplies,

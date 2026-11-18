@@ -82,4 +82,39 @@ assert.equal(video.read(0x8B04)>>>16&4095,video.read(0x8B08)&4095,"display and s
 write(0x8B08,0);const clock=video.read(0x8B04)>>>16&4095;video.on_vblank();
 assert.equal(video.read(0x8B04)>>>16&4095,(clock+1)&4095,"the display clock continues when offset scheduling is disabled");
 write(0x8B04,0x0FFF0000);assert.equal(video.read(0x8B04)>>>16&4095,(clock+1)&4095,"the display counter is read only");
+// STOP governs scanout even when a due offset cannot complete.
+for(const format of [0x10005, 0x10004])
+{
+    registers.clear();
+    video.reset();
+    buffer(0);
+    write(0x8700, 1);
+    video.on_vblank();
+    assert.ok(video.active);
+    buffer(0, 0x100, format);
+    write(0x8B08, 0x10000000);
+    write(0x8B10, 0x100);
+    write(0x8B0C, 0x10002);
+    write(0x8700, 16);
+    write(0x8704, 1);
+    registers.set(0x8100, 0);
+    const previousIrqs = irqs;
+    video.on_vblank();
+    out.fill(77);
+    video.render(out, vram, 2, 1);
+    assert.deepEqual([...out], Array(8).fill(77), "STOP removes the previous frame on the due retrace");
+    assert.equal(video.read(0x8700), 0, "STOP drops pending legacy buffers");
+    if(format & 1)
+    {
+        assert.match(video.faults.at(-1), /format/);
+        assert.equal(video.consumer, 0);
+        assert.equal(irqs, previousIrqs);
+        assert.equal(registers.get(0x8100), 0);
+    }
+    else
+    {
+        assert.equal(video.consumer, 1, "a valid scheduled offset still completes while scanout is stopped");
+        assert.equal(registers.get(0x8100), 0x100);
+    }
+}
 console.log("PASS: NV40 PVIDEO vblank latching, both YUV orders, clipping/keying, snapshots and checked completions");

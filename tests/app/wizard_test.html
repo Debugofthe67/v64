@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>VM manager: the wizard and the settings dialog</title>
-<!-- The VM manager's wizard and settings dialog (docs/vm-manager-plan.md U3), in a frame:
+<!-- The VM manager's wizard and settings dialog (docs/plan/vm-manager-plan.md U3), in a frame:
      part=freedos  the DOS preset from a floppy URL (images/freedos722.img), no hard disk: "Welcome to FreeDOS"
      part=linux    the 32-bit Linux preset from a CD URL (images/linux4.iso), a new disk in memory: the shell's "~%"
      part=arm64    the arm64 Linux preset, direct boot: Alpine's kernel, initrd and ISO (build/a64-linux/): "login:" on the serial console
@@ -31,7 +31,7 @@
      part=android_service  (with the runner's service=1) the package imported into a new image of the disk service (I3.2):
                    its size, and the bootloader reading it from the service
      part=android_cancel  (local) the official zip's import cancelled: the wizard says so, the browser disk made so far is gone
-     part=android_boot  (local, an hour or more) docs/android-images-plan.md I3's acceptance: the official Cuttlefish images zip
+     part=android_boot  (local, an hour or more) docs/plan/android-images-plan.md I3's acceptance: the official Cuttlefish images zip
                    (package=<path>, build/a64-android/dl/aosp_cf_arm64_only_phone-img-15581820.zip) through the wizard, nothing
                    else filled in, powered on: init's sys.boot_completed=1 in the kernel's log (hvc0), then Android's screen in the
                    graphics proxy's compositor (the preset's gfxstream from the CPU worker, the renderer in the page);

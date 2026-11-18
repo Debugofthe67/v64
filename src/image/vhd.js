@@ -1,4 +1,4 @@
-// VHD images, fixed and dynamic (docs/disk-image-formats-plan.md P3; the
+// VHD images, fixed and dynamic (docs/plan/disk-image-formats-plan.md P3; the
 // format: Microsoft's Virtual Hard Disk Image Format Specification). The
 // footer (and for dynamic disks the header) must have a valid checksum; the
 // size the guest sees follows QEMU's vpc driver (the CHS geometry for images

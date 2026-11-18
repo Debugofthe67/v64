@@ -1,5 +1,5 @@
 // @ts-check
-// The settings dialog's panels of the drives (docs/vm-manager-plan.md "设置
+// The settings dialog's panels of the drives (docs/plan/vm-manager-plan.md "设置
 // 对话框"): hard disks (their source, disk_option, disk_error, bus), USB
 // disks, the CD/DVD drive, floppy drives, direct boot (kernel, initrd,
 // multiboot).

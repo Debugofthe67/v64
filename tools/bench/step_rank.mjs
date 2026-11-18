@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // What 64-bit code costs the host outside compiled code, ranked
-// (docs/jit-unification-plan.md P4.1). Two runs of one workload: one with
+// (docs/plan/jit-unification-plan.md P4.1). Two runs of one workload: one with
 // the JIT switch step_profile on gives the counts (its histogram makes each
 // step slower, so its time is not used), one with it off the host time (the
 // cores' runtime). The counts are scaled by the two records' retired
@@ -136,7 +136,7 @@ const exits = event("exit", "retry") + event("exit", "step");
 console.log(`exits and retries per host second (M4's exit criterion): ${Math.round(exits * scale / (host_ms / 1000))}`);
 if(counted.ledger)
 {
-    // the step share s (docs/profiling.md): per mode and s_total
+    // the step share s (docs/perf/profiling.md): per mode and s_total
     const share = ways => {
         const total = Object.values(ways).reduce((a, b) => a + b, 0);
         return total ? ((ways.tier0_step || 0) + (ways.page_step || 0) + (ways.page_retry || 0)) / total : 0;

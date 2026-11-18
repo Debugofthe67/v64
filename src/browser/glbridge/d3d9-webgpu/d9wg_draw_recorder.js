@@ -13,9 +13,12 @@
                 this.hasColorClear = false;
                 this.hasOcclusion = false;
             }
-            // NOOVERWRITE promises that pending draws do not read the changed
-            // bytes. Upload them before those draws to avoid synchronisation,
-            // but keep every earlier overlapping write before this write.
+            // NOOVERWRITE applies only since the last synchronising lock.
+            // A plain/DISCARD upload starts a new buffer-use epoch even when
+            // its byte range is disjoint: DISCARD invalidates the whole buffer.
+            // Do not move a later append into draws from the previous epoch.
+            // Within one epoch, retain unsynchronised updates and write order
+            // for overlapping ranges, independently for each buffer.
             recordNoOverwriteUpload(op) {
                 let position = 0;
                 const end = op.destinationOffset + op.size;
@@ -23,8 +26,9 @@
                     const previous = this.ops[i];
                     if (previous.kind === "buffer-upload" &&
                             previous.destination === op.destination &&
-                            previous.destinationOffset < end &&
-                            op.destinationOffset < previous.destinationOffset + previous.size)
+                            (!previous.noOverwrite ||
+                                previous.destinationOffset < end &&
+                                op.destinationOffset < previous.destinationOffset + previous.size))
                         position = i + 1;
                 }
                 this.ops.splice(position, 0, op);

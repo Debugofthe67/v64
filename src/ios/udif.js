@@ -1,4 +1,4 @@
-// UDIF disk images, the DMG format of the root filesystem (docs/iphone4-plan.md
+// UDIF disk images, the DMG format of the root filesystem (docs/plan/iphone4-plan.md
 // S0): the data fork (the partitions' chunks, each raw, zero-filled or
 // compressed), an XML plist whose resource fork's "blkx" entries describe
 // one partition each (a "mish" block: its first sector and size, then its

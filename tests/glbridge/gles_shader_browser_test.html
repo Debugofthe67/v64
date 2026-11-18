@@ -10,7 +10,7 @@
 // gl_shader_wgsl_validation_test.js uses, does not check the fragment
 // stage's uniformity; Tint does, and refuses a derivative in non-uniform
 // control flow unless the module turns derivative_uniformity off
-// (docs/gles3-plan.md L0). The cases are the four that failed before:
+// (docs/plan/gles3-plan.md L0). The cases are the four that failed before:
 // a sample in a varying-dependent if, in a function called from one, after
 // an early return under a varying condition, and in a loop after a
 // varying-dependent break; with a write to an `in` parameter and the

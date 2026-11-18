@@ -1,4 +1,4 @@
-// The bytes of a disk image file (docs/disk-image-formats-plan.md P0): read
+// The bytes of a disk image file (docs/plan/disk-image-formats-plan.md P0): read
 // at any offset and length, the reads cancellable, with an explicit error
 // instead of a callback that never comes. The format readers
 // (src/image/*.js) sit on top; the device sees a DiskImage

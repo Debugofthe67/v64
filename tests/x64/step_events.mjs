@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The step profile's events (docs/jit-unification-plan.md P4.0), counted on
+// The step profile's events (docs/plan/jit-unification-plan.md P4.0), counted on
 // system_bench.mjs's guests: FXSAVE/FXRSTOR, CLTS, MOV CR0 changing TS and
 // #NM as often as the guest executes them, whichever tier runs it; HPET and
 // ACPI PM timer reads; why the x64 page tier's functions return (a retry, a

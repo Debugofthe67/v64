@@ -1,4 +1,4 @@
-// LZ4's legacy frame, Android's ramdisks (docs/android-images-plan.md I1)
+// LZ4's legacy frame, Android's ramdisks (docs/plan/android-images-plan.md I1)
 
 import { u32, put32, concat } from "./bytes.js";
 

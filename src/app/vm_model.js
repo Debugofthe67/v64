@@ -1,5 +1,5 @@
 // @ts-check
-// The settings dialog's rules (docs/vm-manager-plan.md "设置对话框", U3): what
+// The settings dialog's rules (docs/plan/vm-manager-plan.md "设置对话框", U3): what
 // each control may hold for a configuration (from allowed_options in
 // src/machine_options.js, the one place of the machines' rules) and a change
 // with what it implies (another CPU picks its machine, Q35 has ACPI, a

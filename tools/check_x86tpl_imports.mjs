@@ -3,7 +3,7 @@
 // super:: path in their code (comments and strings stripped), and that a
 // super:: path stays in the module:
 //
-// - src/rust/x86tpl (docs/jit-unification-plan.md P2.10): the x86 leaf
+// - src/rust/x86tpl (docs/plan/jit-unification-plan.md P2.10): the x86 leaf
 //   templates are shared by every x86 engine, so they name none of them: not
 //   the x64 page tier (crate::x64) nor the JIT's composition root
 //   (crate::jit); the region pipeline and its runtime (crate::ir) went in
@@ -94,7 +94,7 @@ for(const { name, rule, allowed } of MODULES)
 }
 if(problems.length)
 {
-    console.error("import rules of the shared JIT modules (docs/jit-unification-plan.md P2.10, P5.1):\n  " + problems.join("\n  "));
+    console.error("import rules of the shared JIT modules (docs/plan/jit-unification-plan.md P2.10, P5.1):\n  " + problems.join("\n  "));
     process.exit(1);
 }
 console.log(`check_x86tpl_imports: ${counts.join(", ")}, all within their rules`);

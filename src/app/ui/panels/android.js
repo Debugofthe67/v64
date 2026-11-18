@@ -1,5 +1,5 @@
 // @ts-check
-// The settings dialog's Android panel (docs/android-images-plan.md I4.2):
+// The settings dialog's Android panel (docs/plan/android-images-plan.md I4.2):
 // v64's bootloader (the device model, the GPU mode, the GLES version an
 // emulator image gets on the host's GPU, the vendor ramdisk and
 // the debug one's file, SELinux), the display's size, and wiping the user data of the machine's

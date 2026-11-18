@@ -1,17 +1,17 @@
-// A block device's backend (docs/arm64-virt-android16-plan.md P5.4): the
+// A block device's backend (docs/plan/arm64-virt-android16-plan.md P5.4): the
 // image buffer (src/buffer.js) behind a disk controller, with what every
 // controller needs from it: reads that a reset cancels, writes that a reset
 // forgets, FLUSH after the writes issued before it are done, and each host
 // operation counted as I/O a snapshot waits for (src/state_io.js). Writes go
 // to the buffer, an in-memory overlay of the image: they last the session
-// (or a write-back backend's image: docs/disk-persistence-plan.md).
+// (or a write-back backend's image: docs/plan/disk-persistence-plan.md).
 //
 // The functions work on an owner with the fields init_block_io sets (and
 // `cpu`, `buffer`): BlockBackend (virtio-blk) and IDEInterface (src/ide.js,
 // also AHCI's drives) share them.
 //
-// A backend can fail a request (src/image/, docs/disk-image-formats-plan.md
-// P0; docs/disk-persistence-plan.md "错误处理"): a read calls back with
+// A backend can fail a request (src/image/, docs/plan/disk-image-formats-plan.md
+// P0; docs/plan/disk-persistence-plan.md "错误处理"): a read calls back with
 // fn(undefined, error), a write or flush with fn(error). The disk's
 // disk_error policy (the buffer's, src/disk_options.js) decides:
 // - "report": the failure goes to the caller's on_error, and the controller
@@ -168,7 +168,7 @@ export function block_read(owner, start, length, callback, on_error, speculative
  * Write `data` at `start`: `callback` when it is in the buffer, or
  * `on_error` when the backend failed it, unless a reset came first (the
  * write itself still lands). A durable write (the guest turned the write
- * cache off, or FUA: docs/disk-persistence-plan.md "向客户机报告写缓存")
+ * cache off, or FUA: docs/plan/disk-persistence-plan.md "向客户机报告写缓存")
  * completes once the buffer's flush after it is done.
  * @param {?} owner
  * @param {number} start

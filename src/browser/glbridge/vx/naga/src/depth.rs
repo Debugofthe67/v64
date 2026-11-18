@@ -7,7 +7,7 @@
 //!   viewports cannot): the vertex shader's position z becomes w - z
 //!   (`reverse_depth`) and VX swaps the viewport's depths, the same window
 //!   depth;
-//! - GL's clip space (the GLES host's shaders, docs/gles3-plan.md): depth
+//! - GL's clip space (the GLES host's shaders, docs/plan/gles3-plan.md): depth
 //!   from -w to w, WebGPU's from 0 to w: z becomes (z + w) / 2 (`gl_depth`).
 
 use alloc::vec::Vec;

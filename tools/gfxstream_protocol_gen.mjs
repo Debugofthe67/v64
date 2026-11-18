@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Generates src/graphics_adapters/virtio_gpu/gfxstream_protocol.js, gfxstream's
-// Vulkan wire format (docs/gfxstream-plan.md G2), from the C that gfxstream's
+// Vulkan wire format (docs/plan/gfxstream-plan.md G2), from the C that gfxstream's
 // codegen made for the guest driver of the pinned build (mesa
 // src/gfxstream/guest/vulkan_enc, docs/gfxstream-protocol.md):
 //

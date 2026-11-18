@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// An Apple device tree, printed (docs/iphone4-plan.md S0; src/apple/devicetree.js):
+// An Apple device tree, printed (docs/plan/iphone4-plan.md S0; src/apple/devicetree.js):
 //
 //   node tools/ios/devicetree.mjs <DeviceTree.bin> [<path>] [--json]
 //

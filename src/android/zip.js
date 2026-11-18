@@ -1,7 +1,7 @@
 // zip archives (APPNOTE.TXT 6.3.10) as Android's images come: the central
 // directory (zip64 too), members stored or deflated, inflated as a stream
 // (DecompressionStream "deflate-raw") with their CRC-32 checked
-// (docs/android-images-plan.md I1, I3). The archive is read through
+// (docs/plan/android-images-plan.md I1, I3). The archive is read through
 // read(offset, length), which returns the bytes or a promise of them: a
 // File's slices, an OPFS file's or a URL's ranges.
 

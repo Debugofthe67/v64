@@ -308,32 +308,36 @@ export class NV2D
         const row = o.stream.length ? o.stream[0] : 0;
         if(row >= height) throw new RangeError("NV IFC excess data");
         const committed = m(o, UPLOAD_COMMITTED);
-        // CPU image methods retire each DWORD immediately. Drivers also use
-        // this aperture for a few shader words in a much wider surface row.
-        const first = Math.min(width, committed / bpp), last = Math.min(width, (Math.max(0, o.stream.length - 1) + 4) / bpp);
+        // Older snapshots kept the row bytes, including any not yet drawn.
+        const wordOffset = Math.max(committed, o.stream.length - 1);
+        const first = Math.min(width, committed / bpp), last = Math.min(width, (wordOffset + 4) / bpp);
         const [x, y] = xy(m(o, base));
         const [outw, outh] = wh(m(o, base + 4)), dst = this.surface(o, 0x19C);
         const rect = this.bounds(x + first, y + row, Math.max(0, Math.min(last, outw) - first), row < outh ? 1 : 0, this.clip(o, 0x188));
-        return {input,bpp,stride,row,x,dst,rect};
+        return {input, bpp, stride, row, x, dst, rect, wordOffset};
     }
     upload(o, value, indexed)
     {
         if(indexed) return this.indexed_upload(o,value);
-        const {input,bpp,stride,row,x,dst,rect}=this.upload_plan(o);
-        if(!o.stream.length) o.stream = [0];
-        for(let i = 0; i < 4; i++) o.stream.push(value >>> (i * 8) & 255);
-        const bytes = new Uint8Array(o.stream.slice(1));
+        const {input, bpp, stride, row, x, dst, rect, wordOffset} = this.upload_plan(o);
         const key = o.methods.has(0x184) ? this.ref(o, 0x184) : null;
         this.render(o, dst, rect, px => {
-            const color = this.raw(bytes, (px - x) * bpp, bpp);
+            const at = (px - x) * bpp;
+            let color = value >>> 0;
+            if(at < wordOffset) color = this.raw(o.stream, 1 + at, bpp);
+            else if(bpp === 2) color = value >>> ((at - wordOffset) * 8) & 0xFFFF;
             if(key && color === m(key, 0x304)) return null;
             return this.input_color(color, input);
         }, [0x18C, 0x190, 0x194, 0x198]);
-        o.methods.set(UPLOAD_COMMITTED, o.stream.length - 1);
-        if(o.stream.length - 1 >= stride)
+        if(wordOffset + 4 >= stride)
         {
             o.stream = [row + 1];
             o.methods.delete(UPLOAD_COMMITTED);
+        }
+        else
+        {
+            if(o.stream.length !== 1) o.stream = [row];
+            o.methods.set(UPLOAD_COMMITTED, wordOffset + 4);
         }
     }
     monochrome(o, value, opaque)

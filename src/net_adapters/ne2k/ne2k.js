@@ -1,6 +1,6 @@
 // net_device.type "ne2k" (the default) -- an NE2000-compatible card, the
 // RTL8029 on PCI: the card DOS, Windows 9x to XP and Linux have drivers for.
-// A plugin since M1 (docs/modern-pc-devices-plan.md): its machine is a
+// A plugin since M1 (docs/plan/modern-pc-devices-plan.md): its machine is a
 // NetMachine (src/net_adapters/machine.js); its state is the one the core's
 // NE2000 had, field for field, so that snapshots from before read as they are.
 

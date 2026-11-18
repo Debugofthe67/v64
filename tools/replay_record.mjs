@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Records of real compilations for tools/replay_check.mjs
-// (docs/jit-unification-plan.md P2.0): runs benchmark images
+// (docs/plan/jit-unification-plan.md P2.0): runs benchmark images
 // (tests/bench) on a test core (ir-test-hooks) with recording on, and saves
 // what the x64 page tier compiled: build/replay/bench-<isa>.x6r, each record
 // a u32 length and its bytes (IR Tier-0's, .t0r, until P7.5 deleted it). The

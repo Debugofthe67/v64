@@ -1,4 +1,4 @@
-// The AArch32 EL0 cases' driver (docs/aarch32-plan.md Q0.2, Q1): each case
+// The AArch32 EL0 cases' driver (docs/plan/aarch32-plan.md Q0.2, Q1): each case
 // of an AArch32 binary (its table: the count, then per case its offset with
 // bit 0 for T32, how many times to resume it, the NZCV it starts with) runs
 // at EL0 until it takes an exception to EL1; what came back is printed (the

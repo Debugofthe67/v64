@@ -1,4 +1,4 @@
-// GLES 3.0's state in the shadow state (docs/gles3-plan.md L2), written
+// GLES 3.0's state in the shadow state (docs/plan/gles3-plan.md L2), written
 // from the GLES 3.0 specification: what a context of api 3 (GLES 3.0 to
 // 3.2, Context.version) has beyond GLES 2.0's, the commands GLES 3.0 adds,
 // and its forms of GLES 2.0's commands whose rules it changed. GLES 2.0's
@@ -36,7 +36,7 @@ export const GL3 = {
     MAP_UNSYNCHRONIZED_BIT: 0x20,
 };
 
-/** The limits GLES 3.x's contexts answer (WebGPU's defaults bound them; docs/gles3-plan.md "限制") */
+/** The limits GLES 3.x's contexts answer (WebGPU's defaults bound them; docs/plan/gles3-plan.md "限制") */
 export const LIMITS3 = {
     MAX_3D_TEXTURE_SIZE: 2048, MAX_ARRAY_TEXTURE_LAYERS: 256, MAX_COLOR_ATTACHMENTS: 4, MAX_DRAW_BUFFERS: 4, MAX_SAMPLES: 4,
     MAX_UNIFORM_BUFFER_BINDINGS: 36, MAX_UNIFORM_BLOCK_SIZE: 16384, MAX_VERTEX_UNIFORM_BLOCKS: 12, MAX_FRAGMENT_UNIFORM_BLOCKS: 12,

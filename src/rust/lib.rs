@@ -7,7 +7,7 @@ mod dbg;
 #[cfg_attr(feature = "aarch64", allow(unused_macros))]
 mod state_block;
 
-// The two cores (docs/arm64-virt-android16-plan.md, "Wasm core"): one crate,
+// The two cores (docs/plan/arm64-virt-android16-plan.md, "Wasm core"): one crate,
 // the x86 core by default and the ARM core with the feature aarch64. Only
 // this file and src/rust/aarch64/ name the feature
 // (tools/check_a64_imports.mjs); the shared modules reach the ISA as

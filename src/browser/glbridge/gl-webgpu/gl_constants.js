@@ -2,7 +2,7 @@
 // openglproxy/opengl32_proxy.c's #defines; the wire opcodes and control
 // records come from gl_protocol.js.
 //
-// See docs/opengl-webgpu-plan.md C1.
+// See docs/plan/opengl-webgpu-plan.md C1.
 
 (function(global) {
     "use strict";

@@ -1,4 +1,4 @@
-//! ISA-neutral v128 leaves (docs/jit-unification-plan.md P2.2): lane
+//! ISA-neutral v128 leaves (docs/plan/jit-unification-plan.md P2.2): lane
 //! permutations and constant shifts that x86tpl builds on and that A64's NEON
 //! templates use (ARM64 plan P6.3). Nothing here has an ISA's semantics:
 //! callers decide what out-of-range counts and saturation mean.

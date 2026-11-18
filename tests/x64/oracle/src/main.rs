@@ -70,7 +70,7 @@ fn opcode_map(path: &str) {
     println!("opcode map: {} rows, {} valid per iced-x86 and the CPUID profile; {} rows of undefined/unadvertised opcodes decoded for executor #UD", rows.len(), valid, decoded_undefined);
     assert_eq!(failures, 0, "long-mode opcode map validity/length differs from iced-x86");
 }
-/// The features of the plan (docs/simd-xsave-plan.md) and the baseline's:
+/// The features of the plan (docs/plan/simd-xsave-plan.md) and the baseline's:
 /// iced-x86 forms that need others are #UD
 fn plan_feature(feature: CpuidFeature) -> bool {
     use CpuidFeature::*;

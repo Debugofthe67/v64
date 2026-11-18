@@ -1,4 +1,4 @@
-// VDI images (VirtualBox), dynamic and fixed (docs/disk-image-formats-plan.md
+// VDI images (VirtualBox), dynamic and fixed (docs/plan/disk-image-formats-plan.md
 // P3): the header of version 1.1, the block map, unallocated and discarded
 // blocks (zeros). As QEMU's vdi driver: 512-byte sectors, blocks of 1 MiB,
 // no extra block data. Differencing images (a parent or link UUID) are

@@ -1,5 +1,5 @@
 // @ts-check
-// The settings dialog's panels of the devices (docs/vm-manager-plan.md "设置
+// The settings dialog's panels of the devices (docs/plan/vm-manager-plan.md "设置
 // 对话框"): network adapters, sound, display, serial ports, the shared
 // folder, the virt machine's devices.
 

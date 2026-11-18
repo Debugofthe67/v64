@@ -670,7 +670,7 @@ VirtioDevice.prototype.is_ram = function(address, length)
  */
 VirtioDevice.prototype.classify = function(address, length)
 {
-    // (the machine's DMA facade: docs/arm64-virt-android16-plan.md P1.6)
+    // (the machine's DMA facade: docs/plan/arm64-virt-android16-plan.md P1.6)
     return this.cpu.dma_classify(address, length);
 };
 

@@ -35,25 +35,25 @@
 - Parallels HDD、旧 QCOW、QED 等放入后续兼容候选，不列为首轮发布条件。
 
 格式可读也不保证系统可启动。迁移还需检查 CPU 架构、BIOS/UEFI、控制器和客户机驱动。
-当前分支已有 [x86-64 支持](x86-64.md)，应依据当前平台能力验证，不能套用旧版 v86 的限制。
+当前分支已有 [x86-64 支持](../x86-64.md)，应依据当前平台能力验证，不能套用旧版 v86 的限制。
 
 ## 当前代码基础
 
 | 代码入口 | 当前情况 | 计划中的处理 |
 | --- | --- | --- |
-| [`src/buffer.js`](../src/buffer.js) | 支持 ArrayBuffer、File、HTTP Range、静态分片与 Zstd 分片；没有上述容器格式解析器 | 分离字节来源、格式解析和修改层；分片压缩不等同于 QCOW2 压缩簇 |
-| [`src/browser/starter.js`](../src/browser/starter.js) | 接受带 `get/set/load` 的自定义后端，启动时预读 MBR | 硬盘初始化统一经过格式工厂，预读的是解码后的虚拟扇区 |
-| [`src/browser/cpu_worker.js`](../src/browser/cpu_worker.js) | 镜像配置按固定字段转发，拒绝带方法的后端对象 | 转发可序列化描述，在 Worker 内构建解析器 |
-| [`src/ide.js`](../src/ide.js) | 通过 buffer 访问扇区和保存状态；已有 LBA48，FLUSH 当前立即成功 | 复用扇区接口，补齐错误、异步写完成和 flush/barrier 语义 |
-| [`src/state_io.js`](../src/state_io.js) | 跟踪客户机发起的在途 I/O | 新后端在成功、失败和取消时均正确结束跟踪 |
-| [`v86.d.ts`](../v86.d.ts) | 声明现有镜像描述 | 增加格式及修改层配置，明确文件长度和虚拟容量的区别 |
-| [`tests/devices/ide_large_disk.js`](../tests/devices/ide_large_disk.js) | 包含 3 TiB 虚拟磁盘与超过 `2^32` 扇区的访问用例 | 扩充新格式大偏移及容量报告测试 |
+| [`src/buffer.js`](../../src/buffer.js) | 支持 ArrayBuffer、File、HTTP Range、静态分片与 Zstd 分片；没有上述容器格式解析器 | 分离字节来源、格式解析和修改层；分片压缩不等同于 QCOW2 压缩簇 |
+| [`src/browser/starter.js`](../../src/browser/starter.js) | 接受带 `get/set/load` 的自定义后端，启动时预读 MBR | 硬盘初始化统一经过格式工厂，预读的是解码后的虚拟扇区 |
+| [`src/browser/cpu_worker.js`](../../src/browser/cpu_worker.js) | 镜像配置按固定字段转发，拒绝带方法的后端对象 | 转发可序列化描述，在 Worker 内构建解析器 |
+| [`src/ide.js`](../../src/ide.js) | 通过 buffer 访问扇区和保存状态；已有 LBA48，FLUSH 当前立即成功 | 复用扇区接口，补齐错误、异步写完成和 flush/barrier 语义 |
+| [`src/state_io.js`](../../src/state_io.js) | 跟踪客户机发起的在途 I/O | 新后端在成功、失败和取消时均正确结束跟踪 |
+| [`v86.d.ts`](../../v86.d.ts) | 声明现有镜像描述 | 增加格式及修改层配置，明确文件长度和虚拟容量的区别 |
+| [`tests/devices/ide_large_disk.js`](../../tests/devices/ide_large_disk.js) | 包含 3 TiB 虚拟磁盘与超过 `2^32` 扇区的访问用例 | 扩充新格式大偏移及容量报告测试 |
 
 异步 buffer 的 `set()` 当前将修改保存在内存，状态保存只收集写过的块；同步 buffer
 则保存整盘内容。此机制可以提炼为公共修改层，但它尚不提供浏览器存储持久化。
 现有 3 TiB 用例仅覆盖特定路径，不代表任意 64 位磁盘容量都已得到支持。
 
-[`src/browser/filestorage.js`](../src/browser/filestorage.js) 是 9p 文件系统的文件来源层，
+[`src/browser/filestorage.js`](../../src/browser/filestorage.js) 是 9p 文件系统的文件来源层，
 不应作为虚拟硬盘容器解析的接入点。
 
 ## 架构
@@ -133,7 +133,7 @@ new V86({
 结束请求与在途计数，不能让初始化、设备命令或状态保存永久等待。共享在途读取允许
 合并，但取消某个调用方不能无条件中止其他调用方仍需要的读取。
 
-此阶段与 [SATA 的磁盘后端](sata.md#disk-backends) 协调，复用错误、
+此阶段与 [SATA 的磁盘后端](../sata.md#disk-backends) 协调，复用错误、
 异步完成和 flush/barrier 契约。新格式支持不依赖 Q35 或 AHCI 先行完成。
 
 验收：现有 RAW 的加载、读写、启动和状态恢复行为不变；新描述经过 Worker 传递后
@@ -260,9 +260,9 @@ VHDX 需要处理双 header、校验和、region/metadata、BAT 状态和逻辑�
 | 持久化 | 见[磁盘持久化计划](disk-persistence-plan.md#验收矩阵) |
 | 客体回归 | 已知兼容系统的安装或启动、文件写入、重启及状态恢复；旧 RAW 路径保持通过 |
 
-复用 [`tests/devices/ide_large_disk.js`](../tests/devices/ide_large_disk.js)、
-[`tests/devices/device_io_reset.mjs`](../tests/devices/device_io_reset.mjs) 和
-[`tests/api/state.js`](../tests/api/state.js)，新增独立格式解析与传输测试。
+复用 [`tests/devices/ide_large_disk.js`](../../tests/devices/ide_large_disk.js)、
+[`tests/devices/device_io_reset.mjs`](../../tests/devices/device_io_reset.mjs) 和
+[`tests/api/state.js`](../../tests/api/state.js)，新增独立格式解析与传输测试。
 性能记录冷启动读取字节数、请求数、元数据缓存命中和峰值内存，与同内容 RAW 对照；
 验收阈值在取得基线后确定，不预先宣称性能提升。
 
@@ -291,9 +291,9 @@ VHDX 需要处理双 header、校验和、region/metadata、BAT 状态和逻辑�
 ## 附录：实施记录
 
 实施在 `disk-formats` 分支（自 `master` 79c37884），按“实施顺序”逐阶段提交。测试样本由
-[`tests/image/samples.mjs`](../tests/image/samples.mjs) 用 Homebrew 的 qemu-img/qemu-io 10.2.0
+[`tests/image/samples.mjs`](../../tests/image/samples.mjs) 用 Homebrew 的 qemu-img/qemu-io 10.2.0
 生成到 `build/disk-image-samples/`，每次生成的命令、工具版本和 SHA-256 写在其中的
-`manifest.json`；设备与客体测试用 [`tests/image/tiny_qcow2.mjs`](../tests/image/tiny_qcow2.mjs)
+`manifest.json`；设备与客体测试用 [`tests/image/tiny_qcow2.mjs`](../../tests/image/tiny_qcow2.mjs)
 在内存中构造 QCOW2，不依赖 qemu-img。测试入口：`make disk-image-tests`（需 qemu-img）、
 `make disk-image-browser-tests`（无头 Chrome）；设备与客体测试也加入了 `devices-test` 与
 `api-tests`。
@@ -311,14 +311,14 @@ VHDX 需要处理双 header、校验和、region/metadata、BAT 状态和逻辑�
 | `factory.js` | 描述校验（`format`、`disk_option`）、签名与结构探测（`auto`，含文件尾的 VHD footer）、来源构建、打开 |
 | `sha256.js` | 同步 SHA-256，用于镜像元数据身份 |
 
-接入：[`starter.js`](../src/browser/starter.js) 中 `hda/hdb/attach_sata_drive` 带 `format`（非 `raw`）时经
+接入：[`starter.js`](../../src/browser/starter.js) 中 `hda/hdb/attach_sata_drive` 带 `format`（非 `raw`）时经
 `create_disk_image` 构建，其余仍走 `buffer_from_object`；软驱、光驱、BIOS 等设置 `format` 报错。
 打开失败经 `emulator-error` 结束启动（旧 RAW 后端 `load()` 返回的拒绝也一并收敛，此前是未处理的
-Promise 拒绝）。[`cpu_worker.js`](../src/browser/cpu_worker.js) 转发 `format/disk_option/image_id/overlay_limit/backing`，
-在 Worker 内构建解析器。[`ide.js`](../src/ide.js) 的 `read_buffer`、`write_to_backend` 和 FLUSH 增加错误
+Promise 拒绝）。[`cpu_worker.js`](../../src/browser/cpu_worker.js) 转发 `format/disk_option/image_id/overlay_limit/backing`，
+在 Worker 内构建解析器。[`ide.js`](../../src/ide.js) 的 `read_buffer`、`write_to_backend` 和 FLUSH 增加错误
 通道：读写失败按 QEMU `ide_rw_error` 置 ERR 并在错误寄存器置 ABRT，DMA 命令同时置总线主控错误位，
-ATAPI 报 MEDIUM ERROR（ASC 11h）；[`ahci.js`](../src/ahci.js) 的 NCQ 读写失败经 `ncq_failed`（ABRT）。
-[`cpu.js`](../src/cpu.js) 的 `validate_state` 在恢复任何状态之前核对每块硬盘的状态与本机镜像
+ATAPI 报 MEDIUM ERROR（ASC 11h）；[`ahci.js`](../../src/ahci.js) 的 NCQ 读写失败经 `ncq_failed`（ABRT）。
+[`cpu.js`](../../src/cpu.js) 的 `validate_state` 在恢复任何状态之前核对每块硬盘的状态与本机镜像
 （`validate_disk_states`）。`disk_option`：`read_only` 接受；`read_write` 尚未实现，启动报错；写在非盘项上报错。
 
 QCOW2 拒绝的情况：版本 2/3 以外、`cluster_bits` 不在 9–21、虚拟容量非 512 的倍数或超出安全整数、
@@ -384,7 +384,7 @@ dirty 与 corrupt 位、父盘（P1 中；P2 由调用方提供）、L1 不足�
 
 **实现。**
 
-- 压缩簇：raw deflate 用 [`src/virt/inflate.js`](../src/virt/inflate.js) 解压，`inflate` 增加输出上限参数
+- 压缩簇：raw deflate 用 [`src/virt/inflate.js`](../../src/virt/inflate.js) 解压，`inflate` 增加输出上限参数
   （到一个簇即停，压缩数据所在最后一个扇区的其余字节不读入，与 QEMU `qcow2_zlib_decompress`
   相同），并补了损坏输入的检查（stored 块 NLEN、输入不足、距离超出已输出数据、非法长度/距离码、
   码长重复越界），原先这些情况会静默输出错误数据。zstd 用 CPU 核心中已有的解码器
@@ -396,7 +396,7 @@ dirty 与 corrupt 位、父盘（P1 中；P2 由调用方提供）、L1 不足�
   不符、链中重复（同一对象、URL 或 buffer）均报错。父盘可以是 RAW（`RawReader`）。父盘比子盘小时
   超出部分读为零，显式零簇不回落父盘。身份逐层包含父盘的身份；`image_id` 改为每层各自记录。
   Worker 递归转发 `backing`。
-- 流式 RAW 导出：[`src/image/export.js`](../src/image/export.js) 按不超过 1 MiB 的块顺序读取（格式解码
+- 流式 RAW 导出：[`src/image/export.js`](../../src/image/export.js) 按不超过 1 MiB 的块顺序读取（格式解码
   加修改层），等待写入回调返回的 Promise（背压），报告进度，可用 `AbortSignal` 取消。
   `V86.export_disk_image(name, { write, progress, signal })` 经 `v86.export_disk` 在
   `state_transaction` 内执行：先暂停 CPU 并等待在途磁盘 I/O，导出的是同一时刻的磁盘视图，之后恢复
@@ -409,7 +409,7 @@ dirty 与 corrupt 位、父盘（P1 中；P2 由调用方提供）、L1 不足�
 1. “解压放在不会阻塞页面的执行路径”：CPU Worker 中解压在 Worker 内进行；`cpu_worker=0` 时模拟器
    本身就在页面线程运行，解压同样在页面线程（一个 64 KiB 簇约在毫秒以内），没有另设解压 Worker：
    异步解压会让本可同步完成的读取推迟到下一个时间片（对 SeaBIOS 轮询的 AHCI 影响见
-   [sata.md](sata.md#disk-backends)）。
+   [sata.md](../sata.md#disk-backends)）。
 2. QEMU 的 deflate 与 zstd 簇都没有校验和：簇内数据的位错误大多解出另一份同长度数据而不报错
    （`tests/image/inflate.mjs` 中 300 次单比特翻转里 297 次如此），与 QEMU 相同，无法在格式层面
    发现；结构性损坏（截断、越界、帧头错误、copied 标志）均报错。
@@ -434,12 +434,12 @@ dirty 与 corrupt 位、父盘（P1 中；P2 由调用方提供）、L1 不足�
 
 ### P3 VHD 与 VDI（a2015551）
 
-**实现。** [`src/image/vhd.js`](../src/image/vhd.js)：footer（动态盘用文件开头的副本，与 QEMU 相同；固定盘
+**实现。** [`src/image/vhd.js`](../../src/image/vhd.js)：footer（动态盘用文件开头的副本，与 QEMU 相同；固定盘
 用文件末尾的，兼容旧工具的 511 字节 footer）与动态盘头部的校验和都必须正确；虚拟容量按 QEMU vpc
 驱动的规则：创建者为 `vpc `、`qemu` 时取 CHS 几何（几何为最大值 65535/16/255 时除外），其余（Hyper-V
 的 `win `、`qem2`、Disk2vhd 等）取 footer 的当前大小，上限 2040 GiB；BAT 表项为 `0xFFFFFFFF` 的块读为零，
 已分配块读块内数据（扇区位图之后）。固定盘的数据必须完整位于 footer 之前。
-[`src/image/vdi.js`](../src/image/vdi.js)：1.1 版头部（预头部 0x48 字节之后 0x180 字节）、块映射，未分配
+[`src/image/vdi.js`](../../src/image/vdi.js)：1.1 版头部（预头部 0x48 字节之后 0x180 字节）、块映射，未分配
 （`0xFFFFFFFF`）与已丢弃（`0xFFFFFFFE`）块读为零，数据块在 `offset_data + 序号 × 1 MiB`；与 QEMU 一样
 只接受 512 字节扇区、1 MiB 块、无块附加数据，块号不得超出镜像块数。`format` 接受 `"vhd"`、
 `"vpc"`（QEMU 的名称）、`"vdi"`；`auto` 由文件头或文件尾（固定 VHD）的签名识别。身份：VHD 为 footer、
@@ -474,7 +474,7 @@ dirty 与 corrupt 位、父盘（P1 中；P2 由调用方提供）、L1 不足�
 
 ### P4 VMDK 与整机包导入（2f3d2381）
 
-**实现。** [`src/image/vmdk.js`](../src/image/vmdk.js)。各 createType 与 extent 类型的支持状态：
+**实现。** [`src/image/vmdk.js`](../../src/image/vmdk.js)。各 createType 与 extent 类型的支持状态：
 
 | createType | 文件 | 状态 |
 | --- | --- | --- |
@@ -494,7 +494,7 @@ grain 读 marker 中的长度，校验 zlib 头和 Adler-32（与 QEMU 所用 zl
 文件。子盘（`parentCID` 不为 `ffffffff`）需由 `backing` 给出父盘，父盘必须是 VMDK 且其 `CID` 等于子盘的
 `parentCID`（QEMU 同样只接受 VMDK 父盘）。
 
-[`src/image/ova.js`](../src/image/ova.js)：TAR 读取（ustar 前缀、GNU 长文件名、PAX 扩展头，头部校验和）；
+[`src/image/ova.js`](../../src/image/ova.js)：TAR 读取（ustar 前缀、GNU 长文件名、PAX 扩展头，头部校验和）；
 不依赖 DOMParser 的小型 XML 解析器（Worker 与 Node 中没有 DOMParser）；OVF：References、DiskSection
 （容量单位 `byte * 2^n` 及常见名称）、VirtualHardwareSection 的处理器、内存、IDE/SATA/SCSI 控制器与
 硬盘挂接、网卡、声卡、USB，VMware 的 `firmware` 配置与 VirtualBox 的 `Firmware` 元素，操作系统说明。
@@ -531,7 +531,7 @@ v86 没有的硬件说明：SCSI 控制器（其盘改挂 IDE/AHCI）、网卡�
 
 ### P5 VHDX 与原格式导出（ba592107）
 
-**实现。** [`src/image/vhdx.js`](../src/image/vhdx.js)：文件类型标识；两个头部取 CRC-32C 正确且序号较大的一个；
+**实现。** [`src/image/vhdx.js`](../../src/image/vhdx.js)：文件类型标识；两个头部取 CRC-32C 正确且序号较大的一个；
 两个区域表取第一个 CRC-32C 正确的，未知的必需区域拒绝；元数据表（文件参数、虚拟容量、逻辑与物理扇区
 大小、父盘定位器），未知的必需元数据项拒绝；BAT：每 `chunk_ratio = 2^23 × 逻辑扇区 / 块大小` 个负载块后
 跟一个扇区位图项，状态 FULLY_PRESENT 读 `FileOffsetMB × 1 MiB` 处的数据，NOT_PRESENT、UNDEFINED、
@@ -542,7 +542,7 @@ ZERO、UNMAPPED（及 QEMU 的旧值 5）读为零，非差分盘中出现 PARTI
 日志的工具打开一次）、差分盘（文件参数的 HasParent 或父盘定位器）、4096 字节逻辑扇区（设备路径只有
 512 字节扇区：IDE/AHCI 的 IDENTIFY 不报告大扇区，不能在解析器里重新切片）、版本不是 1、扇区大小非法。
 
-原格式导出：[`src/image/qcow2_export.js`](../src/image/qcow2_export.js) 导出新的、受限特性的 QCOW2：版本 3、
+原格式导出：[`src/image/qcow2_export.js`](../../src/image/qcow2_export.js) 导出新的、受限特性的 QCOW2：版本 3、
 64 KiB 簇、16 位引用计数、无压缩、无父盘，全零的簇不写入；布局为头部、L1、引用计数表与块、L2 表、
 数据，引用计数全为 1、L1/L2 项带 copied 标志。因为要顺序写出，先扫描一遍磁盘确定哪些簇有数据再写；
 扫描时对格式元数据表明为零（零簇、未分配且父盘也为零）且没有客户机写入的区间（先按 256 MiB，再按
@@ -590,7 +590,7 @@ ZERO、UNMAPPED（及 QEMU 的旧值 5）读为零，非差分盘中出现 PARTI
 ### 与 `arm64` 分支合并（2026-10-17）
 
 `arm64`（a22bd3a5）合并进本分支，冲突只在 `src/ide.js`：`arm64` 把 IDE 的读写、取消与 FLUSH 提取到了
-[`src/block_backend.js`](../src/block_backend.js)，本分支在同一处加了错误通道。合并后错误通道在
+[`src/block_backend.js`](../../src/block_backend.js)，本分支在同一处加了错误通道。合并后错误通道在
 `block_backend.js` 中实现一次，IDE、AHCI、virtio-blk 共用：
 
 - `block_read(owner, start, length, callback, on_error)`：后端以 `fn(undefined, error)`（或不给数据）回调时
@@ -607,12 +607,12 @@ ZERO、UNMAPPED（及 QEMU 的旧值 5）读为零，非差分盘中出现 PARTI
   `A64CPU.disk_devices` 让 `export_disk_image`、`disk_image_info` 按名称（`virtio_disk<n>`，或 `hda`、`hdb`）
   找到 virt 机器的盘。`performance_recorder.js` 的读取计时包装转发读取错误（原先会在 `data.byteLength`
   处抛出）。
-- 新测试 [`tests/a64/virtio_blk_disk_image.mjs`](../tests/a64/virtio_blk_disk_image.mjs)（加入
+- 新测试 [`tests/a64/virtio_blk_disk_image.mjs`](../../tests/a64/virtio_blk_disk_image.mjs)（加入
   `a64-virt-device-tests`）：内存中构造的 QCOW2 经 virtio-blk 读数据簇与未分配簇；损坏簇的读取（含跨入
   损坏簇的读取）得到 `VIRTIO_BLK_S_IOERR`，下一次读取正常；超出修改层预算的写入得到 `VIRTIO_BLK_S_IOERR`
   且不改变磁盘；FLUSH 正常；快照恢复客户机写入，恢复到另一镜像或 RAW 盘在恢复任何状态之前被拒；
   按名称导出与查询；损坏镜像的导出以错误结束。
-- [`tests/a64/linux_boot.mjs`](../tests/a64/linux_boot.mjs) 增加 `A64_LIVE_QCOW2=1`：live 阶段的 ISO 盘换成
+- [`tests/a64/linux_boot.mjs`](../../tests/a64/linux_boot.mjs) 增加 `A64_LIVE_QCOW2=1`：live 阶段的 ISO 盘换成
   `qemu-img convert -c` 得到的压缩 QCOW2（61059584 字节，ISO 92762112 字节）。
 
 合并后的检查：Closure（`libv86.js`、`libv86.mjs`、`cpu-worker.js`、`v86_all.js`）0 错误；eslint 无输出；
@@ -660,7 +660,7 @@ Alpine live 阶段（`A64_JIT=1 A64_STAGE=live A64_CORES=1`）RAW ISO 93941 ms �
 1. qemu-img 10.2 既不生成 4K VHDX（vhdx 的创建选项没有逻辑扇区大小），也不打开它（`Operation not
    supported`），没有独立工具生成的 4K 样本。基准因此是：(a) qemu-img 的 `dynamic.vhdx` 改写逻辑与物理扇区
    大小，盘的块数少于一个 chunk，BAT 布局不变，基准为原镜像（qemu-img 转出的 RAW，即 `base.raw`）；
-   (b) 测试中按 [MS-VHDX][vhdx-spec] 构造的镜像（[`tests/image/tiny_vhdx.mjs`](../tests/image/tiny_vhdx.mjs)），
+   (b) 测试中按 [MS-VHDX][vhdx-spec] 构造的镜像（[`tests/image/tiny_vhdx.mjs`](../../tests/image/tiny_vhdx.mjs)），
    其 512 字节版本通过 `qemu-img check`，qemu-img 与 v86 读出的都与写入的数据一致（5 GiB、越过扇区位图项），
    同一构造器的 4K 版本（100 GiB、1 MiB 块）跨扇区位图项读取，与写入的数据一致。
 2. QEMU 的 IDE/AHCI 只有 512 字节逻辑扇区（`ide-hd` 的 `logical_block_size` 必须为 512），4K ATA 没有参考
@@ -684,11 +684,11 @@ Alpine live 阶段（`A64_JIT=1 A64_STAGE=live A64_CORES=1`）RAW ISO 93941 ms �
 
 | 测试 | 结果 |
 | --- | --- |
-| [`tests/image/sector_size.mjs`](../tests/image/sector_size.mjs)（新，加入 `disk-image-tests`） | VHDX 构造器的 512 字节镜像通过 `qemu-img check`，qemu-img 与 v86 在首块、4 GiB 扇区位图项两侧、末尾、ZERO 块处读出一致；改写扇区大小的 `dynamic.vhdx` 经内存与本地文件分段读两条路径整盘逐 MiB 与 `base.raw` 一致，`DiskImage.logical_sector_size` 为 4096，qemu-img 不打开它；构造的 100 GiB 4K VHDX 跨 32 GiB 处的扇区位图项、64 GiB 与末尾、ZERO 与 NOT_PRESENT 块与写入一致；QCOW2、VHD、VDI、VMDK 加描述的 4096 数据不变；RAW 经工厂 4096，容量不是 4096 倍数时报错（512 时照旧）；4K VHDX 加 512、512 VHDX 加 4096 报错；QCOW2 子盘继承 4K VHDX 父盘的 4096，子盘描述给 512 时报错；1024、0、`"4096"`、520、8192 及光驱、软驱上的该选项报错 |
+| [`tests/image/sector_size.mjs`](../../tests/image/sector_size.mjs)（新，加入 `disk-image-tests`） | VHDX 构造器的 512 字节镜像通过 `qemu-img check`，qemu-img 与 v86 在首块、4 GiB 扇区位图项两侧、末尾、ZERO 块处读出一致；改写扇区大小的 `dynamic.vhdx` 经内存与本地文件分段读两条路径整盘逐 MiB 与 `base.raw` 一致，`DiskImage.logical_sector_size` 为 4096，qemu-img 不打开它；构造的 100 GiB 4K VHDX 跨 32 GiB 处的扇区位图项、64 GiB 与末尾、ZERO 与 NOT_PRESENT 块与写入一致；QCOW2、VHD、VDI、VMDK 加描述的 4096 数据不变；RAW 经工厂 4096，容量不是 4096 倍数时报错（512 时照旧）；4K VHDX 加 512、512 VHDX 加 4096 报错；QCOW2 子盘继承 4K VHDX 父盘的 4096，子盘描述给 512 时报错；1024、0、`"4096"`、520、8192 及光驱、软驱上的该选项报错 |
 | `tests/image/vhdx.mjs` | 4096 字节逻辑扇区由拒绝改为读取，与 `base.raw` 一致；其余照旧 |
-| [`tests/devices/disk_sector_size.js`](../tests/devices/disk_sector_size.js)（新，加入 `devices-test` 与 `disk-image-tests`） | i440FX：RAW 4K 盘与 512 字节盘同在主通道；IDENTIFY 字 106、117–118 与容量（4K 盘）、512 字节盘不变；READ SECTORS（EXT）每 4096 字节一个 DRQ 块与一次中断，块内无中断；SET MULTIPLE 4 后 READ MULTIPLE 每块 4 个扇区；WRITE SECTORS、WRITE MULTIPLE 写入镜像的 LBA × 4096 处并读回；READ DMA、WRITE DMA 经总线主控（两项 PRD）；越过末尾 IDNF；快照恢复到同样的盘，恢复到 512 字节盘的机器时在恢复任何状态之前被拒；Q35：4K VHDX 镜像经 AHCI 的 IDENTIFY、READ DMA EXT、PIO READ SECTORS（PIO setup FIS 的计数为 4096）、WRITE DMA EXT、NCQ 读写；`disk_image_info` 的扇区大小；容量不是 4096 倍数与 2048 的选项触发 `emulator-error`；SeaBIOS 不从 4K 的 MS-DOS 盘启动，报错后继续 |
-| [`tests/a64/virtio_blk_sector_size.mjs`](../tests/a64/virtio_blk_sector_size.mjs)（新，加入 `a64-virt-device-tests`） | RAW 4K 盘与 4K VHDX：提供 BLK_SIZE，`blk_size` 4096，容量以 512 字节计；扇区 8（512 字节单位）读到第二个 4K 扇区；起点或长度不是整扇区的读写为 `VIRTIO_BLK_S_IOERR` 且不写入；写入读回、在镜像中；512 字节盘 `blk_size` 512；快照恢复到同样的盘，恢复到 512 字节盘在恢复任何状态之前被拒 |
-| [`tests/image/sector_size_guest.mjs`](../tests/image/sector_size_guest.mjs)（新，加入 `disk-image-tests`） | `linux4.iso` 的内核直接引导（根为光盘），RAW 4K 盘（32 MiB）与 4K VHDX（48 MiB）：i440FX（ata_piix，MWDMA2）与 Q35（AHCI，NCQ）上 sd 报告 4096 字节逻辑与物理块与容量，读出主机放入的数据，写入 2 MiB 后清缓存读回（含 512 字节一次的读取），RAW 镜像与 VHDX 的修改层中是同样的数据，无 libata 错误；两台机器约 18 秒 |
-| [`tests/a64/linux_sector_size.mjs`](../tests/a64/linux_sector_size.mjs)（新，加入 `a64-guest-quick-tests`） | Alpine 3.24 aarch64（测试自己的 rdinit 加载 virtio_mmio、virtio_blk），RAW 4K、4K VHDX 与 512 字节盘：客体的逻辑与物理块大小为 4096、4096、512，容量、前 4 MiB 与主机一致，写入 2 MiB 清缓存后读回，并在镜像中；约 70 秒 |
+| [`tests/devices/disk_sector_size.js`](../../tests/devices/disk_sector_size.js)（新，加入 `devices-test` 与 `disk-image-tests`） | i440FX：RAW 4K 盘与 512 字节盘同在主通道；IDENTIFY 字 106、117–118 与容量（4K 盘）、512 字节盘不变；READ SECTORS（EXT）每 4096 字节一个 DRQ 块与一次中断，块内无中断；SET MULTIPLE 4 后 READ MULTIPLE 每块 4 个扇区；WRITE SECTORS、WRITE MULTIPLE 写入镜像的 LBA × 4096 处并读回；READ DMA、WRITE DMA 经总线主控（两项 PRD）；越过末尾 IDNF；快照恢复到同样的盘，恢复到 512 字节盘的机器时在恢复任何状态之前被拒；Q35：4K VHDX 镜像经 AHCI 的 IDENTIFY、READ DMA EXT、PIO READ SECTORS（PIO setup FIS 的计数为 4096）、WRITE DMA EXT、NCQ 读写；`disk_image_info` 的扇区大小；容量不是 4096 倍数与 2048 的选项触发 `emulator-error`；SeaBIOS 不从 4K 的 MS-DOS 盘启动，报错后继续 |
+| [`tests/a64/virtio_blk_sector_size.mjs`](../../tests/a64/virtio_blk_sector_size.mjs)（新，加入 `a64-virt-device-tests`） | RAW 4K 盘与 4K VHDX：提供 BLK_SIZE，`blk_size` 4096，容量以 512 字节计；扇区 8（512 字节单位）读到第二个 4K 扇区；起点或长度不是整扇区的读写为 `VIRTIO_BLK_S_IOERR` 且不写入；写入读回、在镜像中；512 字节盘 `blk_size` 512；快照恢复到同样的盘，恢复到 512 字节盘在恢复任何状态之前被拒 |
+| [`tests/image/sector_size_guest.mjs`](../../tests/image/sector_size_guest.mjs)（新，加入 `disk-image-tests`） | `linux4.iso` 的内核直接引导（根为光盘），RAW 4K 盘（32 MiB）与 4K VHDX（48 MiB）：i440FX（ata_piix，MWDMA2）与 Q35（AHCI，NCQ）上 sd 报告 4096 字节逻辑与物理块与容量，读出主机放入的数据，写入 2 MiB 后清缓存读回（含 512 字节一次的读取），RAW 镜像与 VHDX 的修改层中是同样的数据，无 libata 错误；两台机器约 18 秒 |
+| [`tests/a64/linux_sector_size.mjs`](../../tests/a64/linux_sector_size.mjs)（新，加入 `a64-guest-quick-tests`） | Alpine 3.24 aarch64（测试自己的 rdinit 加载 virtio_mmio、virtio_blk），RAW 4K、4K VHDX 与 512 字节盘：客体的逻辑与物理块大小为 4096、4096、512，容量、前 4 MiB 与主机一致，写入 2 MiB 清缓存后读回，并在镜像中；约 70 秒 |
 | 浏览器（`tests/image/browser_runner.mjs`，页面与 CPU Worker） | RAW 盘的 `logical_sector_size` 与 VHDX 自带的 4096 都到达设备（`disk_image_info`），原有各项照旧通过 |
 | 回归 | `make disk-image-tests`（含新测试）全部通过；`make a64-virt-device-tests`（`A64_QEMU` 指向已构建的 QEMU 9.2.0）通过；`tests/devices/` 的 ahci（31/31）、ide_large_disk、device_io_reset、disk_write_cache（10/10）、ahci_lifecycle，`tests/api/` 的 state、cdrom-insert-eject、floppy、destroy-during-init、clean-shutdown、reset、arm64-options 通过；Alpine live 阶段（`A64_JIT=1 A64_STAGE=live A64_CORES=1`，ISO 与探针盘为 512 字节的 virtio-blk）到登录、探针通过；`TEST_RELEASE_BUILD=1` 下 disk_sector_size、virtio_blk_sector_size、sector_size_guest 通过；`build/libv86.js`、`build/libv86.mjs`、`build/cpu-worker.js`、`build/v86_all.js` 的 Closure 检查 0 错误；eslint 无输出 |

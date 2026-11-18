@@ -1,5 +1,5 @@
 // SPIR-V as glslang's code pass writes it, read and changed in place
-// (docs/gles3-plan.md, "着色器的数据流"): the module's names, types,
+// (docs/plan/gles3-plan.md, "着色器的数据流"): the module's names, types,
 // variables and decorations, and the decorations the host decides itself:
 // the locations of the interface (by GL's rules and names, across stages)
 // and the bindings of the resources, which glslang maps per stage.

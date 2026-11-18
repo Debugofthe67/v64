@@ -2,7 +2,7 @@
 
 状态：设计与实施计划，尚未实现或通过本文验收。P7 的方向已定：采用候选 (b)，32 位代码并入 page tier。
 Wasm 产物已定（2026-10-07）：按指令集家族出两个核心，同一套源码构建（跨阶段规则 12）。
-16 位代码的去向已定（2026-10-07）：也迁入 page tier，之后删除 region 管线与 ir/runtime（P7.7–P7.9，M10–M11）。M11（2026-10-15）已删除它们，只剩一个 x86 编译器（x64 page tier，见 [ir-design.md](ir-design.md)）。
+16 位代码的去向已定（2026-10-07）：也迁入 page tier，之后删除 region 管线与 ir/runtime（P7.7–P7.9，M10–M11）。M11（2026-10-15）已删除它们，只剩一个 x86 编译器（x64 page tier，见 [ir-design.md](../ir-design.md)）。
 
 本计划基于 2026 年 10 月 6 日审查的 `0aebe4f`，2026-10-09 按 `985f518d`（SIMD/XSAVE 计划全部完成后的 master）重新核对。目标客户机是 32 位 Windows XP、64 位 Windows 8.1
 （含 WOW64 32 位程序）、Windows 98（retro-gaming-site 上用得最多的客户机，约 42 个游戏条目，XP 约 20 个；
@@ -20,7 +20,7 @@ M 约 1–2 周，L 约 3–4 周，XL 超过一个月。
 **统一运行时、x86 指令模板和测量体系；最终只保留一个 x86 页代码生成器，但不把所有模式塞进同一个编译器。**
 
 - 不把 HIR/MIR region 管线扩宽到 64 位。它只支持 32 位，实测只有 Tier-0 吞吐的 0.28×，
-  仓库自己估计扩宽的工作量相当于重写一遍 page tier（[x86-64.md](x86-64.md) 第 163–169 行）。
+  仓库自己估计扩宽的工作量相当于重写一遍 page tier（[x86-64.md](../x86-64.md) 第 163–169 行）。
   ARM64 计划也已明确不先把 x86 HIR/StateMap 通用化。
 - **32 位代码最终并入 x64 page tier（P7 采用候选 (b)）**：Compat32（WOW64）和 32 位保护模式代码
   （Legacy32，XP 与 Win98）成为 pagegen 的模式，通过 D 级门禁后删除 Tier-0。
@@ -138,7 +138,7 @@ flowchart TD
 | 模板重复 | `Packed` 与 opcode 表同时在 `x64/pagegen.rs:611` 和 `ir/tier0/simd.rs:76` |
 | region 管线慢且只支持 32 位 | 见附录 A |
 | 16 位代码只有 region 能编译（Tier-0 只接 32 位入口，page tier 只有长模式），而 Win98 的部分游戏 16 位占比很高 | `ir/runtime/schedule.rs:709`；《暗黑破坏神》41.7% 的时间在 16 位保护模式（附录 A） |
-| 64 位与 WOW64 的瓶颈是未模板化指令，而非跨块优化 | [x86-64.md](x86-64.md) 第 165–168、407–412 行 |
+| 64 位与 WOW64 的瓶颈是未模板化指令，而非跨块优化 | [x86-64.md](../x86-64.md) 第 165–168、407–412 行 |
 | IR 核心测试从不在 master 上运行 | `.github/workflows/ir-core.yml:3-7` 只触发于 `ir` 和 `chat/ir-*` 分支；GitHub CI 暂不处理（待决问题 1），这些测试改由本地门禁运行（P0.9） |
 | 缓存容量上限过时 | `ir/runtime/cache.rs:586` 注释仍写"899 个表槽"，实际表已是 12000 槽（`jit.rs:37`） |
 
@@ -266,7 +266,7 @@ region 管线与 ir/runtime 在 M11 删除；在此之前 region 冻结，它的
    否则 `make state-layout-check` 失败。M1 起该检查进入本地门禁 `make jit-gate`（P0.9）。
 6. **快照不变量。** P0–P7 的 x86 任务不新增 core 归属的状态，不升级快照版本。每个里程碑验证
    M1 时录制的存档仍能恢复运行。A64 使用自己的状态布局与版本。
-7. **32 位热路径保护。** 有前车之鉴：x64 工作曾把 32 位启动拖慢到 1.148×（[x86-64.md](x86-64.md)
+7. **32 位热路径保护。** 有前车之鉴：x64 工作曾把 32 位启动拖慢到 1.148×（[x86-64.md](../x86-64.md)
    第 78–83 行）。触及 `cycle_internal`、`run_cpu_slice` 或 TLB 填充的改动，新代码放进
    `is_long()` 分支内，并用 `#[cold]`/`#[inline(never)]`；每次都跑 XP 启动与 bench 门禁。
    **P7 是唯一例外**，因为迁移 32 位与 16 位代码必然改动非长模式路径：
@@ -341,7 +341,7 @@ region 管线与 ir/runtime 在 M11 删除；在此之前 region 冻结，它的
 `crt0_64.asm`（Win64 入口）启动，`tests/bench/same_source.mjs` 在同一会话里交替运行 i686 版（Tier-0）与 x86-64 版
 （page tier），并计算 S 门禁。这些文件没有随本计划进入仓库（`985f518d`、git 历史与本机都没有），P0.2–P0.4 按这个
 设计从头实现；现有的 32 位 bench（`tests/bench/lib/boot.asm`、`crt0.asm`、`run.mjs` 的 PE 加载）与
-`tests/x64/guest_builder.mjs` 可以复用。用法写进 [cpu-benchmarks.md](cpu-benchmarks.md)。本机的 MinGW 是 GCC 16.1。
+`tests/x64/guest_builder.mjs` 可以复用。用法写进 [cpu-benchmarks.md](../perf/cpu-benchmarks.md)。本机的 MinGW 是 GCC 16.1。
 
 | ID | 任务 | 关键位置 | 开关 | 规模 |
 | --- | --- | --- | --- | --- |
@@ -356,7 +356,7 @@ region 管线与 ir/runtime 在 M11 删除；在此之前 region 冻结，它的
 | P0.8 | 门禁工具：`tests/bench/gate.mjs` 汇总 N 个会话、按单项中位数和几何均值判定（S 级门禁的成员筛选与 `same_source.mjs` 相同）；`compare.mjs` 比较同一构建的两种配置；`--fallbacks` 只在额外的不计时轮次启用直方图 | `tests/bench/report.mjs` | 无 | S |
 | P0.9 | **本地门禁**（GitHub CI 暂不处理，待决问题 1）：原定放进 CI 的检查收拢成两个 make 目标。`make jit-gate` 是每次提交前的快速档：`state-layout-check`、`RUSTFLAGS=-D warnings cargo check`（含 `--features parallel`，核心拆分后再加 `aarch64` 与 `aarch64,parallel`）、导入规则检查（P2.10、P5.1 与规则 12 的 lint）、region 冻结路径检查（P7.6）、P2.0 的字节一致重放与 ARM64 计划 P0.7 的 `v86.wasm` 比较（各自就绪后加入），以及与改动相关的 `ir-tier0-tests`、`x64-page-tier-tests`。`make jit-gate-full` 是里程碑出口与翻转默认值之前的完整档：再加上 `ir-core.yml` 里的全部 make 目标与发布门禁的 quick 级别。性能不设自动门禁（待决问题 2），R、F、S、D 级里的性能条件由做改动的人按需用 `gate.mjs` 测。做改动的人（或会话）提交前跑快速档，所有者在里程碑出口跑完整档；需要的 MinGW、nasm 与 qemu 在所有者的 Mac 上都已装好 | `Makefile`；`.github/workflows/ir-core.yml`（只作为目标清单的来源，本身不改） | 无 | M |
 | P0.10 | 用新工具记录长模式基线和单步占比 s：bench x86_64（page tier 与纯解释器校验和一致）、XP、Win8.1、3DMark06；同时记录 Wasm 表空闲槽最小值和两侧驱逐数 | 同上 | 仅测量时启用 | S |
-| P0.11 | 文档：[cpu-benchmarks.md](cpu-benchmarks.md)、[profiling.md](profiling.md)（StepKey、统计单位、s 的唯一定义）、[x86-64.md](x86-64.md) 实测表 | `docs/` | 无 | S |
+| P0.11 | 文档：[cpu-benchmarks.md](../perf/cpu-benchmarks.md)、[profiling.md](../perf/profiling.md)（StepKey、统计单位、s 的唯一定义）、[x86-64.md](../x86-64.md) 实测表 | `docs/` | 无 | S |
 | P0.12 | **CPULOAD32**：用 `i686-w64-mingw32-gcc` 构建 32 位版 CPU 负载程序，作为 WOW64 的计时负载；M1 记录 Tier-0 下的基线，M4 再记录一次 | `tests/x64/windows_boot.mjs:94` | 无 | S |
 | P0.13 | **Tier-0 多页函数的贡献**：为邻页（range）与伙伴页（partner）重编译加一个总开关 `ir_t0_clusters`（开关注册表，默认开；`ir_t0_set_ranges` 不是这个开关，它让所有页都按邻页编译），测 `708.pages`、`502.codebloat` 与 XP 桌面的差异；结果决定 P7.3b 是否需要 | `ir/runtime/cache.rs:986-1131`、`ir/runtime/schedule.rs:386-404` | `ir_t0_clusters` | S |
 | P0.14 | **codegen-units**：`[profile.release]` 没有设置，取默认的 16 个代码生成单元。核心拆分评审实测，这时一处无关的小改动也会改变约 12 个 x86/IR 函数；`codegen-units = 1` 时这类变化消失，代码段小 4.6%，性能未知。用 P0.8 的工具对 `codegen-units = 1` 跑一次 R 级（bench、XP 与 Win8.1 桌面），同时记录 release 构建时间。通过则在 M1 改为默认，规则 12 的按函数比较不再把无关变化报成改动；不通过则保持 16，记录数据，按函数比较照常报告这类变化，相应的 PR 照跑 R 级 | `Cargo.toml:31-35` | 构建期 | S |
@@ -479,7 +479,7 @@ pagegen 做同样的审计（P4.17 的一部分）。只有当 Legacy32 两次�
 | P4.10 | FXSAVE64/FXRSTOR64 page tier 辅助函数（P4.4 后仍排得上才做） | `x64/vector.rs:1283-1373` | 第 3 位 | M |
 | P4.11 | 只为实测的热端口做端口 I/O 辅助函数 | `x64/system.rs:890-940` | 第 4 位 | M |
 | P4.12 | POPFQ 模板（排得上才做） | `x64/execute.rs:822-826` | 第 5 位 | S |
-| P4.13 | 文档与计数器说明 | [x86-64.md](x86-64.md)、[profiling.md](profiling.md) | 无 | S |
+| P4.13 | 文档与计数器说明 | [x86-64.md](../x86-64.md)、[profiling.md](../perf/profiling.md) | 无 | S |
 | P4.14 | **热页内联访存**。冷编译继续调用外置的访问缓存查找函数（保住 Windows 启动时的编译速度，`OUTLINE_ACCESS` 当初就是为此引入）；热页用内联查找重编译。现有运行时没有可复用的执行计数：已发布函数的重编译只由未服务入口触发，经 CHAIN 尾调用进入的页也不经过 `run()`。所以需要：(a) 生成代码在函数入口（P4.16 之后改为环路头）递增每函数执行计数，运行时在冷点读取；(b) 单独的热标志，不计入 `compiles`，不触发退避；(c) `pagegen::compile` 增加 `outline: bool` 参数，取代全局开关。并行构建里，内联路径遇到未对齐访问时调用模块的外置查找函数（保留 0x200 类型位），不能交给会拒绝的 `x64_page_access`。实测全部内联时 S 门禁几何均值 0.71× → 0.91×。重编译的阈值是开关 `x64_hot_count`（M5 定为 2^22，不是最初的 4096：热页重编译把 V8 已经优化过的函数换成从 Liftoff 重新开始的新函数，Windows 启动时后台的 TurboFan 编译排着长队，见附录 C 的 M5 记录） | `x64/pagegen.rs:2601-2606`、`x64/pages.rs:29-40, 468-491` | `x64_hot_inline`、`x64_hot_count` | L |
 | P4.15 | **访问缓存与数据量**：x86-64 版 `505.chase` 的链表节点在 LLP64 下从 8 字节变成 16 字节，链表 4 MiB，正好等于 jac 每类 1024 项的覆盖范围，树的 96 页与链表末尾 96 页冲突，宿主缓存足迹也翻倍；内联后反而从 0.45× 降到 0.35×，所以它不是查找开销问题，已移出 S 门禁。先埋点 jac 的未命中率与冲突，再按数据决定是否扩大或改成组相联；注意 `flush_nonglobal` 每次保留全局项的 MOV CR3 都会遍历全部表项，表越大 Win8.1 的切换越贵。Legacy32 直接用 32 位 TLB（P7.3） | `x64/jac.rs:14-21, 68-89` | `x64_jac_entries` | M |
 | P4.16 | **结构化环路**：回边不再经过分派器（现在每次回跳都要设置 RIP、检查预算与页范围、走桶 `br_table`）。移植 Tier-0 的 SCC 环路布局，预算检查放在环路头；P5.9 拆分时进入 `pagegen/frame.rs`。开关值 2 只在热页重编译里生成环路（M5 的默认：每次编译都生成时 TurboFan 多用约 13% 的时间，Windows 启动受后台编译量限制，见附录 C） | `x64/pagegen.rs:2904-2909, 2649-2720`、`ir/tier0/analysis.rs:333-402` | `x64_loops` | L |
@@ -529,7 +529,7 @@ P4.14–P4.18 不依赖 P4.1 的排名：它们针对的是已实测的代码质
 | P5.3 | `jitrt::watch`：监听器分两种触发（Always / WatchedOnly），保留两种顺序——脏页：IR live→cache→schedule→x64；重置：x64→live→cache→schedule；各客户端 epoch 分开。监听器取代 ARM64 计划 P1.0 在 `jit.rs` 留下的 5 个 ISA 挂钩点（`rust_init`、`retire_page_ctx`、`jit_clear_cache`、`ir_reserve_slot`、`ir_release_slot`）。A64 解释器的译码缓存与 A64Page 的监听器只在 ARM 核心里注册，不影响 x86 的两种顺序；J1a 合入之前，ARM64 计划 P1.5、P3.5 经这些挂钩点与 `crate::jit` 的 `page_watched`、`jit_dirty_page`、`jit_clear_cache_js` 过渡 | `jit.rs:53, 107-276, 279-328`、`parallel.rs:1022-1052` | M |
 | P5.4 | `jitrt::publish`：一个 Pending→Ready→Dead 状态机，一个 JS 桥 `jit_publish`；旧导入保留到 `vJ2` | `x64/pages.rs:801-891`、`cache.rs:2005-2158` | M |
 | P5.5 | `jitrt::capacity`：全局槽位预算加各客户端软配额，只投递驱逐请求，由受害方在自己的冷点执行；默认值取当时的实际上限（含 P7.2b 的模式配额）。预算按核心：x86 核心的表在 `IrRuntime` 与 `X86Page` 之间分配（现在 9000 + 768 = 9768 个槽），ARM 核心的整张表归 `A64Page` | `x64/pages.rs:41, 658`、`cache.rs:839` | M |
-| P5.6 | `jitrt::step`：结果类型采用 P4.3 引入、P4.7–P4.12 扩展的 `StepOutcome`（含 CHAIN 和延迟 IRQ 退出），上下文按 ISA 与模式参数化；全局量只定义为偏移，由组合根解析成小立即数常量（ARM64 宿主上高地址会慢 1.4×，见 [multicore.md](multicore.md) 第 146–148 行） | `x64/pages.rs:1224`、`ir/runtime/tier0.rs:4-49` | M |
+| P5.6 | `jitrt::step`：结果类型采用 P4.3 引入、P4.7–P4.12 扩展的 `StepOutcome`（含 CHAIN 和延迟 IRQ 退出），上下文按 ISA 与模式参数化；全局量只定义为偏移，由组合根解析成小立即数常量（ARM64 宿主上高地址会慢 1.4×，见 [multicore.md](../multicore.md) 第 146–148 行） | `x64/pages.rs:1224`、`ir/runtime/tier0.rs:4-49` | M |
 | P5.7 | `jitrt::heat` + `PageRuntime<F: PageFrontend>`，x86 page 客户端作为第一个使用者；直接搬入 P4.5b 的 `HeatBatch`，不再新增一个开关 | `x64/pages.rs:26-969` | L |
 | P5.8 | `jitrt::chain` 与 `jitrt::access`：链接表与访问缓存的数据结构、填充与失效，带 `TagLayout`（含代码模式位）、`Bus` 扩展点；`Bus` 实现为 ARM64 计划 P1.5 `AddressSpace` 的适配器。TagLayout 要能容纳 EL 视图、ASID、去掉 TBI 之后的 VA，以及 A64 的代码模式位（SCTLR_EL1.A/SA/SA0；模板固化 FP 模式时再加 FPCR.RMode/FZ/DN）（J2 的做法：EL 视图是分开的表，代码模式位在函数键里，ASID 用每个 ASID 一个 epoch（`a64_asid_tag`），带 TBI 标签的地址不进访问缓存，FP 模式在运行时检查、不固化）。访存查找的发射（P4.14 的冷页外置与热页内联）进入 `pagegen/frame.rs`，访存路径的选择（jac 或 32 位 TLB）留在 ISA 侧 | `x64/pages.rs:238-355`、`x64/jac.rs:14-220` | L |
 | P5.9 | 把 pagegen 拆成中立骨架 `src/rust/pagegen/frame.rs` 和 x86 ISA 模块；结构化环路（P4.16）与访存查找发射进入骨架；flags 物化和单步上下文留在 ISA 侧；所有已有模式的输出逐字节一致 | `x64/pagegen.rs:2224-3044` | XL |
@@ -725,9 +725,9 @@ flowchart TD
     class M8R,FB,FB16 alt
 ```
 
-每个里程碑的出口都包括：本里程碑的全部门禁通过；文档更新（[ir-design.md](ir-design.md) 架构图
-在 M2、M3、M6、M7、M8、J1b 更新，[x86-64.md](x86-64.md) 实测表每个里程碑都更新，
-[multicore.md](multicore.md) 在 M4、M6、M7 更新，[profiling.md](profiling.md) 在 M1 更新，
+每个里程碑的出口都包括：本里程碑的全部门禁通过；文档更新（[ir-design.md](../ir-design.md) 架构图
+在 M2、M3、M6、M7、M8、J1b 更新，[x86-64.md](../x86-64.md) 实测表每个里程碑都更新，
+[multicore.md](../multicore.md) 在 M4、M6、M7 更新，[profiling.md](../perf/profiling.md) 在 M1 更新，
 `v86.d.ts` 随选项变化更新）；浏览器测试通过；M1 的存档仍可恢复；打里程碑标签。
 
 ## 主要风险与缓解
@@ -1039,7 +1039,7 @@ v86gl 设备）。每个约 1 ms 的执行片（`TIME_PER_FRAME`）结束时记�
 - `tests/bench/gate.mjs`：按 R、F、S、D 的阈值判定多个会话（单项取中位数，再取几何均值），R 级给出复测命令并接受
   复测文件；`--aa` 报告噪声。`tests/bench/compare.mjs`：同一核心两种开关配置的多个会话，再交给 `gate.mjs`。
 - `run.mjs` 增加 `--switches-a`、`--switches-b`（P0.4 的每 arm 开关）；三个脚本都读取 `JIT_SWITCHES`。用法写进
-  [cpu-benchmarks.md](cpu-benchmarks.md)。
+  [cpu-benchmarks.md](../perf/cpu-benchmarks.md)。
 - 注册表变更本身的 R 级（bench）：quick 会话加复测后几何均值 1.001，通过。
 - 一次 quick 会话里单项会因噪声偏离 5–15%（例如 `719.avx2.scan` 0.84，复测 1.00），所以门禁一律看多次会话的
   中位数与复测。
@@ -1085,7 +1085,7 @@ v86gl 设备）。每个约 1 ms 的执行片（`TIME_PER_FRAME`）结束时记�
   打印最常单步的 StepKey；`JIT_STATS=1` 的记录在开关打开时带上前 40 个键。
 - 测试：`tests/ir/differential/tier0_step_profile.mjs`（进 `ir-tier0-tests`；页末字节的 IN 后面接一个重新映射
   的页）与 `tests/x64/step_profile.mjs`（进 `x64-page-tier-tests`；CPUID 与 REX.W CPUID 各自成键，旧接口
-  求和）；Rust 单元测试覆盖前缀、REX、VEX 与 LES/LDS 的区分、组 opcode。文档在 [profiling.md](profiling.md)。
+  求和）；Rust 单元测试覆盖前缀、REX、VEX 与 LES/LDS 的区分、组 opcode。文档在 [profiling.md](../perf/profiling.md)。
 - R 级（bench，相对 P3.0b）：3 个 quick 会话几何均值 1.013，复测后 1.021。`--runs 7` 复测后 `541.recursion` 0.94、
   `718.avx.ymm` 0.89 仍偏低，但它们每轮只有 9–24 ms，差一毫秒就是 5–10%；按 4 倍工作量（`--scale 4`，每轮
   35–90 ms）复测为 1.01 与 1.00。`gate.mjs` 因此对每轮不到 40 ms 的项建议带 `--scale 4` 复测，`--retest` 也可以
@@ -1105,7 +1105,7 @@ v86gl 设备）。每个约 1 ms 的执行片（`TIME_PER_FRAME`）结束时记�
   0x1000 的 32 位代码、Tier-0 原生与单步，349602 条）与 `tests/x64/mode_ledger.mjs`（32 位准备代码、兼容模式里的一条
   远跳转、64 位循环的原生与单步，102081 条）都检查这一点，所以没有漏记的退役点。
 - 读取：`tools/bench/jit_stats.mjs` 的 `mode_ledger()`；`JIT_STATS=1` 的记录在开关打开时带上账本。用法见
-  [profiling.md](profiling.md)。P0.15 的 Win98 工作负载用它跑一遍，随 P0.15 记录。
+  [profiling.md](../perf/profiling.md)。P0.15 的 Win98 工作负载用它跑一遍，随 P0.15 记录。
 - R 级（相对 P0.5，规则 7 因改动 `cycle_internal`、`run_cpu_slice` 而加测 XP）：bench 3 个 quick 会话几何均值 1.006，
   `701`、`707`、`712` 按 `--runs 7 --scale 4` 复测为 0.995、1.005、0.990，复测后 1.008；XP 桌面（所有者的配置，
   `IR_SYNC_DISK=1`，ABBAAB）中位数 13.93 s 对 13.78 s，比值 1.011。
@@ -1197,7 +1197,7 @@ v86gl 设备）。每个约 1 ms 的执行片（`TIME_PER_FRAME`）结束时记�
   （POPF/PUSHF，25 万与 23 万）、`F3 AB`（REP STOSD，16 万）。
 - 3DMark06 一项挪到 P4.0：从 Win8.1 的菜单存档跑 GT2 要 Chrome 渲染器加脚本化的启动（旧会话的脚本已不在），
   3DMark06 本来就只记录不判定，而 P4.0 统计 #NM、FXSAVE 等也要在 GT2 下测，两件事一起做。XP 上的 3DMark06 同样
-  随 P4.0。实测表写进 [x86-64.md](x86-64.md)。
+  随 P4.0。实测表写进 [x86-64.md](../x86-64.md)。
 
 **P1 清理，2026-10-09（P0.1 的基线之后）。**
 
@@ -1390,7 +1390,7 @@ v86gl 设备）。每个约 1 ms 的执行片（`TIME_PER_FRAME`）结束时记�
 - M2 表的要求：XP 与 Win98 不变（Tier-0 的重放在 P2.0–P2.10 每一步都一致；region 只在 P2.2 换了 x87 叶子的位置，代码没变）；
   Win8.1 的打包转换单步下降 100%（P2.8），MMX 按规则 11 跳过（P2.7），P2.9 不做；ARM64 列：`wasmgen::leaves` 有 ISA 中立的
   v128 叶子（P2.2），x86tpl 不引用任何引擎由 P2.10 检查。
-- 文档：[ir-design.md](ir-design.md) 的架构图加入 x86tpl；[x86-64.md](x86-64.md) 加 M2 的实测表，并改正 M1 表里单步前几名的
+- 文档：[ir-design.md](../ir-design.md) 的架构图加入 x86tpl；[x86-64.md](../x86-64.md) 加 M2 的实测表，并改正 M1 表里单步前几名的
   名称：`0F 5A`/`66 0F 5A` 是打包的 CVTPS2PD/CVTPD2PS，不是标量的 CVTSS2SD/CVTSD2SS（P0.10 的记录同样改正）。
 - P2.11 不在里程碑表的任何一行里。它是 P2 的最后一项，M2 的测量在它之前已经做完，所以列进 M3（表已改），按重放与相对 `vM2`
   的 R 级验收。
@@ -1449,7 +1449,7 @@ v86gl 设备）。每个约 1 ms 的执行片（`TIME_PER_FRAME`）结束时记�
   `game_state.mjs`（Win98 存档）也写这条记录。已有的 `ir_t0_template_stat` 数的是编译了多少，这里数的是执行了多少。
 - A/B 臂：`make jit-arm ARM=名字 JIT_DEFAULTS="..."` 用单独的 cargo 目标目录构建带构建期默认值的 release 核心，放进
   `build/bench/arms`，`build/v86.wasm` 不受影响。`owner_perf.mjs --arms`、`windows_boot.mjs` 的 `WASM_PATH` 与 bench 的
-  `--baseline` 都直接用它；同一进程里的 bench 仍可用 `--switches-a/-b`。写进 [profiling.md](profiling.md)。
+  `--baseline` 都直接用它；同一进程里的 bench 仍可用 `--switches-a/-b`。写进 [profiling.md](../perf/profiling.md)。
 - 测试：`tests/ir/differential/tier0_kind_profile.mjs`（`ir-tier0-tests`）。热循环里有整数模板、单步的 CPUID、三条寄存器 x87
   组成的 run、单条 x87、x87 内存形式与 FSQRT；计数之和等于模式账本里 Tier-0 的 `tier0_native` 与 `tier0_step`（23 万条，
   一条不差），循环里每条指令在页编译之后的每次迭代各计一次（前约 9000 次迭代在页编译之前由解释器执行；从循环中间进入的那次
@@ -1533,7 +1533,7 @@ v86gl 设备）。每个约 1 ms 的执行片（`TIME_PER_FRAME`）结束时记�
 **P3.7(c) 设备内存上的向量存储、CLI、POP [ESP]，2026-10-10。**
 
 - P3.7(b) 之后再测一遍，并给步进剖析加上每个键的样本（最后一次单步的线性地址与前 8 个字节，`step_profile_sample`，
-  [profiling.md](profiling.md)）。剩下的单步：
+  [profiling.md](../perf/profiling.md)）。剩下的单步：
   - 《红色警戒 2》：一段 KERNEL32 的 16/32 位 thunk（`bff714xx`：16 位操作数的 PUSH/POP、XCHG、PUSH/POP FS、RETF，LSS，
     MOV Sreg）。它所在的页函数按平坦分段编译，在 16 位栈、非平坦的状态下进入时只能"解释一条就返回"，连有模板的指令（MOVZX、
     MOV r32, SS）也逐条单步，约占宿主时间的一成。这是 16 位风格的代码，留给 P7.7（Prot16 在 page tier 里，16 位栈与非平坦段的
@@ -1588,8 +1588,8 @@ v86gl 设备）。每个约 1 ms 的执行片（`TIME_PER_FRAME`）结束时记�
   修正前的核心 `cb64a416` 对 `vM3` 4 个会话都是 0.94；相对 vM2 仍约 4.0×，其余 benchmark 不变。）浏览器测试：`cpu-worker-tests` 与 `display-browser-tests` 的 24 项全部
   通过。
 - M1 存档（规则 6）：M1 的核心在 shell 循环中途存的档，M3 的核心恢复后照常运行。
-- 文档：[ir-design.md](ir-design.md) 的架构图与 Tier-0 一节写了特性开关与 P3 的模板，[x86-64.md](x86-64.md) 加 M3 的实测表，
-  [profiling.md](profiling.md) 写了按模板种类的统计、A/B 臂与步进剖析的样本。
+- 文档：[ir-design.md](../ir-design.md) 的架构图与 Tier-0 一节写了特性开关与 P3 的模板，[x86-64.md](../x86-64.md) 加 M3 的实测表，
+  [profiling.md](../perf/profiling.md) 写了按模板种类的统计、A/B 臂与步进剖析的样本。
 - 本地标签 `vM3` 打在这次提交上。
 
 ### M4
@@ -1597,7 +1597,7 @@ v86gl 设备）。每个约 1 ms 的执行片（`TIME_PER_FRAME`）结束时记�
 **P4.0 埋点与单事件微基准，2026-10-10。**
 
 - 事件计数放进步进剖析的同一个存储（P0.5，不另开表），步进器字段取 2（`event`）：低 8 位是事件，8–15 位是细分，25–27 位是
-  模式（[profiling.md](profiling.md) 的事件表）。
+  模式（[profiling.md](../perf/profiling.md) 的事件表）。
   - `miss`：x64 page tier 没有在 RIP 运行函数的原因（关闭、无代码页、冷、编译中、这次编译、重编译、未服务的入口）；`exit`：页函数
     返回的原因（重试、未知、单步、预算、离开）；`step-exit`：单步结束激活的原因（HLT、让出、中断影子、核心事件、代码写入、IRQ、
     NMI、屏障、可链接），`step-context` 给出这次单步改变的上下文各项。"可链接"指只改了 P4.3 允许继续的 {CPL, CS, CR3, epoch, IF,
@@ -1736,8 +1736,8 @@ GT1/GT2 不降（P4.6 的计时运行）。`x64_heat_batch`、`x64_miss_run`、`
 **M4 出口：相对 `vM3`，2026-10-10（`6fda9f4a`，开关全为默认）。**
 
 - M4 的内容：P4.0、P4.1，排序定下的 P4.5a–d（P4.5d 是 P4.1 加的）与 P4.6，以及它们的翻转；P4.2、P4.3 的 STEP_CHAIN、P4.4、
-  P4.7–P4.12 与 P3.1d 按 P4.1 的排序记为跳过（每个负载都低于 0.5%）。P4.13 的文档：[profiling.md](profiling.md) 写了单事件
-  开销、事件与 JIT_STATS 的窗口，[x86-64.md](x86-64.md) 列出 `x64-page-tier-tests` 与新的 `x64-wow64-tests`
+  P4.7–P4.12 与 P3.1d 按 P4.1 的排序记为跳过（每个负载都低于 0.5%）。P4.13 的文档：[profiling.md](../perf/profiling.md) 写了单事件
+  开销、事件与 JIT_STATS 的窗口，[x86-64.md](../x86-64.md) 列出 `x64-page-tier-tests` 与新的 `x64-wow64-tests`
   （`compat_jit.mjs`、`long_visit.mjs`，统一的 WOW64 门禁集里可在本机跑的部分）。
 - bench（i686）：3 个会话 1.014、1.018、1.002，加复测几何均值 1.011，R 级通过；x86-64 bench 0.998，通过。
 - XP 桌面（ABBAAB）：M3 13.09、12.84、13.08 s，M4 12.81、13.07、13.06 s，中位数 13.08 对 13.06 s。
@@ -1880,7 +1880,7 @@ GT1/GT2 不降（P4.6 的计时运行）。`x64_heat_batch`、`x64_miss_run`、`
 - P7.2（Compat32）：兼容模式代码按物理页与代码模式（`COMPAT_KEY`）各有函数；入口要求 32 位 CS 与栈、CS/DS/ES/SS 基址为 0
   （`pages::compat_runnable`，FS/GS 每次访存加基址）；只读写 GPR 的低半部，EIP、ESP 与地址按 4 GiB 回绕，栈槽 4 字节；单步、
   重试与冷代码走 32 位解释器（`run_compat_instruction`）。非平坦段（Win98 的 46.5%）没有做：Compat32 用不到，留给 Legacy32（M7）。
-- 访存：起初照计划走 jac。剖析（`node --prof` 的 tick 映射到 `--print-wasm-code`，见 docs/profiling.md）与"宿主地址 = mem8 +
+- 访存：起初照计划走 jac。剖析（`node --prof` 的 tick 映射到 `--print-wasm-code`，见 docs/perf/profiling.md）与"宿主地址 = mem8 +
   线性地址"的上限实验表明，兼容模式整数 benchmark 的差距主要在查找：去掉查找后兼容模式对同样去掉查找的 Tier-0 在 500–707 上
   为 0.78–1.33，带查找时 0.75–0.87。改为 Tier-0 的 32 位 TLB 查找（`x64_compat_tlb`，默认开：兼容模式下 x64 翻译填 32 位 TLB，
   命中只需一次表项读、掩码比较与 xor），以基址寄存器保留翻译（`x64_fast_lookup`）为先。偏离计划 P7.2(5) 的"访存走 jac"，理由是
@@ -2606,7 +2606,7 @@ x86 侧。`pagegen` 的导入与 jitrt 一样由 `tools/check_x86tpl_imports.mjs
   树臂下 `windows_boot.mjs` 的默认路径相对于树根，要给 `WIN_IMAGE`；补跑一遍。）bench 暖分：i686 1.004、compat32 1.012、
   x86_64 1.000，没有一项低于 0.97；冷分 0.996、0.994、0.996，单项最低的 523.strings（compat32，0.85）、541.recursion（x86_64，
   0.93）、718.avx.ymm（i686，0.94）是短基准，暖分都在 1.00–1.03，同 J1a 记下的臂间伪迹。
-- ARM64 宿主：本机就是 Apple M 系列，上面的 bench 即是。[ir-design.md](ir-design.md) 的架构图按 J1b 更新（`pagegen/frame.rs`，
+- ARM64 宿主：本机就是 Apple M 系列，上面的 bench 即是。[ir-design.md](../ir-design.md) 的架构图按 J1b 更新（`pagegen/frame.rs`，
   jitrt 的 step、access、chain，以及 J2 的 A64 一列）。
 - J1b 出口：标签 `vJ1b`，打在本记录的提交上。它前面已有 J2 的第一部分（`94e24279`）与 P6.3b 的标量 FP（`e5860bf9`），只改 ARM
   核心，`v86.wasm` 与 `486fc045` 的逐字节相同（`core-split-check`）。

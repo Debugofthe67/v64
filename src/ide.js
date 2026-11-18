@@ -1124,7 +1124,7 @@ IDEInterface.prototype.set_disk_buffer = function(buffer)
     else
     {
         // the disk's logical sectors: 512 bytes, or 4096 where its image
-        // says so (logical_sector_size, docs/disk-image-formats-plan.md);
+        // says so (logical_sector_size, docs/plan/disk-image-formats-plan.md);
         // LBAs, counts, the capacity and each PIO data block are in them
         this.sector_size = buffer.logical_sector_size || HD_SECTOR_SIZE;
     }
@@ -1949,7 +1949,7 @@ IDEInterface.prototype.do_write = function()
  * Write to the disk image. The callback runs once the backend has taken the
  * data, unless a device reset happened in between; FLUSH CACHE waits for
  * every write in flight (when_writes_done). A backend that fails the write
- * (its callback's argument: docs/disk-image-formats-plan.md P0) ends the
+ * (its callback's argument: docs/plan/disk-image-formats-plan.md P0) ends the
  * command with an error instead (on_error, or io_error).
  * @param {number} start
  * @param {!Uint8Array} data
@@ -1967,7 +1967,7 @@ IDEInterface.prototype.write_to_backend = function(start, data, callback, on_err
 
 /**
  * Whether the disk reports a volatile write cache: one written back
- * (disk_option "read_write", docs/disk-persistence-plan.md "向客户机报告写缓存"),
+ * (disk_option "read_write", docs/plan/disk-persistence-plan.md "向客户机报告写缓存"),
  * where a completed write is in the host's page cache, durable only after
  * a flush; the other disks' IDENTIFY is as it was
  * @return {boolean}
@@ -2978,7 +2978,7 @@ IDEInterface.prototype.report_write = function(byte_count)
 
 /**
  * Read from the disk image: callback(data), or, when the backend fails the
- * read (a second argument: docs/disk-image-formats-plan.md P0), on_error
+ * read (a second argument: docs/plan/disk-image-formats-plan.md P0), on_error
  * (io_error without one). Neither runs for a read cancelled before.
  * @param {number} start
  * @param {number} length

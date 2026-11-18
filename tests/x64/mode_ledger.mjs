@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The mode ledger (docs/jit-unification-plan.md P0.6) with the x64 page tier:
+// The mode ledger (docs/plan/jit-unification-plan.md P0.6) with the x64 page tier:
 // on from the machine's construction, its sum is the retired count
 // (cross-phase rule 3), and a multiboot guest's way into long mode lands in
 // the rows of its modes: the 32-bit setup interpreted, the far jump that

@@ -1,4 +1,4 @@
-// The virt machine's PL011 UART at 0x0900_0000 (docs/arm64-virt-android16-plan.md
+// The virt machine's PL011 UART at 0x0900_0000 (docs/plan/arm64-virt-android16-plan.md
 // P4.5), as the reference's (QEMU 9.2 hw/char/pl011.c): a receive FIFO of
 // 16 bytes (1 without LCR_H.FEN) fed by serial0-input, the receive
 // interrupt as soon as a byte waits (the reference's trigger level 1), the

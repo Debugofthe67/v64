@@ -1,4 +1,4 @@
-/* SELinux enforcing on the androidish kernel (docs/arm64-virt-android16-plan.md
+/* SELinux enforcing on the androidish kernel (docs/plan/arm64-virt-android16-plan.md
  * P9.2), what Android's first-stage init does before the second stage: the
  * minimal policy (tests/a64/minimal.cil, compiled by tests/a64/cil2bin.c)
  * written to selinuxfs's load in one write, then enforce. Then a check that

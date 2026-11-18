@@ -1,4 +1,4 @@
-// The ciphers and hashes Apple's firmware needs (docs/iphone4-plan.md S0),
+// The ciphers and hashes Apple's firmware needs (docs/plan/iphone4-plan.md S0),
 // synchronous and in plain JS so that the same code runs in node, in a
 // browser worker and on pages that are not a secure context (crypto.subtle
 // is missing there): AES (FIPS 197) with CBC and no padding (IMG3 payloads,

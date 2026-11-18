@@ -1,4 +1,4 @@
-// The GL shadow's ARB assembly programs (docs/opengl-webgpu-plan.md C5):
+// The GL shadow's ARB assembly programs (docs/plan/opengl-webgpu-plan.md C5):
 // ARB_vertex_program's and ARB_fragment_program's objects, parameters and
 // queries, on the CPU side and by the extensions' rules:
 // - a program string that does not assemble leaves the program as it was

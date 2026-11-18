@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Compares two Wasm modules section by section, and their code section
-// function by function (docs/arm64-virt-android16-plan.md P0.7,
-// docs/jit-unification-plan.md cross-phase rule 12):
+// function by function (docs/plan/arm64-virt-android16-plan.md P0.7,
+// docs/plan/jit-unification-plan.md cross-phase rule 12):
 //
 // - functions are matched by the names of the "name" section: the exact
 //   name first, then the name without the hash of a Rust symbol

@@ -1,4 +1,4 @@
-// VMDK images (docs/disk-image-formats-plan.md P4; the format: VMware's
+// VMDK images (docs/plan/disk-image-formats-plan.md P4; the format: VMware's
 // Virtual Disk Format 1.1 and QEMU's vmdk driver). What is read:
 //
 // | createType | extents | status |

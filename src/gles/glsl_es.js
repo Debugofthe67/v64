@@ -1,4 +1,4 @@
-// GLSL ES 1.00 on the CPU side (docs/gles-proxy-plan.md "影子状态"): the
+// GLSL ES 1.00 on the CPU side (docs/plan/gles-proxy-plan.md "影子状态"): the
 // shadow state answers glGetShaderiv, glGetProgramiv, the info logs,
 // glGetActiveUniform/Attrib and glGetUniform/AttribLocation itself, so it
 // compiles and links with gl-webgpu's front end (gl_shader_translator.js,

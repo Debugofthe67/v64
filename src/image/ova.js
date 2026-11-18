@@ -1,4 +1,4 @@
-// OVF packages (docs/disk-image-formats-plan.md P4): an OVA is a TAR archive
+// OVF packages (docs/plan/disk-image-formats-plan.md P4): an OVA is a TAR archive
 // of an OVF descriptor (XML), its disks and other files. The importer reads
 // the descriptor, the disks it names (each one opened by the disk image
 // readers, inside the archive: a disk's descriptor gets archive_member) and

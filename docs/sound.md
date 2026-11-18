@@ -18,7 +18,7 @@ rewrites a suspended machine's digest for it ([vm-manager.md](vm-manager.md)).
 
 Both cards are plugins, loaded beside the bundle (or from
 `audio_device_path`) when the machine is made: the SB16 since stage M1 of
-[modern-pc-devices-plan.md](modern-pc-devices-plan.md), with the ISA part of
+[modern-pc-devices-plan.md](plan/modern-pc-devices-plan.md), with the ISA part of
 the device handle (its IRQ line, the 8237's channels and fixed ports:
 src/device_plugin.js). A missing plugin file fails the start and names it.
 

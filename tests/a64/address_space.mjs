@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The ARM core's physical address space through the emulator
-// (docs/arm64-virt-android16-plan.md P1.5, P1.7; src/rust/aarch64/bus.rs,
+// (docs/plan/arm64-virt-android16-plan.md P1.5, P1.7; src/rust/aarch64/bus.rs,
 // src/virt/io.js): new V86 with cpu_type "arm64" loads the ARM core and the
 // arm64 CPU; RAM at 0x4000_0000, device ranges above 4 GiB (one at
 // 0x50_1000_0000, a device at 0x60_0000_0000) and two 0x200 windows

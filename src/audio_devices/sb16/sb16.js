@@ -1,6 +1,6 @@
 // audio_device "sb16" (the default) -- a Sound Blaster 16: the DSP, the
 // mixer, the MPU-401 and OPL ports, its 8-bit and 16-bit DMA channels and
-// IRQ 5 on the ISA bus. A plugin since M1 (docs/modern-pc-devices-plan.md):
+// IRQ 5 on the ISA bus. A plugin since M1 (docs/plan/modern-pc-devices-plan.md):
 // its machine is an AudioMachine (src/audio_devices/machine.js) with the ISA
 // part of the handle (src/device_machine.js); its state is the one the
 // core's SB16 had, field for field, so that snapshots from before read as

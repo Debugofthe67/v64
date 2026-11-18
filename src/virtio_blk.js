@@ -1,10 +1,10 @@
-// virtio-blk (virtio 1.2 section 5.2; docs/arm64-virt-android16-plan.md
+// virtio-blk (virtio 1.2 section 5.2; docs/plan/arm64-virt-android16-plan.md
 // P5.4) as a built-in device of the virt machine: reads, writes, FLUSH,
 // read-only disks, the capacity, SEG_MAX and BLK_SIZE, and GET_ID (the
 // disk's `id`, e.g. the probe disk's "a64probe", which Linux shows as
 // /dev/disk/by-id/virtio-<id>). The image is behind a BlockBackend: writes
 // stay in its in-memory overlay for the session. The image may be in a
-// container format (src/image/, docs/disk-image-formats-plan.md): a read or
+// container format (src/image/, docs/plan/disk-image-formats-plan.md): a read or
 // write the image fails ends with VIRTIO_BLK_S_IOERR, and a snapshot's
 // changes are restored only onto the same image. BLK_SIZE is the image's
 // logical sector size (512, or 4096: logical_sector_size); the requests and
@@ -197,7 +197,7 @@ VirtioBlk.prototype.get_state = function()
  * Whether a snapshot's state of this disk can be restored, checked before
  * anything is (A64CPU.validate_state): the same size, the same image (an
  * image in memory by its SHA-256; a disk image in a container format by
- * its identity, docs/disk-image-formats-plan.md P1)
+ * its identity, docs/plan/disk-image-formats-plan.md P1)
  * @param {*} state
  */
 VirtioBlk.prototype.check_state = function(state)

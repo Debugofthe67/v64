@@ -1,5 +1,5 @@
 // A hard disk from a disk image in a container format
-// (docs/disk-image-formats-plan.md): the format's reader decodes the guest's
+// (docs/plan/disk-image-formats-plan.md): the format's reader decodes the guest's
 // sectors from the file (src/image/qcow2.js, ...), the guest's writes stay
 // in memory (src/image/overlay.js), and the device sees the interface of the
 // buffers of src/buffer.js (load, byteLength, get, set, get_and_cache,

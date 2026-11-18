@@ -1,4 +1,4 @@
-//! MMX leaves (docs/jit-unification-plan.md P2.2). The MMX registers alias
+//! MMX leaves (docs/plan/jit-unification-plan.md P2.2). The MMX registers alias
 //! the x87 mantissas: a read first syncs its slot from the f64 shadow cache,
 //! a write invalidates the slot and sets its exponent to 0xFFFF, and a form
 //! ends with the transition to MMX (all tags valid, TOP 0).

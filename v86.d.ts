@@ -76,7 +76,7 @@ type V86BufferImage =
 export type V86Image = V86AsyncFileImage | V86SyncFileImage | V86BufferImage;
 
 /**
- * The container format of a hard disk image (docs/disk-image-formats-plan.md).
+ * The container format of a hard disk image (docs/plan/disk-image-formats-plan.md).
  * "raw" (or no format): the sectors as they are, as before. "auto": the
  * format from the image's signature and structure; a RAW image has none, so
  * "auto" fails for it. "vpc" is QEMU's name of VHD. VHD and VDI: fixed and
@@ -100,7 +100,7 @@ export type V86DiskImageOptions =
         format?: V86DiskFormat;
 
         /**
-         * The source image's policy (docs/disk-persistence-plan.md), not
+         * The source image's policy (docs/plan/disk-persistence-plan.md), not
          * whether the guest may write (that is virtio_disks' readonly):
          * "read_only" (the default) keeps the guest's writes in memory, the
          * image stays as it is. "read_write" writes them back to the image
@@ -326,7 +326,7 @@ export interface Event {
         loaded: number,
     };
     /**
-     * A disk's read, write or flush failed (docs/disk-persistence-plan.md
+     * A disk's read, write or flush failed (docs/plan/disk-persistence-plan.md
      * "错误处理"). With the disk's disk_error "stop" (the default) the
      * request stays unfinished and the machine stops: run() retries the
      * held requests in their order (those that cannot be retried, such as
@@ -542,6 +542,9 @@ export interface PCIeRootPortPlacement {
     pcie_plugged?: boolean;
 }
 
+export type V86CPUFeature = "SSSE3" | "SSE4.1" | "SSE4.2" | "XSAVE" | "AVX" | "AVX2" | "FMA" | "F16C" |
+    "BMI1" | "BMI2" | "LZCNT" | "MOVBE" | "XSAVEOPT" | "XSAVEC" | "XGETBV1" | "XSAVES";
+
 /**
  * Emulator instance constructor options.
  */
@@ -734,7 +737,7 @@ export interface V86Options {
 
     /**
      * First floppy disk. disk_option "read_write" writes the guest's
-     * changes back (docs/disk-persistence-plan.md D3: a local file in Node,
+     * changes back (docs/plan/disk-persistence-plan.md D3: a local file in Node,
      * a disk service's URL; the image of a floppy format's size).
      * disk_error as for hard disks: "stop" (the default) holds a failed
      * transfer and stops the machine, run() tries it again; "report" ends
@@ -998,7 +1001,7 @@ export interface V86Options {
     ranchu_properties?: { [name: string]: string };
 
     /**
-     * machine_type "ranchu" only: the emulator image's GPU (docs/gles-proxy-plan.md).
+     * machine_type "ranchu" only: the emulator image's GPU (docs/plan/gles-proxy-plan.md).
      * "guest": the guest renders (the kernel command line's qemu.gles=0);
      * "host": its GL libraries send GLES over the pipe's "opengles" to the
      * GLES host, the plugin build/v86-gles.js (qemu.gles=1 on the command
@@ -1011,7 +1014,7 @@ export interface V86Options {
     /**
      * machine_type "ranchu", ranchu_gpu "host": the highest OpenGL ES version
      * the GLES host announces (ANDROID_EMU_gles_max_version_*; the guest's
-     * contexts and ro.opengles.version follow it; docs/gles3-plan.md); an
+     * contexts and ro.opengles.version follow it; docs/plan/gles3-plan.md); an
      * emulator image's android.gles_version where this is not given
      * @default "3.0"
      */
@@ -1031,7 +1034,7 @@ export interface V86Options {
 
     /**
      * cpu_type "arm32" on machine_type "virt" only: the GLES backdoor of user
-     * code (docs/gles-proxy-plan.md "iOS 传输"): UDF #0x8664 at PL0 with r0's
+     * code (docs/plan/gles-proxy-plan.md "iOS 传输"): UDF #0x8664 at PL0 with r0's
      * top half 0x8664 calls the GLES host's services ("opengles",
      * "GLProcessPipe"), which the plugin build/v86-gles.js gives, drawn by
      * the page's WebGPU renderer. Off: those UDFs are undefined instructions.
@@ -1098,7 +1101,7 @@ export interface V86Options {
      * 64-bit operating systems such as Windows 8.1 x64 or x86_64 Linux.
      * "arm64" (experimental, in development: docs/aarch64.md) is an Armv8.0-A
      * CPU on machine_type "virt", with its own core (v86-arm64.wasm);
-     * "arm32" (in development: docs/aarch32-plan.md part 2) the same core in
+     * "arm32" (in development: docs/plan/aarch32-plan.md part 2) the same core in
      * AArch32 throughout, a 32-bit Arm (ARMv7-A, Cortex-A15-like) CPU for
      * 32-bit kernels on the same machine.
      * Other values fail at startup.
@@ -1113,7 +1116,7 @@ export interface V86Options {
      * "generic-x86-64" ("x86_64"), "generic-arm64" ("arm64": Armv8.0-A with
      * FEAT_PAN, 64-bit programs only), "generic-arm64-compat32" (that and
      * AArch32 at EL0: a 64-bit kernel with COMPAT runs 32-bit Arm programs,
-     * armhf and armeabi-v7a; docs/aarch32-plan.md), "cortex-a15" ("arm32").
+     * armhf and armeabi-v7a; docs/plan/aarch32-plan.md), "cortex-a15" ("arm32").
      * "generic-arm64-v1.1" and "generic-arm64-v1" (generic-arm64 without
      * FEAT_PAN; v1 the 4 KiB granule only) are for regression tests against
      * QEMU. See
@@ -1125,6 +1128,9 @@ export interface V86Options {
         "cortex-a8" | "cortex-a15";
 
     /**
+     * With cpu_type "x86_64", "x86-64-v1" selects the psABI baseline,
+     * excluding the v2 instructions even when running 32-bit code (LAHF/SAHF
+     * remain available there). Custom lists require at least one extension.
      * CPU features beyond the base profile, reported by CPUID: SSSE3, SSE4.1
      * and SSE4.2, by name or as the preset "x86-64-v2" (with
      * cpu_type: "x86_64", what x86-64-v2 requires: RHEL 9, Windows 11 24H2);
@@ -1138,11 +1144,10 @@ export interface V86Options {
      * SSE4.1; AVX needs XSAVE and SSE4.2; AVX2, FMA and F16C need AVX; the
      * XSAVE family needs XSAVE, XSAVES needs XSAVEC); other combinations fail
      * at startup. Not set: all of them with cpu_type "x86_64", none with
-     * "x86" ([] gives none); a restored snapshot's features then replace them.
+     * "x86". A restored snapshot's features then replace them.
      * See [docs/x86-64.md](https://github.com/speedyHKjournalist/v64/blob/master/docs/x86-64.md).
      */
-    cpu_features?: Array<"SSSE3" | "SSE4.1" | "SSE4.2" | "XSAVE" | "AVX" | "AVX2" | "FMA" | "F16C" | "BMI1" | "BMI2" |
-        "LZCNT" | "MOVBE" | "XSAVEOPT" | "XSAVEC" | "XGETBV1" | "XSAVES"> | "x86-64-v2" | "x86-64-v3";
+    cpu_features?: "x86-64-v1" | "x86-64-v2" | "x86-64-v3" | readonly [V86CPUFeature, ...V86CPUFeature[]];
 
     /**
      * Log level (for debug builds)
@@ -1188,7 +1193,7 @@ export interface V86Options {
     /** Compiler selection. IR is the only backend (the legacy one was removed). */
     jit_backend?: "ir";
     /**
-     * Deprecated and ignored: the IR region tiers' settings (docs/jit-unification-plan.md
+     * Deprecated and ignored: the IR region tiers' settings (docs/plan/jit-unification-plan.md
      * M11 deleted the region tiers; the x64 page tier compiles all code).
      */
     ir_stats?: "off" | "sampled" | "debug";
@@ -1218,7 +1223,7 @@ export interface V86Options {
         rep_iterations?: number;
     };
     /**
-     * JIT switches by name (src/rust/jit_switches.rs; docs/jit-unification-plan.md), as
+     * JIT switches by name (src/rust/jit_switches.rs; docs/plan/jit-unification-plan.md), as
      * { x64_outline: 0 } or "x64_outline=0,x64_loops=1", applied after the other JIT settings.
      * An unknown name, or a value the JIT refuses, fails the construction.
      */
@@ -1941,7 +1946,7 @@ export class V86 {
     /**
      * Get instruction stats
      *
-     * @see {@link https://github.com/speedyHKjournalist/v64/blob/master/docs/profiling.md} for more infos
+     * @see {@link https://github.com/speedyHKjournalist/v64/blob/master/docs/perf/profiling.md} for more infos
      */
     get_instruction_stats(): string | Promise<string>;
 

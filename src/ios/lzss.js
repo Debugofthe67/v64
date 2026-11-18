@@ -1,4 +1,4 @@
-// The kernelcache's compression (docs/iphone4-plan.md S0): a 0x180-byte
+// The kernelcache's compression (docs/plan/iphone4-plan.md S0): a 0x180-byte
 // header ("comp", "lzss", Adler-32 and sizes of the plain data, big-endian)
 // then LZSS as Okumura's lzss.c and XNU's decompress_lzss: a 4096-byte ring
 // (filled with spaces), 18-byte matches at most, flag bytes read low bit

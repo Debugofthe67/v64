@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// XSAVE-managed state across the machine's lifecycle (docs/simd-xsave-plan.md
+// XSAVE-managed state across the machine's lifecycle (docs/plan/simd-xsave-plan.md
 // 6.4): per-core XCR0, YMM0_H-YMM15_H, XMM and x87 state round trip through
 // snapshots; INIT keeps them (and the rest resets), RESET sets XCR0 to 1;
 // snapshots from before the XSAVE range restore XCR0 1 and zero YMM halves,
@@ -122,13 +122,13 @@ for(const count of [1, 2])
             assert.equal(cpu.mxcsr[0], 0x1F80, "reset: MXCSR");
         }
 
-        // the CPU features: a machine without them refuses the snapshot, and
+        // A machine explicitly configured with XSAVE alone refuses the snapshot, and
         // this one a snapshot from before features were recorded
-        const plain = await machine(count);
+        const plain = await machine(count, ["XSAVE"]);
         try
         {
             const target = plain.v86.cpu, before = target.get_machine_core_state();
-            await assert.rejects(plain.restore_state(saved), /CPU features SSSE3 SSE4.1 SSE4.2 XSAVE AVX .*this one has none/);
+            await assert.rejects(plain.restore_state(saved), /CPU features SSSE3 SSE4.1 SSE4.2 XSAVE AVX .*this one has XSAVE$/);
             assert.deepEqual(target.get_machine_core_state(), before, "nothing restored");
         }
         finally { await plain.destroy(); }

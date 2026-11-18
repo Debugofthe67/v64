@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The step profile of the x64 page tier (docs/jit-unification-plan.md P0.5):
+// The step profile of the x64 page tier (docs/plan/jit-unification-plan.md P0.5):
 // a long-mode loop whose page function steps CPUID and a REX.W CPUID. With
 // the JIT switch step_profile on, the steps land under their StepKeys
 // (64-bit mode, the x64 page tier; REX.W kept apart), and

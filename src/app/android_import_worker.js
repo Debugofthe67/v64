@@ -1,4 +1,4 @@
-// The Android importer's worker (docs/android-images-plan.md I3.1): an
+// The Android importer's worker (docs/plan/android-images-plan.md I3.1): an
 // image package (a File) made into a browser disk, v86/disks/<id>.img,
 // through the file's sync access handle (dedicated workers only), as
 // src/android/assemble.js lays it out. Bundled into

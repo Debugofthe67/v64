@@ -310,7 +310,7 @@ DMA.prototype.do_read = function(buffer, start, len, channel, fn)
         const epoch = this.epoch;
         // (the image's read; when it fails, fn gets the error and this, to try
         // it again into the same memory: the registers are already as after
-        // the transfer, docs/disk-persistence-plan.md, disk_error "stop")
+        // the transfer, docs/plan/disk-persistence-plan.md, disk_error "stop")
         const attempt = () =>
         {
             if(epoch !== this.epoch) return;
@@ -318,7 +318,7 @@ DMA.prototype.do_read = function(buffer, start, len, channel, fn)
             {
                 // (a machine reset in between: the transfer belongs to the machine before it)
                 if(epoch !== this.epoch) return;
-                // (the image failed the read: docs/disk-persistence-plan.md D3)
+                // (the image failed the read: docs/plan/disk-persistence-plan.md D3)
                 if(error || !data)
                 {
                     fn(true, error || new Error("the disk image returned no data"), attempt);

@@ -1,5 +1,5 @@
 // Decode rules shared by the 32-bit interpreter and the page tier
-// (docs/simd-xsave-plan.md 5.2): which row the 66/F2/F3 prefixes select
+// (docs/plan/simd-xsave-plan.md 5.2): which row the 66/F2/F3 prefixes select
 // (decode_rules::mandatory_variant), the order of repeated F2/F3, #UD for a
 // mandatory prefix without a row of its own, the three-byte maps and VEX.
 // Each case runs in the interpreter, then hot under the page tier.
@@ -165,7 +165,7 @@ try
 
     // The three-byte maps decode in the interpreter and the page tier. SSSE3
     // (P3) and SSE4 (P4b) are #UD without their feature; every other encoding
-    // is #UD until its semantics come (docs/simd-xsave-plan.md), whether or
+    // is #UD until its semantics come (docs/plan/simd-xsave-plan.md), whether or
     // not the machine has its CPUID feature; so are F2/F3 at the SSSE3
     // opcodes, F3 at CRC32's and an opcode byte without rows
     const featured_forms = [

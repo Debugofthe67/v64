@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// virtio-gpu's scanouts shown without readbacks (docs/gfxstream-plan.md G4):
+// virtio-gpu's scanouts shown without readbacks (docs/plan/gfxstream-plan.md G4):
 // a renderer that says it can (its "caps" to the device's "hello": the page's
 // compositor) gets GX's SURFACE_PRESENT for a 3D scanout's flushes, the
 // rectangle flushed, and no readback; a cursor over the picture, a second

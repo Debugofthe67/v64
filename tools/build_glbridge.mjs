@@ -37,7 +37,7 @@ const formats = "globalThis.V86SVGADXFormats = " + JSON.stringify(gx_formats()) 
         if(theirs[name] !== op) throw new Error("vx_executor.js: VX." + name + " is " + theirs[name] + ", renderer_protocol.js says " + op);
     }
 }
-// The GLES executor (src/gles/page/, ES modules; docs/gles-proxy-plan.md E3),
+// The GLES executor (src/gles/page/, ES modules; docs/plan/gles-proxy-plan.md E3),
 // bundled by esbuild after the scripts: its GLSL front end is theirs (the two
 // scripts' imports stand for nothing here)
 {

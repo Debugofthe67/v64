@@ -168,6 +168,14 @@ export function expand_primitives(vertices,mode)
     return {bytes,stride:vertices.stride,count:indices.length,primitive:type,primitives:indices.length/divisor};
 }
 
+function dma_span(dma, offset, length)
+{
+    const memory = dma.target ? 1 : 0;
+    if(!dma.linear) return {memory, first:0, last:Infinity};
+    const first = ((dma.pte & 0xFFFFF000) >>> 0) + dma.adjust + offset;
+    return {memory, first, last:first + length};
+}
+
 export class NV40Render
 {
     constructor(engine,renderer)
@@ -181,6 +189,7 @@ export class NV40Render
         this.bc_supported=false;
         this.batch=null;this.pending=null;this.quiescing=false;this.stats={batches:0,draws:0,bytes:0,readbacks:0,failures:0,uploads:0,uploadBytes:0,
             resourceHits:0,resourceMisses:0,resourceEvictions:0,coldUploadBytes:0,resourceBytes:0,peakResourceBytes:0,nativeBCUploads:0,nativeBCUploadBytes:0};
+        this.input_overlaps_output = (dma, offset, length) => this.overlaps_output(dma_span(dma, offset, length));
         renderer["listen"](message=>this.receive(message));
         renderer["post"]({"type":"hello"});
     }
@@ -346,7 +355,7 @@ export class NV40Render
     render_state(state,value) {this.command(OP.SET_RENDER_STATE,{"state":state,"value":value});}
     range(surface,texture=false)
     {
-        const dma=surface.dma;if(!dma.linear) return {memory:dma.target?1:0,first:0,last:Infinity};
+        const dma = surface.dma;
         let length=0;
         if(texture)
         {
@@ -360,8 +369,18 @@ export class NV40Render
             if(surface.cube)length=(surface.swizzle?Math.ceil(length/128)*128:length)*6;
         }
         else length=surface.swizzle?2**(surface.u+surface.v)*surface.bpp:(surface.height-1)*surface.pitch+surface.width*surface.bpp;
-        const first=((dma.pte&0xFFFFF000)>>>0)+dma.adjust+surface.offset;
-        return {memory:dma.target?1:0,first,last:first+length};
+        return dma_span(dma, surface.offset, length);
+    }
+
+    overlaps_output(source)
+    {
+        for(const {target} of this.batch.outputs.values())
+        {
+            const destination = this.range(target);
+            if(source.memory === destination.memory && source.first < destination.last && destination.first < source.last)
+                return true;
+        }
+        return false;
     }
     barrier(o,method,value)
     {
@@ -511,15 +530,12 @@ export class NV40Render
             const surface=this.textures.vertex(o,unit);
             textures.push({unit:257+unit,surface,bytes:this.textures.images(surface)});
         }
-        if(this.batch && textures.some(({surface})=>{
-            const source=this.range(surface,true);
-            return [...this.batch.outputs.values()].some(({target})=>{
-                const destination=this.range(target);
-                return source.memory===destination.memory && source.first<destination.last && destination.first<source.last;
-            });
-        })) {this.flush();return false;}
-        const fetched=indices?this.engine.state.array_vertices(o,indices,shaders.vertex.inputs):
+        if(this.batch && textures.some(({surface})=>this.overlaps_output(this.range(surface,true))))
+        {this.flush();return false;}
+        const fetched=indices?this.engine.state.array_vertices(o,indices,shaders.vertex.inputs,
+            this.batch?.outputs.size ? this.input_overlaps_output : null):
             this.engine.state.inline_vertices(o,words,shaders.vertex.inputs);
+        if(!fetched) {this.flush();return false;}
         const vertices=expand_primitives(fetched,mode);if(!vertices.count || cull.all && vertices.primitive===4) return;
         // With no outputs or active query, rasterization has no observable
         // effect. Earlier queued work still follows its normal fence barrier.

@@ -3,7 +3,7 @@
 // USB (usb: { controller: "uhci", tablet: true }, the plugin of src/usb/):
 // the UHCI controller driven through its I/O registers and a schedule in
 // guest memory (frame list, queue heads, transfer descriptors), no guest
-// code; the test moves the machine clock (docs/modern-pc-devices-plan.md U1).
+// code; the test moves the machine clock (docs/plan/modern-pc-devices-plan.md U1).
 // PCI identity on i440FX and Q35, registers, port reset and enable, frames
 // at 1 ms, control transfers (descriptors, SET_ADDRESS, SET_CONFIGURATION,
 // HID requests), STALL, timeouts, short packets, the interrupt endpoint's

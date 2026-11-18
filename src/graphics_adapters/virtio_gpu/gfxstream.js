@@ -1,4 +1,4 @@
-// virtio-gpu's gfxstream contexts (docs/gfxstream-plan.md G1, the protocol
+// virtio-gpu's gfxstream contexts (docs/plan/gfxstream-plan.md G1, the protocol
 // in docs/gfxstream-protocol.md): the capsets of gfxstream's Vulkan and
 // composer; a context (a guest process) has an ASG ring per stream (a
 // thread's connection), each in a HOST3D blob that CONTEXT_CREATE names and

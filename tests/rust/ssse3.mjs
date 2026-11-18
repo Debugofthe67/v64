@@ -1,4 +1,4 @@
-// SSSE3 in the 32-bit engines (docs/simd-xsave-plan.md P3): every MMX and XMM
+// SSSE3 in the 32-bit engines (docs/plan/simd-xsave-plan.md P3): every MMX and XMM
 // form against a model of the SDM's pseudocode written here (independent of
 // src/rust/cpu/simd_int.rs), with register and memory sources, a destination
 // that is also the source, every PALIGNR shift, saturation and sign edges;

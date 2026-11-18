@@ -1,4 +1,4 @@
-// virtio-vsock (virtio 1.2 section 5.10; docs/arm64-virt-android16-plan.md
+// virtio-vsock (virtio 1.2 section 5.10; docs/plan/arm64-virt-android16-plan.md
 // P10.7) on the virt machine: stream sockets between the guest (CID 3) and
 // the host (CID 2, this side), the channel Cuttlefish's host uses for adb
 // (the guest's adbd listens on vsock:5555 as well as tcp:5555). The host

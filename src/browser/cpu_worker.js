@@ -19,9 +19,9 @@ export function encode_worker_file(f, depth = 0)
     return { "url": f.url && new URL(f.url, location.href).href,
         "buffer": f.buffer, "async": f.async, "size": f.size,
         "fixed_chunk_size": f.fixed_chunk_size, "use_parts": f.use_parts,
-        // disk images (docs/disk-image-formats-plan.md): the worker opens them
+        // disk images (docs/plan/disk-image-formats-plan.md): the worker opens them
         "format": f.format, "disk_option": f.disk_option, "image_id": f.image_id,
-        // the disk's policy (docs/disk-persistence-plan.md): the worker builds its backend
+        // the disk's policy (docs/plan/disk-persistence-plan.md): the worker builds its backend
         "disk_error": f.disk_error, "token": f.token,
         "overlay_limit": f.overlay_limit, "backing": f.backing ? encode_worker_file(f.backing, depth + 1) : undefined,
         "archive_member": f.archive_member, "logical_sector_size": f["logical_sector_size"],
@@ -51,7 +51,7 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
             if(!plugin["worker_script"]) throw new Error("CPU Worker: " + plugin["name"] + " has no worker_script for its device");
             return { "name": plugin["name"], "script": new URL(plugin["worker_script"], location.href).href };
         }),
-        // (the core of the CPU's family: docs/arm64-virt-android16-plan.md P1.3)
+        // (the core of the CPU's family: docs/plan/arm64-virt-android16-plan.md P1.3)
         "wasm_path": new URL(o.wasm_path || (arm ? "build/v86-arm64.wasm" : "build/v86.wasm"), location.href).href,
         "wasm_fallback_path": o["wasm_fallback_path"] && new URL(o["wasm_fallback_path"], location.href).href,
         // (cores in vCPU workers, which this worker starts: absolute URLs)
@@ -110,13 +110,13 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
             "wasm_path": new URL(o.tpm.wasm_path || default_tpm_wasm_path(), location.href).href },
         "fda": file(o.fda), "fdb": file(o.fdb), "cdrom": file(o.cdrom),
         "multiboot": file(o.multiboot), "bzimage": file(o.bzimage), "initrd": file(o.initrd),
-        // (machine_type "virt": docs/arm64-virt-android16-plan.md P1.1)
+        // (machine_type "virt": docs/plan/arm64-virt-android16-plan.md P1.1)
         "apple_model": o.apple_model,
         "ios": o.ios && { "kernelcache": file(o.ios.kernelcache), "devicetree": file(o.ios.devicetree),
             "nand": file(o.ios.nand), "ramdisk": file(o.ios.ramdisk), "bootlogo": file(o.ios.bootlogo), "boot_args": o.ios.boot_args,
             "nand_boot": o.ios.nand_boot, "network": o.ios.network },
         "kernel": file(o.kernel), "dtb": file(o.dtb),
-        // (docs/android-images-plan.md I2: the bootloader runs in the worker, beside the disk)
+        // (docs/plan/android-images-plan.md I2: the bootloader runs in the worker, beside the disk)
         "android": o.android && { "device": o.android.device, "gpu_mode": o.android.gpu_mode, "selinux": o.android.selinux,
             "vendor_ramdisk": file(o.android.vendor_ramdisk) },
         // (the ranchu machine's GPU mode; the GLES host's plugin by an absolute URL, as the other plugins')

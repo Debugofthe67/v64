@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Gate decisions over benchmark sessions (docs/jit-unification-plan.md,
+// Gate decisions over benchmark sessions (docs/plan/jit-unification-plan.md,
 // cross-phase rule 2 and P0.8). Each session is a result file of
 // tests/bench/run.mjs with the arm under test (--arm, default "ir") and a
 // baseline arm. Per benchmark, the median over the sessions of the warm ratio

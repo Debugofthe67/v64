@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Disks written back to local files (docs/disk-persistence-plan.md D1),
+// Disks written back to local files (docs/plan/disk-persistence-plan.md D1),
 // driven through the IDE ports (no guest code runs) and, for virtio-blk,
 // through a queue in guest RAM of the virt machine:
 // - hda read_write (a file), hdb read_only (a file read in ranges): a write

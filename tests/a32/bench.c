@@ -1,4 +1,4 @@
-// The PL1 driver of tests/a64/aarch32_bench.mjs --arm32 (docs/aarch32-plan.md
+// The PL1 driver of tests/a64/aarch32_bench.mjs --arm32 (docs/plan/aarch32-plan.md
 // R5.3's E level): one kernel of tests/bench (bench_main(iterations)) built
 // for A32 or T32 and run at PL1 on cpu_type "arm32" with the MMU on (short
 // descriptors: RAM's sections normal memory, write-back, the rest device

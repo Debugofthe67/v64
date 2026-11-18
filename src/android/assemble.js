@@ -1,4 +1,4 @@
-// Android image packages made into a disk (docs/android-images-plan.md I3):
+// Android image packages made into a disk (docs/plan/android-images-plan.md I3):
 // what a package is, the disk it gives (the device model's partitions, super
 // shrunk to its partitions, userdata blank of the chosen size) and the disk
 // written as the zip's members inflate, through write(offset, bytes) (an
@@ -47,11 +47,11 @@ export async function identify_package(entries, read)
     }
     if(names.has("system.img") && !names.has("vendor_boot.img") && !names.has("super.img"))
     {
-        return { kind: "gsi", device: undefined, text: "a Generic System Image (a system for a device's vendor: docs/android-images-plan.md I5)" };
+        return { kind: "gsi", device: undefined, text: "a Generic System Image (a system for a device's vendor: docs/plan/android-images-plan.md I5)" };
     }
     if([...names].some(n => /(^|\/)kernel-ranchu(-64)?$/.test(n)))
     {
-        return { kind: "emulator", device: undefined, text: "an Android Emulator system image (the ranchu board: docs/android-images-plan.md I6)" };
+        return { kind: "emulator", device: undefined, text: "an Android Emulator system image (the ranchu board: docs/plan/android-images-plan.md I6)" };
     }
     return null;
 }
@@ -86,7 +86,7 @@ function sdk_full(text)
 /**
  * A Generic System Image's zip: its system.img (raw ext4 or erofs, or
  * sparse), vbmeta.img (which must disable verification) and build.prop's
- * version and ABIs (docs/android-images-plan.md I5)
+ * version and ABIs (docs/plan/android-images-plan.md I5)
  * @param {function(number, number): (!Uint8Array|!Promise<!Uint8Array>)} read
  * @param {!Array<!Object>} entries
  */
@@ -283,7 +283,7 @@ export async function write_disk(read, disk, write, progress = () => {})
 /**
  * The disk an Android Emulator system image zip (the SDK's
  * system-images/android-<api>/<tag>/<abi> package) gives
- * (docs/android-images-plan.md I6): the device model of its API level and
+ * (docs/plan/android-images-plan.md I6): the device model of its API level and
  * ABI (source.properties), its partitions in order, each image as it is
  * (system.img raw or sparse), an empty ext4 where the emulator makes one
  * (only its metadata written: the rest of a new disk reads as zeros)

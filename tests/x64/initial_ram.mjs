@@ -2,7 +2,7 @@
 // Guest RAM reads as zero until something writes it, whatever the wasm heap
 // it is allocated from held before (cpu/memory.rs allocate_memory). With
 // ir_tier0 on, jit::reserve_compiler_heap (the region scheduler's until M11
-// of docs/jit-unification-plan.md) frees 16 chunks of
+// of docs/plan/jit-unification-plan.md) frees 16 chunks of
 // 2 MiB just before RAM is allocated in their place, and their allocator
 // headers used to show up in guest RAM: 0x0020000A00400010 at 0x3FFEA0
 // (reported as an x64 page tier write: no guest touched it), a header every

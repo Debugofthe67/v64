@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The decoders' catalogue of encodings (src/rust/decode/encodings.rs), from
-// x86_table only. (gen/generate_ir_decoder.js until docs/jit-unification-plan.md
+// x86_table only. (gen/generate_ir_decoder.js until docs/plan/jit-unification-plan.md
 // M11 deleted the IR region tiers, whose coverage of each form it also wrote.)
 import fs from "node:fs";
 import assert from "node:assert/strict";

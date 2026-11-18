@@ -1,4 +1,4 @@
-//! The AArch32 translation regime of cpu_type "arm32" (docs/aarch32-plan.md
+//! The AArch32 translation regime of cpu_type "arm32" (docs/plan/aarch32-plan.md
 //! R3), as QEMU 9.2 (target/arm/ptw.c: get_phys_addr_v6, get_phys_addr_lpae)
 //! has it. TTBCR.EAE 0: VMSAv7's short descriptors (sections, supersections,
 //! large and small pages; AP[2:0], or SCTLR.AFE's simplified model with

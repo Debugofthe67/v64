@@ -1,4 +1,4 @@
-// The GL shadow's shaders and programs (docs/opengl-webgpu-plan.md C4, the
+// The GL shadow's shaders and programs (docs/plan/opengl-webgpu-plan.md C4, the
 // first step): GLSL 1.10/1.20 checked, linked and reflected by glslang on the
 // CPU side, so glGetShaderiv, glGetProgramiv, the info logs, the active
 // uniforms and attributes, the locations and glGetUniform* are answered in

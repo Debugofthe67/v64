@@ -1,4 +1,4 @@
-//! AArch32 at PL1 (cpu_type "arm32", docs/aarch32-plan.md R2): the CPU is
+//! AArch32 at PL1 (cpu_type "arm32", docs/plan/aarch32-plan.md R2): the CPU is
 //! AArch32 throughout (cpu::a32_only). The modes and their banked
 //! registers (X0-X14 hold the current mode's R0-R14; the others' R13 and
 //! R14, and R8-R12 of FIQ or of the rest, wait in the state block's a32

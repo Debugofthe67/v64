@@ -1,4 +1,4 @@
-// A model of SSE floating point (docs/simd-xsave-plan.md 7.4) written from
+// A model of SSE floating point (docs/plan/simd-xsave-plan.md 7.4) written from
 // IEEE 754 and the SDM, independent of src/rust/cpu/simd_fp.rs and SoftFloat:
 // exact rational arithmetic on BigInts, rounded by MXCSR.RC, with DAZ and FZ,
 // x86's NaN rules (SDM Vol. 1, 4.8.3.5), tininess detected after rounding

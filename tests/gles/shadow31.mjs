@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GLES 3.1's shadow state (src/gles/gles31_state.js; docs/gles3-plan.md
+// GLES 3.1's shadow state (src/gles/gles31_state.js; docs/plan/gles3-plan.md
 // L5) through the GLES host as the guest drives it: compute dispatches and
 // what they write, storage and atomic counter buffers, image units, vertex
 // attribute bindings, separable programs and pipelines, glProgramUniform,

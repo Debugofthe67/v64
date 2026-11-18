@@ -1,4 +1,4 @@
-// The glibc part of the x64 Linux acceptance (docs/simd-xsave-plan.md 11.3,
+// The glibc part of the x64 Linux acceptance (docs/plan/simd-xsave-plan.md 11.3,
 // P12), for tests/x64/linux_boot.mjs with X64_LINUX_GLIBC=1: Ubuntu 24.04's
 // glibc 2.39 (the package whose libraries gave plan 5.1's hot forms),
 // tests/x64/linux_glibc_probe.c linked against it, and libhwprobe.so
@@ -146,12 +146,13 @@ export function check_glibc(text, features, libraries, reference)
  * no XSAVEC or XSAVES, and with this model and XSAVE but not XSAVEOPT its
  * guest kernel hangs setting up XSAVE: QEMU gets XSAVEOPT with XSAVE (the
  * kernel's context switch format does not change what the probes see) */
-export function qemu_cpu(features)
+export function qemu_cpu(features, strict_v1)
 {
     if(features.includes("XSAVE") && !features.includes("XSAVEOPT")) features = [...features, "XSAVEOPT"];
     const flags = {"SSSE3": "ssse3", "SSE4.1": "sse4.1", "SSE4.2": "sse4.2", "XSAVE": "xsave", "AVX": "avx", "AVX2": "avx2",
         "FMA": "fma", "F16C": "f16c", "BMI1": "bmi1", "BMI2": "bmi2", "LZCNT": "abm", "MOVBE": "movbe", "XSAVEOPT": "xsaveopt",
         "XGETBV1": "xgetbv1"};
-    return ["qemu64,phys-bits=36,-pdpe1gb,vendor=GenuineIntel,family=6,model=7,stepping=3,+popcnt,+cx16,+lahf-lm",
+    return ["qemu64,phys-bits=36,-pdpe1gb,vendor=GenuineIntel,family=6,model=7,stepping=3",
+        strict_v1 ? "-sse3,-popcnt,-cx16,-lahf-lm" : "+sse3,+popcnt,+cx16,+lahf-lm",
         ...features.filter(name => flags[name]).map(name => "+" + flags[name])].join(",");
 }

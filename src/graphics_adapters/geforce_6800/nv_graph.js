@@ -71,11 +71,13 @@ export class NVGraph
 
     written(at, value)
     {
-        if(at===0x40014C && this.current_object) this.current_object.notify_context=value>>>0;
+        // A byte write has already been merged into these context registers.
+        // The interrupt and command registers below consume only the written bits.
+        if(at===0x40014C && this.current_object) this.current_object.notify_context=this.reg(at);
         if(at>=0x400180 && at<0x4001A0 && this.current_object)
         {
             const subc=(at-0x400180)/4,object=this.bindings.get(this.current_object.channel+":"+subc);
-            if(object)object.notify_context=value>>>0;
+            if(object)object.notify_context=this.reg(at);
         }
         if([0x400144,0x400148,0x400158].includes(at) ||
             at>=0x400160 && at<0x400180 || at>=0x4001E0 && at<0x400200) this.current_object=null;

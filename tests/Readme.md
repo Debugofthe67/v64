@@ -31,7 +31,7 @@ The following environmental variables are respected by most tests if applicable:
 
 The JIT is the x64 page tier ([JIT design](../docs/ir-design.md)); its local
 gates are `make jit-gate` before each commit and `make jit-gate-full` before a
-default changes ([jit-unification-plan.md](../docs/jit-unification-plan.md)
+default changes ([jit-unification-plan.md](../docs/plan/jit-unification-plan.md)
 P0.9). The targets they run:
 
 - `make x64-page-tier-tests`: long-mode and compatibility-mode code in the page

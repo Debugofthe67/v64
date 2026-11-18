@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// The UEFI firmware (docs/uefi.md, docs/modern-pc-devices-plan.md F1): the
+// The UEFI firmware (docs/uefi.md, docs/plan/modern-pc-devices-plan.md F1): the
 // pinned OVMF (bios/ovmf-code.fd, bios/ovmf-vars.fd) as flash at the top of
 // 4 GiB boots to its Shell on the serial port. Its debug log (QEMU's debug
 // console at 0x402) shows the fw_cfg contract met: revision 1 without DMA,

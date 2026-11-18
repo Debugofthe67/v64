@@ -1,5 +1,5 @@
 // @ts-check
-// The new machine wizard's guest presets (docs/vm-manager-plan.md "客户机预设",
+// The new machine wizard's guest presets (docs/plan/vm-manager-plan.md "客户机预设",
 // U3): for each system, the whole hardware (a configuration's defaults),
 // whether a document or test of the repository verified it, how it is
 // installed, the steps after the installation and the known problems, from
@@ -176,7 +176,7 @@ export const PRESETS = [
     },
     {
         id: "linux_arm32", name: "Linux (ARM 32-bit)", guest: "linux", verified: true,
-        basis: "Alpine 3.24 armv7 (netboot): docs/aarch32-plan.md R5, tests/a32/linux_boot.mjs",
+        basis: "Alpine 3.24 armv7 (netboot): docs/plan/aarch32-plan.md R5, tests/a32/linux_boot.mjs",
         install: ["direct"], install_text: "The netboot kernel and initramfs (vmlinuz-lts, initramfs-lts), its modloop and packages from a disk or the network",
         disk_mb: 4 * GB, disk_location: "browser", checklist: [],
         issues: ["Only with the page tier (the JIT on)", "The serial console only: the 32-bit virt machine's display is not verified"],
@@ -195,11 +195,11 @@ export const PRESETS = [
     },
     {
         id: "android16", name: "Android (arm64)", guest: "android", verified: true,
-        basis: "boot_completed and the A9 scenario on gfxstream with the official images: docs/aarch64.md, docs/gfxstream-plan.md G5",
+        basis: "boot_completed and the A9 scenario on gfxstream with the official images: docs/aarch64.md, docs/plan/gfxstream-plan.md G5",
         install: ["android", "disk"], install_text: "Android 16, and 17 as a GSI on that phone: an Android image package (Cuttlefish's images zip, " +
             "and a GSI's, made into a disk: the image's own GPU " +
             "drivers on gfxstream), or tools/a64_android.mjs's disk.img: v64's bootloader reads the kernel and initrd from the disk's boot " +
-            "partitions (docs/android-images-plan.md I2, I3)",
+            "partitions (docs/plan/android-images-plan.md I2, I3)",
 
         disk_mb: 8 * GB, disk_location: "browser", checklist: [],
         issues: ["Only with the page tier, in the CPU Worker", "The first boot takes about 20 minutes on 4 cores", "See docs/aarch64.md"],
@@ -226,12 +226,12 @@ export const PRESETS = [
     },
     {
         id: "android7_arm32", name: "Android (ARM 32-bit)", guest: "android", verified: true,
-        basis: "the SDK's armeabi-v7a-25_r18 image to boot_completed: docs/aarch32-plan.md R7.1, tests/a32/android_boot.mjs",
+        basis: "the SDK's armeabi-v7a-25_r18 image to boot_completed: docs/plan/aarch32-plan.md R7.1, tests/a32/android_boot.mjs",
         install: ["android"], install_text: "Android 7.1: the Android Emulator's system image zip (system-images/android-25/google_apis/armeabi-v7a, " +
-            "armeabi-v7a-25_r18.zip), made into a disk: its kernel, ramdisk, system, cache and userdata (docs/android-images-plan.md I6)",
+            "armeabi-v7a-25_r18.zip), made into a disk: its kernel, ramdisk, system, cache and userdata (docs/plan/android-images-plan.md I6)",
         disk_mb: 4 * GB, disk_location: "browser", checklist: [],
         issues: ["Only with the page tier, in the CPU Worker", "The first boot takes about 7 minutes on 2 cores",
-            "The host's GPU draws through WebGPU (docs/gles-proxy-plan.md); without WebGPU the guest's CPU draws, slowly",
+            "The host's GPU draws through WebGPU (docs/plan/gles-proxy-plan.md); without WebGPU the guest's CPU draws, slowly",
             "The guest's clock runs at a tenth of the host's, so that Android's timeouts suit this CPU", "No sound"],
         hardware: c =>
         {

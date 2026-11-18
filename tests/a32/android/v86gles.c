@@ -1,5 +1,5 @@
 // A NativeActivity that draws fixed GLES 2.0 and GLES 1.1 scenes into its
-// window and reads them back (docs/gles-proxy-plan.md E4, the self-built
+// window and reads them back (docs/plan/gles-proxy-plan.md E4, the self-built
 // test APK): each scene logs "V86_GLES <scene> <x>,<y>=<r>,<g>,<b>,<a> ..."
 // for the pixels tests/a32/android_gles.mjs checks, then "V86_GLES_DONE".
 // The scenes: a clear and a scissored clear; a textured quad (RGBA, nearest)
@@ -7,7 +7,7 @@
 // sampled; an ETC1 texture; GLES 1.1: glOrthof with a vertex array and the
 // current color, a texture modulated by a color array, a directional light,
 // glDrawTexiOES; EGL: swap intervals, a fence sync, a pbuffer surface, a
-// texture shared between two contexts. GLES 3.0 (docs/gles3-plan.md L4), with
+// texture shared between two contexts. GLES 3.0 (docs/plan/gles3-plan.md L4), with
 // a host that announces it: instanced quads from a vertex array object
 // colored by a uniform block, two draw buffers and glClearBufferfv, an
 // unsigned integer buffer read as integers, transform feedback mapped, a 3D
@@ -382,7 +382,7 @@ static void timed_frames(const char* name, float* frame, const float* offsets, i
     if(separate) glEnableVertexAttribArray(3);
 }
 
-// GLES 3.0's frame rate (docs/gles3-plan.md L7): 7x7 cubes from a vertex
+// GLES 3.0's frame rate (docs/plan/gles3-plan.md L7): 7x7 cubes from a vertex
 // array object (interleaved positions, normals and coordinates, an index
 // buffer, an offset a cube), their rotation in a uniform block written every
 // frame, a mipmapped texture through a sampler object, a depth test; swapped

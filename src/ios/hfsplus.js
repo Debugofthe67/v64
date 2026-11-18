@@ -1,4 +1,4 @@
-// HFS+ and HFSX volumes, read-only (docs/iphone4-plan.md S0; Apple TN1150):
+// HFS+ and HFSX volumes, read-only (docs/plan/iphone4-plan.md S0; Apple TN1150):
 // the root filesystem and the ramdisks. A volume header at 1024, files as
 // forks of up to eight extents (more in the extents overflow B-tree), the
 // catalog B-tree keyed by (parent ID, name), extended attributes in the

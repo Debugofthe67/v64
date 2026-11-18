@@ -1,4 +1,4 @@
-/* The AArch32 process probe (docs/aarch32-plan.md Q5.1): a static
+/* The AArch32 process probe (docs/plan/aarch32-plan.md Q5.1): a static
  * freestanding ARM EABI program, built for A32 and for T32
  * (tests/a64/linux_boot.mjs with A64_WORKLOAD=aarch32), that a 64-bit
  * kernel runs as a compat task. It prints one A32_PROBE line of what it

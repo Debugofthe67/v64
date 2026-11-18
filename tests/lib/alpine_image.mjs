@@ -1,5 +1,5 @@
 // The pinned Alpine Linux 3.24.0 images of the tests
-// (docs/arm64-virt-android16-plan.md P0.1): each ISO's name and SHA-256, the
+// (docs/plan/arm64-virt-android16-plan.md P0.1): each ISO's name and SHA-256, the
 // directory it is cached in, and its kernel and initramfs (and for aarch64
 // the modloop and the kernel configuration) unpacked with bsdtar. An ISO is
 // downloaded once from dl-cdn.alpinelinux.org (or copied from

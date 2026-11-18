@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// src/android/'s image library (docs/android-images-plan.md I1) on small
+// src/android/'s image library (docs/plan/android-images-plan.md I1) on small
 // synthetic images: each format read back as written, against node's own
 // CRC-32 and SHA-256. tools/a64_android.mjs's byte-identical outputs check
 // the library on Cuttlefish's real images.
@@ -528,8 +528,8 @@ await run("assemble an emulator image, its partitions as disks", async () =>
         assert.match(boot.cmdline, /^qemu=1 androidboot.hardware=ranchu console=ttyAMA0 .* qemu\.gles=0 .* android.bootanim=0$/);
         assert.equal(boot.ranchu_gpu, "guest", "no gpu_mode: the guest renders");
         assert.equal(boot.bootconfig, null);
-        // the GPU mode "host" (docs/gles-proxy-plan.md): the GLES host, qemu.gles=1, the default GLES version's property
-        // (3.1, docs/gles3-plan.md), or the one given
+        // the GPU mode "host" (docs/plan/gles-proxy-plan.md): the GLES host, qemu.gles=1, the default GLES version's property
+        // (3.1, docs/plan/gles3-plan.md), or the one given
         const host = await android_bootloader(async (offset, length) => out.slice(offset, offset + length), out.length,
             { device: "ranchu_25_armeabi_v7a", gpu_mode: "host", memory_mb: 1024 });
         assert.equal(host.ranchu_gpu, "host");

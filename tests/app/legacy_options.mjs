@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The options the pages give new V86(), recorded in headless Chrome
-// (docs/vm-manager-plan.md U0): the VM manager (index.html, build/v86_app.js)
+// (docs/plan/vm-manager-plan.md U0): the VM manager (index.html, build/v86_app.js)
 // for a set of query arguments, the debug page (debug.html,
 // src/browser/main.js) for those and for starts from its form. A test hook (window.v86_record_options, defined by the script this
 // server puts at the top of the pages) receives the options instead of

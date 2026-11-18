@@ -1,5 +1,5 @@
 // DEFLATE (RFC 1951) and gzip (RFC 1952) decompression, synchronous, for
-// the kernels the virt machine loads (docs/arm64-virt-android16-plan.md
+// the kernels the virt machine loads (docs/plan/arm64-virt-android16-plan.md
 // P4.6: an EFI zboot vmlinuz carries its Image gzipped; the browser's
 // DecompressionStream is asynchronous and machine setup is not).
 
@@ -36,7 +36,7 @@ const LIMIT_REACHED = {};
  * @param {number=} size_hint the output's size, if known
  * @param {number=} limit the most bytes to produce: decoding stops there,
  *     even inside the stream (a disk image's compressed cluster:
- *     docs/disk-image-formats-plan.md P2)
+ *     docs/plan/disk-image-formats-plan.md P2)
  * @return {{output: !Uint8Array, end: number}} the data and where the stream ended (or stopped)
  */
 export function inflate(input, start = 0, size_hint = 0, limit = Infinity)

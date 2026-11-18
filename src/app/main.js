@@ -1,5 +1,5 @@
 // @ts-check
-// The VM manager (docs/vm-manager-plan.md): index.html's page. The address
+// The VM manager (docs/plan/vm-manager-plan.md): index.html's page. The address
 // decides: ?vm=<id> is a library machine's console, ?profile=custom with an
 // image (hda.url, cdrom.url or fda.url, and the old page's other query
 // arguments) a console as the old page starts it, anything else the library.

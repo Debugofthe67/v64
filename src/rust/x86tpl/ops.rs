@@ -1,5 +1,5 @@
 //! Vector templates that every x86 engine instantiates alike
-//! (docs/jit-unification-plan.md P2.4): the SSE arithmetic, the masked
+//! (docs/plan/jit-unification-plan.md P2.4): the SSE arithmetic, the masked
 //! compares and the conversions, over an engine's VecOperands. Their
 //! admission is native_fp's. What differs between the engines is a property
 //! of the operands: where a refused instruction goes (in_place: the exact
@@ -216,7 +216,7 @@ pub fn float<T: VecOperands>(t: &mut T, opcode: u8, double: bool, scalar: bool) 
 }
 
 /// float's SQRT, ADD, MUL, SUB and DIV for an engine that sets PE itself
-/// (detects_inexact: the page tier, docs/jit-unification-plan.md P4.18),
+/// (detects_inexact: the page tier, docs/plan/jit-unification-plan.md P4.18),
 /// where MXCSR.PE may be clear and DAZ or FZ set. With mxcsr_refused's
 /// condition an admitted result is final, as for Tier-0. Else (rarely),
 /// with every exception masked and rounding to nearest: FZ refuses a sum or

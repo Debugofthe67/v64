@@ -1157,7 +1157,7 @@ AHCIPort.prototype.queued_done = function(job)
 
 /**
  * The disk image failed a queued command's read or write
- * (docs/disk-image-formats-plan.md P0): it ends with ABRT, as QEMU's
+ * (docs/plan/disk-image-formats-plan.md P0): it ends with ABRT, as QEMU's
  * ncq_err
  * @param {!Object} job
  */

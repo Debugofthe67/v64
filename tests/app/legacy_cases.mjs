@@ -1,5 +1,5 @@
 // The old page's starts that tests/app/legacy_options.mjs records
-// (docs/vm-manager-plan.md U0): query arguments and form inputs.
+// (docs/plan/vm-manager-plan.md U0): query arguments and form inputs.
 
 /** Query arguments: custom images and every argument start_emulation reads */
 export const QUERY_CASES = [

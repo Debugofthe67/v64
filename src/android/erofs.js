@@ -1,6 +1,6 @@
 // erofs (fs/erofs/erofs_fs.h), little-endian: reading flat inodes and
 // directories of 4 KiB images, and adding or replacing files as
-// uncompressed data after the image (docs/android-images-plan.md I1)
+// uncompressed data after the image (docs/plan/android-images-plan.md I1)
 
 import { u16, u32, u64, put16, put32, put64, latin1, bytes_of, concat, compare, crc32c } from "./bytes.js";
 

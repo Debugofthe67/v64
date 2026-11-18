@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // REP MOVS/STOS faults with the x64 page tier's REP templates in legacy mode
-// (docs/jit-unification-plan.md P3.1t and P7.3(5); written for IR Tier-0's,
+// (docs/plan/jit-unification-plan.md P3.1t and P7.3(5); written for IR Tier-0's,
 // deleted in P7.5): a hot loop of REP MOVSD and REP STOSD whose last
 // iteration's source, or destination, runs across the end of the mapped
 // 64 MiB. The template leaves an operand that crosses a page to the

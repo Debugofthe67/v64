@@ -1,4 +1,4 @@
-//! The ISA-neutral runtime of compiled code (docs/jit-unification-plan.md
+//! The ISA-neutral runtime of compiled code (docs/plan/jit-unification-plan.md
 //! P5, J1a): the Wasm table's slots and their owners (table), the guest
 //! pages compiled code was made from and the listeners that hear of writes
 //! to them (watch), publication (publish), the slot budget (capacity),
@@ -7,7 +7,7 @@
 //!
 //! Its clients are the ISAs' page tiers: `X86Page` (crate::x64::pages, the
 //! only x86 compiler since M11 deleted the IR region tiers) in the x86 core,
-//! `A64Page` in the ARM core (docs/arm64-virt-android16-plan.md). Each core
+//! `A64Page` in the ARM core (docs/plan/arm64-virt-android16-plan.md). Each core
 //! registers only its own ISA's clients; its composition root (crate::jit
 //! for x86) fills host::Env and registers the listeners. The hot-path
 //! compositions (crate::jit::page_watched) stay in the composition root.
@@ -38,7 +38,7 @@ use std::sync::{Mutex, MutexGuard};
 #[repr(u8)]
 pub enum ClientId {
     X86Page = 0,
-    // (the ARM core's: docs/arm64-virt-android16-plan.md, J2)
+    // (the ARM core's: docs/plan/arm64-virt-android16-plan.md, J2)
     #[allow(dead_code)]
     A64Page = 1,
 }

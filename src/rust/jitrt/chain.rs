@@ -1,4 +1,4 @@
-//! Chaining tables (docs/jit-unification-plan.md P5.8): a page function
+//! Chaining tables (docs/plan/jit-unification-plan.md P5.8): a page function
 //! leaving its page looks the new virtual page up in its core's table for
 //! the code mode and privilege it runs in, and tail-calls the function
 //! serving it without returning to the dispatch loop

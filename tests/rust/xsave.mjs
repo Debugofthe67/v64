@@ -1,4 +1,4 @@
-// The XSAVE feature set in the 32-bit engines (docs/simd-xsave-plan.md P2):
+// The XSAVE feature set in the 32-bit engines (docs/plan/simd-xsave-plan.md P2):
 // CPUID leaves 1 and 0xD, CR4.OSXSAVE, XGETBV/XSETBV, XSAVE/XRSTOR in the
 // standard format (round trips, partial saves, init on restore, the header
 // and MXCSR checks, the fault order and page faults without partial effects)

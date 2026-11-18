@@ -1,4 +1,4 @@
-//! Scalar FP and the FP operations of AdvSIMD (docs/arm64-virt-android16-plan.md
+//! Scalar FP and the FP operations of AdvSIMD (docs/plan/arm64-virt-android16-plan.md
 //! P2.6, P2.8): the instructions, on top of fp.rs's arithmetic with the
 //! ARM rules. One `Fp` per instruction collects the FPSR flags of all its
 //! elements; they are written with the result.

@@ -1,4 +1,4 @@
-// The 32-bit Arm workload (docs/aarch32-plan.md Q5.1, R5.2): what a Linux
+// The 32-bit Arm workload (docs/plan/aarch32-plan.md Q5.1, R5.2): what a Linux
 // kernel's 32-bit processes run, the same on a 64-bit kernel's compat tasks
 // (tests/a64/linux_boot.mjs, A64_WORKLOAD=aarch32) and on a 32-bit kernel
 // (tests/a32/linux_boot.mjs): tests/a64/linux_probe32.c built for A32 and

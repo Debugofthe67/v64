@@ -1,4 +1,4 @@
-//! The loop structure of a page function (docs/jit-unification-plan.md:
+//! The loop structure of a page function (docs/plan/jit-unification-plan.md:
 //! from IR Tier-0's page analysis, ir::tier0::analysis until P7.5 deleted
 //! Tier-0): each cycle of the block graph (a strongly connected set) is a
 //! Wasm loop whose first block, its header, is the member with the lowest

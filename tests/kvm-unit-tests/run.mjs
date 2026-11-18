@@ -10,7 +10,7 @@
 //   --timeout SEC     give up after SEC seconds (default 60)
 //   --expect-pass N   require at least N "PASS:" reports: a test that exits 0
 //                     without reaching its checks does not count as passed
-//   --cpu-features L  CPU features of docs/simd-xsave-plan.md, comma-separated
+//   --cpu-features L  CPU features of docs/plan/simd-xsave-plan.md, comma-separated
 //   --cpu-type T      x86 (default) or x86_64, for the x86_64 builds
 //   --quiet           don't echo the serial output
 //   --arm64           an arm64 build (build.sh arm64-*): booted as an arm64
@@ -18,10 +18,10 @@
 //                     "EXIT: STATUS=" line on the PL011, PSCI SYSTEM_OFF ends it
 //   --append ARGS     the test's arguments (unittests.cfg test_args), arm64
 //   --qemu            run arm64 tests on the fixed QEMU reference
-//                     (docs/arm64-virt-android16-plan.md P0.6); v86 runs need
+//                     (docs/plan/arm64-virt-android16-plan.md P0.6); v86 runs need
 //                     the ARM core
 //   --arm32           a 32-bit arm build (build.sh arm): booted as arm64's are,
-//                     on cpu_type "arm32" or QEMU's cortex-a15 (docs/aarch32-plan.md R5.1)
+//                     on cpu_type "arm32" or QEMU's cortex-a15 (docs/plan/aarch32-plan.md R5.1)
 //   --granules-all    (v86, arm64) the 16 and 64 KiB granules set explicitly
 //                     (P3.4; profile v1.1, the default, has them), for the 16k and 64k builds
 // Environment: TEST_RELEASE_BUILD=1 uses build/libv86.mjs, DISABLE_JIT=1 the interpreter,

@@ -1,5 +1,5 @@
 // @ts-check
-// Where an image comes from (docs/vm-manager-plan.md "虚拟机配置格式", the
+// Where an image comes from (docs/plan/vm-manager-plan.md "虚拟机配置格式", the
 // image's kinds; "磁盘的存放位置"): a URL, a file on this computer (its
 // handle kept where the browser allows it), an empty disk in memory, an
 // image of the disk service (listed, or created there), a browser disk (in

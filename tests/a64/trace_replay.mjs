@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The Alpine corpus and trace differential (docs/arm64-virt-android16-plan.md
+// The Alpine corpus and trace differential (docs/plan/arm64-virt-android16-plan.md
 // P2.10). The plan's qemu-aarch64 (user mode) does not exist on macOS, so
 // the reference is qemu-system-aarch64 running the initramfs stage of
 // tests/a64/linux_boot.mjs with its workload (A64_WORKLOAD: busybox and musl

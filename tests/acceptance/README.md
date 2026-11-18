@@ -4,6 +4,7 @@ These versioned records describe completed runs, their inputs, results and
 limitations. They are historical evidence; they do not replace a fresh test run.
 
 - [D3D and graphics proxy acceptance](d3d/)
+- [GTA SA buffer-map ordering regression](d3d/gtasa-buffer-map-ordering-20261117.json)
 - [NV40 acceptance](nv40/)
 - [Site-specific acceptance and image deployments](../../../retro-gaming-site/tests/acceptance/)
 

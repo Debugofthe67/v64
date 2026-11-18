@@ -266,12 +266,18 @@ function gen_instruction_body_after_fixed_g(encoding, size)
     const instruction_prefix = [];
 
     // without its feature the row does not exist, and its semantics may come
-    // later (docs/simd-xsave-plan.md): #UD after the ModRM byte, before the
+    // later (docs/plan/simd-xsave-plan.md): #UD after the ModRM byte, before the
     // task-switch test, EA and immediate
     if(encoding.unimplemented)
     {
         return ["trigger_ud();"];
     }
+    // The opcode is constant in the generated dispatch. This folds away for
+    // every row except the legacy instructions excluded by explicit v1.
+    instruction_prefix.push({
+        type: "if-else",
+        if_blocks: [{ condition: `crate::decode_rules::v1_opcode_ud(0x${encoding.opcode.toString(16)}, ${encoding.e ? "Some(modrm_byte as u8)" : "None"}, false, false)`, body: ["trigger_ud();", "return;"] }],
+    });
     if(encoding.feature)
     {
         instruction_prefix.push({

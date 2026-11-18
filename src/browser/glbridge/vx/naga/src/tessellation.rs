@@ -1,4 +1,4 @@
-//! Tessellation (GLES 3.2, docs/gles3-plan.md L6) as compute shaders, as
+//! Tessellation (GLES 3.2, docs/plan/gles3-plan.md L6) as compute shaders, as
 //! geometry.rs does geometry shaders: WebGPU has no tessellation stages. A
 //! draw of patches runs its vertex shader as a compute shader (xfb.rs,
 //! every output captured), then

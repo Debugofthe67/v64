@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Alpine aarch64 ISA corpus scan (docs/arm64-virt-android16-plan.md P0.10):
+// Alpine aarch64 ISA corpus scan (docs/plan/arm64-virt-android16-plan.md P0.10):
 // every AArch64 ELF in the pinned ISO's apks (and in --repo DIR, an offline
 // repository, P6.7) is taken apart; the words of its executable sections are
 // decoded by the decode oracle (tests/a64/oracle/decode.mjs) with the v1

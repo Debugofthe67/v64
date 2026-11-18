@@ -29,7 +29,7 @@ import { CPU } from "./cpu.js";
 // BARs are mapped only where the bridges forward them.
 //
 // The virt machine's generic PCIe host bridge (`generic`,
-// docs/arm64-virt-android16-plan.md P5.6, P5.10) is the same bus without the
+// docs/plan/arm64-virt-android16-plan.md P5.6, P5.10) is the same bus without the
 // PC's parts: configuration through ECAM only (ecam_handler, no 0xCF8/0xCFC
 // and no reset control register), no i440FX; INTx to the GIC (an SPI per pin
 // and slot, level-triggered); memory BARs decoded only while their memory

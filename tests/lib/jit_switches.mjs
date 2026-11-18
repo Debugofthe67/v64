@@ -1,4 +1,4 @@
-// The JIT switches in tests (docs/jit-unification-plan.md, cross-phase rule 1;
+// The JIT switches in tests (docs/plan/jit-unification-plan.md, cross-phase rule 1;
 // src/jit_switches.js): JIT_SWITCHES="name=value,..." in the environment
 // becomes the V86 option jit_switches, under a test's own values.
 

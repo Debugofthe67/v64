@@ -1,4 +1,4 @@
-//! The ARM core's extended RAM (docs/arm64-virt-android16-plan.md P8.5):
+//! The ARM core's extended RAM (docs/plan/arm64-virt-android16-plan.md P8.5):
 //! guest RAM beyond the one allocation of guest memory in the wasm32 heap,
 //! at guest physical 4 GiB on (the device tree's second memory range),
 //! through the engine both cores share (crate::extended: a host store and

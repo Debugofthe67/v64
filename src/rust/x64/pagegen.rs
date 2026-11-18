@@ -93,7 +93,7 @@ pub use crate::jitrt::step::{EXIT_NORMAL, EXIT_RETRY, EXIT_UNKNOWN, STEP_CHAIN};
 
 const PAGE: usize = 4096;
 /// The consecutive linear pages a legacy-mode function may cover
-/// (docs/jit-unification-plan.md P7.3b; CompileEnv::span)
+/// (docs/plan/jit-unification-plan.md P7.3b; CompileEnv::span)
 pub const MAX_SPAN: usize = 16;
 /// Offsets of a page's volatile instructions a compile takes at most
 /// (CompileEnv::volatile)
@@ -753,7 +753,7 @@ enum Op {
         reg: Reg,
     },
     Rdtscp,
-    /// Compatibility mode's x87 (docs/jit-unification-plan.md P7.2a): a
+    /// Compatibility mode's x87 (docs/plan/jit-unification-plan.md P7.2a): a
     /// form crate::x86tpl::x87_forms classifies, its memory operand at `address`,
     /// inlined in f64 against the shadow cache (x86tpl::x87) where it
     /// applies and the fast-math policy allows, else ir_t0_x87 on the CPU
@@ -1616,7 +1616,7 @@ fn legacy_template(d: &Decoded) -> Option<Op> {
 }
 
 /// The templates the emitter treats in 32-bit compatibility mode
-/// (CompileEnv::compat, docs/jit-unification-plan.md P7.2): EIP, ESP and
+/// (CompileEnv::compat, docs/plan/jit-unification-plan.md P7.2): EIP, ESP and
 /// addresses wrap at 4 GiB, the stack slots are 4 bytes. Memory operands
 /// with 32-bit addresses only (a 16-bit address is a step); the rest steps
 /// until its emitter covers the mode.
@@ -3490,7 +3490,7 @@ impl Decoder<'_> {
 }
 
 /// Everything besides the page's bytes, entries and name that a page
-/// function's bytes depend on (docs/jit-unification-plan.md P2.0):
+/// function's bytes depend on (docs/plan/jit-unification-plan.md P2.0):
 /// compile_with reads nothing else, so a recorded compilation replays to the
 /// same bytes in another build (x64::replay), which pins the addresses below
 /// to fixed pseudo values (cross-phase rule 4).
@@ -3533,7 +3533,7 @@ pub struct CompileEnv {
     /// P4.23)
     pub exit_flags: bool,
     /// The page's code runs in compatibility mode, 32-bit (CS.L = 0, CS.D =
-    /// 1; x64_page_compat32, docs/jit-unification-plan.md P7.2), its data
+    /// 1; x64_page_compat32, docs/plan/jit-unification-plan.md P7.2), its data
     /// and stack segments flat (pages::run checks it at entry): EIP, ESP and
     /// addresses wrap at 4 GiB, only the GPRs' low halves are read and
     /// written back, as the 32-bit interpreter does under WOW64
@@ -4436,18 +4436,18 @@ pub fn x64_page_set_outline(enabled: bool) { unsafe { OUTLINE_ACCESS = enabled }
 pub fn outline_access() -> bool { unsafe { OUTLINE_ACCESS } }
 /// The values of the three switches above (crate::jit_switches)
 /// The packed conversions (Op::Vcvt) as x86tpl::ops templates, else steps
-/// (docs/jit-unification-plan.md P2.5, on since P2.8). x64_page_set_cvt.
+/// (docs/plan/jit-unification-plan.md P2.5, on since P2.8). x64_page_set_cvt.
 static mut CVT: bool = true;
 #[no_mangle]
 pub fn x64_page_set_cvt(enabled: bool) { unsafe { CVT = enabled } }
 /// STI and the instruction in its shadow compiled together, then a check
-/// for a deliverable interrupt (docs/jit-unification-plan.md P4.5d, on since
+/// for a deliverable interrupt (docs/plan/jit-unification-plan.md P4.5d, on since
 /// its F gate), else STI leaves the function. x64_page_set_sti_shadow.
 static mut STI_SHADOW: bool = true;
 #[no_mangle]
 pub fn x64_page_set_sti_shadow(enabled: bool) { unsafe { STI_SHADOW = enabled } }
 /// Loops of a page function's block graph as Wasm loops whose back edges
-/// skip the page dispatch (docs/jit-unification-plan.md P4.16): 1 in every
+/// skip the page dispatch (docs/plan/jit-unification-plan.md P4.16): 1 in every
 /// compile, 2 (the default since M5) only with inline lookups (hot
 /// recompiles, x64_hot_inline; loops cost TurboFan an eighth more time,
 /// which cold code that V8 seldom optimizes need not pay).
@@ -4463,7 +4463,7 @@ pub fn set_loops(mode: u32) -> bool {
 }
 /// XMM registers in v128 locals within a block: loaded at the first
 /// instruction that uses them, written back before anything that leaves the
-/// block or reads them from memory (docs/jit-unification-plan.md P4.17).
+/// block or reads them from memory (docs/plan/jit-unification-plan.md P4.17).
 /// x64_page_set_xmm_locals.
 static mut XMM_LOCALS: bool = true;
 #[no_mangle]
@@ -4472,11 +4472,11 @@ pub fn x64_page_set_xmm_locals(enabled: bool) { unsafe { XMM_LOCALS = enabled } 
 /// x86tpl::ops::float: the exactness check only while MXCSR.PE is clear,
 /// v128 masks, refused instructions exact in place (ir_t0_sse_fp, also for
 /// CMPPS and kin), MXCSR's condition and the SSE check once per block
-/// (docs/jit-unification-plan.md P4.18). x64_page_set_sse_fast_check.
+/// (docs/plan/jit-unification-plan.md P4.18). x64_page_set_sse_fast_check.
 static mut SSE_FAST_CHECK: bool = true;
 #[no_mangle]
 pub fn x64_page_set_sse_fast_check(enabled: bool) { unsafe { SSE_FAST_CHECK = enabled } }
-/// 32-bit integer operations in i32 (docs/jit-unification-plan.md P4.20):
+/// 32-bit integer operations in i32 (docs/plan/jit-unification-plan.md P4.20):
 /// a 32-bit register reads as i64.extend_i32_u(i32.wrap_i64), the operation
 /// is an i32 one, its result zero-extended. Engines then emit one 32-bit
 /// instruction where masks around a 64-bit one cost three more (V8 does not
@@ -4487,7 +4487,7 @@ pub fn x64_page_set_i32_ops(enabled: bool) { unsafe { I32_OPS = enabled } }
 /// Inline access cache lookups that compare the tag of the operand's last
 /// byte (a page crossing misses, no offset compare) and add the entry's host
 /// delta to the address (jac::Entry::delta), as QEMU's softmmu does
-/// (docs/jit-unification-plan.md P4.21). x64_page_set_fast_lookup.
+/// (docs/plan/jit-unification-plan.md P4.21). x64_page_set_fast_lookup.
 static mut FAST_LOOKUP: bool = true;
 #[no_mangle]
 pub fn x64_page_set_fast_lookup(enabled: bool) { unsafe { FAST_LOOKUP = enabled } }
@@ -4495,7 +4495,7 @@ pub fn x64_page_set_fast_lookup(enabled: bool) { unsafe { FAST_LOOKUP = enabled 
 /// bits each, and tells the function it tail-calls by bit 31 of its budget
 /// argument (budgets are below it), which then loads them from there: a
 /// third of the stores and loads of the GPRs' split halves
-/// (docs/jit-unification-plan.md P4.22). Functions compiled with and
+/// (docs/plan/jit-unification-plan.md P4.22). Functions compiled with and
 /// without it must not chain to each other: the switch resets the page
 /// tier. x64_page_set_fast_chain.
 static mut FAST_CHAIN: bool = false;
@@ -4506,7 +4506,7 @@ const CHAINED_GPRS: i32 = 1 << 31;
 /// Shifts, rotates and IMUL/MUL compute their EFLAGS (they keep no lazy
 /// record) only where something reads them or may observe them: a later
 /// instruction before they are written again, or a way out of the function
-/// (Inst::exit_live), not every time (docs/jit-unification-plan.md P4.23).
+/// (Inst::exit_live), not every time (docs/plan/jit-unification-plan.md P4.23).
 /// x64_page_set_exit_flags.
 static mut EXIT_FLAGS: bool = true;
 #[no_mangle]
@@ -4514,7 +4514,7 @@ pub fn x64_page_set_exit_flags(enabled: bool) { unsafe { EXIT_FLAGS = enabled } 
 /// Compatibility mode's memory operands as Tier-0 reads them: inline in the
 /// 32-bit TLB that x64 translations fill in compatibility mode
 /// (cpu::fill_ia32e_tlb), not in the access cache
-/// (docs/jit-unification-plan.md P7.2). x64_page_set_compat_tlb.
+/// (docs/plan/jit-unification-plan.md P7.2). x64_page_set_compat_tlb.
 static mut COMPAT_TLB: bool = true;
 #[no_mangle]
 pub fn x64_page_set_compat_tlb(enabled: bool) { unsafe { COMPAT_TLB = enabled } }
@@ -12346,7 +12346,7 @@ mod pagegen_vec;
 mod pagegen_leaf_digests;
 
 /// STI and the instruction in its shadow compiled together (x64_sti_shadow,
-/// docs/jit-unification-plan.md P4.5d)
+/// docs/plan/jit-unification-plan.md P4.5d)
 #[cfg(test)]
 mod sti_shadow_tests {
     use super::{compile_with, CompileEnv, PAGE};

@@ -1,5 +1,5 @@
 // What v64 adds to an emulator image's ramdisk (an Android Emulator system
-// image's, docs/aarch32-plan.md R7.1): a second cpio archive after the
+// image's, docs/plan/aarch32-plan.md R7.1): a second cpio archive after the
 // image's own, which the kernel unpacks over it (a later file of the same
 // name replaces the earlier one): the device's init file (init.ranchu.rc)
 // with the device model's lines after its own, and the device model's

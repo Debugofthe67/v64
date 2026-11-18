@@ -1,5 +1,5 @@
 // The guest CPU and machine of new V86() and the options each combination
-// allows (docs/arm64-virt-android16-plan.md, the configuration contract and
+// allows (docs/plan/arm64-virt-android16-plan.md, the configuration contract and
 // P1.1): the V86 constructor checks the options, CPU.init checks its
 // settings again. The PC machines (i440fx, q35) run the x86 CPUs, the virt
 // machine runs the arm64 CPU; an option of the other family is an error,
@@ -7,7 +7,7 @@
 
 /** The guest CPUs (`cpu_type`); the first is the default */
 export const CPU_TYPES = ["x86", "x86_64", "arm64", "arm32"];
-/** The ARM family's CPU types: the ARM core (v86-arm64.wasm) on the virt machine; arm32 is AArch32 throughout (docs/aarch32-plan.md part 2) */
+/** The ARM family's CPU types: the ARM core (v86-arm64.wasm) on the virt machine; arm32 is AArch32 throughout (docs/plan/aarch32-plan.md part 2) */
 export const ARM_CPU_TYPES = ["arm64", "arm32"];
 /**
  * @param {string|undefined} cpu_type
@@ -16,7 +16,7 @@ export const ARM_CPU_TYPES = ["arm64", "arm32"];
 export function is_arm(cpu_type) { return ARM_CPU_TYPES.includes(/** @type {string} */ (cpu_type)); }
 
 /**
- * The CPU models (`cpu_profile`, docs/iphone4-plan.md "CPU 型号：统一的
+ * The CPU models (`cpu_profile`, docs/plan/iphone4-plan.md "CPU 型号：统一的
  * cpu_profile"): which CPU the guest sees. Each runs on one cpu_type, so a
  * cpu_profile alone picks it. The generic- ones are v86's own (all it
  * implements), each cpu_type's default; a real chip goes by its model's
@@ -176,17 +176,17 @@ export function check_machine_options(options)
     {
         if(options[name] !== undefined && machine_type !== "ranchu") throw new Error(name + " is an option of machine_type \"ranchu\"");
     }
-    // (the GPU of the emulator's images: the guest renders, or the GLES host, docs/gles-proxy-plan.md)
+    // (the GPU of the emulator's images: the guest renders, or the GLES host, docs/plan/gles-proxy-plan.md)
     if(options["ranchu_gpu"] !== undefined && !["guest", "host"].includes(options["ranchu_gpu"]))
     {
         throw new Error("ranchu_gpu must be \"guest\" or \"host\", got " + JSON.stringify(options["ranchu_gpu"]));
     }
-    // (the highest GLES version the GLES host announces, docs/gles3-plan.md)
+    // (the highest GLES version the GLES host announces, docs/plan/gles3-plan.md)
     if(options["ranchu_gles_version"] !== undefined && !["2.0", "3.0", "3.1", "3.2"].includes(options["ranchu_gles_version"]))
     {
         throw new Error("ranchu_gles_version must be \"2.0\", \"3.0\", \"3.1\" or \"3.2\", got " + JSON.stringify(options["ranchu_gles_version"]));
     }
-    // (the GLES backdoor of arm32's user code, docs/gles-proxy-plan.md "iOS 传输": the iOS machine's, the virt machine's in tests)
+    // (the GLES backdoor of arm32's user code, docs/plan/gles-proxy-plan.md "iOS 传输": the iOS machine's, the virt machine's in tests)
     if(options["gles_backdoor"] !== undefined && typeof options["gles_backdoor"] !== "boolean")
     {
         throw new Error("gles_backdoor must be a boolean, got " + JSON.stringify(options["gles_backdoor"]));
@@ -421,7 +421,7 @@ export function check_machine_options(options)
 
 /**
  * What the options of new V86() may be on a CPU and machine, for a page that
- * offers them (docs/vm-manager-plan.md, the settings dialog: it disables what
+ * offers them (docs/plan/vm-manager-plan.md, the settings dialog: it disables what
  * does not apply and says why). The same rules as check_machine_options and
  * the machines' own checks (src/platform.js: hpet, smbus and pcie_root_ports
  * need Q35, Q35 needs ACPI, more than one core needs ACPI).

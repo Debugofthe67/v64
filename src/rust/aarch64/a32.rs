@@ -1,4 +1,4 @@
-//! AArch32 at EL0 (docs/aarch32-plan.md, profile v3): the A32 and T32
+//! AArch32 at EL0 (docs/plan/aarch32-plan.md, profile v3): the A32 and T32
 //! instructions of a process the AArch64 kernel runs in AArch32, interpreted.
 //! R0-R14 are the low halves of X0-X14 (a write zero-extends), R15 the PC;
 //! `pstate` is laid out as an AArch32 SPSR (T, ITSTATE, GE, Q, E) and NZCV

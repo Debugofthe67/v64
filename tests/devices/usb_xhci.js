@@ -3,7 +3,7 @@
 // xHCI (usb.controller "xhci", src/usb/xhci.js, docs/usb.md): QEMU's
 // qemu-xhci, driven through its registers and its rings and contexts in
 // guest memory, no guest code; the test moves the machine clock
-// (docs/modern-pc-devices-plan.md U4). The PCI function and its
+// (docs/plan/modern-pc-devices-plan.md U4). The PCI function and its
 // capabilities, the capability registers and the extended capabilities
 // (legacy support, the two supported protocols), the ports (the SuperSpeed
 // USB disk on a USB 3 root port, enabled at once; the full-speed tablet on

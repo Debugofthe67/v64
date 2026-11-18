@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// The NE2000 and the SB16 as plugins (docs/modern-pc-devices-plan.md M1): a
+// The NE2000 and the SB16 as plugins (docs/plan/modern-pc-devices-plan.md M1): a
 // PC machine that names no cards gets them (src/net_adapters/ne2k/,
 // src/audio_devices/sb16/; with TEST_RELEASE_BUILD=1 the built
 // build/v86-ne2k.js and build/v86-sb16.js beside build/libv86.mjs), a plugin

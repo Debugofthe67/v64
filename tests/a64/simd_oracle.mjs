@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // AdvSIMD (integer and FP, vector and scalar), the SIMD&FP loads, stores and
-// moves against QEMU (docs/arm64-virt-android16-plan.md P2.5, P2.7, P2.8: at
+// moves against QEMU (docs/plan/arm64-virt-android16-plan.md P2.5, P2.7, P2.8: at
 // least 1,500 cases, 0 differences; tests/a64/vector_oracle.mjs makes and
 // runs the cases, FPCR random per case).
 //

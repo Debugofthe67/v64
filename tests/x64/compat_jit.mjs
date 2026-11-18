@@ -14,7 +14,7 @@
 // translation the reads keep (x64_fast_lookup's kept translations, one
 // per kind), as the code page refuses writes to the inline lookups.
 // Results must equal the interpreter's, and with x64_page_compat32 the x64
-// page tier's compiled code must have run (docs/jit-unification-plan.md
+// page tier's compiled code must have run (docs/plan/jit-unification-plan.md
 // P7.2, M6's acceptance; the region tiers' arm went with them in M11).
 import assert from "node:assert/strict";
 import {assemble, actual} from "./guest_runner.mjs";

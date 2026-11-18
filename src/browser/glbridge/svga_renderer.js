@@ -12,9 +12,9 @@
 // With options.scanoutLayer (a layer of the page's compositor, whose device
 // it then shares, webgpu_compositor.js) GX's SURFACE_PRESENT copies a
 // scanout's picture into that layer on the GPU: no readback
-// (docs/gfxstream-plan.md G4).
+// (docs/plan/gfxstream-plan.md G4).
 //
-// The ranchu machine's GLES host (docs/gles-proxy-plan.md) sends stream
+// The ranchu machine's GLES host (docs/plan/gles-proxy-plan.md) sends stream
 // "gles": GLES batches for the GLES executor (V86GLESExecutor, E3), on the
 // same device.
 //

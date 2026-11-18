@@ -1,4 +1,4 @@
-// Legacy SSE exception conditions in the 32-bit engines (docs/simd-xsave-plan.md
+// Legacy SSE exception conditions in the 32-bit engines (docs/plan/simd-xsave-plan.md
 // 3.3, P4a). Without CR4.OSFXSR every form that names an XMM register or
 // MXCSR is #UD: also with CR0.TS (#UD before #NM), and before any check of
 // its memory operand. MMX forms run, including the SSE, SSE2 and SSSE3 ones

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The A64 litmus tests (tests/a64/litmus.c; docs/arm64-virt-android16-plan.md
+// The A64 litmus tests (tests/a64/litmus.c; docs/plan/arm64-virt-android16-plan.md
 // P3.9) on v86's cooperative cores, and with --qemu on the fixed reference
 // too: every forbidden outcome must count 0 (the cooperative cores run one
 // at a time, so their accesses are sequentially consistent and the weak

@@ -1,5 +1,5 @@
 // A disk service's image written by the Android importer
-// (docs/android-images-plan.md I3.2, tools/disk-service.mjs): a write
+// (docs/plan/android-images-plan.md I3.2, tools/disk-service.mjs): a write
 // session (open, write, close), the importer's writes gathered into runs
 // of whole sectors (4 MiB a request). The image is new (zeros): a run's
 // last partial sector is sent padded with zeros.

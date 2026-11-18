@@ -1,4 +1,4 @@
-// glslang for the GL shadow (docs/opengl-webgpu-plan.md C4, the first step:
+// glslang for the GL shadow (docs/plan/opengl-webgpu-plan.md C4, the first step:
 // glslang checks and reflects desktop GLSL 1.10/1.20 on the CPU side). The
 // module is the GLES host's (bios/glslang.wasm, tools/glslang/build.sh); this
 // is a classic script for the v86gl device and its CPU worker, with the

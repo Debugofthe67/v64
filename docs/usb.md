@@ -22,7 +22,7 @@ A controller hands a device transactions (SETUP, IN, OUT) for an endpoint;
 the device answers with data, NAK or STALL. There is no electrical
 signalling: the transaction is the unit. The device layer knows nothing of
 the controller, so that UHCI, EHCI and xHCI (U1 to U4 of
-[modern-pc-devices-plan.md](modern-pc-devices-plan.md)) use the same
+[modern-pc-devices-plan.md](plan/modern-pc-devices-plan.md)) use the same
 devices. A device has its speeds (the tablet full speed, a USB disk full,
 high and SuperSpeed) and runs at its port's: the descriptors are that
 speed's; a device of full and high speed describes the other in its device

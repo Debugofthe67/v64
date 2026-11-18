@@ -1,7 +1,7 @@
 //! The x87 forms the page tier inlines or hands to its helper (x86tpl::x87
 //! and x87run; x64::helpers::x64_x87): which register forms are valid, how
 //! each form moves its memory operand, and the f64 forms inlined against the
-//! shadow cache. (ir::x87 until docs/jit-unification-plan.md M11 deleted
+//! shadow cache. (ir::x87 until docs/plan/jit-unification-plan.md M11 deleted
 //! the region tiers, which split continuing x87 instructions the same way.)
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

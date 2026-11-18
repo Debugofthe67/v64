@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Writes to a page of compiled legacy-mode code (docs/jit-unification-plan.md
+// Writes to a page of compiled legacy-mode code (docs/plan/jit-unification-plan.md
 // P7.3, x64::pages::dirty_bytes): a hot loop calls a function on another page;
 // every 4096th iteration it writes data on that page next to the code (the
 // function retires); every 64th iteration it rewrites the immediates

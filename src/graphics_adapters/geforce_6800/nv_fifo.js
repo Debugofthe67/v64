@@ -40,7 +40,7 @@ export class NVFIFO
     }
     channel(id)
     {
-        if(!this.channels.has(id)) this.channels.set(id, { bindings: new Uint32Array(8), dma: -1, offset: 0 });
+        if(!this.channels.has(id)) this.channels.set(id, { bindings: new Uint32Array(8), dma: -1, offset: 0, prefetch: [] });
         return this.channels.get(id);
     }
     ramfc(id) { return (this.reg(0x2220) & 0xFFF) * 65536 + id * 128; }
@@ -113,6 +113,20 @@ export class NVFIFO
     {
         if(this.active === id) return;
         this.save_channel();
+        const get = this.reg(0x3270), put = this.reg(0x3210);
+        if(this.active >= 0 && get !== put && this.reg(0x3254) & 0x10)
+        {
+            // GET in RAMFC is already past these words. Preserve the latched
+            // CACHE1 entries even if the producer reuses its pushbuffer.
+            const prefetch = [get];
+            for(let cursor = get; cursor !== put; cursor = (cursor + 4) & 0xFFC)
+            {
+                const at = 0x90000 + (cursor & 0x7FC) * 2;
+                prefetch.push(this.reg(at), this.reg(at + 4));
+            }
+            this.channel(this.active).prefetch = prefetch;
+            this.set(0x3270, put);
+        }
         const base = this.ramfc(id);
         for(const [at, reg] of RAMFC)
         {
@@ -126,7 +140,22 @@ export class NVFIFO
             else this.set(reg, value);
         }
         this.active = id;
-        this.channel(id);
+        const prefetch = this.channel(id).prefetch;
+        if(prefetch.length)
+        {
+            let cursor = prefetch[0];
+            this.set(0x3270, cursor);
+            for(let i = 1; i < prefetch.length; i += 2)
+            {
+                const at = 0x90000 + (cursor & 0x7FC) * 2;
+                this.set(at, prefetch[i]);
+                this.set(at + 4, prefetch[i + 1]);
+                cursor = (cursor + 4) & 0xFFC;
+            }
+            this.set(0x3210, cursor);
+            this.channel(id).prefetch = [];
+        }
+        this.set(0x3250, this.reg(0x3250) & ~0x10000 | (this.reg(0x3254) & 0x10) << 12);
         this.set(0x3204, id | 0x10000);
         this.set(0x3220, 1);
         this.device.dma.load_cache(this.reg(0x322C) * 16);
@@ -289,7 +318,12 @@ export class NVFIFO
             for(let id = 0; id < 32 && budget > 0; id++)
             {
                 if(!(this.reg(0x2508) & 1 << id) || !(this.reg(0x2504) & 1 << id)) continue;
-                if(id !== this.active && (!(this.reg(0x2500) & 1) || this.reg(0x3210) !== this.reg(0x3270))) continue;
+                if(id !== this.active)
+                {
+                    if(!(this.reg(0x2500) & 1)) continue;
+                    const waiting = this.active >= 0 && (this.reg(0x3254) & 0x10) && !(this.reg(0x2100) & 1);
+                    if(this.reg(0x3210) !== this.reg(0x3270) && !waiting) continue;
+                }
                 this.select(id);
                 if(!(this.reg(0x3220) & 1) || this.reg(0x3220) & 0x1000 || this.reg(0x3228) >>> 29) continue;
                 if(!this.resume_acquire()) continue;
@@ -362,10 +396,10 @@ export class NVFIFO
         finally { this.run_scope = null;this.running = false;this.device.graph?.engine3d?.backend?.flush(); }
     }
 
-    get_state() { return [2, this.active, Array.from(this.channels, ([id, ch]) => [id, ch.bindings, ch.dma, ch.offset])]; }
+    get_state() { return [3, this.active, Array.from(this.channels, ([id, ch]) => [id, ch.bindings, ch.dma, ch.offset, ch.prefetch])]; }
     set_state(state)
     {
-        if(state[0] !== 1 && state[0] !== 2) throw new Error("NV40 FIFO snapshot version");
+        if(![1, 2, 3].includes(state[0])) throw new Error("NV40 FIFO snapshot version");
         if(state[0] === 1)
         {
             // v1 used a 256-entry ring. Preserve queued methods while expanding
@@ -384,6 +418,7 @@ export class NVFIFO
             this.set(0x3270, next); this.set(0x3210, (next + used) & 0xFFC);
         }
         this.reset(); this.active = state[1];
-        for(const [id, bindings, dma, offset] of state[2]) this.channels.set(id, { bindings: new Uint32Array(bindings), dma, offset });
+        for(const [id, bindings, dma, offset, prefetch = []] of state[2])
+            this.channels.set(id, { bindings: new Uint32Array(bindings), dma, offset, prefetch });
     }
 }

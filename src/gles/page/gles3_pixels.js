@@ -1,4 +1,4 @@
-// GLES 3.0's pixels on the page (docs/gles3-plan.md L3): an image of client
+// GLES 3.0's pixels on the page (docs/plan/gles3-plan.md L3): an image of client
 // memory unpacked by the pixel store's state (GLES 3.0, 3.7.1) and turned
 // into the texels of its texture's WebGPU format (gles_formats3.js's
 // `webgpu`): the same bytes where the layouts agree, a fourth channel where

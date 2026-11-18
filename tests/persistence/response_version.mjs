@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// check_response_version (src/buffer.js; docs/disk-persistence-plan.md
+// check_response_version (src/buffer.js; docs/plan/disk-persistence-plan.md
 // "一致读取"): the first response's ETag, or without one its Last-Modified,
 // is the version every later response of the file must have; responses
 // without either (a cross-origin server that does not expose them) are not

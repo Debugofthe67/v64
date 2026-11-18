@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The disk protocol's reference service (docs/disk-persistence-plan.md
+// The disk protocol's reference service (docs/plan/disk-persistence-plan.md
 // "磁盘协议"): the images of one directory, served for v86's disks with
 // disk_option "read_write" (and for plain reads), on a server or as the
 // local disk service on 127.0.0.1. No dependencies.
@@ -32,7 +32,7 @@
 // --token, the session operations need Authorization: Bearer <token>.
 // The state (each image's UUID, generation, epoch) is kept in
 // <dir>/.v86-disk-service.json.
-// The VM manager (docs/vm-manager-plan.md "磁盘服务的创建与列出") adds two
+// The VM manager (docs/plan/vm-manager-plan.md "磁盘服务的创建与列出") adds two
 // operations, POST with X-V86-Disk-Op as the others: list, at the service's
 // root URL (the images: name, size, time of change, whether a writer has
 // them), and create, at the new image's URL with X-V86-Disk-Size (a RAW

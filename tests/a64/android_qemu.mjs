@@ -1,4 +1,4 @@
-// The Android 16 reference on QEMU (docs/arm64-virt-android16-plan.md
+// The Android 16 reference on QEMU (docs/plan/arm64-virt-android16-plan.md
 // P10.3): the machine of the Alpine reference (QEMU 9.2.0, virt-9.2 with
 // GICv3 and high ECAM, cortex-a35, P0) with Cuttlefish's devices as its
 // launcher gives them to QEMU (host/libs/vm_manager/qemu_manager.cpp:

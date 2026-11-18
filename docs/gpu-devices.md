@@ -8,7 +8,7 @@ deviations from real hardware are listed in [gpu-deviations.md](gpu-deviations.m
 setting up a Windows 8.1 guest for them (driver packages, test signing,
 timeouts, 3DMark06 states) is in [windows-nt.md, section
 5.4](windows-nt.md#54-windows-81-x64-with-vmware-svga-ii-or-virtio-gpu); how
-to measure is in [profiling.md](profiling.md).
+to measure is in [profiling.md](perf/profiling.md).
 
 | Guest | Device | Driver | What works |
 | --- | --- | --- | --- |
@@ -355,7 +355,7 @@ NVIDIA driver advertises SM3.0 capabilities beyond the validated subset;
 known unsupported draw states and instructions produce bounded faults;
 some other register paths still store values. See
 [NV40 deviations](gpu-deviations.md#geforce-6800-gt) and the
-[implementation plan](geforce-6800-plan.md) for current limits and evidence.
+[implementation plan](plan/geforce-6800-plan.md) for current limits and evidence.
 
 ### Performance
 
@@ -401,7 +401,7 @@ Backend pending time includes transport/render/readback and overlaps CPU
 sampling. Node process CPU includes worker threads; these are not GPU
 hardware timings or total default-suite elapsed time. The two runs use the
 current implementation, so their agreement is not a before/after speedup.
-See [profiling.md](profiling.md#native-nv40-guests) for the method and raw hashes.
+See [profiling.md](perf/profiling.md#native-nv40-guests) for the method and raw hashes.
 
 The [first305-second loading window](../tests/acceptance/nv40/g6-xp-9371-06-isolated-window.json)
 and later unsuccessful scene-capture attempts remain historical diagnostics,
@@ -763,7 +763,7 @@ The device shows its VGA core (BIOS, boot loaders, VBE) until the driver
 sends its first control command. After a device reset, by the driver or the
 machine, the VGA core is on screen again and redraws its mode and picture.
 
-On the arm64 virt machine ([virt.md](virt.md); docs/arm64-virt-android16-plan.md
+On the arm64 virt machine ([virt.md](virt.md); docs/plan/arm64-virt-android16-plan.md
 P7.1) the same plugin makes a virtio-gpu without VGA (the handle's
 `has_vga` is false): class `0380`, no BAR0, no ROM, no ports; the screen is
 blank until the driver's first command. On the PCIe host the capabilities are
@@ -1019,7 +1019,7 @@ Venus, it is Vulkan's API serialized, decoded by the device and run on the
 same Vulkan model and VX; the transport (ASG rings), the encoding and
 Android's own commands differ. The protocol, as read from the pinned
 sources, is in [gfxstream-protocol.md](gfxstream-protocol.md); the plan and
-its progress in [gfxstream-plan.md](gfxstream-plan.md).
+its progress in [gfxstream-plan.md](plan/gfxstream-plan.md).
 
 - **Choosing it**: never a default; pin it with `graphics_adapter_test: {
   level: "gfxstream" }`. The VM manager pins it with the display's
@@ -1286,8 +1286,8 @@ its progress in [gfxstream-plan.md](gfxstream-plan.md).
 ## GLES (the ranchu machine)
 
 Not a display adapter: Android 7.1's emulator image on the ranchu machine sends GLES 1.1, 2.0 and 3.x over the
-goldfish pipe ([arm32.md](arm32.md#the-hosts-gpu-gpu_mode-host), [gles-proxy-plan.md](gles-proxy-plan.md),
-[gles3-plan.md](gles3-plan.md)). It shares the
+goldfish pipe ([arm32.md](arm32.md#the-hosts-gpu-gpu_mode-host), [gles-proxy-plan.md](plan/gles-proxy-plan.md),
+[gles3-plan.md](plan/gles3-plan.md)). It shares the
 adapters' renderer channel and page: the GLES host (`build/v86-gles.js`, on the machine's thread) answers queries from
 its shadow state and sends GLES batches (`renderer_protocol.js`'s `GLES` records, magic `GE10`) as stream `"gles"`;
 `svga_renderer.js` runs them on its WebGPU device with the GLES executor (`src/gles/page/`, bundled into
@@ -1954,7 +1954,7 @@ drivers, services, 3DMark06 states) is in [windows-nt.md, section
 | `WIN_LAUNCHER=<guest path of LAUNCH.EXE>` | starts the launcher from the Run dialog once the desktop shows; `WIN_LAUNCHER_ADMIN=1` elevates it through UAC once |
 | `WIN_NO_PROBE=1` | no qualification probe, whose Run dialog takes the focus from full-screen programs such as 3DMark06; no signing in again unless a password box shows |
 | `svgalog on`/`off`, `svgashaders` | commands: the SVGA3D commands other than DX and the frequent GB ones as `svga3d-command` events; the GB shaders' bytecode as `svga3d-shader` events |
-| `savestate <file>`, `WIN_STATE_LOAD`, `WIN_RATES`, `WIN_CPU_PROFILE` | measuring from a saved state: [profiling.md](profiling.md) |
+| `savestate <file>`, `WIN_STATE_LOAD`, `WIN_RATES`, `WIN_CPU_PROFILE` | measuring from a saved state: [profiling.md](perf/profiling.md) |
 
 **The launcher.** Typing into the Run dialog loses keys while the guest is
 busy. Programs are therefore started by `tools/windows/launch.c`
@@ -2030,7 +2030,7 @@ driver (which turns D3D9 and D3D11 into SVGA3D), dxgkrnl's scheduling and the
 kernel driver; on Linux, Mesa's drivers and the DRM drivers. The device and
 the renderer add little, so frame rates are bound by CPU emulation, not by
 WebGPU. How to measure a Windows guest from a saved state is in
-[profiling.md](profiling.md).
+[profiling.md](perf/profiling.md).
 
 ### 3DMark06 on Windows 8.1
 
@@ -2082,7 +2082,7 @@ runtime's memory accesses took the full x64 translation every time, about 19%
 of the host under 3DMark06. Since commit 8b07a790 compatibility mode uses the
 32-bit TLB everywhere ([x86-64.md](x86-64.md), "Compatibility-mode code goes
 through the 32-bit JIT"; the `x64_page_stat` counters in
-[profiling.md](profiling.md) show the refills).
+[profiling.md](perf/profiling.md) show the refills).
 
 Same state, same stretches of rendering:
 
@@ -2118,7 +2118,7 @@ about 10 fps.
    image.
 
 Runs in node also pay for the harness's own work, which a page in the
-browser does not do ([profiling.md](profiling.md)).
+browser does not do ([profiling.md](perf/profiling.md)).
 
 ### Linux guests: frame rates
 
@@ -2196,7 +2196,7 @@ them. Smaller gaps are listed in [gpu-deviations.md](gpu-deviations.md#not-done)
     ANGLE in the guest instead), Wayland passthrough to a host compositor,
     and a host kernel GPU driver, none of which a browser has.
 - **gfxstream, not done** (outside the plan, which is complete:
-  [gfxstream-plan.md](gfxstream-plan.md), 2026-10-25):
+  [gfxstream-plan.md](plan/gfxstream-plan.md), 2026-10-25):
   - host composition: renderControl's `rcCompose`, and every rc command
     but the process pipe; the official mode as v64 boots it composes on the
     client (G-59);

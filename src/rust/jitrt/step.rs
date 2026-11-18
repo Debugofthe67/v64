@@ -1,4 +1,4 @@
-//! Single steps of compiled code (docs/jit-unification-plan.md P5.6): a page
+//! Single steps of compiled code (docs/plan/jit-unification-plan.md P5.6): a page
 //! function hands an instruction it has no template for, or whose template
 //! refused at run time, to its ISA's interpreter (the step frontend) and goes
 //! on as the outcome says. Neutral here: the outcome ABI page functions read,
@@ -7,7 +7,7 @@
 //! the driver; the context a step may change and the reasons it ends an
 //! activation are the ISA's (StepFrontend). The x86 page tier's frontend is
 //! crate::x64::pages::X86Step; the A64 one is the interpreter's
-//! `interpret_one` (docs/arm64-virt-android16-plan.md P2.9, J2).
+//! `interpret_one` (docs/plan/arm64-virt-android16-plan.md P2.9, J2).
 
 /// A step's outcome, as a page function reads it (an i32)
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

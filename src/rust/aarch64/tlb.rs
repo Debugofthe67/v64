@@ -1,4 +1,4 @@
-//! The TLB of the AArch64 core (docs/arm64-virt-android16-plan.md P3.5):
+//! The TLB of the AArch64 core (docs/plan/arm64-virt-android16-plan.md P3.5):
 //! per core, direct-mapped by the 4 KiB page of the VA (a leaf of a larger
 //! granule or a block is cached per 4 KiB page it covers), tagged with the
 //! ASID unless global. An entry holds the permissions of both EL0 and EL1,

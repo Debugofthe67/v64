@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The A64 page tier against the interpreter (docs/jit-unification-plan.md
+// The A64 page tier against the interpreter (docs/plan/jit-unification-plan.md
 // P6.5, J2): random programs of the integer forms the page tier compiles
 // (arithmetic, logical, moves, bitfields, shifts, multiply and divide, flags
 // and their readers, loads and stores with every addressing mode, pairs,

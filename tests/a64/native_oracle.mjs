@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The FP, AdvSIMD and crypto cases on real arm64 hardware (docs/arm64-virt-android16-plan.md
+// The FP, AdvSIMD and crypto cases on real arm64 hardware (docs/plan/arm64-virt-android16-plan.md
 // P2.12): the owner's Mac (Apple M1 Pro: AES, PMULL, SHA1, SHA256) runs the
 // cases of simd_oracle, fp_oracle and crypto_oracle natively (the same
 // seeds; FPCR set per case, the 16 RMode/FZ/DN combinations per mnemonic for

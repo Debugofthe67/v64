@@ -791,7 +791,7 @@ E3 的 CPU 组装路径在 ES 2.0 的测试全部转到新路径之后删掉。
   - 一个 ES 3.0 的游戏或基准程序的帧率。具体程序 L4 选，开源而且有 armeabi-v7a 构建，下载前征得同意。
 - **界面**：VM 配置加 `android.gles_version`（模拟器镜像在 `"host"` 模式下才有），默认取已验收的最高版本；设置面板
   与摘要随之更新；`make app-tests` 加用例。
-- **文档**：[arm32.md](arm32.md)、[gpu-devices.md](gpu-devices.md) 的 GLES 一节、[gpu-deviations.md](gpu-deviations.md)。
+- **文档**：[arm32.md](../arm32.md)、[gpu-devices.md](../gpu-devices.md) 的 GLES 一节、[gpu-deviations.md](../gpu-deviations.md)。
 
 验收：
 - 快照往返后画面与状态一致；

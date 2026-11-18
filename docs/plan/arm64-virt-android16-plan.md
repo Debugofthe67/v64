@@ -117,7 +117,7 @@ i440FX 与 Q35 保持不变。
 
 ### 参考执行
 
-QEMU 固定为 9.2.x，与 x86 侧 [q35.md](q35.md) 第 18-19 行核对用的 9.2.0 相同。9.2 的 `-kernel` 已能解开 EFI
+QEMU 固定为 9.2.x，与 x86 侧 [q35.md](../q35.md) 第 18-19 行核对用的 9.2.0 相同。9.2 的 `-kernel` 已能解开 EFI
 zboot（`hw/arm/boot.c:875-876`），也有 `highmem-*`、`dtb-randomness` 与 CPU 的 `cntfrq` 属性。参考命令：
 
 ```sh

@@ -1,6 +1,6 @@
 // Compiled-code arms for tests that compare generated code with the
 // interpreter. 32-bit protected-mode code runs in the x64 page tier by
-// default since M8 (x64_page_legacy32, docs/jit-unification-plan.md P7.3),
+// default since M8 (x64_page_legacy32, docs/plan/jit-unification-plan.md P7.3),
 // 16-bit code since M10; the region tiers, a second arm until then, were
 // deleted in M11. Tests run their compiled side once per arm (tests check the
 // page tier's step counts on the first compiled machine, x64_page_steps).

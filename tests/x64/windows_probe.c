@@ -8,7 +8,7 @@
  * up exactly, and (x64) memory placed above 4 GiB of virtual address space
  * is usable.
  *
- * AVX (docs/simd-xsave-plan.md 11.3, P12), when CPUID reports OSXSAVE and AVX
+ * AVX (docs/plan/simd-xsave-plan.md 11.3, P12), when CPUID reports OSXSAVE and AVX
  * and XGETBV(0) has the SSE and AVX state: twice as many threads as
  * processors each hold a fingerprint in every YMM register (16 in the x64
  * probe, 8 under WOW64) while they spin, migrate to every processor in turn,
@@ -249,7 +249,7 @@ void __attribute__((stdcall)) entry(void)
     system_cpus = info.dwNumberOfProcessors;
     text("X64_WIN_BEGIN arch=" ARCH " processors="); number(system_cpus);
     text(" architecture="); number(info.wProcessorArchitecture);
-    /* QueryPerformanceCounter's source (docs/jit-unification-plan.md open
+    /* QueryPerformanceCounter's source (docs/plan/jit-unification-plan.md open
        question 4): 14318180 Hz the HPET, 3579545 Hz the ACPI PM timer, other
        values the TSC */
     LARGE_INTEGER qpf;

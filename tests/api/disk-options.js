@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// The disks' disk_option, disk_error and token (docs/disk-persistence-plan.md
+// The disks' disk_option, disk_error and token (docs/plan/disk-persistence-plan.md
 // "启动校验"): each rule refuses the machine when it is created, with the
 // disk and the reason; the CPU Worker gets the options with the descriptor.
 
@@ -80,7 +80,7 @@ assert.doesNotThrow(() => check_disk_bindings([["hda", { buffer: shared }, ro], 
 assert.doesNotThrow(() => check_disk_bindings([["hda", { url: "/images/a.img" }, rw], ["hdb", { url: "/images/b.img" }, ro]]));
 console.log("ok - an image bound to two disks with one of them read_write is refused");
 
-// a browser disk (docs/vm-manager-plan.md U6) is in a browser's private storage: not in Node, read only or read write
+// a browser disk (docs/plan/vm-manager-plan.md U6) is in a browser's private storage: not in Node, read only or read write
 refused({ hda: { url: "opfs:v86/disks/x.img", disk_option: "read_write" } }, /hda: a browser disk \(opfs:v86\/disks\/x\.img\) is in a browser's private storage \(OPFS\), not in Node/);
 refused({ cdrom: { url: "opfs:v86/disks/x.img" } }, /cdrom: a browser disk .* not in Node/);
 assert.throws(() => check_disk_policy("fda", { url: "opfs:v86/disks/f.img" }), /fda: a browser disk .* not in Node/);

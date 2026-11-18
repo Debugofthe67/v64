@@ -5,7 +5,7 @@
 // This is the single source for
 //   src/rust/cpu/global_pointers.rs  the constants between the GENERATED markers
 //   src/state_layout.js              offsets and per-core ranges for JavaScript
-// and for the ARM core's own state block (docs/arm64-virt-android16-plan.md
+// and for the ARM core's own state block (docs/plan/arm64-virt-android16-plan.md
 // P1.4: each core has its 4096 bytes, from offset 64)
 //   src/rust/aarch64/state.rs        the constants between the GENERATED markers
 //   src/arm/state_layout.js          offsets and per-core ranges for JavaScript
@@ -159,7 +159,7 @@ export const STATE_FIELDS = [
     { name: "x64_mcg_status", offset: 2280, rust: "u64", size: 8, owner: "core", init: "keep" },
     { name: "x64_mcg_ctl", offset: 2288, rust: "u64", size: 8, owner: "core", init: "keep" },
     { name: "x64_mc_banks", offset: 2296, rust: "u64", count: 16, size: 128, owner: "core", init: "keep", note: "IA32_MCi_CTL/STATUS/ADDR/MISC for 4 banks" },
-    // XSAVE-managed state (cpu/xstate.rs, docs/simd-xsave-plan.md 6.4). Like
+    // XSAVE-managed state (cpu/xstate.rs, docs/plan/simd-xsave-plan.md 6.4). Like
     // the x87 and SSE registers, INIT keeps it; RESET sets XCR0 to 1.
     { name: "xcr0", offset: 2432, rust: "u64", size: 8, owner: "core", range: "xstate", init: "keep" },
     { name: "xss", offset: 2440, rust: "u64", size: 8, owner: "core", range: "xstate", init: "keep", note: "IA32_XSS (XSAVES)" },
@@ -240,7 +240,7 @@ export const A64_STATE_FIELDS = [
     // waiting (WFI, WFE) and the event register
     { name: "waiting", offset: 1312, rust: "u32", size: 4, owner: "core", range: "wait", note: "0 running, 1 WFI, 2 WFE" },
     { name: "event_register", offset: 1316, rust: "u32", size: 4, owner: "core", range: "wait" },
-    // the A64 page tier's activation (docs/jit-unification-plan.md P6, J2):
+    // the A64 page tier's activation (docs/plan/jit-unification-plan.md P6, J2):
     // set by the runtime before each call, read by generated code at small
     // offsets (jitrt::step's StepAbi and pagegen::frame's AccessAbi)
     { name: "a64_page_exit", offset: 1328, rust: "u32", size: 4, owner: "scratch", note: "why the last page function returned (jitrt::step::EXIT_*)" },
@@ -249,7 +249,7 @@ export const A64_STATE_FIELDS = [
     { name: "a64_jac_epoch", offset: 1344, rust: "u64", size: 8, owner: "scratch", note: "tag bits of the running core's access cache epoch" },
     { name: "a64_jac_base", offset: 1352, rust: "u32", size: 4, owner: "scratch", note: "access cache read table of the running core and EL" },
     { name: "a64_code_base", offset: 1356, rust: "u32", size: 4, owner: "scratch", note: "chaining table of the running core and EL" },
-    // AArch32 at PL1 (cpu_type "arm32", docs/aarch32-plan.md R2): the current
+    // AArch32 at PL1 (cpu_type "arm32", docs/plan/aarch32-plan.md R2): the current
     // mode's R0-R14 are X0-X14; the banked registers of the modes not current,
     // the modes' SPSRs, and the CP15 registers without an AArch64 home (DFSR
     // is ESR_EL1, DFAR and IFAR FAR_EL1's halves, PRRR and NMRR MAIR_EL1's,
@@ -269,7 +269,7 @@ export const STATICS = {
     // one local APIC per core, indexed by core; the scheduler's current core and INIT/SIPI events
     // the state block of this instance in the parallel build: each relocated instance has its own
     "state_block.rs": { STATE_BLOCK: "core" },
-    // the ARM core (docs/arm64-virt-android16-plan.md P1.0): its scheduler's
+    // the ARM core (docs/plan/arm64-virt-android16-plan.md P1.0): its scheduler's
     // current core, the machine's core count, the yield flag of this
     // instance, guest RAM's base
     "aarch64/isa_hooks.rs": { CURRENT_CORE: "machine", CORE_COUNT: "machine", CORE_YIELD: "scratch" },
@@ -370,7 +370,7 @@ export const STATICS = {
     "cpu/exceptions.rs": { DELIVERING: "scratch", EXTERNAL: "scratch", SHUTDOWN: "core", BSP_RESET: "machine" },
     "cpu/context.rs": { CONTEXTS: "core" },
     "cpu/execution.rs": { execution_state: "machine", LEDGER: "debug" },
-    // both cores' per-core counters (docs/arm64-virt-android16-plan.md P1.10);
+    // both cores' per-core counters (docs/plan/arm64-virt-android16-plan.md P1.10);
     // the pending ones are flushed into CORE_STATISTICS before every read,
     // reset and core switch
     "core_stats.rs": { CORE_STATISTICS: "core", PENDING_RETIRED: "scratch", PENDING_REP_ELEMENTS: "scratch" },
@@ -378,7 +378,7 @@ export const STATICS = {
     // (IOAPIC_LOCK guards it while cores run in workers; UNUSED stands in for it in the normal build)
     "cpu/ioapic.rs": { IOAPIC: "machine", IOAPIC_LOCK: "machine", UNUSED: "machine" },
     "cpu/instructions_0f.rs": { X64_TEST_CAPABILITIES: "machine", X64_ARCH_CAPABILITIES: "machine" },
-    // the CPU features of docs/simd-xsave-plan.md this machine has;
+    // the CPU features of docs/plan/simd-xsave-plan.md this machine has;
     // TEST_FEATURES replaces them per thread under cargo test
     "cpu/features.rs": { FEATURES: "machine", TEST_FEATURES: "debug" },
     // cargo test only: decode rows whose semantics come later
@@ -411,7 +411,7 @@ export const STATICS = {
     "jitrt/access.rs": { CACHE: "debug", KEPT: "debug" },
     // the JIT switches set on this instance, the machine's ones a vCPU worker applied, the names
     "jit_switches.rs": { EXPLICIT: "machine", COPIED: "machine", NAMES: "machine" },
-    // the step profile (docs/jit-unification-plan.md P0.5)
+    // the step profile (docs/plan/jit-unification-plan.md P0.5)
     "step_profile.rs": { PROFILE: "debug", SAMPLES: "debug", PAIRS: "debug", PAIRS_FROZEN: "debug", SNAPSHOT: "debug", X64_LEGACY: "debug", X64_LEGACY_STALE: "debug" },
     // the parallel runtime: where this instance's statics are and whether
     // cores run in workers, then machine-wide words reached through machine():

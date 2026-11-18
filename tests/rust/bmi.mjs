@@ -1,5 +1,5 @@
 // BMI1, BMI2, TZCNT, LZCNT and MOVBE in the 32-bit engines
-// (docs/simd-xsave-plan.md 9.2, P10) against tests/rust/bmi_model.mjs:
+// (docs/plan/simd-xsave-plan.md 9.2, P10) against tests/rust/bmi_model.mjs:
 // every VEX form from registers and memory with edge and random values, the
 // destination aliasing the sources, VEX.vvvv and MULX's EDX; the flags the
 // SDM defines, v86's values for the undefined ones and, for MULX, PDEP,

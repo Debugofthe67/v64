@@ -64,6 +64,23 @@ pub fn lock_allowed(opcode: u32, modrm: Option<u8>) -> bool {
         _ => false,
     }
 }
+/// Legacy instructions retained by custom feature arrays but absent on the
+/// explicit x86-64-v1 CPU. Check the resolved mandatory prefix and ModRM
+/// before touching the data operand or checking the FPU state.
+#[inline]
+pub fn v1_opcode_ud(opcode: u32, modrm: Option<u8>, long: bool, rex_w: bool) -> bool {
+    let needs_v2 = match opcode {
+        0x9E | 0x9F => long, // SAHF/LAHF remain available outside 64-bit mode
+        0x0FC7 => rex_w && modrm.is_some_and(|m| m < 0xC0 && m >> 3 & 7 == 1), // CX16
+        0xDB | 0xDD | 0xDF => modrm.is_some_and(|m| m < 0xC0 && m >> 3 & 7 == 1), // FISTTP
+        0xF30FB8 => true,    // POPCNT
+        0xF20F12 | 0xF30F12 | 0xF30F16 | 0x660F7C | 0xF20F7C | 0x660F7D | 0xF20F7D | 0x660FD0
+        | 0xF20FD0 | 0xF20FF0 => true, // SSE3
+        _ => false,
+    };
+    needs_v2 && crate::cpu::features::has(crate::cpu::features::X86_64_V1)
+}
+
 /// Which row of an opcode the 66/F2/F3 prefixes select
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Variant {

@@ -1,4 +1,4 @@
-// The arm64 CPU of the virt machine (docs/arm64-virt-android16-plan.md P1.2):
+// The arm64 CPU of the virt machine (docs/plan/arm64-virt-android16-plan.md P1.2):
 // the JavaScript side of the ARM core (build/v86-arm64.wasm), with the
 // interface src/main.js, src/browser/starter.js and src/state.js use of a CPU
 // (init, run_cores, the clock, devices, snapshots, guest memory). Cores in
@@ -113,7 +113,7 @@ export function A64CPU(bus, wm, stop_idling)
     this["snapshot_io_pending"] = 0;
     /** the device registers (src/virt/io.js) */
     this.io = new VirtDeviceSpace(this.wm.exports);
-    /** (the A64 page tier, docs/jit-unification-plan.md J2) publications of an older machine are dropped */
+    /** (the A64 page tier, docs/plan/jit-unification-plan.md J2) publications of an older machine are dropped */
     this.execution_epoch = 0;
     this.ir_sync_publication = false;
     this.create_jit_imports();
@@ -240,9 +240,9 @@ A64CPU.prototype.init = function(settings, device_bus)
     const ranchu = machine_type === "ranchu";
     const { cores, memory_size } = virt_machine(settings);
     this.cores = cores;
-    // (cpu_type "arm32": AArch32 throughout, docs/aarch32-plan.md part 2)
+    // (cpu_type "arm32": AArch32 throughout, docs/plan/aarch32-plan.md part 2)
     this.cpu_type = settings["cpu_type"] === "arm32" ? "arm32" : "arm64";
-    // the CPU model's profile (cpu_profile; docs/arm64-virt-android16-plan.md,
+    // the CPU model's profile (cpu_profile; docs/plan/arm64-virt-android16-plan.md,
     // "CPU profile"): generic-arm64 is v2 (v1.1 and FEAT_PAN, the default
     // since 2026-10-20), -v1.1 the 4, 16 and 64 KiB granules (P8.6), -v1
     // 4 KiB only, -compat32 v3 (AArch32 at EL0); arm32's own
@@ -456,7 +456,7 @@ A64CPU.prototype.init = function(settings, device_bus)
                 "renderer": settings.graphics_adapter_renderer || null,
                 // (the posted frames the page read back: the framebuffer device shows them)
                 "present": (rgba, width, height) => this.devices["goldfish_fb"].present(rgba, width, height),
-                // (its plugin's prepare: glslang, docs/gles3-plan.md)
+                // (its plugin's prepare: glslang, docs/plan/gles3-plan.md)
                 "prepared": settings.gles_prepared || null,
                 "max_version": settings.ranchu_gles_version || "2.0",
             });
@@ -565,7 +565,7 @@ A64CPU.prototype.create_memory = function(size, device_size = 0)
 {
     const exports = this.wm.exports;
     // (one allocation in the 32-bit Wasm memory: below 2 GiB; more RAM is
-    // docs/arm64-virt-android16-plan.md P8)
+    // docs/plan/arm64-virt-android16-plan.md P8)
     if(size + device_size >= 0x80000000)
     {
         throw new Error("memory_size: the arm64 core takes less than 2 GiB of RAM (" + size + " bytes" +
@@ -713,7 +713,7 @@ A64CPU.prototype.run_machine_core = function()
         // The application core can be in WFI while the ARM7 still handles
         // its flash request. Sleeping for the AP's timer then throttles
         // an independent runnable processor (and every NAND transaction).
-        return iop_busy || iop?.running && (iop.irq || iop.fiq) ? 0 : next;
+        return iop_busy || iop?.wake_pending() ? 0 : next;
     }
     finally
     {
@@ -1294,7 +1294,7 @@ A64CPU.prototype.validate_state = function(state)
     {
         throw new Error("The snapshot has " + (state[98] || 0) * 4096 + " bytes of extended RAM, this machine " + this.extended_pages * 4096);
     }
-    // (a disk's changes only onto the same image: docs/disk-image-formats-plan.md
+    // (a disk's changes only onto the same image: docs/plan/disk-image-formats-plan.md
     // P1; a different layout of the devices is refused in set_state)
     (state[8] || []).forEach(([, name, device_state], i) =>
     {

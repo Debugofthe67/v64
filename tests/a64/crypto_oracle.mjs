@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The crypto extension against QEMU and known answers
-// (docs/arm64-virt-android16-plan.md P2.11): AESE/AESD/AESMC/AESIMC,
+// (docs/plan/arm64-virt-android16-plan.md P2.11): AESE/AESD/AESMC/AESIMC,
 // SHA1C/P/M/H/SU0/SU1, SHA256H/H2/SU0/SU1 and PMULL/PMULL2 (8- and 64-bit) as
 // random single-instruction cases (tests/a64/vector_oracle.mjs), then a
 // guest that computes FIPS-197's AES-128 example (encrypt and decrypt), the

@@ -1,8 +1,8 @@
 //! Retired instructions and the other per-core counters, the same for both
-//! cores (docs/arm64-virt-android16-plan.md P1.10): the x86 core's
+//! cores (docs/plan/arm64-virt-android16-plan.md P1.10): the x86 core's
 //! cpu::execution and the ARM core count through here, and
 //! core_statistics_get(core, 0) means retired instructions in both
-//! (docs/jit-unification-plan.md cross-phase rule 3). Up to 8 cores.
+//! (docs/plan/jit-unification-plan.md cross-phase rule 3). Up to 8 cores.
 
 use crate::isa::current_core;
 

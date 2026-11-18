@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// VHDX (docs/disk-image-formats-plan.md P5) against qemu-img: dynamic and
+// VHDX (docs/plan/disk-image-formats-plan.md P5) against qemu-img: dynamic and
 // fixed images, block sizes of 1, 32 and 256 MiB, ZERO and NOT_PRESENT
 // blocks, 3 TiB across 2^32 sectors; the headers (the current one: valid,
 // the higher sequence number), region tables and metadata with their

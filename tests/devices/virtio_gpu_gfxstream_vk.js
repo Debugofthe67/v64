@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// gfxstream's Vulkan streams on the virtio-gpu device (docs/gfxstream-plan.md
+// gfxstream's Vulkan streams on the virtio-gpu device (docs/plan/gfxstream-plan.md
 // G2): a test that plays the guest's driver with the guest's encoder
 // (tests/devices/gfxstream_guest_protocol.js) on an ASG ring: an instance,
 // its physical device, a device and its queue (the host's handles), memory

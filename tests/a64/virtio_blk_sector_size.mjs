@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// virtio-blk disks with logical sectors of 4096 bytes (docs/disk-image-formats-plan.md,
+// virtio-blk disks with logical sectors of 4096 bytes (docs/plan/disk-image-formats-plan.md,
 // the appendix's "4K 逻辑扇区") on the virt machine, the test the driver
 // through the virtio-mmio registers and a queue in guest RAM (as
 // tests/a64/virtio_blk_disk_image.mjs): a RAW disk with logical_sector_size

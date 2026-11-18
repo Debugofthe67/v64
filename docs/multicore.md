@@ -116,7 +116,7 @@ already run on one core see no change.
 
 - LOCK, implicitly locked XCHG, CMPXCHG8B and CMPXCHG16B are atomic in the
   interpreter and the x64 page tier (and were in IR Tier-0 and the region
-  pipeline until [jit-unification-plan.md](jit-unification-plan.md) deleted
+  pipeline until [jit-unification-plan.md](plan/jit-unification-plan.md) deleted
   them in P7.5 and M11). This includes operands that cross
   a page or touch MMIO: faults and partial commits follow what the instruction
   specifies.

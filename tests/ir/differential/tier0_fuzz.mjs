@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Legacy-mode differential fuzzing: random integer/SSE/x87 instruction
 // sequences run hot in a loop (so their page is compiled by the x64 page tier,
-// x64_page_legacy32, docs/jit-unification-plan.md P7.3; written for IR Tier-0,
+// x64_page_legacy32, docs/plan/jit-unification-plan.md P7.3; written for IR Tier-0,
 // deleted in P7.5) and must leave exactly the interpreter's state: GPRs,
 // EFLAGS (including the rarely read AF/OF, captured by PUSHFD/LAHF inside the
 // loop), memory, XMM and x87 registers, and the retired-instruction count.
@@ -100,7 +100,7 @@ function instruction() {
         }
     }
 }
-// P3.7's templates (docs/jit-unification-plan.md; IR Tier-0's, one kind per
+// P3.7's templates (docs/plan/jit-unification-plan.md; IR Tier-0's, one kind per
 // switch, t0_*, now the page tier's forms), among integer instructions:
 // j: JECXZ and JCXZ over the instruction after them, taken and
 //   not: ECX is often zero, or CX zero with the rest of ECX not
@@ -225,7 +225,7 @@ function bmi_form() {
             : [0xC4, 0xE3, 0x7B, 0xF0, ...rm(r), random() & 255];                  // RORX
     }
 }
-// SSE floating point (docs/simd-xsave-plan.md 7.4): the arithmetic forms,
+// SSE floating point (docs/plan/simd-xsave-plan.md 7.4): the arithmetic forms,
 // conversions and compares, and the moves and shuffles carrying values between
 // them (compiled code tracks which registers hold neither NaNs nor denormals), on
 // zeros, denormals, infinities, NaNs and values that overflow or underflow.

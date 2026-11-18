@@ -1,4 +1,4 @@
-// GLES 3.0's texture and renderbuffer formats (docs/gles3-plan.md,
+// GLES 3.0's texture and renderbuffer formats (docs/plan/gles3-plan.md,
 // "纹理、采样器与格式"): the sized internal formats of the GLES 3.0
 // specification's tables 3.2, 3.13 and 3.14 with the format and types each
 // takes, whether a framebuffer can render to it and a sampler filter it,

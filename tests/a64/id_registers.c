@@ -1,5 +1,5 @@
 // Reads the CPU's identification registers at EL1 (tools/cpu_contract.mjs,
-// docs/arm64-virt-android16-plan.md P0.3): every encoding of the ID space
+// docs/plan/arm64-virt-android16-plan.md P0.3): every encoding of the ID space
 // (op0=3, op1=0, CRn=0, CRm=0-7), the cache geometry (CLIDR_EL1, CCSIDR_EL1
 // per CSSELR_EL1), AIDR_EL1, CTR_EL0, DCZID_EL0, CNTFRQ_EL0, and MPIDR_EL1 of
 // every core (the secondaries started with PSCI CPU_ON).

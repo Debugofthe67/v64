@@ -1,5 +1,5 @@
 // The virtio-mmio transport, version 2 (virtio 1.2 section 4.2;
-// docs/arm64-virt-android16-plan.md P5.3) of the virt machine: a slot of
+// docs/plan/arm64-virt-android16-plan.md P5.3) of the virt machine: a slot of
 // 0x200 bytes in VIRT_MMIO's block (src/virt/platform.js) with the device's
 // registers, its configuration from 0x100, and an edge-triggered SPI
 // (16 + the slot, as the reference's: QEMU's hw/arm/virt.c create_virtio_devices).

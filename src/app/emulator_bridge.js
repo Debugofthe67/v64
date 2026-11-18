@@ -1,5 +1,5 @@
 // @ts-check
-// The VM manager's only way to the emulator (docs/vm-manager-plan.md G1):
+// The VM manager's only way to the emulator (docs/plan/vm-manager-plan.md G1):
 // new V86() and its public methods and events (v86.d.ts), as build/libv86.mjs
 // gives them; the page's options of a start (src/browser/vm_options.js); the
 // graphics proxy's bundle.

@@ -1,8 +1,8 @@
 # AArch64
 
-> Status: A3, A4 and A5 of [arm64-virt-android16-plan.md](arm64-virt-android16-plan.md)
+> Status: A3, A4 and A5 of [arm64-virt-android16-plan.md](plan/arm64-virt-android16-plan.md)
 > (virtio-mmio devices; the page tier, J2 of
-> [jit-unification-plan.md](jit-unification-plan.md); the PCIe host,
+> [jit-unification-plan.md](plan/jit-unification-plan.md); the PCIe host,
 > virtio-pci, input and virtio-gpu), A6 (the lifecycle, cores in vCPU
 > workers, extended RAM, 16 and 64 KiB page kernels, the browser) and A7
 > (the rehearsals for Android, P9.1-P9.3, and G-Alpine: every release level
@@ -37,7 +37,7 @@ Reference Manual, DDI 0487 issue L.b.
 
 | Advertised | Not advertised |
 | --- | --- |
-| AArch64 at EL0 and EL1; FP and Advanced SIMD (no FP16); AES with 64-bit PMULL, SHA1, SHA-256, CRC32; GICv3 system registers; 2 breakpoints, 2 watchpoints; CSV2 and CSV3; 40-bit physical addresses, 16-bit ASIDs, the 4, 16 and 64 KiB granules (v1 has 4 KiB only); AArch32 at EL0 in v3 (below) | EL2, EL3, AArch32 at EL1 (32-bit kernels: `cpu_type: "arm32"`, planned in [aarch32-plan.md](aarch32-plan.md) part 2); LSE, RDM, SHA512, SHA3, SM3/SM4, DotProd, FP16; PAuth, BTI, MTE, SVE, SME; PMU; hardware AF/DBM, PAN, VHE |
+| AArch64 at EL0 and EL1; FP and Advanced SIMD (no FP16); AES with 64-bit PMULL, SHA1, SHA-256, CRC32; GICv3 system registers; 2 breakpoints, 2 watchpoints; CSV2 and CSV3; 40-bit physical addresses, 16-bit ASIDs, the 4, 16 and 64 KiB granules (v1 has 4 KiB only); AArch32 at EL0 in v3 (below) | EL2, EL3, AArch32 at EL1 (32-bit kernels: `cpu_type: "arm32"`, planned in [aarch32-plan.md](plan/aarch32-plan.md) part 2); LSE, RDM, SHA512, SHA3, SM3/SM4, DotProd, FP16; PAuth, BTI, MTE, SVE, SME; PMU; hardware AF/DBM, PAN, VHE |
 
 HWCAP is `0x8ff`: `fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid`.
 
@@ -55,7 +55,7 @@ its own profile (the machine takes it on), whatever `cpu_profile` says.
 `tests/a64/pan.mjs` checks it against QEMU's `-cpu max` (the cortex-a35
 reference has no PAN).
 
-Profile `v3` (`cpu_profile: "generic-arm64-compat32"`, `v86-aarch64-v3`; [aarch32-plan.md](aarch32-plan.md)
+Profile `v3` (`cpu_profile: "generic-arm64-compat32"`, `v86-aarch64-v3`; [aarch32-plan.md](plan/aarch32-plan.md)
 part 1) is v2 and AArch32 at EL0: a 64-bit kernel with COMPAT runs 32-bit
 Arm programs (armhf, armeabi-v7a) as compat tasks. ID_AA64PFR0_EL1.EL0 is 2;
 the AArch32 ID registers are the reference's for an AArch32 at EL0 only, as
@@ -120,7 +120,7 @@ the CPU Worker by default). The VM manager imports official images into
 such a disk: Cuttlefish's images zip, and a GSI on that device
 (`src/android/assemble.js`; `node tools/android_import.mjs <zip> <disk.img>
 [--gsi <zip>]` does it in node); see [vm-manager.md](vm-manager.md) and
-[android-images-plan.md](android-images-plan.md). The image formats (boot
+[android-images-plan.md](plan/android-images-plan.md). The image formats (boot
 images, LZ4, cpio, bootconfig, sparse, AVB, LP, erofs, GPT, zip) are
 `src/android/`'s, which `tools/a64_android.mjs` uses too.
 
@@ -229,7 +229,7 @@ there is no transform feedback), for SurfaceFlinger and HWUI;
 `A64_ANDROID_GPU=venus` boots `initrd-venus.img`.
 
 The official images need no driver of v64's: virtio-gpu's gfxstream level
-([gfxstream-plan.md](gfxstream-plan.md), [gpu-devices.md](gpu-devices.md))
+([gfxstream-plan.md](plan/gfxstream-plan.md), [gpu-devices.md](gpu-devices.md))
 speaks the protocol of the image's own Vulkan driver (`vulkan.ranchu`, ANGLE's
 GLES on it, OpenGL ES 3.0), which Cuttlefish's `gfxstream_guest_angle` mode
 selects (bootconfig only: the bootloader's `gpu_mode: "gfxstream"`). The
@@ -246,7 +246,7 @@ crash, lmkd's kills, the core services kept. The VM manager's Android preset and
 gfxstream by default; the screen shows the scanout straight from the GPU
 when the graphics proxy's compositor is on the page (no readback, G-31).
 
-32-bit apps (profile `v3`, [aarch32-plan.md](aarch32-plan.md) Q5.2): Cuttlefish's
+32-bit apps (profile `v3`, [aarch32-plan.md](plan/aarch32-plan.md) Q5.2): Cuttlefish's
 arm64 phone is 64-bit only, so `tools/a64_android.mjs --gsi <zip>
 --zygote64-32` gives its vendor a 32-bit second architecture for a GSI that
 has one (vendor's `ro.zygote=zygote64_32`, vendor's and odm's 32-bit ABI
@@ -261,7 +261,7 @@ cortex-a35 TCG, the reference, after 370 s.
 
 ## Known defects
 
-The G-Alpine list (docs/arm64-virt-android16-plan.md P9.4). Major: a
+The G-Alpine list (docs/plan/arm64-virt-android16-plan.md P9.4). Major: a
 verified guest's function fails, or a release level does; minor: a
 declared deviation, a slower path or a documented limit. None is major.
 
@@ -407,7 +407,7 @@ extended RAM goes through the interpreter's path.
 | `a64_system` | 31 | the system templates (a mask): EL1's MRS and MSR of SP_EL0, TPIDR_EL1, DAIF, ELR_EL1, SPSR_EL1, ESR_EL1, FAR_EL1 and CONTEXTIDR_EL1, MSR of TPIDRRO_EL0; at EL1 and EL0, MRS of CNTVCT_EL0 and CNTPCT_EL0 (the counter: Android's clock_gettime reads it in the vDSO), CNTFRQ_EL0, DCZID_EL0 and TPIDRRO_EL0, MRS and MSR of FPCR and FPSR (EL0's checks, CNTKCTL_EL1, SCTLR_EL1.DZE and CPACR_EL1.FPEN, made as they run); MSR DAIFSet and DAIFClr (an unmask that makes an interrupt deliverable leaves for the run loop), TLBI (in Rust, leaving when the access cache's epoch changed), DC ZVA at EL1 and EL0 (through the access cache's write entry; at EL0 while SCTLR_EL1.DZE is set: bionic's memset zeroes with it), LDTR and STTR (through the access cache's EL0 tables), and with the cores in workers a DSB that steps only while this core's TLB maintenance is pending (0: helpers and steps, as before) |
 | `a64_relaxed_fma` | the host's probe | FMADD and FMLA through relaxed SIMD's fused multiply-add |
 | `a64_asid_tag` | 2 | an access-cache epoch per ASID, so ASID switches keep entries: 1 always, 2 (auto) while the ASIDs change at least 256 times in about 4 million instructions (SW_TTBR0_PAN changes them at every entry from EL0 and around every uaccess), 0 never |
-| `a64_page_aarch32` | 1 | AArch32's code (profile v3's 32-bit processes, A32 and T32) compiled too (docs/aarch32-plan.md Q6): R0-R14 and NZCV stay in memory; branches, returns (LDM, POP and LDR of the PC to the same instruction set), data processing with every shift, MOVW and MOVT, loads and stores (LDRD, STRD, LDM, STM, PUSH, POP), multiplies, extends, CLZ and REV are native, IT blocks of such forms too; so are VFP's loads, stores, arithmetic and moves and Advanced SIMD's VLD1/VST1 (multiple) and data processing (bitwise, VADD, VSUB, compares, VMAX, VMIN, integer VMUL, shifts by an immediate, modified immediates, VDUP, VEXT, VREV, VMVN, VCNT, VABS, VNEG; D registers as their 64 bits); the rest are helper calls (the interpreter's execute: the other VFP and Advanced SIMD forms, the exclusives, the saturating and parallel forms) or steps. 0 interprets it; 2 and 3 (helper calls only, native forms only) and 16 plus a mask of native kinds bisect |
+| `a64_page_aarch32` | 1 | AArch32's code (profile v3's 32-bit processes, A32 and T32) compiled too (docs/plan/aarch32-plan.md Q6): R0-R14 and NZCV stay in memory; branches, returns (LDM, POP and LDR of the PC to the same instruction set), data processing with every shift, MOVW and MOVT, loads and stores (LDRD, STRD, LDM, STM, PUSH, POP), multiplies, extends, CLZ and REV are native, IT blocks of such forms too; so are VFP's loads, stores, arithmetic and moves and Advanced SIMD's VLD1/VST1 (multiple) and data processing (bitwise, VADD, VSUB, compares, VMAX, VMIN, integer VMUL, shifts by an immediate, modified immediates, VDUP, VEXT, VREV, VMVN, VCNT, VABS, VNEG; D registers as their 64 bits); the rest are helper calls (the interpreter's execute: the other VFP and Advanced SIMD forms, the exclusives, the saturating and parallel forms) or steps. 0 interprets it; 2 and 3 (helper calls only, native forms only) and 16 plus a mask of native kinds bisect |
 | `a64_page_aarch32_filter` | 0 | (bisecting) `n << 16 \| pattern`: only the AArch32 pages whose code key's low n bits are the pattern's compile, each named on the console; bit 15: AArch32's functions do not chain |
 | `a64_page_aarch32_trace` | 0 | (debugging) 1: the last 384 events of AArch32's EL0 code (interpreted instructions, helper calls, steps, function entries and exits, exceptions and their returns, each with ITSTATE) printed on the console with the page function's blocks around the PC when an IT instruction is UNDEFINED inside an IT block or an instruction fetch at EL0 takes a permission fault |
 | `a64_reserved_fill` | 0 | 1: with the cores in workers too, no write entries are filled in pages some core holds a reservation in (as with cooperative cores, where it is needed); 0: they are, since a store-exclusive compares the value anyway and the entries filled before stay: refusing sent every store to an ART lock word's page through the interpreter |

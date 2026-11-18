@@ -1,5 +1,5 @@
 /* PSI triggers under memory pressure, with zram as swap
- * (docs/arm64-virt-android16-plan.md P9.2; what Android's lmkd waits on):
+ * (docs/plan/arm64-virt-android16-plan.md P9.2; what Android's lmkd waits on):
  * a trigger on /proc/pressure/memory, "some" stall of 100 ms in a 1 s
  * window; a child in the memory cgroup CGROUP (the caller limits it) writes
  * MIB MiB of compressible pages, which reclaim moves to zram, and reads them

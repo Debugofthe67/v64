@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The iOS firmware tools on samples the test makes itself, with made-up
-// keys (docs/iphone4-plan.md "测试": no Apple files): AES, SHA-1, HMAC,
+// keys (docs/plan/iphone4-plan.md "测试": no Apple files): AES, SHA-1, HMAC,
 // IMG3, LZSS, the root filesystem's chunk encryption, UDIF, HFS+/HFSX
 // (B-tree descent, extents overflow, hard links, decmpfs), Apple's device
 // tree, Mach-O, XML plists.

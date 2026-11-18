@@ -1,4 +1,4 @@
-// The browser disk backend (src/opfs_disk.js, docs/vm-manager-plan.md U6) in
+// The browser disk backend (src/opfs_disk.js, docs/plan/vm-manager-plan.md U6) in
 // a dedicated worker, where FileSystemSyncAccessHandles exist: reads and
 // writes, the record (identity, generation; the VM manager's fields kept),
 // the generation's moves (a session's first write, the first after a

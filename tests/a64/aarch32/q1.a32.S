@@ -1,4 +1,4 @@
-// AArch32 EL0 cases of docs/aarch32-plan.md Q1 (tests/a64/aarch32_el0.mjs):
+// AArch32 EL0 cases of docs/plan/aarch32-plan.md Q1 (tests/a64/aarch32_el0.mjs):
 // the exception entry and return between AArch32 EL0 and AArch64 EL1 with
 // the instructions Q1 has: NOP, B, SVC (and UDF), in A32 and T32.
 // The table: count, then per case offset (+1: T32), resumes, NZCV.

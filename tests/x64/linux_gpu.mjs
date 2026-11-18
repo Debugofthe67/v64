@@ -6,7 +6,7 @@
 //
 //     GPU_ADAPTER=bochs_vga node tests/x64/linux_gpu.mjs
 //
-// GPU_ARCH=aarch64 (tests/a64/linux_gpu.mjs; docs/arm64-virt-android16-plan.md
+// GPU_ARCH=aarch64 (tests/a64/linux_gpu.mjs; docs/plan/arm64-virt-android16-plan.md
 // P7.2): the same scenarios on the arm64 virt machine with virtio_gpu (no
 // VGA), from build/a64-linux/ (gpu-repo.tar from `tools/alpine_repo.mjs
 // --arch aarch64`); the ISO, the repository and the test programs on
@@ -286,7 +286,7 @@ const SCENARIOS = {
         ["pidof vkcube && echo STEP_VKCUBE_ALIVE; pkill vkcube; sleep 1; tail -5 /tmp/vkcube-bg.log; echo STEP_KILLED", /STEP_VKCUBE_ALIVE[\s\S]*STEP_KILLED/],
         ["grep -i -E 'error|warn' /tmp/weston.log | head -10; echo STEP_WESTON_LOG", /STEP_WESTON_LOG/],
     ],
-    // what Android's graphics needs of the kernel's KMS (docs/arm64-virt-android16-plan.md
+    // what Android's graphics needs of the kernel's KMS (docs/plan/arm64-virt-android16-plan.md
     // P7.3; GPU_LEVEL=virgl43-hostmem, for the fences): the planes (a primary
     // and a cursor), an atomic mode set, the cursor, dma-buf PRIME from GBM
     // to weston (linux-dmabuf) and explicit synchronization with sync files

@@ -149,7 +149,10 @@ export class AppleH2FMI
     {
         const address = this.regs[0x1018 >>> 2], row = this.row(), ce = this.chip();
         const token = this.begin_operation(ce);
+        this.cache.delete(ce);
+        this.page_chip = ce;
         this.page = this.program = this.program_address = null;
+        this.erased = true;
         this.pio_left = 0;
         if(!this.read_stream) this.requests = 0;
         this.fail = false;
@@ -158,8 +161,8 @@ export class AppleH2FMI
             if(!this.complete_operation(ce, token, failed)) return;
             const entry = [page, address & 65535, !page || page.every(byte => byte === 255), failed];
             this.cache.set(ce, entry);
-            this.page_chip = ce;
-            [this.page, this.column, this.erased, this.fail] = entry;
+            if(ce === this.page_chip && !this.program)
+                [this.page, this.column, this.erased, this.fail] = entry;
             this.regs[0x1044 >>> 2] |= run & 15;
             this.update_irq();
         };
@@ -172,13 +175,9 @@ export class AppleH2FMI
     // another chip before switching the bus back to drain the first chip.
     select_page()
     {
-        const entry = this.cache.get(this.chip());
-        if(entry)
-        {
-            this.page_chip = this.chip();
-            [this.page, this.column, this.erased, this.fail] = entry;
-        }
-
+        this.page_chip = this.chip();
+        [this.page, this.column, this.erased, this.fail] =
+            this.cache.get(this.page_chip) || [null, 0, true, false];
     }
 
     drain(bit)
@@ -221,7 +220,14 @@ export class AppleH2FMI
         if(offset === 0x1044 && !this.regs[offset >>> 2] && this.pending.size)
             this.wait_for_io?.(this.pending);
         if(offset === 0x1C && this.pio_left) return 0x18;
-        if(offset === 0x200C) return this.fail ? 4 : this.erased ? 2 : 0;
+        if(offset === 0x200C)
+        {
+            // The IOP releases CE after draining the boot page, then reads
+            // the controller's ECC result for that transfer.
+            const ce = this.chip();
+            if(ce >= 0 && !this.program && this.page_chip !== ce) this.select_page();
+            return this.fail ? 4 : this.erased ? 2 : 0;
+        }
         if(offset === 0xC) return this.regs[3] | (this.regs[0x1040 >>> 2] & this.regs[0x1044 >>> 2] ? 0x100 : 0);
         if(offset === 0x14 && this.regs[0x1014 >>> 2] === 0x90)
         {
@@ -246,8 +252,9 @@ export class AppleH2FMI
         const index = offset >>> 2;
         if(offset === 0x14 && this.program && this.pio_left)
         {
-            for(let b = 0; b < 4; b++) this.program[this.column++] = value >>> (8 * b);
-            this.pio_left -= 4;
+            const bytes = Math.min(this.pio_left, 4);
+            for(let b = 0; b < bytes; b++) this.program[this.column++] = value >>> (8 * b);
+            this.pio_left -= bytes;
             if(!this.pio_left)
             {
                 this.regs[3] |= 2;
@@ -304,7 +311,10 @@ export class AppleH2FMI
         // The boot-page writer feeds three 512-byte sectors through PIO.
         // Its CFG clears the DMA enable bit before arming each sector.
         if(offset === 4 && value === 5 && this.program && !(this.regs[0] & 1))
+        {
             this.pio_left = Math.min(512, Math.max(0, NAND_DATA - this.column));
+            if(!this.pio_left) this.regs[3] |= 2;
+        }
         else if(offset === 4 && value === 5 && this.program && this.dma)
         {
             this.fifo_offset.fill(0);
@@ -351,6 +361,14 @@ export class AppleH2FMI
         this.failed_chips = new Set(state[12] || (this.fail ? [this.chip()] : []));
         this.page_chip = state[10] ?? this.chip();
         this.pio_left = state[11] || 0;
+        // Older snapshots could overrun a short PIO tail into spare bytes.
+        // Complete the transfer with an error rather than confirming that page.
+        if(this.pio_left < 0)
+        {
+            this.pio_left = 0;
+            this.fail = true;
+            this.regs[3] |= 2;
+        }
         this.cache = new Map(state[9] || [[this.chip(), [this.page, this.column, this.erased, this.fail]]]);
         this.update_irq();
     }

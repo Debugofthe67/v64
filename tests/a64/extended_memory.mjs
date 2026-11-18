@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The ARM core's extended RAM (docs/arm64-virt-android16-plan.md P8.5;
+// The ARM core's extended RAM (docs/plan/arm64-virt-android16-plan.md P8.5;
 // src/rust/aarch64/extended.rs): 64 MiB of RAM and 8 MiB of extended RAM at
 // 4 GiB, cached in 1 MiB of frames, so that most accesses page. The bus's
 // view of it (a hole after it, accesses of each width, across pages, Q

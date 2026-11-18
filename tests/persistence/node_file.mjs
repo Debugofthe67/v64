@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NodeFileDisk (src/disk_writeback.js; docs/disk-persistence-plan.md D1): a
+// NodeFileDisk (src/disk_writeback.js; docs/plan/disk-persistence-plan.md D1): a
 // local file written back, the backend contract on its own:
 // - opening: a file that cannot be written, a size that is not whole
 //   sectors or not the descriptor's, a file this process writes back

@@ -1,4 +1,4 @@
-// dEQP on a booted Android 16 (docs/arm64-virt-android16-plan.md appendix
+// dEQP on a booted Android 16 (docs/plan/arm64-virt-android16-plan.md appendix
 // F6), over adb, the same on the QEMU reference (SwiftShader) and on v86
 // (Venus through WebGPU, ANGLE above it for GL ES): CTS 16.1_r1's
 // CtsDeqpTestCases (tools/a64_cts.mjs fetches it), its APK installed and run

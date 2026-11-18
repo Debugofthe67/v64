@@ -1,4 +1,4 @@
-// virtio-rng (virtio 1.2 section 5.4; docs/arm64-virt-android16-plan.md
+// virtio-rng (virtio 1.2 section 5.4; docs/plan/arm64-virt-android16-plan.md
 // P5.5) as a built-in device of the virt machine: every buffer the driver
 // offers on its one queue is filled from crypto.getRandomValues (the
 // guest's /dev/hwrng).

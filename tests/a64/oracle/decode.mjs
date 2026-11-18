@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The A64 decode oracle (docs/arm64-virt-android16-plan.md P0.5; P2.1
+// The A64 decode oracle (docs/plan/arm64-virt-android16-plan.md P0.5; P2.1
 // compares the v86 decoder with it): llvm-mc --disassemble with the
 // profile's -mattr (tests/platform/a64-profile.json llvm_mattr), so an
 // encoding of a feature outside the profile is invalid. UDF is the

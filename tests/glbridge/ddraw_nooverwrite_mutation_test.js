@@ -5,6 +5,8 @@ const rows=[
  ["ordinary writes promoted","d9wg_resources.js","(lockFlags & 0x1000) !== 0","true"],
  ["strip mirror stays synchronised","d9wg_resources.js","new Uint8Array(widened.buffer), noOverwrite);","new Uint8Array(widened.buffer));"],
  ["executor drops hint","d3d9_executor.js","if (noOverwrite) frame.recordNoOverwriteUpload(op);","if (false && noOverwrite) frame.recordNoOverwriteUpload(op);"],
+ ["upload loses lock semantics","d3d9_executor.js","op.noOverwrite = noOverwrite;","op.noOverwrite = false;"],
+ ["disjoint synchronising upload overtaken","d9wg_draw_recorder.js","(!previous.noOverwrite ||","("],
  ["overlapping earlier write overtaken","d9wg_draw_recorder.js","position = i + 1;","position = 0;"],
  ["different buffers falsely alias","d9wg_draw_recorder.js","previous.destination === op.destination &&","true &&"],
  ["disjoint ranges falsely alias","d9wg_draw_recorder.js","previous.destinationOffset < end &&","true &&"],

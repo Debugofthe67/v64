@@ -1,5 +1,5 @@
 // @ts-check
-// The settings dialog (docs/vm-manager-plan.md "设置对话框", U3): the
+// The settings dialog (docs/plan/vm-manager-plan.md "设置对话框", U3): the
 // hardware list on the left, the chosen item's panel on the right, Add and
 // Remove under the list. Every control offers only what the machine allows
 // (src/app/vm_model.js) and a change says what else it changed; before

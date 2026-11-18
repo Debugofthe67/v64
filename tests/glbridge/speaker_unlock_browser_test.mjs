@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The speaker under the browser's autoplay policy (docs/arm64-virt-android16-plan.md
+// The speaker under the browser's autoplay policy (docs/plan/arm64-virt-android16-plan.md
 // P12.5; src/browser/speaker.js): headless Chrome with the policy that wants
 // a user gesture, a page that starts v86 without one, then a trusted click
 // through the DevTools protocol. The AudioContext must be suspended before

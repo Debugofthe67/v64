@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The arm64 virt machine in a headless Chrome (docs/arm64-virt-android16-plan.md
+// The arm64 virt machine in a headless Chrome (docs/plan/arm64-virt-android16-plan.md
 // P8.7): tests/a64/browser_test.html from a local server boots Alpine 3.24
 // aarch64 from its ISO to a shell and runs the probe, from the source tree,
 // from build/libv86.mjs, and in the CPU worker. The files come from

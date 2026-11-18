@@ -1,5 +1,5 @@
 /* A dm-verity device through the device mapper's ioctls on
- * /dev/mapper/control (docs/arm64-virt-android16-plan.md P9.2), what
+ * /dev/mapper/control (docs/plan/arm64-virt-android16-plan.md P9.2), what
  * Android's first-stage init does with libdm, without dmsetup:
  * DM_DEV_CREATE, DM_TABLE_LOAD with one verity target, DM_DEV_SUSPEND
  * without the suspend flag (resume: the table goes live). Built by

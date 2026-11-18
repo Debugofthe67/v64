@@ -13,7 +13,7 @@ The ROM includes NV PLL limit tables. Original XP 93.71 and Win98 81.98
 drivers initialize in PCI mode; native mode changes and DOS/snapshot round
 trips are recorded in the [display fixture](../../tests/acceptance/nv40/g1-native-modes-dos.json).
 The current benchmark scope and retained limitations are in the
-[implementation plan](../../docs/geforce-6800-plan.md).
+[implementation plan](../../docs/plan/geforce-6800-plan.md).
 
 Run `bios/fetch-and-build-seabios.sh` to obtain the pinned SeaBIOS checkout,
 then `python3 bios/nv40/build.py --cross-prefix x86_64-elf-`. An existing

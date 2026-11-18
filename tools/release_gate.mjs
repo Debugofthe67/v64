@@ -48,26 +48,26 @@ const LEVELS = {
     "R-extended-memory": [
         ["extended-memory-tests"], ["x64-extended-guest-tests", true],
     ],
-    // SSSE3, SSE4.1 and SSE4.2 (docs/simd-xsave-plan.md M1: cpu_features
+    // SSSE3, SSE4.1 and SSE4.2 (docs/plan/simd-xsave-plan.md M1: cpu_features
     // "x86-64-v2"): every engine against SDM models, QEMU and gdb references
     "R-SSE4": [
         ["platform-contract-tests"], ["ssse3-tests"], ["sse4-tests"], ["sse3-tests"], ["sse-fp-tests"], ["sse-fault-tests"],
         ["packed-simd-tests"], ["decode-rules-tests"], ["x64-decode-tests"], ["nasmtests", true], ["nasmtests-force-jit", true],
     ],
-    // XSAVE with the x87 and SSE state (docs/simd-xsave-plan.md M2:
+    // XSAVE with the x87 and SSE state (docs/plan/simd-xsave-plan.md M2:
     // cpu_features "XSAVE"): the codec, XSETBV/XGETBV, the state's lifecycle
     // across reset, snapshots and core switches, kvm-unit-tests x86/xsave
     "R-XSAVE": [
         ["platform-contract-tests"], ["xsave-tests"], ["kvm-unit-test-xsave"],
     ],
-    // AVX, VEX.128 and VEX.256 (docs/simd-xsave-plan.md M3: cpu_features
+    // AVX, VEX.128 and VEX.256 (docs/plan/simd-xsave-plan.md M3: cpu_features
     // "XSAVE" and "AVX"): every engine against SDM models and QEMU, the
     // YMM state
     "R-AVX": [
         ["platform-contract-tests"], ["xsave-tests"], ["decode-rules-tests"], ["x64-decode-tests"], ["isa-forms-check"],
         ["x64-differential-tests"], ["x64-page-tier-tests"], ["avx-tests", true],
     ],
-    // x86-64-v3 (docs/simd-xsave-plan.md M4: cpu_features "x86-64-v3" with
+    // x86-64-v3 (docs/plan/simd-xsave-plan.md M4: cpu_features "x86-64-v3" with
     // cpu_type "x86_64"; the 32-bit profile has its features but LZCNT):
     // AVX2 with the gathers, BMI1/BMI2/LZCNT/TZCNT/MOVBE, FMA and F16C in
     // every engine against SDM models and QEMU; glibc's x86-64-v3 code and
@@ -88,12 +88,12 @@ const LEVELS = {
         ["acpi-table-tests"], ["q35-device-tests"], ["q35-guest-tests", true], ["q35-hotplug-tests", true],
     ],
     // the JIT's and the decoder's tests outside the x64 targets
-    // (docs/jit-unification-plan.md P0.9; R-IR until M11 deleted the region
+    // (docs/plan/jit-unification-plan.md P0.9; R-IR until M11 deleted the region
     // tiers, whose tests .github/workflows/ir-core.yml still names)
     "R-JIT": [
         ["jit-core-tests"],
     ],
-    // AArch64 (docs/arm64-virt-android16-plan.md, release levels): a target
+    // AArch64 (docs/plan/arm64-virt-android16-plan.md, release levels): a target
     // without tests yet prints A64_PENDING and is reported as pending
     "R-a64-isa": [
         ["a64-decode-tests"], ["a64-isa-tests"], ["a64-trace-tests"], ["a64-portable-tests"],
@@ -131,7 +131,7 @@ const LEVELS = {
     "R-android": [
         ["android-reference-tests"], ["android-guest-tests", true],
     ],
-    // official images in the VM manager (docs/android-images-plan.md): the
+    // official images in the VM manager (docs/plan/android-images-plan.md): the
     // image library, the importer's layouts on QEMU, the wizard in Chrome
     "R-android-images": [
         ["android-image-tests"], ["android-image-reference-tests", true], ["android-image-browser-tests", true],

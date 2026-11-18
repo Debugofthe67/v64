@@ -3,7 +3,7 @@
 // The HD Audio controller with real drivers: Alpine 3.24 x86_64's
 // snd-hda-intel and snd-hda-codec-generic (the pinned virt ISO,
 // tests/lib/alpine_image.mjs) on audio_device "hd_audio"
-// (docs/modern-pc-devices-plan.md, H1, "验收"). The drivers bind the
+// (docs/plan/modern-pc-devices-plan.md, H1, "验收"). The drivers bind the
 // controller and the codec (card "HDA Intel", codec "QEMU Generic", a PCM
 // device and the Master controls); tests/devices/hd_audio_play.c, a
 // freestanding ALSA player built here with clang and rust-lld, plays a

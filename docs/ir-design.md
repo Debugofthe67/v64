@@ -6,7 +6,7 @@ compatibility-mode code, 32-bit protected-mode code (flat or with a CS base),
 16-bit protected-mode code, real-mode code and virtual-8086 code. Code that is
 not compiled, or cannot be compiled safely, runs in the interpreter.
 
-How it got here ([jit-unification-plan.md](jit-unification-plan.md)): the
+How it got here ([jit-unification-plan.md](plan/jit-unification-plan.md)): the
 legacy JIT was replaced by the IR, which had a page-granular Tier-0 and an
 optimizing region pipeline (Tier-1/2: x86 lifted to a typed SSA HIR,
 optimized, lowered to an owned MIR, emitted as Wasm). The x64 page tier, written
@@ -117,7 +117,7 @@ QEMU and SDM models) to check them.
 ```
 
 The x86 core (`v86.wasm`) has only the left column; the ARM core
-(`v86-arm64.wasm`, [arm64-virt-android16-plan.md](arm64-virt-android16-plan.md))
+(`v86-arm64.wasm`, [arm64-virt-android16-plan.md](plan/arm64-virt-android16-plan.md))
 only the right one, over the same jitrt and pagegen/frame.rs.
 
 The execution modes, each with its own mode key (a function compiled for one
@@ -161,7 +161,7 @@ Common controls: `disable_jit: true` runs only the interpreter (at run time,
 the export `jit_set_enabled`); `ir_tier0: false` interprets 32-bit and 16-bit
 code; `jit_switches` (and `JIT_SWITCHES` in tests) sets the switches of
 `src/rust/jit_switches.rs`, among them `mode_ledger` and `step_profile`
-([profiling.md](profiling.md)); `get_jit_info()` shows the page tier's
+([profiling.md](perf/profiling.md)); `get_jit_info()` shows the page tier's
 statistics. `jit_backend` accepts only `"ir"`, or can be omitted. The region
 pipeline's options (`ir_region_budget`, `ir_opt_level`, `ir_passes_disabled`,
 `ir_verify`, `ir_dump`, `ir_stats`) are deprecated and have no effect. The
@@ -194,6 +194,6 @@ the quick suite, relative to the legacy JIT, a warm geometric mean of about
 **1.67×** and a cold one of about **1.35×** (warm x87, SSE and MMX about
 2.69×, 2.45× and 1.69×; control flow 0.93× cold). The gates of each milestone
 since are in the plan's appendix C; for how the numbers are measured see the
-[CPU benchmark suite](cpu-benchmarks.md). The first `800×600×32` mode switch
+[CPU benchmark suite](perf/cpu-benchmarks.md). The first `800×600×32` mode switch
 in the XP test is only a display-mode milestone; game frame rates also depend
 on rendering, audio and guest throttling.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The XSAVE feature set in the x64 engine and in compatibility mode
-// (docs/simd-xsave-plan.md P2), with cpu_type "x86_64" and the x86-64-v3
+// (docs/plan/simd-xsave-plan.md P2), with cpu_type "x86_64" and the x86-64-v3
 // features: XSAVE64 and XSAVE store x87 state in their 64- and 32-bit formats,
 // XMM0-XMM15 and YMM0_H-YMM15_H; FXSAVE64 leaves bytes 416-511 alone;
 // compatibility-mode XSAVE and XRSTOR store and load registers 0-7 only, and

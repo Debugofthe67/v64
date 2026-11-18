@@ -1,5 +1,5 @@
 // tpm: { version: "2.0", interface: "crb", state } -- a TPM 2.0 on the PC
-// machines (docs/tpm.md; docs/modern-pc-devices-plan.md T1): its CRB
+// machines (docs/tpm.md; docs/plan/modern-pc-devices-plan.md T1): its CRB
 // interface at 0xFED40000 (src/tpm/crb.js) in front of libtpms in
 // WebAssembly (src/tpm/libtpms.js), its permanent state in a store
 // (src/tpm/store.js). Built into build/v86-tpm.js; from the source tree,

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The translations an x64 page function keeps per base register while it runs
-// (docs/jit-unification-plan.md P4.21, x64_fast_lookup with inline lookups)
+// (docs/plan/jit-unification-plan.md P4.21, x64_fast_lookup with inline lookups)
 // must not serve an access that only ends in their page: a hot loop reads and
 // writes through RBX in a page and across the boundary with the page before
 // it, the two mapped to physical pages that are not adjacent (4 KiB pages in

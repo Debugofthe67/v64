@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// make core-split-check (docs/arm64-virt-android16-plan.md P0.7,
-// docs/jit-unification-plan.md cross-phase rule 12): builds build/v86.wasm of
+// make core-split-check (docs/plan/arm64-virt-android16-plan.md P0.7,
+// docs/plan/jit-unification-plan.md cross-phase rule 12): builds build/v86.wasm of
 // two revisions in this run, with one toolchain, and compares them with
 // tools/wasm_diff.mjs.
 //
@@ -181,7 +181,7 @@ if(report.must_be_identical && !result.identical)
 }
 if(report.code_changed)
 {
-    console.log(`core-split-check: ${report.functions_changed} functions changed, ${report.functions_added} added, ${report.functions_removed} removed: run the R gate (docs/jit-unification-plan.md cross-phase rule 2)`);
+    console.log(`core-split-check: ${report.functions_changed} functions changed, ${report.functions_added} added, ${report.functions_removed} removed: run the R gate (docs/plan/jit-unification-plan.md cross-phase rule 2)`);
 }
 else
 {

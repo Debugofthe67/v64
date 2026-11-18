@@ -5,7 +5,7 @@
 //
 // With the MinGW-w64 x86-64 toolchain (x86_64-w64-mingw32-gcc/ld) the C
 // benchmarks whose profile has an entry in suite.json's profiles64 are also
-// built as PE32+ images (docs/jit-unification-plan.md P0.3), started by the
+// built as PE32+ images (docs/plan/jit-unification-plan.md P0.3), started by the
 // long-mode boot (lib/long_mode.asm, lib/crt0_64.asm): build/bench/x86_64/,
 // and `image64` in the manifest. The i686 images do not change.
 import fs from "node:fs";

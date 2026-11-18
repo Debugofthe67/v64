@@ -1,5 +1,5 @@
 // The emugl GLES wire format by the generated layouts (src/gles/gles_protocol.js,
-// docs/gles-proxy-plan.md "协议与生成器"): a command's arguments taken out of
+// docs/plan/gles-proxy-plan.md "协议与生成器"): a command's arguments taken out of
 // its bytes, its reply put together, and (for tests, and the guest library's
 // shape in JS) a command encoded. Values are little-endian; an in or inout
 // pointer is its length (u32) and its bytes, an out pointer its length only,

@@ -431,7 +431,7 @@ test("x86-64: the auto HALT restart byte (0x7EC9)", () => {
 });
 emulator.destroy();
 
-// XSAVE (docs/simd-xsave-plan.md 6.1): an SMI clears CR4, so the handler runs
+// XSAVE (docs/plan/simd-xsave-plan.md 6.1): an SMI clears CR4, so the handler runs
 // with CR4.OSXSAVE 0; XCR0 is not in the save area and stays; RSM restores a
 // valid CR4 and shuts down for a reserved bit
 emulator = await boot({ cpu_features: ["XSAVE"] });

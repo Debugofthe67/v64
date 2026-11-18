@@ -2,7 +2,7 @@
 // tests/a64/platform_probe.c (PSCI over HVC, HVC #1, SMC, loads from
 // physical addresses with nothing mapped) against the reference's results in
 // tests/a64/platform_probe.expected, which v86's virt machine copies
-// (docs/arm64-virt-android16-plan.md P0.2 and the profile's IMPLEMENTATION
+// (docs/plan/arm64-virt-android16-plan.md P0.2 and the profile's IMPLEMENTATION
 // DEFINED choices). A64_TARGET=qemu|v86; A64_PLATFORM_RECORD=1 rewrites the
 // expected file from the QEMU reference.
 import assert from "node:assert/strict";

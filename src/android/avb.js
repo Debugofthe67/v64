@@ -1,6 +1,6 @@
 // Android Verified Boot (external/avb/libavb): vbmeta structs and their
 // descriptors, the digest a bootloader passes to the kernel, and dm-verity
-// hash trees (docs/android-images-plan.md I1). Big-endian structures.
+// hash trees (docs/plan/android-images-plan.md I1). Big-endian structures.
 
 import { u32be, u64be, put32be, put64be, latin1, c_string, concat, sha256, sha256_hex } from "./bytes.js";
 

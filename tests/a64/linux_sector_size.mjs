@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Linux on virtio-blk disks of 4096-byte logical sectors (docs/disk-image-formats-plan.md,
+// Linux on virtio-blk disks of 4096-byte logical sectors (docs/plan/disk-image-formats-plan.md,
 // the appendix's "4K 逻辑扇区"): the pinned Alpine 3.24 aarch64 kernel and
 // initramfs (tests/lib/alpine_image.mjs; ALPINE_CACHE=<dir> where another
 // worktree keeps the ISO) on the virt machine, with an init of the test's

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The arm64 kvm-unit-tests subset of docs/arm64-virt-android16-plan.md P0.6
+// The arm64 kvm-unit-tests subset of docs/plan/arm64-virt-android16-plan.md P0.6
 // (upstream arm/unittests.cfg entries, and fpu.flat, pl031.flat and
 // spinlock-test.flat run directly), built by build.sh for each translation
 // granule and run by run.mjs.

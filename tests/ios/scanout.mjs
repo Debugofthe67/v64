@@ -15,11 +15,15 @@ try
         {
             const pointer=ex.a64_video_prepare(n),memory=cpu.wasm_memory.buffer,source=new Uint32Array(memory,pointer,n);
             const input=Array.from({length:n},(_,i)=>[0x00112233,0xff000000,0x80123456,0x00ffffff][i%4]>>>0);
-            source.set(input);ex.a64_video_changed();
+            source.set(input);ex.a64_video_rgb_changed();
             assert.equal(ex.a64_video_convert_bgra(),input.reduce((a,b)=>a|b,0)&0xffffff,"source RGB OR for SIMD tail "+n);
             assert.equal(cpu.wasm_memory.buffer,memory,"conversion must not allocate or detach staging");
             assert.deepEqual(Array.from(source),input.map(p=>(0xff000000|(p&255)<<16|p&0xff00|p>>>16&255)>>>0),"pixel lanes/tail "+n);
-            source.set(input);assert.equal(ex.a64_video_changed(),0,"the comparison shadow remains BGRA");
+            source.set(input);assert.equal(ex.a64_video_rgb_changed(),0,"the comparison shadow remains BGRA");
+            source[n-1] ^= 0xff000000;
+            assert.equal(ex.a64_video_rgb_changed(),0,"ignore the high byte in SIMD lanes and scalar tails");
+            source[n-1] ^= 1;
+            assert.equal(ex.a64_video_rgb_changed(),1,"detect a color change at the same position");
         }
     const bytes = N90_VIDEO.stride * N90_VIDEO.height, words = bytes / 4, base = 0x40010000;
     const offset = cpu.ram_offset(base, bytes), data = () => new Uint32Array(cpu.mem8.buffer, cpu.mem8.byteOffset + offset, words);
@@ -30,7 +34,7 @@ try
             write_blob_physical: cpu.write_blob_physical.bind(cpu), io: { register_mmio() {} },
             wasm_memory: cpu.wasm_memory,
             wm: native ? { exports: { a64_video_prepare: ex.a64_video_prepare,
-                a64_video_changed() { comparisons++;return ex.a64_video_changed(); },
+                a64_video_rgb_changed() { comparisons++;return ex.a64_video_rgb_changed(); },
                 ...convert&&ex.a64_video_convert_bgra?{a64_video_convert_bgra(){conversions++;return ex.a64_video_convert_bgra();}}:{} } } : undefined };
         const panel = new AppleCLCD(fake, { add_source() {},set_mode() {},set_size_graphical() {},update_buffer() {} }, { set_line() {} });
         panel.regs[0x4044 >>> 2] = base;
@@ -53,7 +57,10 @@ try
         data()[i] ^= 0xAA010203;
         render(20 + i, "change in SIMD lane/row/end " + i);
     }
-    data()[100] ^= 0xFF000000;render(100, "alpha-only changes still match the original comparison");
+    const visibleFrames = fast.performance.frames, converted = conversions;
+    data()[100] ^= 0xFF000000;render(100, "XRGB high-byte change");
+    assert.equal(fast.performance.frames, visibleFrames, "invisible changes do not publish or count frames");
+    assert.equal(conversions, converted, "invisible changes skip pixel conversion");
     both(p => { p.backlight = 1023;p.invalidate(); });render(200, "fractional backlight preserves clamped rounding");
     both(p => { p.backlight = 0;p.invalidate(); });render(300, "backlight off");
     both(p => { p.backlight = 2047;p.invalidate(); });render(400, "backlight wake forces conversion despite unchanged source");
@@ -84,6 +91,14 @@ try
     const legacy=make(true,false);legacy.regs[0x4044>>>2]=base;legacy.render(1300);
     reference.regs[0x4044>>>2]=base;reference.invalidate();reference.render(1300);
     assert.deepEqual(legacy.rgba,reference.rgba,"old Wasm cores without conversion keep the original JS path");
+    const oldCore = make(true);
+    delete oldCore.cpu.wm.exports.a64_video_rgb_changed;
+    oldCore.cpu.wm.exports.a64_video_changed = () => 1;
+    oldCore.render(1400);
+    const oldFrames = oldCore.performance.frames;
+    data()[0] ^= 0xff000000;
+    oldCore.render(1410);
+    assert.equal(oldCore.performance.frames, oldFrames, "an old all-bits Wasm comparison uses the RGB-aware JS fallback");
     if(process.env.A64_SCANOUT_BENCH)
     {
         data().fill(0x00123456);

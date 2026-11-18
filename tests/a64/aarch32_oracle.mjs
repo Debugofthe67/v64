@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The AArch32 single-instruction oracle (docs/aarch32-plan.md Q0.3): random
+// The AArch32 single-instruction oracle (docs/plan/aarch32-plan.md Q0.3): random
 // instructions of each encoding class, generated here with the operands an
 // instruction may have without being UNPREDICTABLE (no PC where it is one,
 // pointers into the data buffer for the loads and stores, small indexes),

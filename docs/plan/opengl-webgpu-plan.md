@@ -1,8 +1,8 @@
 # OpenGL 代理 → WebGPU 修复计划
 
-依据：[`opengl-webgpu-review.md`](opengl-webgpu-review.md)（下文称“审查”，问题编号 S1-x、S2-x 均指它）。
+依据：[`opengl-webgpu-review.md`](../opengl-webgpu-review.md)（下文称“审查”，问题编号 S1-x、S2-x 均指它）。
 基线：v86 `e92fd4f0`（`ios6`），retro-gaming-site `43c4d1e`。日期 2026-10-29。
-状态：C → D → E → F → G 已依次完成（2026-11-01，两个仓库的 `refactor` 分支）。[最终验收与边界](opengl-webgpu-acceptance.md)汇总当前结果；各阶段下面保留中间进度的历史记录，最终退出说明为准。
+状态：C → D → E → F → G 已依次完成（2026-11-01，两个仓库的 `refactor` 分支）。[最终验收与边界](../opengl-webgpu-acceptance.md)汇总当前结果；各阶段下面保留中间进度的历史记录，最终退出说明为准。
 
 ## 0. 已定的决定（2026-10-29）
 
@@ -878,7 +878,7 @@ game.exe
 >
 > - 补齐光照的眼/位置光源齐次除法；雾深度与点距离衰减仍取各自规定的原眼坐标，避免把光照的除法扩散到点大小。RGB（包括 RGB DXT1）采样统一 alpha=1，RGBA DXT1 仍保留透明度；同一程序重定义 RGB/RGBA 图像即时更新，不需重新链接。
 > - 20 项新 Apple/Mesa 审计场景核对光照、方向聚光项、点衰减、DXT1 alpha、点画范围、图像边框、RGBA4 附件、sRGB 附件、压缩 mip 和普通平滑点。原审查“定向光不应用聚光”的判断不成立；两驱动都应用该项。Mesa 的齐次眼坐标、点衰减、奇异雾及填充点画差异保留，已用选定规范/Apple 结果验证相应路径。
-> - 恢复 [渲染偏差清单](../src/browser/glbridge/gl-webgpu/README.md)，并从 gpu-deviations.md 链接。D-19/20/21/22/23/25 在 GPU 测试中显式检查当前差异与原生不同；压缩 mip 要求精确的宿主拒绝原因，不能混入“原生通过”。D-24 的单个超预算多边形在分配前拒绝，另有 Node 检查。精确遮挡计数、索引颜色、平滑/淡出、填充用户平面 discard、ARB 逻辑运算等保留范围均逐项登记；ARB 余项继续 E2。
+> - 恢复 [渲染偏差清单](../../src/browser/glbridge/gl-webgpu/README.md)，并从 gpu-deviations.md 链接。D-19/20/21/22/23/25 在 GPU 测试中显式检查当前差异与原生不同；压缩 mip 要求精确的宿主拒绝原因，不能混入“原生通过”。D-24 的单个超预算多边形在分配前拒绝，另有 Node 检查。精确遮挡计数、索引颜色、平滑/淡出、填充用户平面 discard、ARB 逻辑运算等保留范围均逐项登记；ARB 余项继续 E2。
 > - 97 组 Node、36 页实际 GPU、8 项 GLES 共享检查、构建/相关 ESLint、7/7 新定向变异通过。Mesa 归档 77 项任务；GLES 小语料仍不等同完整 CTS。
 > - D4 的渲染实现及逐批定向验收完成。D5 的性能项、Warcraft III/Cube 2 帧时间以及 G 的全变异旧锚点清理/客体验收仍须完成，不能据此宣布整个 D 或 E/F/G 完成。
 >
@@ -993,7 +993,7 @@ game.exe
 > **E0 完成（2026-10-31）：按 §0.1 选择手写代码生成器修复路线。**
 > - 隔离构建两种真实 glslang 16.6.0 原型；36 对 Cube 2 和 21 对新 GLSL 1.20 均先由生产桌面 glslang 验证合法。版本补丁路线通过 2/57，typed IR 路线通过 52/57。
 > - 独立 Naga 检查后，真实 Chrome Tint 分别接受生成模块的 38/38、108/109；模块数包含未成功程序对的另一阶段。AST 尚缺一维深度采样、投影阴影 bias、含 opaque 成员的 uniform 结构体和 NaN/Infinity 常量处理。
-> - 完整编译门槛失败，未进入像素门槛，不宣称性能门槛通过；生产 bios/glslang.wasm 未改动。可复现实验、补丁、逐项日志与哈希见 [E0 记录](../tests/glbridge/experiments/README.md)。继续 E1 的 S2-40/41 修复。
+> - 完整编译门槛失败，未进入像素门槛，不宣称性能门槛通过；生产 bios/glslang.wasm 未改动。可复现实验、补丁、逐项日志与哈希见 [E0 记录](../../tests/glbridge/experiments/README.md)。继续 E1 的 S2-40/41 修复。
 
 > **E1 完成（2026-10-31）：S2-40/41 的代码生成与初值修复。**
 > - 统一标识符逃逸覆盖 WGSL 保留字、内建函数、生成器临时名和逃逸前缀，避免 var/var_、floor/select、结构字段和阶段参数碰撞。uniform 的 padded/int-bool 存储结构与普通值结构分开，读取数组和结构时显式转换；混合 sampler/值成员分开绑定。
@@ -1009,7 +1009,7 @@ game.exe
 
 > **E2B/E2 完成（2026-10-31）：RECT 与真实生成器语料退出。**
 > - 加入独立的矩形纹理目标、绑定、默认过滤/环绕、能力查询、固定管线目标优先级、代理图像、状态/对象/附件校验；禁止 mip、border、压缩与索引上传。固定管线、ARB RECT/SHADOWRECT、GLSL sampler2DRect 的非归一化坐标正确换算，复制/部分更新、默认对象和 FBO 渲染内容均覆盖。
-> - RECT 的 11 个完整像素场景与 20 个真实 Wine 4.0/cgc 3.1 输出均匹配 Apple GL、Mesa、WebGPU；RECT 的 GLSL 颜色/深度和渲染附件另验证热/冷恢复。原始编译器、输入和命令来源见 [真实 ARB 语料](../tests/glbridge/arb_corpus/README.md)。
+> - RECT 的 11 个完整像素场景与 20 个真实 Wine 4.0/cgc 3.1 输出均匹配 Apple GL、Mesa、WebGPU；RECT 的 GLSL 颜色/深度和渲染附件另验证热/冷恢复。原始编译器、输入和命令来源见 [真实 ARB 语料](../../tests/glbridge/arb_corpus/README.md)。
 > - 矩形参数错误按规范处理：BASE_LEVEL 非零使用 INVALID_VALUE（Mesa 返回 INVALID_OPERATION），COLOR_INDEX 上传使用 INVALID_ENUM（两个原生驱动均宽松接受）；原始结果保留，不冒称两驱动错误完全一致。线性过滤使用整数平均的输入，避开两原生驱动八位量化的取整分歧。
 > - 109 组 Node、47 个真实 GPU 页面、8 项共用 GLES 检查通过；新变异 16/16 被杀死。Mesa 为 84 个原生任务/60 个基础场景。E2 进入运行时校验 E3；客体 DLL 的目标编码清理与部署仍按 F 完成。
 
@@ -1169,13 +1169,13 @@ game.exe
 > - 重建普通/诊断 DLL、virtio SYS、核心/WASM/CPU worker/显示插件与全部 WebGPU 资源，同步站点及缓存版本。默认 SYS 名称改为 `v86gl.sys`，兼容名 `v86gl-virtio.sys` 与它逐字节相同。发布路径重复构建的 DLL 及跨目录构建的驱动与部署哈希一致；MinGW DLL 默认基址仍依赖输出路径，清楚记录该约束。
 > - XP 客体内完成安装与 GL/GLSL、GDI Unicode 像素、应用窗口链探针，随后正常关机导出仅写入块。在 APFS 克隆上校验全部目标文件后才替换本地 XP、Cube 2、Warcraft III 镜像；原镜像均保留备份。XP NTFS 关机标记为干净，系统 `opengl32.dll` 与 dllcache 原文件哈希保持一致。War3 的第二次系统盘覆盖不落盘，沿用第一轮已验证的系统镜像。
 > - **新旧 Cube DLL 碰巧同为 145408 字节。** 旧文件哈希 `d7d6ffb7…` 且含 gl4es 版本；新文件哈希 `4bffb949…`。判断版本必须用完整 SHA256 及客体 GL_VERSION/探针，不能再靠大小。新驱动哈希 `57c47879…`。
-> - [部署清单](../../retro-gaming-site/tests/acceptance/deployments/opengl-webgpu-F6.json) 记录完整源/目标哈希、备份名、保护文件及两轮探针证据。新增克隆补丁测试覆盖边界、重复块、原文件摘要、备份及未写区域；114 组核心通过。本站分支和本地忽略的镜像已更新，本任务未推送或发布远端存储。进入 G 的完整程序矩阵。
+> - [部署清单](../../../retro-gaming-site/tests/acceptance/deployments/opengl-webgpu-F6.json) 记录完整源/目标哈希、备份名、保护文件及两轮探针证据。新增克隆补丁测试覆盖边界、重复块、原文件摘要、备份及未写区域；114 组核心通过。本站分支和本地忽略的镜像已更新，本任务未推送或发布远端存储。进入 G 的完整程序矩阵。
 
 ### 阶段 G：客体内验收与收尾（约 2 周，之后持续）
 
 > **G1 完成（2026-11-01）：严格门禁、真实行为覆盖和已呈现帧冷恢复。**
 >
-> - 完整单次 `node tests/glbridge/mutations.mjs` 返回 0：44 族、802 个有效变异，杀死 792 个（98.75%），每族均达到原门槛。失效/重复锚点、非法 JS、未知/空选择和基础设施超时会使门禁失败；已知检测器只改变执行顺序。全部逐项结果与 10 个幸存变异保存在 [gate 清单](../tests/glbridge/acceptance/mutation-gate.json) 和原始日志。
+> - 完整单次 `node tests/glbridge/mutations.mjs` 返回 0：44 族、802 个有效变异，杀死 792 个（98.75%），每族均达到原门槛。失效/重复锚点、非法 JS、未知/空选择和基础设施超时会使门禁失败；已知检测器只改变执行顺序。全部逐项结果与 10 个幸存变异保存在 [gate 清单](../../tests/glbridge/acceptance/mutation-gate.json) 和原始日志。
 > - 115 组核心 Node、55 个真实 GPU 页面、8 组共享 GLES 通过；94 组行为测试在运行时实际解码全部 257 个记录。`COVERAGE.md` 已更新为逐项测试引用，移除仅靠旧处理器表作覆盖证据的做法；旧源码文档引用改到实际文件。
 > - 整机冷恢复发现下一帧可能已清空后台，而上一帧仍在显示。现在分别保存已呈现图像与未完成后台帧；新增真实 GPU 热/冷恢复与 2/2 变异验证。程序矩阵使用完整 CPU/RAM/磁盘/设备/图形的 stream-v9 存档，销毁旧 VM 后冷恢复，冻结 CPU 刷新 VGA 后比较完整像素，再连续运行 64 帧。
 > - GLView、Warcraft III、Cube 2 两种模式已完成；G2 继续收尾 WineD3D worker 和 Quake 3 引擎游戏的真实光晕读回覆盖、完整矩阵与发布文档。阶段 G 尚未整体关闭。
@@ -1185,7 +1185,7 @@ game.exe
 > - GLView 2.6.0、Warcraft III、Cube 2、Tremulous GPP1（Quake 3 引擎）和经 WineD3D 1.7.52 运行的 D3D8 立方体，全部本地/worker 共 10 项通过。最终资源版本统一为 `8523858ab36865e264c6`；每项完整 stream-v9 冷恢复的合成桌面像素精确相同，继续 64 帧，随后结束旧进程并在同一 VM 启动另一实际程序，旧 GL 上下文全部释放。功能与测量均无宿主错误、渲染拒绝或无效管线。
 > - 每项从同一存档按候选/F6/F6/候选测量，各预热 21 帧再取 64 个间隔。Quake 3 引擎 worker 首轮较慢、独立复测未稳定重现，保留两轮原始数据；不把刷新间隔量化和整机噪声写成确定的性能提升。完整 9 组 `make gles-tests`（含 stream）及生成头检查补跑通过。
 > - GLView 原包两处 GLSL 1.10 函数尾多余分号，仅测试副本各移除一个；EXE/DLL 不改。原版 Q3ADemo 的眩光表面路径禁用，最终用未改引擎的 Tremulous GPP 加单独测试地图变体，严格观测到深度读回、模板启用和 `[0,0.3]` 深度范围。原包、修正、地图及原生编译证据均保留哈希，不将这些条件写成未经修改原包的全项一致性通过。
-> - 偏差清单、带实际测试引用的覆盖表、核心/站点架构文档及源码引用完成更新。[验收记录](opengl-webgpu-acceptance.md)、[十项冻结矩阵](../tests/glbridge/acceptance/application-matrix.json)和逐项日志/样本提供复现入口。F6 本地镜像及系统 OpenGL 保护结果沿用；本任务只做本地提交和资源同步。
+> - 偏差清单、带实际测试引用的覆盖表、核心/站点架构文档及源码引用完成更新。[验收记录](../opengl-webgpu-acceptance.md)、[十项冻结矩阵](../../tests/glbridge/acceptance/application-matrix.json)和逐项日志/样本提供复现入口。F6 本地镜像及系统 OpenGL 保护结果沿用；本任务只做本地提交和资源同步。
 
 
 - **程序：**

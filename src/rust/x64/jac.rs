@@ -1,5 +1,5 @@
 //! Access cache for compiled page functions: x86's caches (one per core) of
-//! jitrt::access (docs/jit-unification-plan.md P5.8), whose structure,
+//! jitrt::access (docs/plan/jit-unification-plan.md P5.8), whose structure,
 //! tags, fills and invalidations are ISA-neutral. Per core, per privilege
 //! and per access kind, a direct-mapped table of linear 4 KiB pages whose
 //! current translation is plain RAM (and, for writes, holds no compiled

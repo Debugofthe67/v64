@@ -128,12 +128,12 @@ V86.prototype.create_adapter_renderer = async function(options, host)
     if(!adapter || this.destroyed) return null;
     // (with the graphics proxy's compositor on this page: a layer of it, the
     // renderer on its device showing scanouts there without readbacks,
-    // docs/gfxstream-plan.md G4; its plugin objects' names are quoted)
+    // docs/plan/gfxstream-plan.md G4; its plugin objects' names are quoted)
     let compositor = this.device_plugins.map(plugin => plugin["bridge"] && plugin["bridge"]["compositor"]).find(Boolean);
     // (the ranchu machine's GLES host without the graphics proxy: a
     // compositor of its own takes over the screen canvas, as the proxy's
     // does, so that a posted frame is a layer over the screen and is not read
-    // back, docs/gles-proxy-plan.md E5; the 2D canvas again if it cannot start)
+    // back, docs/plan/gles-proxy-plan.md E5; the 2D canvas again if it cannot start)
     if(!compositor && this.gles_host && this.machine_type !== "s5l8930") compositor = await this.gles_screen_compositor();
     const layer = compositor ? compositor["createLayer"]("display adapter") : null;
     const renderer_options = layer ? { "canvas": layer["canvas"], "executorOptions": { "host": layer["host"] }, "scanoutLayer": layer } : {};
@@ -198,7 +198,7 @@ function create_local_channel()
 }
 
 /**
- * Check a loaded core (docs/arm64-virt-android16-plan.md P1.3): the ARM core
+ * Check a loaded core (docs/plan/arm64-virt-android16-plan.md P1.3): the ARM core
  * exports the ISA marker isa_aarch64, the x86 core does not, and the core's
  * own table entries end below WASM_TABLE_OFFSET, where compiled code's begin
  * @param {!Object} exports
@@ -255,11 +255,11 @@ export function V86(options)
     this.machine_type = machine.machine_type;
     // the ranchu machine's GLES host (ranchu_gpu "host", or an emulator
     // image's GPU mode "host"): it needs the page's renderer, as a 3D
-    // display adapter does (docs/gles-proxy-plan.md)
+    // display adapter does (docs/plan/gles-proxy-plan.md)
     const android_device = options.android && ANDROID_DEVICES[options.android.device || "cf_arm64_only_phone"];
     this.gles_host = options.ranchu_gpu === "host" || !!options.gles_backdoor || !!(android_device && android_device.machine === "ranchu" &&
         ranchu_gpu_mode(android_device, options.android.gpu_mode).ranchu_gpu === "host");
-    // each disk's disk_option and disk_error (docs/disk-persistence-plan.md
+    // each disk's disk_option and disk_error (docs/plan/disk-persistence-plan.md
     // "启动校验"); the disks, to find an image bound twice (attach_sata_drive)
     /** @type {!Array<!Array<*>>} [name, descriptor] */
     this.disk_descriptors = check_disk_options(options).map(([name, file]) => [name, file]);
@@ -329,7 +329,7 @@ export function V86(options)
         "get_rand_int": function() { return get_rand_int(); },
         "stop_idling": function() { return cpu.stop_idling(); },
         // (cores built before the wide-native path was removed import it:
-        // the M1 baselines, docs/jit-unification-plan.md P1.2)
+        // the M1 baselines, docs/plan/jit-unification-plan.md P1.2)
         "x64_native_discard": () => {},
         "jit_publish": (client, id, slot, pointer, length) => cpu.jit_publish(client, id, slot, pointer, length),
 
@@ -386,7 +386,7 @@ export function V86(options)
             /* global __dirname */
 
             return new Promise(resolve => {
-                // the core of the CPU's family (docs/arm64-virt-android16-plan.md
+                // the core of the CPU's family (docs/plan/arm64-virt-android16-plan.md
                 // P1.3): the ARM core for arm64, the x86 core otherwise; the
                 // fallback stays in the family
                 const arm = is_arm(this.cpu_type);
@@ -493,8 +493,8 @@ export function V86(options)
 }
 
 /**
- * The backend of a disk written back (docs/disk-persistence-plan.md): a
- * browser disk (opfs:, docs/vm-manager-plan.md U6), a disk service's URL,
+ * The backend of a disk written back (docs/plan/disk-persistence-plan.md): a
+ * browser disk (opfs:, docs/plan/vm-manager-plan.md U6), a disk service's URL,
  * or in Node a local file
  * @param {string} name
  * @param {!Object} file
@@ -547,7 +547,7 @@ V86.prototype.continue_init = async function(emulator, options)
             Object.assign({}, disk, { image: await opfs_readable("usb:" + disk.id, disk.image) }))) });
     }
     // android: { device, gpu_mode, selinux, vendor_ramdisk }: the kernel,
-    // initrd and command line from the disk (docs/android-images-plan.md I2)
+    // initrd and command line from the disk (docs/plan/android-images-plan.md I2)
     if(options.android)
     {
         const android = options.android;
@@ -558,8 +558,8 @@ V86.prototype.continue_init = async function(emulator, options)
         if(this.machine_type !== device.machine) throw new Error("android: " + device.id + " needs machine_type \"" + device.machine + "\"");
         if(options.kernel || options.initrd || options.bzimage) throw new Error("android: the disk's boot partitions give the kernel and initrd (kernel and initrd left out)");
         if(!options.virtio_disks || !options.virtio_disks.length) throw new Error("android: the disk with the device's partitions is the first of virtio_disks");
-        // (gfxstream: for the gfxstream device's development, docs/gfxstream-plan.md;
-        // an emulator image's: guest or host, docs/gles-proxy-plan.md)
+        // (gfxstream: for the gfxstream device's development, docs/plan/gfxstream-plan.md;
+        // an emulator image's: guest or host, docs/plan/gles-proxy-plan.md)
         const gpu_modes = device.machine === "ranchu" ? ["guest", "host", "swiftshader"] : ["swiftshader", "venus", "gfxstream"];
         if(android.gpu_mode !== undefined && !gpu_modes.includes(android.gpu_mode)) throw new Error("android.gpu_mode: " + gpu_modes.join(", "));
         if(android.selinux !== undefined && !["enforcing", "permissive"].includes(android.selinux)) throw new Error("android.selinux: enforcing or permissive");
@@ -626,7 +626,7 @@ V86.prototype.continue_init = async function(emulator, options)
     settings["jit_backend"] = options["jit_backend"];
     // (ir_region_budget, ir_stats, ir_verify, ir_dump, ir_opt_level,
     // ir_passes_disabled and ir_page_mode are deprecated and ignored: the IR
-    // region tiers went in docs/jit-unification-plan.md M11)
+    // region tiers went in docs/plan/jit-unification-plan.md M11)
     settings["ir_sync_publication"] = options["ir_sync_publication"];
     settings["ir_tier0"] = options["ir_tier0"];
     settings["x87_fast_math"] = options["x87_fast_math"];
@@ -991,7 +991,7 @@ V86.prototype.continue_init = async function(emulator, options)
             case "dtb":
                 settings.dtb = buffer.buffer;
                 break;
-            // android.vendor_ramdisk (docs/android-images-plan.md I2)
+            // android.vendor_ramdisk (docs/plan/android-images-plan.md I2)
             case "android_vendor_ramdisk":
                 settings.android_vendor_ramdisk = buffer.buffer;
                 break;
@@ -1041,7 +1041,7 @@ V86.prototype.continue_init = async function(emulator, options)
         {
             disk_policies.set(name, check_disk_policy(name, file));
             disk_descriptors.set(name, file);
-            // written back (docs/disk-persistence-plan.md): in Node, the
+            // written back (docs/plan/disk-persistence-plan.md): in Node, the
             // url's local file (src/disk_writeback.js); a buffer object of
             // one's own is its own backend
             if(disk_policies.get(name).disk_option === "read_write" && !(file.get && file.set && file.load))
@@ -1051,7 +1051,7 @@ V86.prototype.continue_init = async function(emulator, options)
             }
         }
 
-        // hard disks in a container format (docs/disk-image-formats-plan.md);
+        // hard disks in a container format (docs/plan/disk-image-formats-plan.md);
         // without a format, RAW in the buffers of src/buffer.js
         if(check_image_options(name, file, name === "hda" || name === "hdb" || name.startsWith("virtio_disk") || name.startsWith("usb:")))
         {
@@ -1406,7 +1406,7 @@ V86.prototype.continue_init = async function(emulator, options)
 
         if(options.android)
         {
-            // Android's bootloader (docs/android-images-plan.md I2): the
+            // Android's bootloader (docs/plan/android-images-plan.md I2): the
             // kernel, the initrd with bootconfig and the command line from
             // the first disk's boot partitions. Also with a state: a reset
             // loads them again (src/arm/cpu.js)
@@ -1439,12 +1439,12 @@ V86.prototype.continue_init = async function(emulator, options)
                 (boot.vbmeta ? "vbmeta " + boot.vbmeta.digest : (boot.disks || []).map(d => d.name).join(", ")) + ", cmdline " + settings.cmdline);
         }
 
-        // the GLES host's plugin (ranchu_gpu "host", gles_backdoor; docs/gles-proxy-plan.md):
+        // the GLES host's plugin (ranchu_gpu "host", gles_backdoor; docs/plan/gles-proxy-plan.md):
         // the machine's GPU mode is known only now, after Android's bootloader
         if(settings.ranchu_gpu === "host" || settings.gles_backdoor)
         {
             settings.gles_plugin = await load_device_plugin(GLES_PLUGINS, "gles", options.ranchu_gpu_path, "ranchu_gpu_path");
-            // (its GLSL ES compiler, glslang: GLSL ES 3.x's shaders; docs/gles3-plan.md)
+            // (its GLSL ES compiler, glslang: GLSL ES 3.x's shaders; docs/plan/gles3-plan.md)
             if(settings.gles_plugin["prepare"])
             {
                 let glslang = null;
@@ -1786,7 +1786,7 @@ V86.prototype.stop = async function()
         await cpu.parallel.park();
         if(!this.v86.running) cpu.parallel_capture();
     }
-    // the disks written back: their writes durable (docs/disk-persistence-plan.md)
+    // the disks written back: their writes durable (docs/plan/disk-persistence-plan.md)
     await this.flush_writeback_disks();
 };
 
@@ -2188,7 +2188,7 @@ V86.prototype.is_running = function()
 /**
  * Set the image inserted in the floppy drive. Can be changed at runtime, as
  * when physically changing the floppy disk. With disk_option "read_write"
- * (docs/disk-persistence-plan.md) the guest's writes go back to the image;
+ * (docs/plan/disk-persistence-plan.md) the guest's writes go back to the image;
  * the disk taken out (another inserted, or ejected) is flushed and closed.
  */
 V86.prototype.set_fda = async function(file)
@@ -2284,7 +2284,7 @@ V86.prototype.eject_fdb = function()
 };
 
 /**
- * Read an OVF package, an OVA archive (docs/disk-image-formats-plan.md P4),
+ * Read an OVF package, an OVA archive (docs/plan/disk-image-formats-plan.md P4),
  * before a machine is made: its disks as descriptors for hda, hdb or
  * attach_sata_drive (the archive with archive_member: read in it, not
  * extracted), the hardware it describes as v86 options (memory_size,
@@ -2338,7 +2338,7 @@ V86.prototype.disk_image_info = async function(name)
 
 /**
  * Export a disk as the guest sees it, as a RAW image of its whole size
- * (docs/disk-image-formats-plan.md P2) or as a new QCOW2 image (format:
+ * (docs/plan/disk-image-formats-plan.md P2) or as a new QCOW2 image (format:
  * "qcow2", P5: version 3, 64 KiB clusters, the clusters of zeros left out):
  * the image's data with the guest's writes. The machine stops and its disk
  * I/O finishes first, so the stream is one view of the disk; it goes on
@@ -2504,7 +2504,7 @@ V86.prototype.attach_sata_drive = async function(port, file, options)
  * The image of a drive attached to the running machine (a SATA drive, a USB
  * disk), loaded as the disk options' are: written back by its disk_option,
  * a disk image's container, a whole file, or a buffer; its policy on it
- * (docs/disk-persistence-plan.md: checked with the disks the machine has)
+ * (docs/plan/disk-persistence-plan.md: checked with the disks the machine has)
  * @param {string} name the disk's name (its policy, errors, sector size)
  * @param {Object|null} file the image, as for the hda option (null: an empty CD drive)
  * @param {boolean} cdrom
@@ -2529,7 +2529,7 @@ V86.prototype.load_attached_disk = async function(name, file, cdrom, caller)
     }
     else if(disk_image)
     {
-        // a hard disk in a container format (docs/disk-image-formats-plan.md)
+        // a hard disk in a container format (docs/plan/disk-image-formats-plan.md)
         image = create_disk_image(name, /** @type {!Object} */ (file), this.disk_image_settings());
         await image.load();
     }
@@ -3340,7 +3340,7 @@ V86.prototype.get_instruction_stats = function()
     return print_stats.stats_to_string(this.v86.cpu);
 };
 
-/** Deprecated: the IR region tiers' diagnostics (docs/jit-unification-plan.md M11 deleted them). Returns false. */
+/** Deprecated: the IR region tiers' diagnostics (docs/plan/jit-unification-plan.md M11 deleted them). Returns false. */
 V86.prototype.configure_ir_diagnostics = function(period)
 {
     return false;
@@ -3348,7 +3348,7 @@ V86.prototype.configure_ir_diagnostics = function(period)
 // eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
 V86.prototype["configure_ir_diagnostics"] = V86.prototype.configure_ir_diagnostics;
 
-/** Deprecated: the IR region tiers' compiler dumps (docs/jit-unification-plan.md M11 deleted them). Returns an empty list. */
+/** Deprecated: the IR region tiers' compiler dumps (docs/plan/jit-unification-plan.md M11 deleted them). Returns an empty list. */
 V86.prototype.get_ir_dumps = function(clear = false)
 {
     return [];

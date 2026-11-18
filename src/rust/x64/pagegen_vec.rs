@@ -1,5 +1,5 @@
 //! The page tier's operands for the x86tpl::ops templates
-//! (docs/jit-unification-plan.md P2.4, P2.5): the XMM registers in the CPU
+//! (docs/plan/jit-unification-plan.md P2.4, P2.5): the XMM registers in the CPU
 //! state, memory operands through the access cache (vector_address, which
 //! retries an aligned form's misaligned address). A refused instruction
 //! retries in the interpreter, which leaves the CPU as the templates found

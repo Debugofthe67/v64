@@ -9,7 +9,7 @@
 //       [--seconds 60] [--profile-from 30 --profile-out game.cpuprofile]
 //       [--sync-publication 0|1]
 //
-// Windows 98 (docs/jit-unification-plan.md P0.15): the site's states have
+// Windows 98 (docs/plan/jit-unification-plan.md P0.15): the site's states have
 // neither the 9p filesystem nor the v86gl device, --filesystem 0 --v86gl 0
 // (or --win98, both). Without --state the machine cold-boots from hda
 // (--memory MiB, default 256 as the site's Windows 98 games), and the summary
@@ -20,7 +20,7 @@
 // weighted by the wall time since the previous one (the time a halted guest
 // waits counts as idle): real, vm86, prot16 and prot32 (".flat" with flat
 // segments) by ring. --ledger adds the mode ledger (the JIT switch
-// mode_ledger, docs/profiling.md): the retired instructions by mode and how
+// mode_ledger, docs/perf/profiling.md): the retired instructions by mode and how
 // they ran. JIT_SWITCHES applies (tests/lib/jit_switches.mjs); JIT_STATS=1
 // prints the JIT statistics record at the end (tools/bench/jit_stats.mjs).
 //
@@ -277,7 +277,7 @@ console.log(JSON.stringify({ event: "summary", seconds, second_half: { mips: +me
     ...mode_ms.size ? { modes: shares(mode_ms), modes_second_half: shares(mode_ms_late) } : {},
     ...!raw ? { desktop_s } : {},
     ...with_ledger ? { ledger: mode_ledger(e) } : {} }));
-// (tools/bench/jit_stats.mjs, docs/jit-unification-plan.md P0.7)
+// (tools/bench/jit_stats.mjs, docs/plan/jit-unification-plan.md P0.7)
 if(jit_stats_enabled()) print_jit_stats(vm, { script: "game_state", wasm: option("wasm", "build/v86.wasm"), state: state_path || null, seconds });
 await vm.destroy();
 process.exit(0);

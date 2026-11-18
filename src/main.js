@@ -26,7 +26,7 @@ export function v86(bus, wasm)
     this.tick_counter = 0;
     this.worker = null;
 
-    // the CPU of the core's family (docs/arm64-virt-android16-plan.md P1.2):
+    // the CPU of the core's family (docs/plan/arm64-virt-android16-plan.md P1.2):
     // the ARM core exports the ISA marker isa_aarch64
     const stop_idling = () => { this.running && this.idle && this.next_tick(0); };
     /** @type {CPU} */

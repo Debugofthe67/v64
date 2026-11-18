@@ -1,4 +1,4 @@
-// An iPhone's IPSW (docs/iphone4-plan.md S0): a zip of the restore
+// An iPhone's IPSW (docs/plan/iphone4-plan.md S0): a zip of the restore
 // firmware. The user brings it and the keys (The Apple Wiki's key page, as
 // the key file below); this decrypts and checks each image and takes out
 // what the s5l8930 machine boots: the kernelcache (a Mach-O), the device
@@ -6,7 +6,7 @@
 // partition (HFSX). The archive is read through read(offset, length), which
 // returns bytes or a promise of them (a file in node, a File's slices).
 //
-// The key file (never in the repository: docs/iphone4-plan.md "法律与分发"):
+// The key file (never in the repository: docs/plan/iphone4-plan.md "法律与分发"):
 //   { "format": "v86-ios-keys", "version": 1, "device": "iPhone3,1", "build": "10B329", ...,
 //     "images": { "<the key page's item>": { "file": "<name in the IPSW>", "iv": "<hex>", "key": "<hex>" } } }
 // RootFileSystem has a 36-byte key and no IV.

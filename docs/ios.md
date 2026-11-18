@@ -3,7 +3,7 @@
 The experimental `s5l8930` machine models the GSM iPhone 4 (`iPhone3,1`,
 N90AP) with one Cortex-A8, 512 MiB of RAM, a 640 × 960 display and a
 16 GB NAND layout. The supported restore is iOS 6.1.3, build 10B329.
-See [the implementation plan](iphone4-plan.md) for the current acceptance
+See [the implementation plan](plan/iphone4-plan.md) for the current acceptance
 results.
 
 ## Import in the VM manager
@@ -92,7 +92,7 @@ logic operations, automatic mip generation and ten paletted compression
 formats have behavior tests in addition to entry-point coverage. This is
 not a Khronos conformance result. Line widths and smooth-point sizes use their
 declared one-pixel supported ranges; matrix palette is not advertised. See
-[the validation record](ios-ipa-install-plan.md#9-armv6-应用与原生-es-11-路径)
+[the validation record](plan/ios-ipa-install-plan.md#9-armv6-应用与原生-es-11-路径)
 and [rendering differences](gpu-deviations.md#gles-the-ranchu-machines-gles-host).
 
 The owner's unencrypted ARMv6 Plants vs Zombies 1.0 IPA was installed
@@ -157,7 +157,7 @@ consecutive sweeps. Wake the display again before further input tests;
 screenshots can retain the last frame after the guest display sleeps.
 Build an update with
 `V86_FIXTURE_VERSION=2 sh tools/ios/guest/build-apps.sh build/ios-install-fixtures-v2`.
-The [IPA implementation plan](ios-ipa-install-plan.md) records the acceptance
+The [IPA implementation plan](plan/ios-ipa-install-plan.md) records the acceptance
 results and the real console UI test procedure.
 
 Owner-firmware acceptance on iPhone 4 / iOS 6.1.3 verified Angry Birds 5.1.0

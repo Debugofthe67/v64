@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The common parts of disk images (docs/disk-image-formats-plan.md P0): the
+// The common parts of disk images (docs/plan/disk-image-formats-plan.md P0): the
 // guest's writes over the image (write then read, part of a cluster, across
 // clusters, a read that began before a write, the memory budget), snapshots
 // of the changes with the image's identity, cancellation and shared reads of
@@ -381,7 +381,7 @@ function server(bytes, behave = {})
     assert.throws(() => check_image_options("hda", { url: "x", format: "vmdk", files: { "a.vmdk": "a.vmdk" } }, true), /files must map/);
     assert.throws(() => check_image_options("hda", { url: "x", format: "vmdk", archive_member: 7 }, true), /archive_member/);
     assert.throws(() => check_image_options("cdrom", { url: "x", format: "qcow2" }, false), /for hard disks/);
-    // (read_write: written back, docs/disk-persistence-plan.md; whether the source can be is checked when the machine starts)
+    // (read_write: written back, docs/plan/disk-persistence-plan.md; whether the source can be is checked when the machine starts)
     assert.equal(check_image_options("hda", { url: "x", disk_option: "read_write" }, true), undefined);
     assert.throws(() => check_image_options("hda", { url: "x", disk_option: "rw" }, true), /not one of/);
     assert.throws(() => check_image_options("bios", { url: "x", disk_option: "read_only" }, false), /for disks/);

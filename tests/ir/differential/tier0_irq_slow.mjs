@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Interrupts that a page function's own device access makes deliverable
-// (docs/jit-unification-plan.md P3.0b; written for IR Tier-0, deleted in
+// (docs/plan/jit-unification-plan.md P3.0b; written for IR Tier-0, deleted in
 // P7.5, now run on the x64 page tier in legacy mode, P7.3). A hot loop sends itself
 // an IPI through the local APIC's ICR, then sends another while the TPR
 // blocks it and lowers the TPR. Each interrupt must arrive right after the

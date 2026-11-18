@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Linux on disks of 4096-byte logical sectors (docs/disk-image-formats-plan.md,
+// Linux on disks of 4096-byte logical sectors (docs/plan/disk-image-formats-plan.md,
 // the appendix's "4K 逻辑扇区"): the kernel of images/linux4.iso (Linux 4.16)
 // booted directly with its CD as the root, two such disks, a RAW one
 // (logical_sector_size 4096) and a VHDX image with 4096-byte sectors

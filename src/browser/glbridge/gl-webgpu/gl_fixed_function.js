@@ -16,7 +16,7 @@
 // are literally the same expression -- which is what GL requires for a depth
 // pre-pass drawn one way and shaded the other not to z-fight.
 //
-// See docs/opengl-webgpu-plan.md D4.
+// See docs/plan/opengl-webgpu-plan.md D4.
 
 (function(global) {
     "use strict";

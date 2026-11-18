@@ -1,4 +1,4 @@
-// virtio-snd (virtio 1.2 section 5.14; docs/arm64-virt-android16-plan.md
+// virtio-snd (virtio 1.2 section 5.14; docs/plan/arm64-virt-android16-plan.md
 // P7.5, P12.5) as a built-in device of the virt machine: one output stream
 // (PCM, 1 or 2 channels, S16 or S32, 8000 to 48000 Hz), no jacks, one
 // channel map (front left, front right).

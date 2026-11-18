@@ -1,4 +1,4 @@
-// The GLES host's GLSL ES compiler (docs/gles3-plan.md L1): glslang, built
+// The GLES host's GLSL ES compiler (docs/plan/gles3-plan.md L1): glslang, built
 // for WebAssembly by tools/glslang/build.sh into bios/glslang.wasm, with
 // this interface for src/gles/glslang.js. No JavaScript glue: the module
 // exports C functions and imports almost nothing (WASI stubs).
@@ -229,7 +229,7 @@ std::unique_ptr<glslang::TShader> code_shader(const Source& source, bool& ok)
     return shader;
 }
 
-// Desktop GLSL for the OpenGL 2.1 proxy (docs/opengl-webgpu-plan.md C4):
+// Desktop GLSL for the OpenGL 2.1 proxy (docs/plan/opengl-webgpu-plan.md C4):
 // 1.10 and 1.20 with the compatibility profile's built-ins, 110 when a
 // shader says no #version, and desktop GL's rules for linking: a stage may be
 // several shaders, any number of stages may be missing. Its own limits.

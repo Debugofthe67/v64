@@ -1,0 +1,192 @@
+{
+  "date": "2026-11-17",
+  "status": "PASS",
+  "scope": "GTA San Andreas on XP: first alley, BMX ride out and outdoor sky; shared DDraw/D3D buffer-map regression.",
+  "sourceBase": "ca26313dfdcc5aff2e48e8530f6d39ad2f89fc2a",
+  "sourceSha256": {
+    "src/browser/glbridge/d3d9-webgpu/d3d9_executor.js": "0e8169f33e91f6f204efaf9e9e4dfb748d96e4f3f573ef8742181c8ec402b2a7",
+    "src/browser/glbridge/d3d9-webgpu/d9wg_draw_recorder.js": "c93e43fac5b894f162a04436a2a21d0bcc7a6a416145aabda7c1d8407d4018e8",
+    "tests/glbridge/ddraw_nooverwrite_test.js": "088ea45a1e497679d1d044e908d9766b4d5a2394bb7993a84b3faea370a7c765",
+    "tests/glbridge/ddraw_nooverwrite_mutation_test.js": "d09e92def7e2308ebfff840514d4ad5f9c884a71f22fcee62f1d4caf1c4f05a1",
+    "tests/glbridge/ddraw_nooverwrite_browser_test.html": "5e5f9422d33230004a181f77d6aa1199fc6eb5225f853480febb320ac3d9eef3"
+  },
+  "graphicsRevision": "64378aa6ca60e754a869",
+  "cause": {
+    "description": "A later NOOVERWRITE buffer upload crossed a disjoint synchronising upload to the same buffer and reached draws using its previous contents. Overlap-only ordering ignored the end of the previous buffer-use epoch. Sky/postprocessing geometry consequently read later vertex data.",
+    "observedExample": {
+      "synchronisingUpload": {
+        "offset": 0,
+        "bytes": 112
+      },
+      "laterNoOverwrite": {
+        "offset": 112,
+        "bytes": 112
+      },
+      "drawsCrossedByOldRecorder": 5
+    },
+    "contract": "NOOVERWRITE applies to drawing since the last lock without that flag. Ordinary/DISCARD uploads form a barrier for that buffer, including disjoint ranges. Same-epoch NOOVERWRITE reordering and independent buffers remain asynchronous.",
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dlock"
+  },
+  "tests": [
+    {
+      "command": "node tests/glbridge/ddraw_nooverwrite_test.js",
+      "status": "PASS",
+      "checks": 926
+    },
+    {
+      "command": "node tests/glbridge/ddraw_nooverwrite_mutation_test.js",
+      "status": "PASS",
+      "runtimeMutantsKilled": 10,
+      "runtimeMutantsTotal": 10
+    },
+    {
+      "command": "node tests/glbridge/d3d9_webgpu_executor_test.js",
+      "status": "PASS",
+      "tests": 191
+    },
+    {
+      "command": "node tests/glbridge/gl_multipass_browser_runner.js ddraw_nooverwrite_browser_test.html",
+      "adapters": [
+        "Apple M1 Pro / Metal",
+        "SwiftShader"
+      ],
+      "status": "PASS",
+      "exactPixelProbesPerRun": 160,
+      "flagCombinations": 4,
+      "disjointEpochCases": 6,
+      "buffers": [
+        "vertex",
+        "uint16 index with strip mirror",
+        "uint32 index"
+      ]
+    },
+    {
+      "command": "make d3d-review-gpu-tests",
+      "adapter": "Apple M1 Pro / Metal",
+      "status": "PASS",
+      "runs": 57,
+      "note": "56 existing D3D pages plus adapter preflight. The additional NOOVERWRITE page passed separately and is now also in this CI target."
+    },
+    {
+      "control": "Exact pre-fix recordNoOverwriteUpload method, with the new pixel regression page",
+      "status": "EXPECTED_FAIL",
+      "failure": "vertex synchronising map crossed by disjoint append, flags 0 format 0: 239"
+    },
+    {
+      "command": "ESLint on the four edited JavaScript files; git diff --check in both repositories",
+      "status": "PASS"
+    }
+  ],
+  "game": {
+    "environment": {
+      "browser": "Chrome/157.0.8103.79",
+      "adapter": "Apple M1 Pro / Metal",
+      "cpuWorker": true,
+      "graphicsPackage": "retro-gaming-site/vendor/v86/glbridge, byte-identical to the fixed core build",
+      "coreAssets": {
+        "libv86.js": {
+          "bytes": 891519,
+          "sha256": "7fef99aa1ffbbafce73dbbb0c5a2e91f92bfcf0edc20804d39eaaf157db138af"
+        },
+        "v86.wasm": {
+          "bytes": 3035311,
+          "sha256": "d3e98ac0d45d06749d58ac494e4dd8936053f6291309bd1fd36f3b1914275795"
+        },
+        "cpu-worker.js": {
+          "bytes": 901658,
+          "sha256": "9e020d6f8f7b8a5019b1fe44119e0b2b02cdc32e6d66f0b2b3324749c7b83e12"
+        },
+        "v86-bochs-vga.js": {
+          "bytes": 44376,
+          "sha256": "ce8415006ca38dc53bd807323fc01fcfc47e9d3c31b7aad3934636e4408d1984"
+        }
+      }
+    },
+    "dll": {
+      "name": "D3D9.DLL",
+      "bytes": 172544,
+      "sha256": "c451eef1f674cf49a1e2708d750091d18477653c60853d64ccd217805fdb9fe2"
+    },
+    "guestReports": [
+      "proxy build api-refusal-severity-20261114 loaded; refusals and failures will be reported here"
+    ],
+    "steps": [
+      "Start a new game and skip the introduction.",
+      "Walk to the red BMX, mount it and ride out of the initial alley.",
+      "Dismount and look up in the same outdoor area.",
+      "Swap only the recorder method to the exact old implementation as a fault control; restore the shipping method afterwards."
+    ],
+    "ride": {
+      "presents": 746,
+      "draws": 635084,
+      "samples": 120,
+      "sampleSpanMs": 30695
+    },
+    "sameViewControl": {
+      "description": "Old recorder reproduced white/black sky and ghost geometry. The shipping recorder before and after the control produced stable cyan morning sky. Top-centre sky samples exclude the first two samples after resume to allow presentation to catch up.",
+      "colorRanges": [
+        {
+          "variant": "shipping-sky-before-control",
+          "topSkyRGBMin": [
+            180,
+            255,
+            255
+          ],
+          "topSkyRGBMax": [
+            183,
+            255,
+            255
+          ]
+        },
+        {
+          "variant": "old-overlap-only-control",
+          "topSkyRGBMin": [
+            4,
+            4,
+            4
+          ],
+          "topSkyRGBMax": [
+            255,
+            255,
+            255
+          ]
+        },
+        {
+          "variant": "shipping-sky-after-control",
+          "topSkyRGBMin": [
+            179,
+            255,
+            255
+          ],
+          "topSkyRGBMax": [
+            182,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    "productionMethodsRestored": true,
+    "errors": {
+      "commandsFailed": 0,
+      "droppedDraws": 0,
+      "host": [],
+      "gpu": [],
+      "browser": [],
+      "monitor": []
+    },
+    "originalDisks": "HTTP range reads only; launcher and DLL writes stayed in RAM overlays.",
+    "localArtifacts": "build/d3d-review/gtasa-flicker-fixed-20261117",
+    "artifactSha256": {
+      "fixed-cj-bike.png": "5819239ede3b0a2e80d6ed1296d854433f143b11d56c8bffa2f384d27ec2f744",
+      "fixed-bike-outdoors.png": "30e09f43ae72477750148540078c507bdd0f88ee7efd9b93ed6a236c4cf0d842",
+      "fixed-scene.json": "1dfeb42800f751d05ff6897f843b21557ef62f076c4450c64201895aa5739245",
+      "sky-ab.json": "a5c972e9676ea7766aa69444b6bceca599e34bf40e87536fee5c0bfdb5c1100d",
+      "old-overlap-only-control-06.png": "4aa095c5c05ea7a8188131082704f049e19bb3df816faa796e74651f4708c032",
+      "shipping-sky-after-control-09.png": "e9d7dfbfb97fe0000084f44eb9cde6bfe39b3089740e9463f7246bf6e1b4e061",
+      "result.json": "46ac2ee0e1355c0b9a8843bb8024aef30252f5b2ebce225cc7d864de47000244",
+      "runner-exit.json": "7aad5c64018766f85c70581e5402aa779e385738c02be6094f81a5bbefd96d31"
+    }
+  },
+  "limits": "Focused manual GTA scenario and automated buffer/GPU regressions; not an all-mission playthrough or a new full Wine/performance acceptance campaign."
+}

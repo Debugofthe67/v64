@@ -1,4 +1,4 @@
-//! The SIMD decode corpus (docs/simd-xsave-plan.md P1d): VEX and the legacy
+//! The SIMD decode corpus (docs/plan/simd-xsave-plan.md P1d): VEX and the legacy
 //! SIMD encodings in 16-, 32- and 64-bit mode. The x64 decoder and, outside
 //! 64-bit mode, the IR decoder decode each with every feature and as if every
 //! row had its semantics (TEST_FEATURES, TEST_DECODE_UNIMPLEMENTED). This test

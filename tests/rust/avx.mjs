@@ -1,4 +1,4 @@
-// AVX in the 32-bit engines (docs/simd-xsave-plan.md 8, P5): the VEX forms
+// AVX in the 32-bit engines (docs/plan/simd-xsave-plan.md 8, P5): the VEX forms
 // of the shared executor (src/rust/cpu/avx.rs) against a model written here
 // from the SDM, and the rules every VEX form shares: VEX.vvvv is the first
 // source; a VEX.128 destination register has bits 255:128 zeroed (seen

@@ -1,4 +1,4 @@
-// The FMA and F16C forms of docs/simd-xsave-plan.md 9.3 (P11) and their
+// The FMA and F16C forms of docs/plan/simd-xsave-plan.md 9.3 (P11) and their
 // cases for tests/rust/fma.mjs and tests/x64/fma.mjs, with the expectations of
 // tests/rust/sse_fp_model.mjs (exact rational arithmetic, independent of
 // SoftFloat and cpu/simd_fp.rs).

@@ -1,4 +1,4 @@
-// The 32-bit virt platform against QEMU's (docs/aarch32-plan.md R4): PSCI
+// The 32-bit virt platform against QEMU's (docs/plan/aarch32-plan.md R4): PSCI
 // over HVC with the SMC32 function numbers, the generic timer's CP15
 // registers and its interrupts through the GICv3 CPU interface's CP15
 // registers, an SGI to itself, a second core started with CPU_ON in SVC

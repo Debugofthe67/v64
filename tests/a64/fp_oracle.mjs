@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Scalar FP against QEMU (docs/arm64-virt-android16-plan.md P2.6: results and
+// Scalar FP against QEMU (docs/plan/arm64-virt-android16-plan.md P2.6: results and
 // FPSR bit for bit under all 16 combinations of RMode, FZ and DN; AHP random).
 // Each mnemonic's cases cycle through the combinations (tests/a64/vector_oracle.mjs
 // makes and runs the cases).

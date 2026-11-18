@@ -110,7 +110,7 @@ function $(id)
 const STREAMED_STATE_MEMORY = 1024 * 1024 * 1024;
 
 /**
- * (docs/disk-persistence-plan.md D3: the page's notes about its disks)
+ * (docs/plan/disk-persistence-plan.md D3: the page's notes about its disks)
  * @param {string} text
  */
 function show_disk_status(text)
@@ -1264,7 +1264,7 @@ function init_ui(profile, settings, emulator)
         var elem = $("get_" + type + "_image");
 
         // (a disk image in a container format: exported RAW, in parts;
-        // docs/disk-image-formats-plan.md P2)
+        // docs/plan/disk-image-formats-plan.md P2)
         const exported = obj && obj.format && obj.format !== "raw";
         if(!obj || obj.async && !exported)
         {
@@ -1604,7 +1604,7 @@ function init_ui(profile, settings, emulator)
         }
     };
 
-    // Disks written back (docs/disk-persistence-plan.md D3): their changes
+    // Disks written back (docs/plan/disk-persistence-plan.md D3): their changes
     // are in their images, a snapshot holds only a reference of each, valid
     // until the image is written again. So the page offers "save and power
     // off": the state saved, the machine destroyed (the disks flushed and

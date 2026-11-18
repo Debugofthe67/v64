@@ -1,4 +1,4 @@
-//! The access cache of compiled code (docs/jit-unification-plan.md P5.8):
+//! The access cache of compiled code (docs/plan/jit-unification-plan.md P5.8):
 //! per core, per privilege (user: x86 CPL 3, A64 EL0) and per access kind,
 //! a direct-mapped table of virtual 4 KiB pages whose current translation is
 //! plain guest RAM (and, for writes, holds no compiled code). Page functions

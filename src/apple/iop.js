@@ -96,6 +96,12 @@ export class AppleIOP
         return [this.regs.slice(), this.running, this.pending_reset, this.vic.get_state(), registers];
     }
 
+    wake_pending()
+    {
+        return this.running && (this.pending_reset ||
+            (this.core["a32_iop_wake_pending"]?.(this.irq, this.fiq) ?? (this.irq || this.fiq)));
+    }
+
     set_state(state)
     {
         this.polling = null;

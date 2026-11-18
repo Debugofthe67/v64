@@ -284,7 +284,7 @@ export class AppleCLCD
         // Parallel guests keep the original scan because another core may
         // write pixels between the comparison and the JS conversion.
         const exports = this.cpu.wm?.exports;
-        const pointer = (!this.cpu.parallel && exports?.["a64_video_changed"] &&
+        const pointer = (!this.cpu.parallel && exports?.["a64_video_rgb_changed"] &&
             exports["a64_video_prepare"]?.(this.shown.length)) >>> 0;
         const staging = pointer ? new Uint8Array(this.cpu.wasm_memory.buffer, pointer, this.rgba.length) : null;
         const words = this.surface_words(base, staging);
@@ -295,7 +295,7 @@ export class AppleCLCD
             // contiguous physical surface needs one native typed-array copy.
             if(words.buffer !== staging.buffer || words.byteOffset !== staging.byteOffset)
                 staging.set(new Uint8Array(words.buffer, words.byteOffset, words.byteLength));
-            const changed = exports["a64_video_changed"]();
+            const changed = exports["a64_video_rgb_changed"]();
             if(!this.dirty && !changed)
             {
                 this.performance.scans++;
@@ -323,7 +323,7 @@ export class AppleCLCD
         {
             const p = words[i];
             any |= p;
-            if(!this.dirty && p === this.shown[i]) continue;
+            if(!this.dirty && !((p ^ this.shown[i]) & 0xFFFFFF)) continue;
             changed = true;
             this.shown[i] = p;
             if(packed) packed[i] = 0xFF000000 | (p & 255) << 16 | p & 0xFF00 | p >>> 16 & 255;

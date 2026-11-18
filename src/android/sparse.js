@@ -1,5 +1,5 @@
 // Android sparse images (system/core/libsparse: sparse_format.h)
-// (docs/android-images-plan.md I1). The image is read through
+// (docs/plan/android-images-plan.md I1). The image is read through
 // read(offset, length), which returns the bytes (fewer at its end).
 
 import { u16, u32, copy, concat } from "./bytes.js";

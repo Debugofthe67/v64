@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gl_shadow.js, the CPU side's GL state (docs/opengl-webgpu-plan.md C3): what
+// gl_shadow.js, the CPU side's GL state (docs/plan/opengl-webgpu-plan.md C3): what
 // it answers in the guest's memory, what it leaves to the executor, and that
 // the device runs it, keeps it across snapshots and resets it when the arena's
 // owner or the machine goes.

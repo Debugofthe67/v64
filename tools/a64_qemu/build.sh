@@ -1,5 +1,5 @@
 #!/bin/bash
-# The fixed AArch64 reference (docs/arm64-virt-android16-plan.md P0.11):
+# The fixed AArch64 reference (docs/plan/arm64-virt-android16-plan.md P0.11):
 # QEMU 9.2.0 built from its release tarball (checked against the SHA-256
 # below) with this directory's patches, into build/a64-ref/qemu-9.2.0-install,
 # with the TCG plugins the measurements use (contrib/plugins execlog and

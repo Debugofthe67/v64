@@ -317,7 +317,7 @@ ACPI.prototype.pm_read = function(offset, size)
     let timer = 0;
     if(offset === 8)
     {
-        // (the step profile's PM timer reads, docs/jit-unification-plan.md P4.0)
+        // (the step profile's PM timer reads, docs/plan/jit-unification-plan.md P4.0)
         const note = this.cpu.wm?.exports["step_profile_note_event"];
         if(note) note(11, 0); // step_profile::event::PM_TIMER_READ
     }

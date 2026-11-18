@@ -760,6 +760,25 @@ const banks = new AppleH2FMI(controllerCPU, 0x81200000, 0, {
 const twoIds = new Uint8Array(256);
 twoIds[0] = twoIds[8] = 0xEC;
 banks.configure(twoIds, 0);
+banks.write(0x100C, 1);
+banks.write(0x1014, 0x3000);
+banks.write(0x1010, 11);
+callbacks[0](new Uint8Array(8).fill(0x35));
+assert.equal(banks.read(0x14), 0x35353535);
+banks.write(0x100C, 0);
+assert.equal(banks.read(0x200C), 0, "IOP reads the completed page's ECC result after releasing CE");
+banks.write(0x100C, 2);
+assert.equal(banks.read(0x200C), 2, "unloaded CE has erased ECC status");
+assert.equal(banks.read(0x14), 0xFFFFFFFF, "unloaded CE has its own erased data register");
+channelDMA.reset();
+descriptor.setUint32(0x104, 0x103, true);
+descriptor.setUint32(0x108, 0x200, true);
+descriptor.setUint32(0x10C, 4, true);
+banks.write(0, 0xF5);
+banks.write(4, 3);
+arm();
+assert.deepEqual([...memory.subarray(0x200, 0x204)], [255, 255, 255, 255], "DMA sees the unloaded CE");
+banks.reset();
 for(const mask of [1, 2])
 {
     banks.write(0x100C, mask);
@@ -864,6 +883,37 @@ for(let i = 0; i < 384; i++)
 assert.ok(programmed.subarray(1536).every(b => b === 255));
 finishProgram();
 console.log("PASS: PIO boot-page programming, individual FIFO sectors and snapshot during a sector");
+
+for(const remaining of [0, 1, 2, 3])
+{
+    flashPort.reset();
+    flashPort.write(0x100C, 1);
+    flashPort.write(0x1018, 0x02030000 + 8192 - remaining);
+    flashPort.write(0x101C, 1);
+    flashPort.write(0x1014, 0x80);
+    flashPort.write(0x1010, 9);
+    flashPort.write(4, 5);
+    if(remaining === 1)
+    {
+        const pending = flashPort.get_state(), overrun = pending.slice();
+        overrun[11] = -3;
+        flashPort.set_state(overrun);
+        flashPort.write(0x1014, 0x1000);
+        flashPort.write(0x1010, 2);
+        flashPort.write(0x1014, 0x70);
+        assert.equal(flashPort.read(0x1024), 0xC1, "a legacy overrun cannot commit damaged spare bytes");
+        flashPort.set_state(pending);
+    }
+    if(remaining) flashPort.write(0x14, 0x44332211);
+    assert.equal(flashPort.read(0x1C) & 0x18, 0, "tail exhausts the FIFO");
+    assert.equal(flashPort.read(0xC) & 2, 2, "tail signals completion");
+    programmed = null;
+    flashPort.write(0x1014, 0x1000);
+    flashPort.write(0x1010, 2);
+    assert.deepEqual([...programmed.subarray(8192 - remaining, 8192)], [0x11, 0x22, 0x33].slice(0, remaining));
+    assert.ok(programmed.subarray(8192).every(b => b === 255), "PIO leaves spare intact");
+    finishProgram();
+}
 
 // The guest AES driver first configures both channels without START and
 // then reads each control register back to set START. Both AP IRQs fire.

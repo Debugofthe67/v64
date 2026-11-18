@@ -1,4 +1,4 @@
-//! Packed integer semantics shared by every engine (docs/simd-xsave-plan.md
+//! Packed integer semantics shared by every engine (docs/plan/simd-xsave-plan.md
 //! 3.1): the 32-bit interpreter, the IR helpers and the x64 engine pass the
 //! operands they read and commit the result. No CPU state, no memory.
 //!

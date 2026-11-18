@@ -1,4 +1,4 @@
-// The policy of a disk (docs/disk-persistence-plan.md): where the guest's
+// The policy of a disk (docs/plan/disk-persistence-plan.md): where the guest's
 // writes go (disk_option: "read_only", the default, keeps them in memory;
 // "read_write" writes them back to the image), and what a failed read or
 // write does (disk_error: "stop", the default, stops the machine until
@@ -58,7 +58,7 @@ export function in_node()
 
 /**
  * Why a descriptor's image cannot take disk_option "read_write", or "" if
- * it can (docs/disk-persistence-plan.md "配置": a disk service's URL, a
+ * it can (docs/plan/disk-persistence-plan.md "配置": a disk service's URL, a
  * local file in Node, a buffer object implementing the backend contract)
  * @param {string} name
  * @param {!Object} file
@@ -71,7 +71,7 @@ export function writeback_problem(name, file)
     {
         const missing = BACKEND_CONTRACT.filter(method => typeof file[method] !== "function");
         return missing.length ? name + ": a buffer object of one's own is written back only when it implements the backend contract " +
-            "(docs/disk-persistence-plan.md, \"后端契约\"); it has no " + missing.join(", ") + "." + keep : "";
+            "(docs/plan/disk-persistence-plan.md, \"后端契约\"); it has no " + missing.join(", ") + "." + keep : "";
     }
     if(file.buffer instanceof ArrayBuffer)
     {
@@ -117,7 +117,7 @@ export function check_disk_policy(name, file)
 {
     const policy = { disk_option: "read_only", disk_error: "stop" };
     if(!file || typeof file !== "object") return policy;
-    // (a browser disk, docs/vm-manager-plan.md U6: in a browser's private storage)
+    // (a browser disk, docs/plan/vm-manager-plan.md U6: in a browser's private storage)
     if(typeof file.url === "string" && file.url.startsWith("opfs:") && in_node())
     {
         throw config_error(name + ": a browser disk (" + file.url + ") is in a browser's private storage (OPFS), not in Node");
@@ -169,7 +169,7 @@ export function check_disk_policy(name, file)
         if(file.format !== undefined && file.format !== "raw")
         {
             throw config_error(name + ": disk_option \"read_write\" is for RAW images; writing back into a " + file.format +
-                " image is not supported (docs/disk-image-formats-plan.md P5)");
+                " image is not supported (docs/plan/disk-image-formats-plan.md P5)");
         }
         const problem = writeback_problem(name, file);
         if(problem) throw config_error(problem);

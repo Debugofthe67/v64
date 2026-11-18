@@ -1,4 +1,4 @@
-// The Android image library's byte helpers (docs/android-images-plan.md
+// The Android image library's byte helpers (docs/plan/android-images-plan.md
 // I1): fields, text, checksums and hashes over Uint8Array, so that the same
 // code runs in node (tools/a64_android.mjs) and in browsers. Offsets and
 // 64-bit fields are numbers (images stay far below 2^53 bytes).

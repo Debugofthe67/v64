@@ -1,4 +1,4 @@
-//! One registry of the JIT switches (docs/jit-unification-plan.md, cross-phase
+//! One registry of the JIT switches (docs/plan/jit-unification-plan.md, cross-phase
 //! rule 1). Each A/B switch of the x64 page tier has a name
 //! here, so that the V86 option `jit_switches`, the tests (JIT_SWITCHES, read
 //! by tests/lib/jit_switches.mjs) and build-time defaults (JIT_DEFAULTS) set
@@ -6,7 +6,7 @@
 //! (src/jit_switches.js). The older setters (x64_page_set_outline, ...) stay
 //! as aliases: jit_switch reads a value however it was set. The engine's tail
 //! calls (jit_set_tail_calls) are a host capability, not a switch. (The IR
-//! region tiers' switches went with them in docs/jit-unification-plan.md M11.)
+//! region tiers' switches went with them in docs/plan/jit-unification-plan.md M11.)
 //!
 //! Values apply in the order of SWITCHES.
 
@@ -59,7 +59,7 @@ pub const SWITCHES: &[Switch] = &[
         },
         get: pages::switch_value,
     },
-    // (docs/jit-unification-plan.md P4.5b, P4.5c)
+    // (docs/plan/jit-unification-plan.md P4.5b, P4.5c)
     Switch {
         name: "x64_heat_batch",
         default: 1,
@@ -80,7 +80,7 @@ pub const SWITCHES: &[Switch] = &[
         },
         get: pages::switch_value,
     },
-    // (docs/jit-unification-plan.md P4.15: the access cache's entries per
+    // (docs/plan/jit-unification-plan.md P4.15: the access cache's entries per
     // table; the page tier recompiles)
     Switch {
         name: "x64_jac_entries",
@@ -93,7 +93,7 @@ pub const SWITCHES: &[Switch] = &[
         },
         get: |_| Some(crate::x64::jac::entries() as u32),
     },
-    // (docs/jit-unification-plan.md P4.14)
+    // (docs/plan/jit-unification-plan.md P4.14)
     Switch {
         name: "x64_hot_inline",
         default: 1,
@@ -108,7 +108,7 @@ pub const SWITCHES: &[Switch] = &[
         // (the execution count of a cold page function that recompiles its
         // page with inline lookups: long after V8 optimized the cold one,
         // so that only pages that stay hot pay for a new function that
-        // starts over in Liftoff; docs/jit-unification-plan.md appendix C, M5)
+        // starts over in Liftoff; docs/plan/jit-unification-plan.md appendix C, M5)
         name: "x64_hot_count",
         default: 1 << 22,
         set: |v| {
@@ -131,7 +131,7 @@ pub const SWITCHES: &[Switch] = &[
         },
         get: pages::switch_value,
     },
-    // (docs/jit-unification-plan.md P7.2: 32-bit compatibility-mode code in
+    // (docs/plan/jit-unification-plan.md P7.2: 32-bit compatibility-mode code in
     // the page tier instead of Tier-0; on since M9, which passed its D gate)
     Switch {
         name: "x64_page_compat32",
@@ -280,14 +280,14 @@ pub const SWITCHES: &[Switch] = &[
         set: |v| flag(v).map(pagegen::x64_page_set_xmm_locals).is_some(),
         get: pagegen::switch_value,
     },
-    // (docs/jit-unification-plan.md P4.23)
+    // (docs/plan/jit-unification-plan.md P4.23)
     Switch {
         name: "x64_exit_flags",
         default: 1,
         set: |v| flag(v).map(pagegen::x64_page_set_exit_flags).is_some(),
         get: pagegen::switch_value,
     },
-    // (docs/jit-unification-plan.md P4.22; functions of either kind must
+    // (docs/plan/jit-unification-plan.md P4.22; functions of either kind must
     // not chain to each other)
     Switch {
         name: "x64_fast_chain",
@@ -302,21 +302,21 @@ pub const SWITCHES: &[Switch] = &[
         },
         get: pagegen::switch_value,
     },
-    // (docs/jit-unification-plan.md P4.21)
+    // (docs/plan/jit-unification-plan.md P4.21)
     Switch {
         name: "x64_fast_lookup",
         default: 1,
         set: |v| flag(v).map(pagegen::x64_page_set_fast_lookup).is_some(),
         get: pagegen::switch_value,
     },
-    // (docs/jit-unification-plan.md P4.20)
+    // (docs/plan/jit-unification-plan.md P4.20)
     Switch {
         name: "x64_i32_ops",
         default: 1,
         set: |v| flag(v).map(pagegen::x64_page_set_i32_ops).is_some(),
         get: pagegen::switch_value,
     },
-    // (docs/jit-unification-plan.md P4.18)
+    // (docs/plan/jit-unification-plan.md P4.18)
     Switch {
         name: "x64_sse_fast_check",
         default: 1,

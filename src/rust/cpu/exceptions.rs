@@ -62,7 +62,7 @@ pub unsafe fn trap(vector: i32) {
 }
 pub unsafe fn fault(vector: i32, code: Option<i32>) {
     if vector == 7 {
-        // (the step profile's #NM count, docs/jit-unification-plan.md P4.0)
+        // (the step profile's #NM count, docs/plan/jit-unification-plan.md P4.0)
         crate::step_profile::note_event(crate::step_profile::event::NM, 0);
     }
     let old = DELIVERING;

@@ -1,4 +1,4 @@
-//! VEX instructions in the 32-bit interpreter (docs/simd-xsave-plan.md). The
+//! VEX instructions in the 32-bit interpreter (docs/plan/simd-xsave-plan.md). The
 //! VEX prefix and the row it selects follow the rules the IR and x64 decoders
 //! share (decode_rules::Vex, vex_row, vex_valid); rows whose semantics come in
 //! later phases are #UD after the ModRM byte. The AVX forms run in the shared

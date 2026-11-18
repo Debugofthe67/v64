@@ -36,7 +36,7 @@ setTimeout(async () =>
 {
     await emulator.wait_until_vga_screen_contains("C:\\> ");
     console.log("Got C:\\>");
-    // (get_cdrom_state, docs/vm-manager-plan.md G1: the drive, empty)
+    // (get_cdrom_state, docs/plan/vm-manager-plan.md G1: the drive, empty)
     const empty = await emulator.get_cdrom_state();
     if(!empty.present || empty.inserted) throw new Error("get_cdrom_state of the empty drive: " + JSON.stringify(empty));
     await pause(1000);

@@ -1,4 +1,4 @@
-// AArch32 EL0 from the bare-metal EL1 (docs/aarch32-plan.md Q0.2):
+// AArch32 EL0 from the bare-metal EL1 (docs/plan/aarch32-plan.md Q0.2):
 // a32_run(entry, spsr, regs) ERETs to `entry` with SPSR_EL1 `spsr` and
 // R0-R14 (W0-W14) from regs[15]; the lower-EL handler (el0.c) makes the
 // exception that comes back return to a32_resume_el1, which returns from

@@ -1,4 +1,4 @@
-//! The A64 page tier's code generator (docs/jit-unification-plan.md P6.3,
+//! The A64 page tier's code generator (docs/plan/jit-unification-plan.md P6.3,
 //! J2): one Wasm function per 4 KiB page of A64 code, built in the neutral
 //! skeleton crate::pagegen::frame (the frame, the structured layout of the
 //! block graph, the page dispatch, the access cache's lookups, chaining).
@@ -80,7 +80,7 @@ pub struct CompileEnv {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Isa {
     A64,
-    /// AArch32's (docs/aarch32-plan.md Q6): R0-R14 and NZCV stay in memory
+    /// AArch32's (docs/plan/aarch32-plan.md Q6): R0-R14 and NZCV stay in memory
     A32,
     T32,
 }
@@ -589,6 +589,8 @@ struct Emitter<'a> {
     /// Compile-time IT mask of the current native instruction. Successful
     /// accesses keep architectural ITSTATE clear; only a retry materializes it.
     a32_itstate: u8,
+    /// Instructions after the current one already charged at block entry.
+    block_remaining: usize,
     access: Option<u32>,
     step: StepAbi,
     /// the page's instruction words (helpers take theirs)
@@ -682,6 +684,7 @@ pub fn compile(bytes: &[u8], entries: &[u16], env: CompileEnv, name: String) -> 
                         })
                 })),
         a32_itstate: 0,
+        block_remaining: 0,
         a32_gpr_mask: blocks
             .iter()
             .flat_map(|b| &b.insts32)
@@ -1593,7 +1596,7 @@ impl Emitter<'_> {
         self.retry_if(offset);
     }
 
-    // ---- scalar FP (P6.3b): the fast path's rules (docs/arm64-virt-android16-plan.md P6)
+    // ---- scalar FP (P6.3b): the fast path's rules (docs/plan/arm64-virt-android16-plan.md P6)
 
     /// Push whether an FP value's bits in local `l` (D: 64 bits, S: the low
     /// 32) are zero or a normal number, or with `result`, zero or a normal
@@ -2987,6 +2990,7 @@ impl PageEmitter for Emitter<'_> {
     fn emit_block(&mut self, k: u32, index: &BTreeMap<u16, usize>) {
         let blocks = self.blocks;
         let block = &blocks[k as usize];
+        self.block_remaining = block.count();
         // (the block's native instructions counted at its entry)
         if block.count() != 0 {
             self.gi(N);
@@ -2995,9 +2999,11 @@ impl PageEmitter for Emitter<'_> {
             self.si(N);
         }
         for (offset, i) in &block.insts {
+            self.block_remaining -= 1;
             self.instruction(*offset, i, index);
         }
         for (offset, i) in &block.insts32 {
+            self.block_remaining -= 1;
             self.instruction32(*offset, i, index);
         }
         match block.end {
@@ -3015,6 +3021,17 @@ impl PageEmitter for Emitter<'_> {
     }
     fn block_start(&self, k: u32) -> u16 { self.blocks[k as usize].start }
     fn leave_to(&mut self, label: Label, target: u64) {
+        // Retry hands the current instruction back to Rust. An early normal
+        // exit (e.g. TLBI) completed it. Neither executed the block suffix.
+        if label == self.f().retry || label == self.f().exit {
+            let refund = self.block_remaining + (label == self.f().retry) as usize;
+            if refund != 0 {
+                self.gi(N);
+                self.c32(refund as i32);
+                self.b.sub_i32();
+                self.si(N);
+            }
+        }
         // Both inline and outlined access lookups leave through this method.
         // Synchronize here, before the interpreter retries a faulting IT load
         // or store, rather than writing/clearing PSTATE on every cache hit.

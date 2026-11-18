@@ -1,4 +1,4 @@
-/* Binder across cores (docs/arm64-virt-android16-plan.md P9.1): a context
+/* Binder across cores (docs/plan/arm64-virt-android16-plan.md P9.1): a context
  * manager and a client, each bound to its own CPU, exchange ROUNDS
  * transactions through a binderfs device with BINDER_WRITE_READ: the client
  * sends a counter (BC_TRANSACTION to handle 0), the manager answers it plus

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// virtio-blk I/O in flight on the virt machine (docs/arm64-virt-android16-plan.md
+// virtio-blk I/O in flight on the virt machine (docs/plan/arm64-virt-android16-plan.md
 // P5.9; as tests/devices/device_io_reset.mjs for the PC's disks). The disk is
 // an in-memory image whose reads and writes complete 100 ms later; the test
 // is the driver, through the virtio-mmio registers and a queue in guest RAM:

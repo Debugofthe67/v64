@@ -1,5 +1,5 @@
 //! System registers and system instructions of profile v86-aarch64-v1
-//! (docs/arm64-virt-android16-plan.md P3.1; the values are those of
+//! (docs/plan/arm64-virt-android16-plan.md P3.1; the values are those of
 //! tests/platform/a64-profile.json, which tools/cpu_contract.mjs checks):
 //! access rights at EL0 and EL1, reset values, RES0/RES1, and the traps
 //! SCTLR_EL1 controls (UCT, UCI, DZE, UMA: EC 0x18). The ID space follows the

@@ -1,6 +1,6 @@
 import { decode_pvrtc } from "../pvrtc.js";
 import { decode_paletted, paletted_layout } from "../paletted.js";
-// The GLES executor (docs/gles-proxy-plan.md "执行器", E3): GLES batches
+// The GLES executor (docs/plan/gles-proxy-plan.md "执行器", E3): GLES batches
 // (src/gles/gles_batch.js) on WebGPU, on the page. It runs the same state
 // machine as the CPU side (src/gles/gles_shadow.js) over the commands it
 // receives, so names, bindings, uniforms and locations agree, and keeps the
@@ -1754,7 +1754,7 @@ function all_textures(shadow)
 }
 
 /**
- * The page's part of a snapshot (docs/gles-proxy-plan.md E5): the
+ * The page's part of a snapshot (docs/plan/gles-proxy-plan.md E5): the
  * executor's objects, and the GPU's contents read back into them (their
  * `saved`: [level, layer, width, height, RGBA]): the color buffers, the
  * window surfaces' own textures, the textures' levels, the color

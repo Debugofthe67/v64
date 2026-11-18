@@ -7,11 +7,11 @@ USB 的三种主机控制器（UHCI、EHCI、xHCI）都实现，EHCI 与 xHCI �
 本计划为 v86 增加现代客体用自带驱动即可工作的设备：e1000 网卡、HD Audio、USB（UHCI、EHCI、
 xHCI 三种主机控制器，HID tablet、镜像 U 盘），然后是 OVMF、TPM 2.0 与 Secure Boot；e1000e 和
 WebUSB 按需扩展。库的默认机器保持不变；新设备是显式选项，由 VM 管理器的系统预设选用
-（[vm-manager.md](vm-manager.md)）。
+（[vm-manager.md](../vm-manager.md)）。
 
-本计划与 Q35（[q35.md](q35.md)、[ahci.md](ahci.md)、[sata.md](sata.md)）共用平台、PCI、MMIO、
+本计划与 Q35（[q35.md](../q35.md)、[ahci.md](../ahci.md)、[sata.md](../sata.md)）共用平台、PCI、MMIO、
 中断与存储基础，Q35 已经实现。网卡、声卡和 USB 在 i440FX 与 Q35 上都要可用；固件以 Q35
-为主。ARM64 virt（[virt.md](virt.md)、[ARM64 virt 与 Android 16 计划](arm64-virt-android16-plan.md)）
+为主。ARM64 virt（[virt.md](../virt.md)、[ARM64 virt 与 Android 16 计划](arm64-virt-android16-plan.md)）
 不新增设备：它的网卡、声卡和输入设备已经是 Android 与 Linux 自带驱动的 virtio 设备（见 N1）。
 
 ## 复核结论
@@ -27,10 +27,10 @@ WebUSB 按需扩展。库的默认机器保持不变；新设备是显式选项�
    不需要 USB 2/3。xHCI 改为按需。（2026-10-25 所有者改为三种控制器都做：UHCI 仍然最先，随后
    EHCI（U3）与 xHCI（U4），见第 10 条。）
 3. **HD Audio 提前到第二**：Windows 8.1 与 Vista/7/10 预设现在是 `nic: "none"`、`sound: "none"`
-   （[guest_presets.js](../src/app/guest_presets.js) 列为已知问题），网卡和声卡是这批系统最缺的两项。
+   （[guest_presets.js](../../src/app/guest_presets.js) 列为已知问题），网卡和声卡是这批系统最缺的两项。
 4. **“当前分支基础”已过时**：块内精确 MMIO（`mmap_register_range`）、BAR 重定位、总线主控
-   门控、单向量 MSI、Q35 的 SMM/TSEG、共享块后端 [block_backend.js](../src/block_backend.js)，以及
-   按虚拟时钟消耗 PCM 的 [virtio_snd.js](../src/virtio_snd.js) 都已存在。初稿的大 P0 拆开，各项随
+   门控、单向量 MSI、Q35 的 SMM/TSEG、共享块后端 [block_backend.js](../../src/block_backend.js)，以及
+   按虚拟时钟消耗 PCM 的 [virtio_snd.js](../../src/virtio_snd.js) 都已存在。初稿的大 P0 拆开，各项随
    第一个用到它的阶段落地；e1000、HDA 和 UHCI 都用 INTx，不等 MSI-X。
 5. **OVMF 的第一个阻塞点**：v86 的 fw_cfg 对 `FW_CFG_ID` 返回 0，而 edk2 的 `QemuFwCfgLib` 在
    revision < 1 时认为没有 fw_cfg（见 F1）。
@@ -120,23 +120,23 @@ flowchart TD
 
 | 入口 | 现状 | 本计划要补的部分 |
 | --- | --- | --- |
-| [x86-64.md](x86-64.md)、`src/rust/x64/` | long mode、36 位物理地址、x64 页层；`cpu_features` 可到 x86-64-v2/v3（SSE4.2、POPCNT、AVX2 等）；Windows 8.1 x64 已到桌面 | Windows 11 目标镜像的 CPUID/MSR/启动日志清单（C1） |
-| [src/pci.js](../src/pci.js) | BAR 探测与重定位（`on_move`）、桥转发、总线主控门控 DMA 与 MSI、单向量 64 位 MSI（`msi_capability`、`msi_notify`；AHCI 与 PCIe root port 在用；地址高 32 位非零时丢弃）、root port 与热插拔 | MSI-X，只在 N2（或 U4 的后续）需要时 |
-| [src/io.js](../src/io.js) | 128 KiB 粗块之外，`mmap_register_range` 在块内按精确范围分发（小 BAR、芯片组寄存器块） | 新设备直接使用，无需新机制 |
-| [src/cpu.js](../src/cpu.js)、[src/extended_memory.js](../src/extended_memory.js) | `validate_physical_range`、`read_blob_physical`、`write_blob_physical`，跨页与高地址 | 各设备的环、长度与总量上限 |
-| [src/acpi_tables.js](../src/acpi_tables.js)、[src/platform.js](../src/platform.js)、[src/cpu.js](../src/cpu.js) | ACPI 表经 fw_cfg 的 `etc/table-loader`（QEMU 格式）交给固件，按固件写入的 PMBA 生成；fw_cfg 只有 PIO，`FW_CFG_ID` 返回 0 | OVMF 需要的 fw_cfg 修订号与文件（F1）、TPM2 表（T1） |
-| [src/q35.js](../src/q35.js)、[src/rust/cpu/smm.rs](../src/rust/cpu/smm.rs) | ICH9、AHCI、HPET、SMBus、TCO；SMM：逐核 SMI 锁存、32/64 位保存区、SMRAM、高 SMRAM、TSEG、RSM | OVMF 的 SMI 广播协商、pflash 写保护（F1、F2） |
-| [src/browser/mouse.js](../src/browser/mouse.js)、[src/ps2.js](../src/ps2.js)、[src/vmware.js](../src/vmware.js)、[src/virtio_input.js](../src/virtio_input.js) | PS/2；VMware 绝对坐标（客体须装 VMware Tools）；ARM64 的 virtio tablet | USB HID 路径与统一输入路由（U1） |
-| [src/block_backend.js](../src/block_backend.js)、[src/buffer.js](../src/buffer.js)、[src/disk_writeback.js](../src/disk_writeback.js)、[src/state_io.js](../src/state_io.js) | 共享块后端：复位取消读、flush 顺序、快照等待在途 I/O、`report`/`stop` 错误策略；写回持久化（[disk-persistence-plan.md](disk-persistence-plan.md)） | BOT/SCSI 前端（U2） |
-| [src/sb16.js](../src/sb16.js)、[src/virtio_snd.js](../src/virtio_snd.js)、[src/browser/speaker.js](../src/browser/speaker.js) | SB16；virtio-snd 按 MachineClock 消耗 PCM、按时归还缓冲；`dac-*` 通道没有来源标识 | HDA 控制器与 codec（H1） |
-| [src/ne2k.js](../src/ne2k.js)、[src/virtio_net.js](../src/virtio_net.js)、[networking.md](networking.md) | NE2000 PCI（RTL8029，`10EC:8029`）、virtio-net（virt 上可多张）；fetch、wisp、wsproxy、inbrowser 后端经 `net{id}-send/receive/mac` 连接 | e1000 前端（N1） |
-| [src/app/guest_presets.js](../src/app/guest_presets.js)、[src/browser/vm_options.js](../src/browser/vm_options.js)、[v86.d.ts](../v86.d.ts) | 系统预设；arm64 强制 virtio-net；`net_device.type` 只有 `"ne2k"`、`"virtio"`；Windows 预设为 `nic: "none"`、`sound: "none"` | 新类型与预设默认值 |
-| [src/browser/cpu_worker.js](../src/browser/cpu_worker.js)、[src/browser/cpu_worker_runtime.js](../src/browser/cpu_worker_runtime.js) | 设备与 RAM 在 CPU Worker，页面适配器经消息通信 | 新选项的序列化；WebUSB 权限代理（U4） |
-| [src/graphics_adapter.js](../src/graphics_adapter.js)、[src/graphics_adapters/machine.js](../src/graphics_adapters/machine.js)、[gpu-devices.md](gpu-devices.md) | 显示适配器都是插件：各自用 Closure SIMPLE 单独编译，按需加载（页面、Node、CPU Worker 的 `importScripts`），描述符与句柄跨边界只用带引号的名字，快照槽位 `state[52]`；`virtio_devices` 是只适用于 virtio 设备的另一种插件 | 抽出各类插件共用的设备句柄，供 e1000 与 HD Audio 使用（见“设备插件”） |
-| [src/virt/](../src/virt/)、[virt.md](virt.md) | ARM64 virt：GICv3 无 ITS（没有 MSI），PCIe 只有 INTx，virtio-pci 没有 MSI-X | 不新增设备 |
+| [x86-64.md](../x86-64.md)、`src/rust/x64/` | long mode、36 位物理地址、x64 页层；`cpu_features` 可到 x86-64-v2/v3（SSE4.2、POPCNT、AVX2 等）；Windows 8.1 x64 已到桌面 | Windows 11 目标镜像的 CPUID/MSR/启动日志清单（C1） |
+| [src/pci.js](../../src/pci.js) | BAR 探测与重定位（`on_move`）、桥转发、总线主控门控 DMA 与 MSI、单向量 64 位 MSI（`msi_capability`、`msi_notify`；AHCI 与 PCIe root port 在用；地址高 32 位非零时丢弃）、root port 与热插拔 | MSI-X，只在 N2（或 U4 的后续）需要时 |
+| [src/io.js](../../src/io.js) | 128 KiB 粗块之外，`mmap_register_range` 在块内按精确范围分发（小 BAR、芯片组寄存器块） | 新设备直接使用，无需新机制 |
+| [src/cpu.js](../../src/cpu.js)、[src/extended_memory.js](../../src/extended_memory.js) | `validate_physical_range`、`read_blob_physical`、`write_blob_physical`，跨页与高地址 | 各设备的环、长度与总量上限 |
+| [src/acpi_tables.js](../../src/acpi_tables.js)、[src/platform.js](../../src/platform.js)、[src/cpu.js](../../src/cpu.js) | ACPI 表经 fw_cfg 的 `etc/table-loader`（QEMU 格式）交给固件，按固件写入的 PMBA 生成；fw_cfg 只有 PIO，`FW_CFG_ID` 返回 0 | OVMF 需要的 fw_cfg 修订号与文件（F1）、TPM2 表（T1） |
+| [src/q35.js](../../src/q35.js)、[src/rust/cpu/smm.rs](../../src/rust/cpu/smm.rs) | ICH9、AHCI、HPET、SMBus、TCO；SMM：逐核 SMI 锁存、32/64 位保存区、SMRAM、高 SMRAM、TSEG、RSM | OVMF 的 SMI 广播协商、pflash 写保护（F1、F2） |
+| [src/browser/mouse.js](../../src/browser/mouse.js)、[src/ps2.js](../../src/ps2.js)、[src/vmware.js](../../src/vmware.js)、[src/virtio_input.js](../../src/virtio_input.js) | PS/2；VMware 绝对坐标（客体须装 VMware Tools）；ARM64 的 virtio tablet | USB HID 路径与统一输入路由（U1） |
+| [src/block_backend.js](../../src/block_backend.js)、[src/buffer.js](../../src/buffer.js)、[src/disk_writeback.js](../../src/disk_writeback.js)、[src/state_io.js](../../src/state_io.js) | 共享块后端：复位取消读、flush 顺序、快照等待在途 I/O、`report`/`stop` 错误策略；写回持久化（[disk-persistence-plan.md](disk-persistence-plan.md)） | BOT/SCSI 前端（U2） |
+| [src/sb16.js](../../src/sb16.js)、[src/virtio_snd.js](../../src/virtio_snd.js)、[src/browser/speaker.js](../../src/browser/speaker.js) | SB16；virtio-snd 按 MachineClock 消耗 PCM、按时归还缓冲；`dac-*` 通道没有来源标识 | HDA 控制器与 codec（H1） |
+| [src/ne2k.js](../../src/ne2k.js)、[src/virtio_net.js](../../src/virtio_net.js)、[networking.md](../networking.md) | NE2000 PCI（RTL8029，`10EC:8029`）、virtio-net（virt 上可多张）；fetch、wisp、wsproxy、inbrowser 后端经 `net{id}-send/receive/mac` 连接 | e1000 前端（N1） |
+| [src/app/guest_presets.js](../../src/app/guest_presets.js)、[src/browser/vm_options.js](../../src/browser/vm_options.js)、[v86.d.ts](../../v86.d.ts) | 系统预设；arm64 强制 virtio-net；`net_device.type` 只有 `"ne2k"`、`"virtio"`；Windows 预设为 `nic: "none"`、`sound: "none"` | 新类型与预设默认值 |
+| [src/browser/cpu_worker.js](../../src/browser/cpu_worker.js)、[src/browser/cpu_worker_runtime.js](../../src/browser/cpu_worker_runtime.js) | 设备与 RAM 在 CPU Worker，页面适配器经消息通信 | 新选项的序列化；WebUSB 权限代理（U4） |
+| [src/graphics_adapter.js](../../src/graphics_adapter.js)、[src/graphics_adapters/machine.js](../../src/graphics_adapters/machine.js)、[gpu-devices.md](../gpu-devices.md) | 显示适配器都是插件：各自用 Closure SIMPLE 单独编译，按需加载（页面、Node、CPU Worker 的 `importScripts`），描述符与句柄跨边界只用带引号的名字，快照槽位 `state[52]`；`virtio_devices` 是只适用于 virtio 设备的另一种插件 | 抽出各类插件共用的设备句柄，供 e1000 与 HD Audio 使用（见“设备插件”） |
+| [src/virt/](../../src/virt/)、[virt.md](../virt.md) | ARM64 virt：GICv3 无 ITS（没有 MSI），PCIe 只有 INTx，virtio-pci 没有 MSI-X | 不新增设备 |
 
 仓库里还没有 USB 栈（UHCI、EHCI、xHCI）、HDA、e1000、OVMF、Secure Boot 或 TPM 的实现。
-[virtio.js](../src/virtio.js) 的 `msix_*` 字段只是占位，不能当作已有 MSI-X。
+[virtio.js](../../src/virtio.js) 的 `msix_*` 字段只是占位，不能当作已有 MSI-X。
 
 ## 公共约定
 
@@ -178,13 +178,13 @@ new V86({
   硬盘的选项。ARM64 的声卡只有 virtio-snd（现有的 `virtio_sound`）。VM 管理器的 `sound.device`
   用同一组值，也是单选。
 - 库的默认值不变：SB16、NE2000、PS/2、SeaBIOS。新设备由 VM 管理器的预设
-  （[guest_presets.js](../src/app/guest_presets.js)）选用；设置对话框只列当前机器能用的型号
-  （arm64 只有 virtio，与 [vm_options.js](../src/browser/vm_options.js) 一致）。
+  （[guest_presets.js](../../src/app/guest_presets.js)）选用；设置对话框只列当前机器能用的型号
+  （arm64 只有 virtio，与 [vm_options.js](../../src/browser/vm_options.js) 一致）。
 - UEFI 与 `bios/vga_bios` 互斥，CODE/变量模板的版本组合在启动前校验。`secure_boot: true`
   表示要求加载并核验受信配置，不是一个对外可见的状态位。
 - USB 设备有稳定 ID 和端口号；热插拔 API 有明确的成功、失败、取消和断开事件。Node 支持
   模拟设备，WebUSB 是可选的浏览器适配器。
-- 新选项贯穿 [v86.d.ts](../v86.d.ts)、starter、CPU Worker、CPU 初始化、reset、destroy、快照和构建
+- 新选项贯穿 [v86.d.ts](../../v86.d.ts)、starter、CPU Worker、CPU 初始化、reset、destroy、快照和构建
   入口（新源文件要进 Makefile 的 Closure 文件列表）；快照不保存浏览器权限对象、Promise 或打开
   的句柄。
 - 固件变量、TPM 和可写介质的存储属于同一个 VM 身份，复用 VM 管理器的磁盘存储（浏览器磁盘、
@@ -194,14 +194,14 @@ new V86({
 
 e1000 与 HD Audio 照显示适配器的方式做成插件：每个型号一个文件，只在被选中时加载，libv86 与
 CPU Worker 的包不因它们变大（Win9x、XP 等旧客体用不到它们）。现有机制见
-[gpu-devices.md](gpu-devices.md) 的 “Adapter plugins”：
+[gpu-devices.md](../gpu-devices.md) 的 “Adapter plugins”：
 
 - **沿用的部分**：插件文件为 `build/v86-<name>.js`（`build/v86-e1000.js`、`build/v86-hd-audio.js`），
   入口为 `src/<类别>/<name>/plugin.js`（`src/net_adapters/e1000/`、`src/audio_devices/hd_audio/`）；
   用 Closure SIMPLE 单独编译，跨边界的描述符、句柄和设备只用带引号的名字；加载顺序（页面已注册的
   全局表、路径选项、libv86 包旁边、`build/`）、CPU Worker 中用 `importScripts`、并行模式下只在机器
-  线程加载，都与 [graphics_adapter.js](../src/graphics_adapter.js) 相同。
-- **要抽出的部分**：现在的句柄 `GraphicsMachine`（[machine.js](../src/graphics_adapters/machine.js)）里
+  线程加载，都与 [graphics_adapter.js](../../src/graphics_adapter.js) 相同。
+- **要抽出的部分**：现在的句柄 `GraphicsMachine`（[machine.js](../../src/graphics_adapters/machine.js)）里
   与显示无关的部分，即端口与 MMIO、`register_pci`（BAR 与 `on_move`）、`raise_irq`/`lower_irq`、客体
   内存读写和机器时钟，抽成各类插件共用的设备句柄；显示适配器在其上保留显示中枢与设备内存。共用
   句柄还要提供定时器（e1000 的中断合并、HDA 的 DMA 节拍）和 PCI 位置（`pci_functions` 的槽位、
@@ -223,16 +223,16 @@ U1 的 UHCI 与 USB 设备也可以按同一方式做成插件，在 U1 开始�
 
 1. 新设备使用现有 PCI 机制：BAR 声明与 `on_move` 重定位、`mmap_register_range` 映射小 BAR、
    总线主控关闭时不 DMA、INTx 与同线共享（Q35 为 PIRQ E–H，GSI 16 以上）。每个设备在
-   `pci_functions`（[platform.js](../src/platform.js)）里为 i440FX 的 v86 布局、QEMU 兼容布局和 Q35
+   `pci_functions`（[platform.js](../../src/platform.js)）里为 i440FX 的 v86 布局、QEMU 兼容布局和 Q35
    各定一个位置，并与 ACPI 的 `_PRT` 一致。
 2. DMA 使用 `validate_physical_range`、`read_blob_physical`、`write_blob_physical`，另按设备规则
    检查对齐、长度、链环、地址溢出与总量上限。保留地址高位；超出 36 位总线的地址返回设备
    错误，不回绕到低内存。
-3. 中断：e1000（82540EM）、UHCI 与 EHCI 不提供 MSI，只用 INTx；HDA 可以加 [pci.js](../src/pci.js) 已有的单向量
+3. 中断：e1000（82540EM）、UHCI 与 EHCI 不提供 MSI，只用 INTx；HDA 可以加 [pci.js](../../src/pci.js) 已有的单向量
    MSI，先以 INTx 验证；xHCI 的 PCI profile 要求 MSI 或 MSI-X，U4 用已有的单向量 MSI 与一个
    interrupter。MSI-X（table/PBA、mask/pending、多向量）只在 N2 或 U4 的后续需要时实现。写回
    的描述符或状态必须先于中断可见；不暴露没有实现的 capability。
-4. 设备计时用 [MachineClock](../src/machine_clock.js)：e1000 的 ITR 与延迟定时器、HDA 的 WALLCLK
+4. 设备计时用 [MachineClock](../../src/machine_clock.js)：e1000 的 ITR 与延迟定时器、HDA 的 WALLCLK
    与 DMA 消耗、UHCI 的 1 ms 帧、EHCI 与 xHCI 的 125 µs 微帧（FRINDEX、MFINDEX）。VM `pause()` 冻结虚拟时钟和设备计时；页面隐藏、静音或权限
    未授予不阻断客体的硬件进度。在途宿主 I/O 可以结束，客体可见的完成按统一的暂停/恢复规则
    提交。每轮处理有预算，描述符环、帧表或 doorbell 不能一次占满页面或 Worker。
@@ -240,24 +240,24 @@ U1 的 UHCI 与 USB 设备也可以按同一方式做成插件，在 U1 开始�
 ### 异步 I/O、复位和快照
 
 各设备从首个版本就有 `reset/get_state/set_state/destroy` 或等价生命周期；快照记录设备型号、
-schema、固件和后端状态版本，状态槽位在 [state.js](../src/state.js) 统一分配。旧快照缺少新设备时
+schema、固件和后端状态版本，状态槽位在 [state.js](../../src/state.js) 统一分配。旧快照缺少新设备时
 按旧布局恢复；设备组合不同或格式不兼容时，在修改 RAM 之前失败。
 
 异步请求带 machine/device epoch：旧请求晚到不得写入新机器的 RAM、推进新队列或发 IRQ。
-磁盘类请求走 [block_backend.js](../src/block_backend.js)，它已处理复位取消、flush 顺序、快照等待
-（[state_io.js](../src/state_io.js)）和错误策略；写入一旦提交，复位不能撤销。长轮询的 USB IN、
+磁盘类请求走 [block_backend.js](../../src/block_backend.js)，它已处理复位取消、flush 顺序、快照等待
+（[state_io.js](../../src/state_io.js)）和错误策略；写入一旦提交，复位不能撤销。长轮询的 USB IN、
 断开的 WebUSB 和超时的后端要有取消或脱离策略，保存快照不能无限等待。关机和 S5 时的持久化
 失败必须可观测，不能默默丢弃。
 
 ## 界面：VM 管理器与调试页
 
 每个阶段的设备都要能在 VM 管理器（index.html）里选择、显示和验收，界面改动随该阶段一起交付；
-调试页（debug.html）只补最少的入口。涉及的文件：配置 [vm_config.js](../src/app/vm_config.js)（格式、
-默认值、迁移、检查、到 V86 选项的转换）、[machine_options.js](../src/machine_options.js)（每种机器允许的
-型号）、[vm_options.js](../src/browser/vm_options.js)（index.html 与 debug.html 共用的选项规则）、设置对话框
-（[settings.js](../src/app/ui/settings.js) 与 [panels/](../src/app/ui/panels/)）、摘要
-（[describe.js](../src/app/ui/describe.js)）、预设（[guest_presets.js](../src/app/guest_presets.js)）、控制台
-（[console.js](../src/app/ui/console.js)），以及用户文档 [vm-manager.md](vm-manager.md)。
+调试页（debug.html）只补最少的入口。涉及的文件：配置 [vm_config.js](../../src/app/vm_config.js)（格式、
+默认值、迁移、检查、到 V86 选项的转换）、[machine_options.js](../../src/machine_options.js)（每种机器允许的
+型号）、[vm_options.js](../../src/browser/vm_options.js)（index.html 与 debug.html 共用的选项规则）、设置对话框
+（[settings.js](../../src/app/ui/settings.js) 与 [panels/](../../src/app/ui/panels/)）、摘要
+（[describe.js](../../src/app/ui/describe.js)）、预设（[guest_presets.js](../../src/app/guest_presets.js)）、控制台
+（[console.js](../../src/app/ui/console.js)），以及用户文档 [vm-manager.md](../vm-manager.md)。
 
 ### 共同规则
 
@@ -271,7 +271,7 @@ schema、固件和后端状态版本，状态槽位在 [state.js](../src/state.j
   “must be one of …”，含义清楚；新增配置段（`usb`、`firmware`、`tpm`）时格式版本加一，`migrate` 用
   默认值补齐旧配置，旧版界面打开新配置时报 “made by a newer v86”。每次迁移都在
   `tests/app/vm_config.mjs` 中加用例，`.v86vm.json` 的导出与导入往返不丢字段。
-- **挂起的虚拟机**：`machine_digest`（[vm_state.js](../src/app/vm_state.js)）对整个配置（含版本号）取
+- **挂起的虚拟机**：`machine_digest`（[vm_state.js](../../src/app/vm_state.js)）对整个配置（含版本号）取
   哈希，恢复时与挂起时的值比较。不改变客体硬件的迁移（补默认值、版本号变化、下面的“无 → SB16 +
   静音”）要同时改写已存的 `suspended.digest`，否则升级后每台挂起的虚拟机都会误报设置在挂起后改过；
   改变硬件的修改照常提醒。
@@ -283,7 +283,7 @@ schema、固件和后端状态版本，状态槽位在 [state.js](../src/state.j
   虚拟机时一并删除。导出 `.v86vm.json` 时 UEFI 变量可选包含；TPM 状态含密钥材料，默认不导出，
   要用户明确选择并提示风险。
 - **插件文件**：插件缺失或加载失败时，控制台的错误提示写明缺的文件与型号。每个插件阶段都把新
-  文件加进 [tools/pages_dist.mjs](../tools/pages_dist.mjs) 的清单，否则 Pages 上的 index.html 找不到插件。
+  文件加进 [tools/pages_dist.mjs](../../tools/pages_dist.mjs) 的清单，否则 Pages 上的 index.html 找不到插件。
 - **调试页**：debug.html 的网卡下拉框加入 e1000，并加一个同样的声卡下拉框（Sound Blaster 16、
   HD Audio、无）；两者经 vm_options.js 与 index.html 共用规则。USB、固件和 TPM 只在 VM 管理器中提供。
 - **测试**：每个阶段扩展 `make app-tests`：`tests/app/vm_config.mjs`（检查与迁移）、`presets.mjs`、
@@ -330,14 +330,14 @@ Linux x86-64 上都有自带驱动。这三类客体运行在两种机器上（A
 | RTL8139（`10EC:8139`） | 无 | 未核对 | 有：`netrtl64.inf` | 未核对 | Alpine virt 无（`NET_VENDOR_REALTEK` 未设） |
 | RTL8168（`10EC:8168`） | 无：`CONFIG_R8169` 未设 | 未核对 | 有：`netrt630x64.inf` | 未核对 | Alpine virt 无 |
 | Intel 8255x（`8086:1229`） | 无 | 未核对 | 有：`netefe3e.inf` | 未核对 | Alpine virt 无（`CONFIG_E100` 未设） |
-| NE2000 PCI RTL8029（`10EC:8029`，现有） | 无 | Vista 起需第三方驱动（[windows-nt.md](windows-nt.md) §5.3） | **无** | 未核对 | Alpine virt 无；linux4.iso、buildroot 内置 |
+| NE2000 PCI RTL8029（`10EC:8029`，现有） | 无 | Vista 起需第三方驱动（[windows-nt.md](../windows-nt.md) §5.3） | **无** | 未核对 | Alpine virt 无；linux4.iso、buildroot 内置 |
 | USB CDC-ECM/NCM、RTL8153、AX88179 | 模块在 system_dlkm，但不加载（见下） | 未核对；没有 xHCI 驱动 | 无 CDC-ECM/NCM；RTL8153、AX88179 有 | 未核对 | Alpine virt 无（`USB_NET_DRIVERS` 未设） |
 | USB RNDIS | 无：`CONFIG_USB_NET_RNDIS_HOST` 未设 | 未核对 | 有：`rndiscmp.inf` | 未核对 | Alpine virt 无 |
 
 来源：
 
 - **Android**：Cuttlefish `aosp_cf_arm64_only_phone-userdebug` 15581820（android16-qpr2，内核
-  `6.12.38-android16-5`），由 [tools/a64_android.mjs](../tools/a64_android.mjs) 下载到 `build/a64-android/`。
+  `6.12.38-android16-5`），由 [tools/a64_android.mjs](../../tools/a64_android.mjs) 下载到 `build/a64-android/`。
   内核内嵌配置里没有任何 PCI 以太网驱动（e1000、e1000e、r8169 未设，virtio_net 是厂商模块）；
   xHCI 与 EHCI（含 PCI 接口）、USB HID、USB 存储都内置。vendor ramdisk 的 `modules.load` 只有
   virtio 等 19 个模块。system_dlkm 带 `usbnet`、`cdc_ether`、`cdc_ncm`、`r8152`、`ax88179_178a`、
@@ -382,12 +382,12 @@ Linux x86-64 上都有自带驱动。这三类客体运行在两种机器上（A
 
 - 库 API：`net_device.type` 增加 `"e1000"`，由插件 `build/v86-e1000.js` 提供，选中时才加载（见
   “设备插件”）；库默认保持 `"ne2k"`（兼容旧页面、旧快照和旧客体）。
-- VM 管理器预设（[guest_presets.js](../src/app/guest_presets.js)）：
+- VM 管理器预设（[guest_presets.js](../../src/app/guest_presets.js)）：
   - Windows 8.1、Windows Vista/7/10（以后的 11）：`nic: "e1000"`，取代现在的 `"none"`，并删除
     `WINDOWS_81_ISSUES` 中 “ne2k has no Windows 8.1 driver” 一条。
   - Linux x86_64：保持已验证的 `virtio`；e1000 同样免驱，作为设置对话框里的备选。
   - DOS、Windows 3.x/9x/NT/2000/XP、Linux 32 位：保持 `ne2k`（buildroot 测试内核只带 ne2k-pci）。
-  - arm64、Android：保持 `virtio`（[vm_options.js](../src/browser/vm_options.js) 已对 arm64 强制）。
+  - arm64、Android：保持 `virtio`（[vm_options.js](../../src/browser/vm_options.js) 已对 arm64 强制）。
 - 设置对话框的网络适配器列表按机器给出型号：x86 为 NE2000、e1000、virtio-net；ARM64 只有
   virtio-net。
 
@@ -423,10 +423,10 @@ Linux x86-64 上都有自带驱动。这三类客体运行在两种机器上（A
 - Node 设备测试（`tests/devices/`）：构造 TX/RX 环与回绕、跨描述符包、TSO 与校验和向量、
   EEPROM 校验和、ICR/IMS 语义、中断合并定时与快照往返。
 - Linux：`images/linux4.iso`（内置 e1000）作快速客体，Alpine 3.24 x86_64 virt（`e1000` 模块，
-  [tests/x64/linux_boot.mjs](../tests/x64/linux_boot.mjs) 所用的镜像）作现代内核。DHCP、ARP、DNS、
+  [tests/x64/linux_boot.mjs](../../tests/x64/linux_boot.mjs) 所用的镜像）作现代内核。DHCP、ARP、DNS、
   TCP/UDP 双向收发；与可控回环端点做至少 1 GiB 双向传输并校验；link down/up、reset、快照、多核
   中断；记录吞吐、CPU 与 IRQ 速率。协议测试与依赖外网的测试分开。
-- Windows 8.1 x64：现有镜像与 [tests/x64/windows_boot.mjs](../tests/x64/windows_boot.mjs)。设备管理器的
+- Windows 8.1 x64：现有镜像与 [tests/x64/windows_boot.mjs](../../tests/x64/windows_boot.mjs)。设备管理器的
   `ConfigManagerErrorCode` 为 0，记录绑定的 INF 与驱动版本；DHCP 获得地址，HTTP 下载并校验。
 - Windows 7（x86、x64）与 Windows 10 x64：需要所有者提供安装介质或已安装镜像；每个镜像记录
   绑定的 INF、驱动版本与硬件 ID。Windows 11 在 C1 中核对。
@@ -461,11 +461,11 @@ codec 至少有 root、Audio Function Group、DAC 和 output pin，正确返回 
 设备管理器看到 HDA 控制器只是第一步；codec 拓扑被通用驱动接受并产生音频 endpoint 才算枚举完成。
 
 先实现 48 kHz/16 位/立体声，只公布实际支持的格式，再扩展 44.1 kHz 和其他位宽。时钟模型沿用
-[virtio_snd.js](../src/virtio_snd.js)：WALLCLK（24 MHz）、DMA 消耗、LPIB 和周期 IRQ 都按 MachineClock
+[virtio_snd.js](../../src/virtio_snd.js)：WALLCLK（24 MHz）、DMA 消耗、LPIB 和周期 IRQ 都按 MachineClock
 推进；浏览器未解锁音频、页面静音或没有输出设备时，客体 PCM 照常消耗，中断照常产生。
 AudioWorklet 的拉取只是播放后端的需求，不能成为控制器唯一的时钟。
 
-PCM 经现有的 `dac-send-data` 送到 [speaker.js](../src/browser/speaker.js)（与 virtio-snd 相同），补上
+PCM 经现有的 `dac-send-data` 送到 [speaker.js](../../src/browser/speaker.js)（与 virtio-snd 相同），补上
 格式、队列上限、重采样与暂停/恢复语义。输出队列不跨快照重放：恢复时丢弃旧 epoch 的样本，
 以客体 stream 状态重建。录音另设阶段，播放不需要麦克风权限。
 
@@ -553,7 +553,7 @@ suspend/resume、快照恢复与 Worker 均通过，且不累积漂移。
 
 首版采用 USB Mass Storage Bulk-Only Transport（BOT）+ SCSI transparent command set，单 LUN、
 512 B 扇区。USB 层处理 CBW/data/CSW，SCSI 层处理命令、sense 与介质状态；块后端直接用
-[block_backend.js](../src/block_backend.js)（复位取消、flush、快照等待与错误策略已有），不复制 IDE
+[block_backend.js](../../src/block_backend.js)（复位取消、flush、快照等待与错误策略已有），不复制 IDE
 控制器。自带驱动：XP SP3 与 8.1 的 `usbstor.inf`（已核对），Linux 的 `usb-storage`（Alpine virt 为
 模块）；Windows 98 没有通用 U 盘驱动，不在范围内。
 
@@ -642,7 +642,7 @@ Node 构造 QH/qTD/帧表，覆盖 IAA、回收检测、toggle、短包、STALL 
 
 采用 QEMU `qemu-xhci` 的身份（`1B36:000D`，类 `0C0330`），便于在 QEMU 上取参考：BAR0 为 64 位内存
 空间（16 KiB），4 个 USB 2 根端口与 4 个 USB 3 根端口（两个 Supported Protocol 能力），一个
-interrupter，单向量 MSI（[pci.js](../src/pci.js) 已有）且保留 INTx；不声明 MSI-X，等 N2 或需要多个
+interrupter，单向量 MSI（[pci.js](../../src/pci.js) 已有）且保留 INTx；不声明 MSI-X，等 N2 或需要多个
 interrupter 时与 N2 一起实现。Windows 用 `usbxhci.inf` 按类匹配（Windows 8 以后；Windows 7 没有自带
 驱动，预设不给 7 选 xHCI），Linux 用 `xhci-pci`/`xhci_hcd`。i440FX 与 Q35（PCIe root port 下或根总线）
 都可用。
@@ -694,7 +694,7 @@ completion code、环回绕、事件环满和端点停止与规范一致。[Inte
   `etc/system-states`。OVMF 还会读取 `etc/e820`（没有时回退到 CMOS 的内存大小）、`bootorder`、SMBIOS
   表，SMM 构建还读 `etc/smi/*` 特性协商文件。以所冻结版本的调试日志为准逐项补齐，不预先虚报。
 - **ACPI**：OVMF 执行同一份 QEMU loader 脚本安装表，现有的生成方式可以沿用；表按固件写入的
-  PMBA 生成（[platform.js](../src/platform.js)），要确认 OVMF 在 PIIX4 与 ICH9 上写入的 PMBA 都被正确
+  PMBA 生成（[platform.js](../../src/platform.js)），要确认 OVMF 在 PIIX4 与 ICH9 上写入的 PMBA 都被正确
   反映，PM 资源不依赖 SeaBIOS 写寄存器的时序。
 - **固件映射**：复位向量、4 GiB 顶部的固件映射/别名、ROM 写保护、内存洞和高 RAM；CODE 与可写
   状态分离。第一个里程碑把单个 `OVMF.fd` 映射为 ROM（变量只在内存中，不持久）；然后实现 CFI
@@ -705,7 +705,7 @@ completion code、环回绕、事件环满和端点停止与规范一致。[Inte
 - **存储与启动**：OVMF 自带 AHCI/IDE（AtaAtapiPassThru）、NVMe 和 virtio-blk 驱动。要覆盖 GPT/ESP、
   AHCI 磁盘与光驱、BootOrder/Boot####、启动管理器和 UEFI runtime services，包括 ExitBootServices
   之后的变量访问与操作系统使用的地址映射转换。
-- **SMM**：Q35 已有 SMM（[q35.md](q35.md)）。OVMF 的 SMM 构建会经 fw_cfg 协商 SMI 广播，而 v86 的
+- **SMM**：Q35 已有 SMM（[q35.md](../q35.md)）。OVMF 的 SMM 构建会经 fw_cfg 协商 SMI 广播，而 v86 的
   APM SMI 现在只中断写端口的那个核；多核时按协商结果广播。
 
 变量每 VM 独立且可持久化，支持容量不足、损坏、原子提交与恢复；重启保留变量，显式恢复出厂
@@ -729,7 +729,7 @@ UEFI profile 初期不声明未经验证的 S3/S4。当前平台的休眠声明�
 运行；若只能通过原生代理调试，要明确它还不是浏览器版的完成状态。
 
 首版选择 CRB 接口，并同步固定 OVMF 与 Windows/Linux 支持的配置；TIS/FIFO 作为以后可选的
-前端。TPM 的 MMIO 在 `0xFED40000` 起的 locality 区，Q35 的物理地址表中这一段空闲（[q35.md](q35.md)），
+前端。TPM 的 MMIO 在 `0xFED40000` 起的 locality 区，Q35 的物理地址表中这一段空闲（[q35.md](../q35.md)），
 i440FX 同样核对。实现 locality、interface ID、command-ready、start/cancel、状态转换和命令/响应
 缓冲区边界。TPM2 ACPI 表的 start method、control area、AML `MSFT0101` 身份与资源保持一致，避免
 操作系统选择另一条未实现的接口（Windows 8.1 的 `tpm.inf` 匹配 `ACPI\MSFT0101`，已核对）。审计目标
@@ -765,7 +765,7 @@ SetupMode、UserMode、SecureBoot、PK、KEK、db、dbx；实现认证更新、�
 
 | 路线 | v86 侧工作 | 判断 |
 | --- | --- | --- |
-| 优先评估：SMM + pflash（OVMF 的 `SMM_REQUIRE` 构建，即 QEMU `q35,smm=on` 的常规组合） | CFI pflash，且 VARS 在 SMM 之外不可写；SMI 广播协商；Q35 的 SMM 已有。认证变量与验签都在固件的 SMM 代码中完成 | v86 不需要实现密码学；风险在 SMM 代码的执行速度（SMRAM 内取指走特殊路径，见 [q35.md](q35.md)），要测量变量访问的开销 |
+| 优先评估：SMM + pflash（OVMF 的 `SMM_REQUIRE` 构建，即 QEMU `q35,smm=on` 的常规组合） | CFI pflash，且 VARS 在 SMM 之外不可写；SMI 广播协商；Q35 的 SMM 已有。认证变量与验签都在固件的 SMM 代码中完成 | v86 不需要实现密码学；风险在 SMM 代码的执行速度（SMRAM 内取指走特殊路径，见 [q35.md](../q35.md)），要测量变量访问的开销 |
 | 备选：OVMF `QEMU_PV_VARS` + v86 变量服务 | 实现 uefi-vars 设备协议与宿主侧变量服务，包括认证变量的 PKCS#7/X.509 验签、时间戳或重放防护、策略与持久化 | 固件侧简单，但 v86 要自建并审计验签；只在 SMM 路线的性能不可接受时采用 |
 
 edk2 的 OVMF X64 提供 `QEMU_PV_VARS` 构建选项，QEMU 的对应方案在宿主处理变量访问控制与签名
@@ -810,7 +810,7 @@ Windows 11，避免同时排查 CPU、固件和设备三个层次。
 | 生命周期 | pause/resume、warm/cold reset、S5、快照、恢复、热插拔、在途请求和持久化失败；S3/S4 按各固件 profile 单独启用验收 |
 | 安全功能 | Secure Boot 正反例、认证变量更新、TPM 命令/NV/PCR/event log 与密封场景 |
 
-CPU：`cpu_features: "x86-64-v2"` 已提供 Windows 11 24H2 需要的 SSE4.2 与 POPCNT（[x86-64.md](x86-64.md)）。
+CPU：`cpu_features: "x86-64-v2"` 已提供 Windows 11 24H2 需要的 SSE4.2 与 POPCNT（[x86-64.md](../x86-64.md)）。
 仍要为选定镜像建立指令/CPUID/MSR 与启动日志清单（AES-NI、PCLMULQDQ、PCID 等尚未实现，见
 x86-64.md 的缺失列表），缺失语义在解释器/JIT 中实现并做差分验证后再宣布对应能力。双核和内存
 容量以客体实际可用的值验证。图形驱动的 WDDM/DirectX 能力独立跟踪；UEFI GOP、WebGPU 后端或
@@ -873,12 +873,12 @@ CPU/图形兼容的边界。只出现设备名称、播放一次声音或绕过�
        现在 `ne2k.js`、`sb16.js` 的状态字段顺序，所以旧数组照样能读。
      - 槽位为空（机器没有这个设备）：不恢复，与现在相同。
 
-     做法与显示适配器相同：[graphics_adapter.js](../src/graphics_adapter.js) 把插件之前的 `state[52]` 当作
+     做法与显示适配器相同：[graphics_adapter.js](../../src/graphics_adapter.js) 把插件之前的 `state[52]` 当作
      Bochs VGA 自己的状态。
    - **只向前兼容**：新版 v86 能打开旧快照，**新快照不能在旧版 v86 中打开**。旧代码会把带标签的外层
      当成寄存器数组来读，得到错误的设备状态。为了让旧版明确报错，而不是读出错误的状态，M1 把快照
      头的版本号加一：单文件格式的 `STATE_VERSION` 从 6 改为 7，流式格式的 `STREAM_VERSION` 从 7 改为
-     8。[state.js](../src/state.js) 对版本号做相等检查，旧版遇到新版本号会报 “Version mismatch”；新版
+     8。[state.js](../../src/state.js) 对版本号做相等检查，旧版遇到新版本号会报 “Version mismatch”；新版
      同时接受新旧两个版本号。版本号对所有快照生效，所以 M1 之后保存的快照（包括 ARM64 的）都不能
      再用旧版打开。站点升级到 M1 之后，用户新存的存档不能再回退到旧版 v86 使用；这一点写进发布说明
      和站点的部署说明。
@@ -898,7 +898,7 @@ CPU/图形兼容的边界。只出现设备名称、播放一次声音或绕过�
 3. **部署**
    - 构建：两个插件进入 Makefile 的插件列表（照 `GRAPHICS_ADAPTER_PLUGINS` 与 `make graphics-adapters`），
      作为每个 libv86 包与 `build/cpu-worker.js` 的前置；npm 包已由 `package.json` 的 `build/v86-*.js` 覆盖。
-   - Pages：[tools/pages_dist.mjs](../tools/pages_dist.mjs) 的文件清单加入两个插件（显示适配器插件在那里是
+   - Pages：[tools/pages_dist.mjs](../../tools/pages_dist.mjs) 的文件清单加入两个插件（显示适配器插件在那里是
      逐个列出的）。
    - 站点：retro-gaming-site 把 `v86-ne2k.js`、`v86-sb16.js` 与 `libv86.js`、`cpu-worker.js`、`v86-bochs-vga.js`
      一起放在根目录并提交（站点按默认路径在 libv86 旁边加载插件）。
@@ -950,7 +950,7 @@ WebUSB 没有可通用假设的逐请求取消或物理状态回滚。虚拟取�
 | Alpine 3.24 x86_64 | 有：`build/x64-linux/` 的 virt/standard ISO | N1、H1、U1–U4 的现代内核（`uhci-hcd`、`ehci-pci`、`xhci-pci`、`usbhid`、`usb-storage`） |
 | linux4.iso（4.16） | 有：`images/` | N1、H1 的快速客体（内置 e1000、snd-hda-intel；没有 USB 主机驱动） |
 | buildroot-bzimage68 | 有：`images/` | 没有 e1000、USB 主机与 HDA 驱动，不能用于新设备 |
-| Android 16 Cuttlefish | 有：[tools/a64_android.mjs](../tools/a64_android.mjs) 生成的 `build/a64-android/` | virtio-net 回归 |
+| Android 16 Cuttlefish | 有：[tools/a64_android.mjs](../../tools/a64_android.mjs) 生成的 `build/a64-android/` | virtio-net 回归 |
 | Windows 7（x86、x64）、10、11 | 没有 | 需要所有者提供安装介质或已安装镜像；N1/H1/U1–U4 的 Windows 矩阵与 C1 |
 | QEMU 9.2 x86_64 参考 | 有：本机构建的 QEMU（ARM64 计划 A0） | U1–U4 的 Linux 参考：同配置（`piix3-usb-uhci` 或 `ich9-usb-uhci1`、`ich9-usb-ehci1` 加 companion、`qemu-xhci`，`usb-tablet`、`usb-storage`）下的 `lsusb -v`/`-t` |
 

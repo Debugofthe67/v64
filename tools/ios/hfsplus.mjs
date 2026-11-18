@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// An HFS+ or HFSX volume, read (docs/iphone4-plan.md S0; src/ios/hfsplus.js):
+// An HFS+ or HFSX volume, read (docs/plan/iphone4-plan.md S0; src/ios/hfsplus.js):
 //
 //   node tools/ios/hfsplus.mjs <image> info
 //   node tools/ios/hfsplus.mjs <image> ls [<path>]

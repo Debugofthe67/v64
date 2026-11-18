@@ -1,4 +1,4 @@
-// VHDX images (docs/disk-image-formats-plan.md P5; the format: [MS-VHDX]):
+// VHDX images (docs/plan/disk-image-formats-plan.md P5; the format: [MS-VHDX]):
 // the two headers (the current one: valid, the higher sequence number), the
 // region tables, the metadata (block size, virtual size, sector sizes) and
 // the BAT, every structure with its CRC-32C. Logical sectors of 512 or 4096

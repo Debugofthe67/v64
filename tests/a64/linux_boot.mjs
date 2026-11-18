@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Unmodified Alpine Linux 3.24.0 aarch64 (docs/arm64-virt-android16-plan.md
+// Unmodified Alpine Linux 3.24.0 aarch64 (docs/plan/arm64-virt-android16-plan.md
 // P0.1, P0.2; the v86 runs from A2): the pinned virt ISO's EFI zboot kernel
 // and initramfs, and the aarch64 probe (tests/a64/linux_probe.c) built with
 // clang and rust-lld as a static ELF, delivered two ways:
@@ -38,7 +38,7 @@
 //   after every cycle.
 //   A64_LIVE_QCOW2=1 (v86, the live stage): the ISO's disk is a compressed
 //   QCOW2 image of it (qemu-img convert -c, build/a64-linux/live-iso.qcow2),
-//   read by the disk image layer (docs/disk-image-formats-plan.md).
+//   read by the disk image layer (docs/plan/disk-image-formats-plan.md).
 //
 // A64_KERNEL selects v86's kernel: 16k, 64k and androidish are
 // tools/a64_kernel.mjs's (P8.6, P9.1, P9.2); gki is Android 16's GKI kernel
@@ -170,7 +170,7 @@ const manifest = {
 fs.writeFileSync(manifest_file, JSON.stringify(manifest, null, 2) + "\n");
 if(+process.env.A64_LINUX_PREPARE_ONLY) process.exit(0);
 
-// (A64_WORKLOAD=jit: the guest JIT workloads of docs/arm64-virt-android16-plan.md
+// (A64_WORKLOAD=jit: the guest JIT workloads of docs/plan/arm64-virt-android16-plan.md
 // P6.7 between A64_WORKLOAD_BEGIN and A64_WORKLOAD_END: V8 in nodejs, HotSpot
 // running `java Hello.java`, LuaJIT with -jon and -joff, PCRE2's JIT; sources
 // in tests/a64/jit_workload/. Their packages (tools/alpine_repo.mjs --arch
@@ -214,7 +214,7 @@ if(jit_workload)
     initrd = directory + "initramfs-virt+probe+jit.cpio";
     fs.writeFileSync(initrd, Buffer.concat([fs.readFileSync(initrd_probe), fs.readFileSync(directory + "jit.cpio")]));
 }
-// (A64_WORKLOAD=aarch32, docs/aarch32-plan.md Q5.1: 32-bit processes on the
+// (A64_WORKLOAD=aarch32, docs/plan/aarch32-plan.md Q5.1: 32-bit processes on the
 // 64-bit kernel, between A64_WORKLOAD_BEGIN and A64_WORKLOAD_END:
 // tests/a64/linux_probe32.c built for A32 and for T32, then Alpine's armv7
 // programs (tools/alpine_repo.mjs --arch armv7 --set aarch32) in a chroot:
@@ -475,7 +475,7 @@ const INITRAMFS_CMDLINE = ref => `console=ttyAMA0 earlycon nokaslr panic=-1${kpt
     `${workload ? " A64_WORKLOAD=" + workload : ""}${ref === "v86" ? V86_WATCHDOG : ""} rdinit=/a64-init -- ref=${ref}${ref === "v86" && parallel ? " parallel" : ""}` +
     `${ref === "v86" && process.env.A64_PROFILE === "v3" ? " aarch32" : ""}` +
     `${memtest_mib ? " memtest=" + memtest_mib : ""}${extended_memory ? " high=" + EXTENDED_BASE / 4096 : ""}`;
-// (A64_JIT=1: the v86 runs with the A64 page tier, docs/jit-unification-plan.md J2;
+// (A64_JIT=1: the v86 runs with the A64 page tier, docs/plan/jit-unification-plan.md J2;
 // A64_JIT_HOT its compile threshold)
 const jit = !!+process.env.A64_JIT;
 // (v86 interpreted on more than one core: the guest's clock is the host's,

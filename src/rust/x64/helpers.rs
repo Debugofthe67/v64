@@ -1,5 +1,5 @@
 //! Helpers of the page tier's generated code and their host switches
-//! (docs/jit-unification-plan.md P7.5: shared with IR Tier-0 until it was
+//! (docs/plan/jit-unification-plan.md P7.5: shared with IR Tier-0 until it was
 //! deleted, from its runtime, renamed): the exact SSE floating point and FMA
 //! paths on one operand block, PCMPxSTRx, x87 forms (x64_x87, from the
 //! region runtime's when M11 deleted the region tiers), and whether the

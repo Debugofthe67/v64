@@ -1,4 +1,4 @@
-//! The GLES backdoor of AArch32 user code (docs/gles-proxy-plan.md "iOS
+//! The GLES backdoor of AArch32 user code (docs/plan/gles-proxy-plan.md "iOS
 //! 传输", E6): UDF #0x8664 (A32 0xE7F866F4, T32 0xF7F8 0xA664) executed at
 //! PL0 with r0's top half 0x8664 is a call of the machine's backdoor device
 //! (src/arm/backdoor_a32.js) with r0 to r3: its answer goes to r0 and the

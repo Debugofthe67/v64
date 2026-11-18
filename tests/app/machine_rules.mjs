@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// allowed_options (src/machine_options.js, docs/vm-manager-plan.md U0): what
+// allowed_options (src/machine_options.js, docs/plan/vm-manager-plan.md U0): what
 // it allows is what the library accepts, for every CPU, machine, display
 // adapter and network card, and the options it marks unavailable are
 // rejected (check_machine_options, and the PC platform's own checks).

@@ -368,7 +368,7 @@ IO.prototype.mmap_register_range = function(addr, size, owner, read8, write8, re
     const first = addr >>> MMAP_BLOCK_BITS, last = addr + size - 1 >>> MMAP_BLOCK_BITS;
 
     // (an error in every build, before anything is mapped: the later range
-    // would shadow part of the earlier one; docs/arm64-virt-android16-plan.md P1.7)
+    // would shadow part of the earlier one; docs/plan/arm64-virt-android16-plan.md P1.7)
     for(let block = first; block <= last; block++)
     {
         for(const other of this.mmio_blocks.get(block)?.ranges || [])

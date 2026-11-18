@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The stage 1 MMU against QEMU (docs/arm64-virt-android16-plan.md P3.3-P3.5;
+// The stage 1 MMU against QEMU (docs/plan/arm64-virt-android16-plan.md P3.3-P3.5;
 // `--granules` all: P3.4's 16 and 64 KiB too, profile v1.1's).
 // Each case programs TCR_EL1 (TnSZ, TGn, TBIn, IPS, A1, AS, EPDn), MAIR_EL1,
 // SCTLR_EL1.A and both TTBRs with an ASID, builds random translation tables

@@ -1,6 +1,6 @@
 // Android boot images (system/tools/mkbootimg's boot_image.h): boot.img and
 // init_boot.img (header version 3 or 4) and vendor_boot.img (version 4), as
-// a bootloader reads them (docs/android-images-plan.md I1, I2).
+// a bootloader reads them (docs/plan/android-images-plan.md I1, I2).
 
 import { u32, latin1, c_string } from "./bytes.js";
 

@@ -2535,7 +2535,7 @@ pub unsafe fn full_clear_tlb() {
 }
 /// The page tier's code translations of this core (code TLB, chaining
 /// entries) carry its access cache epoch (x64 jac): a legacy-mode flush
-/// starts a new one, as x64 invalidations do (docs/jit-unification-plan.md
+/// starts a new one, as x64 invalidations do (docs/plan/jit-unification-plan.md
 /// P7.1; in long and compatibility mode the x64 paths flush it themselves)
 unsafe fn legacy_code_epoch() {
     if crate::x64::state::efer() & crate::x64::state::EFER_LMA == 0 {
@@ -2989,7 +2989,7 @@ pub unsafe fn switch_seg(reg: i32, selector_raw: i32) -> bool {
 
 /// switch_seg for ES, DS, FS or GS in legacy protected mode when it raises
 /// nothing and leaves the state flags as they are (the MOV Sreg template,
-/// docs/jit-unification-plan.md P3.7(b), IR Tier-0's until P7.5). false, with nothing
+/// docs/plan/jit-unification-plan.md P3.7(b), IR Tier-0's until P7.5). false, with nothing
 /// changed: a fault, a descriptor that does not translate without one, an
 /// accessed bit to set on a page with compiled code or a device, or (with
 /// `keep_flat`) a DS whose load changes flat segmentation (then the
@@ -3001,7 +3001,7 @@ pub unsafe fn switch_seg_without_fault(reg: i32, selector_raw: i32, keep_flat: b
         return false;
     }
     // (real mode and virtual-8086 mode: no descriptor and no fault, as
-    // switch_seg; the page tier's 16-bit code, docs/jit-unification-plan.md
+    // switch_seg; the page tier's 16-bit code, docs/plan/jit-unification-plan.md
     // P7.8)
     if !*protected_mode || vm86_mode() {
         *sreg.offset(reg as isize) = selector_raw as u16;
@@ -3553,7 +3553,7 @@ pub unsafe fn cycle_internal() -> bool {
         return attempt.submitted;
     }
     // 32-bit compatibility-mode code in the x64 page tier (x64_page_compat32,
-    // docs/jit-unification-plan.md P7.2) and legacy protected-mode code
+    // docs/plan/jit-unification-plan.md P7.2) and legacy protected-mode code
     // (x64_page_legacy32, P7.3)
     if crate::x64::pages::page32()
         && crate::jit::enabled()
@@ -3790,7 +3790,7 @@ pub unsafe fn instruction_trace_get(index: u32, field: u32) -> u32 {
 }
 
 /// The x64 page tier's misses in 16-bit code (pages::miss_run,
-/// docs/jit-unification-plan.md P7.8): a basic block in the interpreter, as
+/// docs/plan/jit-unification-plan.md P7.8): a basic block in the interpreter, as
 /// code without compiled code runs; the instructions it retired (0 when the
 /// fetch faulted, the fault delivered)
 pub unsafe fn run_interpreted_block(budget: u32) -> u32 {
@@ -3905,7 +3905,7 @@ pub unsafe fn run_long_instruction() {
 /// One instruction of 32-bit compatibility-mode code in the 32-bit
 /// interpreter, with run_long_instruction's bookkeeping: the x64 page tier's
 /// steps, retries and misses in compatibility mode (x64_page_compat32,
-/// docs/jit-unification-plan.md P7.2, and in legacy mode, P7.3). A fetch
+/// docs/plan/jit-unification-plan.md P7.2, and in legacy mode, P7.3). A fetch
 /// fault is delivered and, as in the 32-bit interpreter loop
 /// (cycle_internal), not counted (cross-phase rule 3).
 pub unsafe fn run_compat_instruction() {
@@ -4002,7 +4002,7 @@ pub unsafe fn run_cpu_slice(budget: u32) -> u32 {
             continue;
         }
         // 32-bit compatibility-mode code in the x64 page tier
-        // (x64_page_compat32, docs/jit-unification-plan.md P7.2), and legacy
+        // (x64_page_compat32, docs/plan/jit-unification-plan.md P7.2), and legacy
         // protected-mode code (x64_page_legacy32, P7.3)
         if page32 && !crate::cpu::execution::is_deterministic() && crate::x64::pages::runnable32() {
             let attempt = crate::x64::pages::run(remaining);

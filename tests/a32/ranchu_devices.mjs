@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The ranchu machine's devices (docs/aarch32-plan.md R6.1, R6.2) on
+// The ranchu machine's devices (docs/plan/aarch32-plan.md R6.1, R6.2) on
 // cpu_type "arm32", driven through their registers as the Android
 // emulator image's Linux 3.10 drives them:
 // - the device tree (src/virt/ranchu.js, decompiled by dtc): the GICv2, the
@@ -15,7 +15,7 @@
 // - goldfish_pipe: qemud's boot-properties over a channel (the frames, the
 //   wake on read), an unknown service refused, a snapshot closing channels;
 //   with ranchu_gpu "host", the GLES host's services (src/gles/,
-//   docs/gles-proxy-plan.md E1): GLProcessPipe's process id, an
+//   docs/plan/gles-proxy-plan.md E1): GLProcessPipe's process id, an
 //   "opengles" connection's replies read in pages, the reader woken, the
 //   process's objects gone with its pipe;
 // - the framebuffer: RGB565 written to the simple-framebuffer reaches the
@@ -275,7 +275,7 @@ const bytes_at = (address, length) => cpu.read_blob_physical(address, length);
     assert.equal(command(8, 2), 0, "CLOSE");
     assert.equal(command(8, 3), -1, "a closed channel is gone");
     // (a snapshot: the channels come back with their services' state,
-    // docs/gles-proxy-plan.md E5; one of the old kind, channels only, closed)
+    // docs/plan/gles-proxy-plan.md E5; one of the old kind, channels only, closed)
     pipe.set_state(pipe.get_state());
     assert.equal(levels.get(SPI(7)) || false, false, "no wakes");
     assert.equal(command(7, 3), 2, "POLL: writable, nothing to read");
