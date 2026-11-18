@@ -1006,7 +1006,7 @@ export function config_to_options(config, env)
                 bootrom: image(bootrom),
                 bootrom_sha256: bootrom.sha256, bootrom_id: bootrom.reported_id,
             } : {}) },
-            initial_state: image(config.initial_state), autostart: true, disable_speaker: true,
+            initial_state: image(config.initial_state), autostart: true, disable_mouse: true, disable_speaker: true,
         };
     }
     if(machine.type === "s5l8930" && config.ios)

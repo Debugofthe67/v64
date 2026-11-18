@@ -38,9 +38,10 @@ import { create_n97_board_config, create_n97_clocks, create_n97_gpio_input, crea
     create_n97_rapido_id, create_n97_xti } from "../symbian/n97_devices.js";
 import { create_n97_onenand } from "../symbian/n97_onenand.js";
 import { create_n97_mmc } from "../symbian/n97_mmc.js";
-import { create_n97_keyboard } from "../symbian/n97_keyboard.js";
+import { create_n97_keyboard, N97_KEYBOARD_ADDRESS } from "../symbian/n97_keyboard.js";
 import { create_n97_i2c } from "../symbian/n97_i2c.js";
 import { create_n97_dma } from "../symbian/n97_dma.js";
+import { create_n97_touch, N97_TOUCH_ADDRESS } from "../symbian/n97_touch.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -65,7 +66,7 @@ import { COMMAND_RELOAD, COMMAND_RESET } from "../parallel/control.js";
 const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe",
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
     "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
-    "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma"];
+    "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma", "n97_touch_gpio", "n97_touch"];
 const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
@@ -310,12 +311,16 @@ A64CPU.prototype.init = function(settings, device_bus)
                 level => interrupts.set_keyboard(level));
             const slider = this.devices.n97_slider_gpio = create_n97_gpio_input(this.io, 0x20031D80, 0x20031CF4, 26, false,
                 level => interrupts.set_slider(level), () => this.devices.n97_mmc?.sd ? 0 : 0x2000);
-            const keypad = this.devices.n97_keyboard = create_n97_keyboard(level => keypad_irq.set_input(!level));
-            this.devices.n97_i2c = create_n97_i2c(this.io, keypad, level => interrupts.set_i2c(level));
+            const pen = this.devices.n97_touch_gpio = slider.connect(6, true, level => interrupts.set_touch(level));
+            const touch = this.devices.n97_touch = create_n97_touch(this.clock, level => pen.set_input(level));
+            const keypad = this.devices.n97_keyboard = create_n97_keyboard(level => keypad_irq.set_input(!level), touch.set_reset);
+            this.devices.n97_i2c = create_n97_i2c(this.io, new Map([[N97_KEYBOARD_ADDRESS, keypad], [N97_TOUCH_ADDRESS, touch]]),
+                level => interrupts.set_i2c(level));
             this.devices.n97_dma = create_n97_dma(this.io, this, () => this.devices.n97_mmc,
                 (source, level) => interrupts.set_dma(source, level));
             device_bus.register("symbian-key", ([code, pressed]) => keypad.press(code, pressed));
             device_bus.register("symbian-slider", open => { if(typeof open === "boolean") slider.set_input(open); });
+            device_bus.register("symbian-touch", ([x, y, pressed]) => touch.set_touch(x, y, pressed));
             if(settings.symbian_emmc || settings.symbian_sd)
             {
                 this.devices.n97_mmc = create_n97_mmc(this.io, settings.symbian_emmc, settings.symbian_sd,
@@ -789,7 +794,8 @@ A64CPU.prototype.run_machine_core = function()
         // its flash request. Sleeping for the AP's timer then throttles
         // an independent runnable processor (and every NAND transaction).
         return iop_busy || iop?.wake_pending() ? 0 :
-            Math.min(next, this.devices.n97_os_timer?.poll(this.clock.now()) ?? Infinity);
+            Math.min(next, this.devices.n97_os_timer?.poll(this.clock.now()) ?? Infinity,
+                this.devices.n97_touch?.poll(this.clock.now()) ?? Infinity);
     }
     finally
     {
@@ -861,7 +867,8 @@ A64CPU.prototype.state_block_of = function(core)
 /** (env.run_hardware_timers) the virt machine's device timers (the PL031's alarm, the display's); the cores' timers are their own */
 A64CPU.prototype.run_hardware_timers = function(acpi, now)
 {
-    if(this.devices.n97_os_timer) return Math.min(this.devices.n97_os_timer.poll(now), this.devices.n97_dma.poll());
+    if(this.devices.n97_os_timer)
+        return Math.min(this.devices.n97_os_timer.poll(now), this.devices.n97_dma.poll(), this.devices.n97_touch.poll(now));
     const display = this.devices.display ? this.devices.display.timer(now) : 100;
     if(this.devices.apple_timer) return Math.min(display, this.devices.apple_timer.timer(), this.devices.apple_gpio.timer(now),
         this.devices.apple_accelerometer?.timer(now) ?? 100, this.devices.apple_gyroscope?.timer(now) ?? 100,
@@ -1428,9 +1435,12 @@ A64CPU.prototype.set_state = function(state, skip_memory = false)
     // including when restoring over a machine that has already used them.
     if(!device_states[DEVICE_ORDER.indexOf("n97_slider_gpio")]) this.devices.n97_slider_gpio?.set_input(false);
     for(const name of DEVICE_ORDER.slice(device_states.length)) this.devices[name]?.reset?.();
+    if(this.devices.n97_touch && !device_states[DEVICE_ORDER.indexOf("n97_touch")])
+        this.devices.n97_touch.restore_reset(this.devices.n97_keyboard.touch_reset_high());
     // Host fingers and keyboard focus cannot be restored from a VM snapshot.
-    // Deliver breaks for any contacts that were closed in the saved machine.
+    // Release any contacts that were closed in the saved machine.
     this.devices.n97_keyboard?.release();
+    this.devices.n97_touch?.release();
     if(state[5]) this.machine_state_bytes(0).set(state[5]);
     if(state[6]) { this.machine_state_bytes(1).set(state[6]); this.wm.exports["a64_psci_restored"](); }
     if(state[7]) [this.booted, this.boot_entry, this.boot_x0] = state[7];
@@ -1568,6 +1578,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
         ...(this.devices.n97_xti ? { "symbian": { "xti": this.devices.n97_xti.packets(),
             "clocks": this.devices.n97_clocks.status(), "l2_enabled": this.devices.n97_l2.enabled(),
             "keyboard": this.devices.n97_keyboard.status(), "slider_open": this.devices.n97_slider_gpio.read_input(),
+            "touch": this.devices.n97_touch.status(),
             "dma": this.devices.n97_dma.status(),
             ...(this.devices.n97_onenand ? { "onenand": this.devices.n97_onenand.status() } : {}),
             ...(this.devices.n97_mmc ? { "mmc": this.devices.n97_mmc.status() } : {}),

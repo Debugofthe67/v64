@@ -17,11 +17,14 @@ const COMMANDS = new Map([
     [0x8F, 1], [0x90, 1], [0x91, 0], [0x92, 0], [0x93, 1], [0x94, 0],
 ]);
 
-export function create_n97_keyboard(set_irq)
+export function create_n97_keyboard(set_irq, set_touch_reset = () => {})
 {
     let config, size, active, debounce, clock, pull_down, direction, port;
     let interrupt, error, command, fifo, previous, contacts = new Set(), scanned;
     const irq_update = () => set_irq(!!interrupt);
+    // keypad_exp's NSC table maps accessory 19 to GPIO0 / KP-Y11.
+    const touch_reset_high = () => !(direction & 1) || !!(port & 1);
+    const update_touch_reset = () => set_touch_reset(touch_reset_high());
     function reset()
     {
         config = 0x80;
@@ -34,6 +37,7 @@ export function create_n97_keyboard(set_irq)
         fifo = [];
         previous = [];
         scanned = new Set();
+        update_touch_reset();
         irq_update();
     }
     function fail(reason)
@@ -84,8 +88,8 @@ export function create_n97_keyboard(set_irq)
                 else fail(ERR_PARAMETER);
                 break;
             case 0x84: pull_down = high << 8 | low; break;
-            case 0x85: direction = high << 8 | low; break;
-            case 0x86: port = high << 8 | low; break;
+            case 0x85: direction = high << 8 | low; update_touch_reset(); break;
+            case 0x86: port = high << 8 | low; update_touch_reset(); break;
             case 0x8B: active = high; break;
             case 0x8F:
                 if(high && (!active || high <= active)) debounce = high;
@@ -135,7 +139,7 @@ export function create_n97_keyboard(set_irq)
     }
     reset();
     return {
-        write, read,
+        write, read, touch_reset_high,
         press(code, down)
         {
             if(!N97_MATRIX_CODES.has(code) || typeof down !== "boolean" || contacts.has(code) === down) return;

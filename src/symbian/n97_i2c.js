@@ -17,17 +17,17 @@ const STP = 2;
 const STT = 1;
 
 // i2c.dll uses the OMAP-compatible register layout and low-byte-first
-// halfword DATA port (0x800D9048, 0x800D9124). Only N2850 is on this modelled bus.
-export function create_n97_i2c(io, target, set_irq)
+// halfword DATA port (0x800D9048, 0x800D9124).
+export function create_n97_i2c(io, targets, set_irq)
 {
-    let ie, events, remaining, control, busy, transfer, part, address;
+    let ie, events, remaining, control, busy, transfer, part, address, active_address;
     let own_address, prescaler, scl_low, scl_high, buffer_config;
     const status = () => events | (busy ? BB : 0) | (transfer === "tx" ? XRDY :
         transfer === "rx" ? RRDY | (remaining === 1 ? SINGLE_BYTE : 0) : 0);
     const update = () => set_irq(!!(control & EN && ie & status()));
     function reset()
     {
-        ie = events = remaining = control = address = own_address = prescaler = scl_low = scl_high = buffer_config = 0;
+        ie = events = remaining = control = address = active_address = own_address = prescaler = scl_low = scl_high = buffer_config = 0;
         busy = false;
         transfer = "";
         part = [];
@@ -35,7 +35,7 @@ export function create_n97_i2c(io, target, set_irq)
     }
     function complete()
     {
-        if(transfer === "tx") target.write(part);
+        if(transfer === "tx") targets.get(active_address).write(part);
         transfer = "";
         part = [];
         events |= ARDY;
@@ -62,7 +62,9 @@ export function create_n97_i2c(io, target, set_irq)
             transfer = "";
             part = [];
             events = 0;
-            if(value & XA || address !== N97_KEYBOARD_ADDRESS)
+            active_address = address;
+            const target = targets.get(active_address);
+            if(value & XA || !target || target.acknowledges?.() === false)
             {
                 complete();
                 events |= NACK;
@@ -128,11 +130,13 @@ export function create_n97_i2c(io, target, set_irq)
         reset,
         get_state()
         {
-            return [ie, events, remaining, control, busy, transfer, part.slice(), address, own_address, prescaler, scl_low, scl_high, buffer_config];
+            return [ie, events, remaining, control, busy, transfer, part.slice(), address, own_address,
+                prescaler, scl_low, scl_high, buffer_config, active_address];
         },
         set_state(state)
         {
-            [ie, events, remaining, control, busy, transfer, part, address, own_address, prescaler, scl_low, scl_high, buffer_config] = state;
+            [ie, events, remaining, control, busy, transfer, part, address, own_address,
+                prescaler, scl_low, scl_high, buffer_config, active_address = N97_KEYBOARD_ADDRESS] = state;
             part = part.slice();
             update();
         },

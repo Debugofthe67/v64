@@ -1,4 +1,5 @@
 import { N97_MATRIX_CODES } from "../symbian/n97_keymap.js";
+import { n97_touch_point } from "../symbian/n97_touch.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
 import { instantiate_v86, memory_import } from "../parallel/relocate.js";
 import { default_worker_url, parallel_unsupported_reason } from "../parallel/machine.js";
@@ -2816,6 +2817,23 @@ V86.prototype.symbian_set_slider = function(open)
 };
 // eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
 V86.prototype["symbian_set_slider"] = V86.prototype.symbian_set_slider;
+
+/**
+ * Set the N97 resistive contact in native 640×360 screen coordinates.
+ * @param {number} x
+ * @param {number} y
+ * @param {boolean} pressed
+ */
+V86.prototype.symbian_set_touch = function(x, y, pressed)
+{
+    if(this.machine_type !== "nokia-n97" || !n97_touch_point(x, y, pressed))
+    {
+        throw new Error("symbian_set_touch: expected Nokia N97 native screen coordinates and a boolean state");
+    }
+    this.bus.send("symbian-touch", [x, y, pressed]);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_set_touch"] = V86.prototype.symbian_set_touch;
 
 /**
  * Rotate the simulated N90's gravity vector, in clockwise degrees from portrait.

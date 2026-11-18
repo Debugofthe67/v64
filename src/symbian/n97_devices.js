@@ -121,6 +121,7 @@ function latches(io, base, name, offsets, on_write = undefined)
 
 export const N97_KEYBOARD_IRQ = 249;
 export const N97_SLIDER_IRQ = 248;
+export const N97_TOUCH_IRQ = 234;
 const ICU_BASE = 0x20400000;
 const NO_INTERRUPT = 0xFFFFFFFF;
 const MS_TICK_INTERRUPT = 35;
@@ -135,7 +136,7 @@ export function create_n97_interrupts(io, set_lines)
     // from +0x48 (+0x8D178), with -1 as the empty ID on either port.
     const configuration = latches(io, ICU_BASE, "RAPIDO interrupt configuration", [0x1C, 0x84, 0x88, 0x90, 0x9C]);
     const priority = new Uint8Array(256);
-    const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ, ...N97_DMA_IRQS];
+    const sources = [MS_TICK_INTERRUPT, N97_MMC_IRQ, N97_I2C_IRQ, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ, ...N97_DMA_IRQS, N97_TOUCH_IRQ];
     const unmasked = new Set(), asserted = new Set();
     let enabled = 0, selected = 0, active = NO_INTERRUPT;
     const pending = () => {
@@ -209,6 +210,7 @@ export function create_n97_interrupts(io, set_lines)
         set_i2c(level) { line(N97_I2C_IRQ, level); },
         set_keyboard(level) { line(N97_KEYBOARD_IRQ, level); },
         set_slider(level) { line(N97_SLIDER_IRQ, level); },
+        set_touch(level) { line(N97_TOUCH_IRQ, level); },
         reset()
         {
             configuration.reset();
@@ -241,60 +243,73 @@ export function create_n97_interrupts(io, set_lines)
     };
 }
 
-// egpio.dll's real bank layout for GENIO66 (N2850 IRQ) and GENIO58 (Hall).
-// Bank 1 also exposes the active-low GENIO45 cold-insert microSD detector.
+// egpio.dll's bank layout. Hall (GENIO58), pen DAV (GENIO38) and the
+// active-low cold-insert microSD detector (GENIO45) share bank 1.
 export function create_n97_gpio_input(io, base, direction_set, pin, initial_high, set_irq, other_inputs = () => 0)
 {
-    const bit = 1 << pin;
-    let high = initial_high, input = true, bank_enabled = false, enabled = 0, pending = 0, edge = false, trigger = 0;
-    const update = () => set_irq(!!(bank_enabled && (enabled & pending)));
+    const pins = [];
+    let bank_enabled = false;
+    const pending = line => line.pending || (line.input && !line.edge && line.trigger === (line.high ? 2 : 1) ? line.bit : 0);
+    const update = () => pins.forEach(line => line.set_irq(!!(bank_enabled && (line.enabled & pending(line)))));
+    const bitmap = value => pins.reduce((mask, line) => mask | value(line), 0);
+    const change = (value, mask, modify) => {
+        for(const line of pins) if(value & mask & line.bit) modify(line);
+        update();
+    };
     const reg = (offset, name, read, write = () => {}) => word(io, base + offset, name, read, write);
     reg(0x04, "RAPIDO GENIO IRQ gate", () => +bank_enabled, (value, mask) => {
         if(mask & 1) bank_enabled = !!(value & 1);
         update();
     });
-    word(io, direction_set, "RAPIDO GENIO direction input", () => 0, (value, mask) => { if(value & mask & bit) input = true; });
-    word(io, direction_set + 4, "RAPIDO GENIO direction output", () => 0, (value, mask) => { if(value & mask & bit) input = false; });
-    reg(0x08, "RAPIDO GENIO inputs", () => other_inputs() | (high && input ? bit : 0));
-    reg(0x0C, "RAPIDO GENIO IRQ pending", () => pending);
-    reg(0x10, "RAPIDO GENIO IRQ enable", () => 0, (value, mask) => {
-        enabled |= value & mask & bit;
-        update();
-    });
-    reg(0x14, "RAPIDO GENIO IRQ disable", () => 0, (value, mask) => {
-        enabled &= ~(value & mask);
-        update();
-    });
-    reg(0x18, "RAPIDO GENIO IRQ enabled", () => enabled);
+    word(io, direction_set, "RAPIDO GENIO direction input", () => 0,
+        (value, mask) => change(value, mask, line => { line.input = true; }));
+    word(io, direction_set + 4, "RAPIDO GENIO direction output", () => 0,
+        (value, mask) => change(value, mask, line => { line.input = false; }));
+    reg(0x08, "RAPIDO GENIO inputs", () => other_inputs() | bitmap(line => line.high && line.input ? line.bit : 0));
+    reg(0x0C, "RAPIDO GENIO IRQ pending", () => bitmap(pending));
+    reg(0x10, "RAPIDO GENIO IRQ enable", () => 0, (value, mask) => change(value, mask, line => { line.enabled = line.bit; }));
+    reg(0x14, "RAPIDO GENIO IRQ disable", () => 0, (value, mask) => change(value, mask, line => { line.enabled = 0; }));
+    reg(0x18, "RAPIDO GENIO IRQ enabled", () => bitmap(line => line.enabled));
     // Original ISR uses the enable/pending bitmaps and W1C, whereas the
     // bootstrap probes the empty claim port with the bank disabled.
-    reg(0x20, "RAPIDO GENIO IRQ acknowledge", () => 0, (value, mask) => {
-        pending &= ~(value & mask);
-        update();
-    });
+    reg(0x20, "RAPIDO GENIO IRQ acknowledge", () => 0, (value, mask) => change(value, mask, line => { line.pending = 0; }));
     for(const [offset, detect_edge] of [[0x28, true], [0x2C, false]])
-        reg(offset, "RAPIDO GENIO IRQ detection", () => 0, (value, mask) => { if(value & mask & bit) edge = detect_edge; });
+        reg(offset, "RAPIDO GENIO IRQ detection", () => 0, (value, mask) => change(value, mask, line => { line.edge = detect_edge; }));
     for(const [offset, mode] of [[0x34, 2], [0x38, 1]])
-        reg(offset, "RAPIDO GENIO IRQ trigger", () => 0, (value, mask) => { if(value & mask & bit) trigger = mode; });
+        reg(offset, "RAPIDO GENIO IRQ trigger", () => 0, (value, mask) => change(value, mask, line => { line.trigger = mode; }));
     reg(0x3C, "RAPIDO GENIO IRQ claim", () => NO_INTERRUPT);
-    return {
-        set_input(level)
-        {
-            if(input && edge && high !== level && trigger === (level ? 2 : 1)) pending |= bit;
-            high = level;
-            update();
-        },
-        read_input() { return high; },
-        reset()
-        {
-            input = true;
-            edge = bank_enabled = false;
-            enabled = pending = trigger = 0;
-            update();
-        },
-        get_state() { return [high, bank_enabled, enabled, pending, edge, trigger, input]; },
-        set_state(state) { [high, bank_enabled, enabled, pending, edge, trigger, input] = state; update(); },
-    };
+    function connect(pin, high, set_irq)
+    {
+        const primary = pins.length === 0;
+        const line = { bit: 1 << pin, high, input: true, enabled: 0, pending: 0, edge: false, trigger: 0, set_irq };
+        pins.push(line);
+        return {
+            connect,
+            set_input(level)
+            {
+                if(line.input && line.edge && line.high !== level && line.trigger === (level ? 2 : 1)) line.pending = line.bit;
+                line.high = level;
+                update();
+            },
+            read_input() { return line.high; },
+            reset()
+            {
+                if(primary) bank_enabled = false;
+                line.input = true;
+                line.edge = false;
+                line.enabled = line.pending = line.trigger = 0;
+                update();
+            },
+            get_state() { return [line.high, bank_enabled, line.enabled, line.pending, line.edge, line.trigger, line.input]; },
+            set_state(state)
+            {
+                if(primary) bank_enabled = state[1];
+                [line.high, , line.enabled, line.pending, line.edge, line.trigger, line.input] = state;
+                update();
+            },
+        };
+    }
+    return connect(pin, initial_high, set_irq);
 }
 
 export function create_n97_os_timer(io, clock, set_irq)

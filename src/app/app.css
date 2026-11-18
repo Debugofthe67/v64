@@ -171,6 +171,10 @@ details.checklist { margin: 10px 0; }
 .console-screen { overflow: auto; min-width: 0; }
 .iphone-stage { position: relative; margin-inline: auto; }
 #screen_container.iphone-screen { position: absolute; top: 50%; left: 50%; touch-action: none; }
+.n97-screen-stage { width: var(--n97-display-width, 360px); max-width: 100%; }
+#screen_container.n97-touch-screen { display: block; width: 100%; aspect-ratio: 360 / 640; touch-action: none; }
+#screen_container.n97-touch-screen[data-landscape="true"] { aspect-ratio: 640 / 360; }
+#screen_container.n97-touch-screen #vga, #screen_container.n97-touch-screen #screen { position: absolute; inset: 0; }
 .console-drawer {
     flex: 0 0 360px;
     max-width: 100%;

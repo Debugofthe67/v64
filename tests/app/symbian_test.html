@@ -166,6 +166,64 @@ async function running_worker(frame)
     return console_state;
 }
 
+async function check_n97_touch(frame, emulator)
+{
+    const doc = frame.contentDocument, win = doc.defaultView;
+    const screen = doc.querySelector("#screen_container.n97-touch-screen");
+    function point(type, pointerId, x, y)
+    {
+        const box = screen.getBoundingClientRect();
+        screen.dispatchEvent(new win.PointerEvent(type, {
+            bubbles: true, cancelable: true, button: 0, pointerType: "touch", pointerId,
+            clientX: box.left + box.width * x, clientY: box.top + box.height * y,
+        }));
+    }
+    const contact = (pressed, x, y) => until(async () => {
+        const touch = (await worker_diagnostics(emulator)).symbian.touch;
+        return touch?.pressed === pressed && (x === undefined || touch.x === x && touch.y === y);
+    }, "N97 screen contact " + [pressed, x, y].join(" "));
+    function geometry(expected)
+    {
+        const { width, height } = screen.getBoundingClientRect();
+        check(width > 0 && Math.abs(width / height - expected) < 0.01, "N97 display has the stock mode's aspect ratio");
+    }
+    geometry(360 / 640);
+    point("pointerdown", 11, 0.5, 0.5);
+    await contact(true);
+    point("pointermove", 11, -0.1, -0.1);
+    await contact(true, 0, 359);
+    point("pointerdown", 12, 0.8, 0.8);
+    point("pointerup", 12, 0.8, 0.8);
+    await contact(true, 0, 359);
+    point("pointermove", 11, 1.1, 1.1);
+    await contact(true, 639, 0);
+    point("pointerup", 11, 1.1, 1.1);
+    await contact(false, 639, 0);
+
+    point("pointerdown", 13, 0.3, 0.3);
+    await contact(true);
+    doc.querySelector("#drawer_keyboard").click();
+    doc.querySelector("#n97_slider").click();
+    await contact(false); // changing the screen mode ends the gesture
+    geometry(640 / 360);
+    point("pointerdown", 13, 0.3, 0.3);
+    point("pointermove", 13, 1.1, 1.1);
+    await contact(true, 639, 359);
+    point("pointercancel", 13, 1.1, 1.1);
+    await contact(false, 639, 359);
+    point("pointerdown", 14, 0.3, 0.3);
+    await contact(true);
+    point("lostpointercapture", 14, 0.3, 0.3);
+    await contact(false);
+    point("pointerdown", 15, 0.3, 0.3);
+    await contact(true);
+    win.dispatchEvent(new win.Event("blur"));
+    await contact(false);
+    doc.querySelector("#n97_slider").click();
+    doc.querySelector("#drawer_keyboard").click();
+    geometry(360 / 640);
+}
+
 async function check_n97_keyboard_resume(first, store, id)
 {
     const doc = first.contentDocument;
@@ -173,6 +231,13 @@ async function check_n97_keyboard_resume(first, store, id)
     doc.querySelector("#n97_slider").click();
     await until(async () => (await worker_diagnostics(first.contentWindow.v86_console.emulator)).symbian.slider_open,
         "open slider before suspend");
+    const screen = doc.querySelector("#screen_container.n97-touch-screen"), box = screen.getBoundingClientRect();
+    screen.dispatchEvent(new first.contentWindow.PointerEvent("pointerdown", {
+        bubbles: true, cancelable: true, button: 0, pointerId: 26, pointerType: "touch",
+        clientX: box.left + box.width / 2, clientY: box.top + box.height / 2,
+    }));
+    await until(async () => (await worker_diagnostics(first.contentWindow.v86_console.emulator)).symbian.touch.pressed,
+        "held touchscreen contact before suspend");
     doc.querySelector("#menu_power").click();
     (await until(() => doc.querySelector("#menu_suspend"), "Suspend menu")).click();
     await until(() => doc.querySelector(".console-status")?.dataset.state === "Suspended", "suspended Nokia N97");
@@ -188,6 +253,8 @@ async function check_n97_keyboard_resume(first, store, id)
     const current = (await worker_diagnostics(emulator)).symbian;
     check(current.slider_open && !current.keyboard.pressed.length &&
         !reopened.querySelector(".n97-slide-keys").hidden, "restored Hall level and keyboard drawer agree");
+    check(!current.touch.pressed && reopened.querySelector(".n97-touch-screen").dataset.landscape === "true",
+        "restored screen orientation follows Hall and has no stale finger");
     return resumed;
 }
 
@@ -386,6 +453,7 @@ try
     check(console_frame.contentDocument.body.textContent.includes("RAPIDO ROM missing"), "console explains the missing chip ROM");
     check(console_frame.contentDocument.body.textContent.includes("Experimental boot"), "console names its boot milestone");
     check(!console_frame.contentDocument.querySelector("#menu_keys, #menu_devices, #iphone_install_ipa"), "no unsupported phone controls");
+    await check_n97_touch(console_frame, emulator);
     await check_n97_keyboard(console_frame, emulator);
     if(!local)
     {

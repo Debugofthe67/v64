@@ -160,7 +160,7 @@ node --test tests/symbian/mmc.mjs tests/symbian/arm1136.mjs
 
 从库中选择 **Settings → Symbian firmware** 可以附加芯片 ROM。保存配置前校验并复制新转储，取消保留现有配置，保存失败回收临时副本。挂起的 VM 可以使用原有 ROM 恢复，再在关机后更换。先前导入的 VM 仍可打开和恢复同配置的快照。用 **New VM** 重新导入同款包可建立带 OneNAND 和调制解调器映像的虚拟机，每台 VM 各自保有原来的手机数据。
 
-库、向导和控制台将此机型标为 **Experimental boot**。ROFS、UDA 和用户存储的客体挂载、屏幕与触摸仍待验证。键盘和滑盖的原版驱动验收见下节。
+库、向导和控制台将此机型标为 **Experimental boot**。ROFS、UDA 和用户存储的客体挂载及显示输出仍待验证。键盘、滑盖和触屏已在原版驱动路径上验收。
 
 ```sh
 make build/v86_app.js build/symbian-import-worker.js build/libv86.mjs build/v86-arm64.wasm
@@ -173,15 +173,29 @@ node tests/symbian/manual/browser_import.mjs <firmware-directory>
 
 在 N97 控制台选择 **Keyboard**。模拟器冷开时滑盖关闭，Menu、音量和两段式快门仍可操作。选择 **Open slider** 展开 QWERTY 和五向键。面板获焦后可用实体键盘输入，F2 对应 Fn，F3 对应 Chr，反引号对应五向键中央的 Select。Shift、Chr 和 Fn 各闭合自己的触点，字符组合和长按重复由原版客体决定。指针取消、失去捕获或失焦释放相应触点。快门全按先闭合对焦触点，再闭合快门触点。快照保存滑盖位置和进行中的硬件事务，恢复时释放没有现实输入源的触点。
 
-RM-505 的 N2850 键盘扩展器由 RAPIDO 的 I²C 总线访问。原版 `keypad_exp.dll` 的 NSC 探测在 `0x800FC140` 向从地址 `0x42` 发送 `0x80`，检查制造商字节 0。模拟器提供这一兼容身份，芯片的物理修订仍待实物确认。原版设置 `0x59`（5 行 9 列），用 `0x82` 确认中断，用 `0x89` 读取 14 字节的键盘 FIFO。每个按下事件置位 bit 7，松开时清除。相机的两个触点使用同一芯片的 SF 接线，分别接地 ROW0 和 ROW1。原厂手册图 21 列出 43 个触点，ROM 表还确认 Select 和 Enter 对应不同扫描码。RAPIDO 主机位于 PA `0x20032200`、IRQ 135，原版 I²C 例程按小端半字收发。当前只连接 N2850；访问其他地址会收到 NACK。[Nokia N97 维修手册图 21](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf) · [TI LM8323 SNLS273A](https://www.ti.com/lit/ds/symlink/lm8323.pdf) · [TI OMAP5912 外设手册 SPRU760C](https://www.ti.com/lit/ug/spru760c/spru760c.pdf)
+RM-505 的 N2850 键盘扩展器由 RAPIDO 的 I²C 总线访问。原版 `keypad_exp.dll` 的 NSC 探测在 `0x800FC140` 向从地址 `0x42` 发送 `0x80`，检查制造商字节 0。模拟器提供这一兼容身份，芯片的物理修订仍待实物确认。原版设置 `0x59`（5 行 9 列），用 `0x82` 确认中断，用 `0x89` 读取 14 字节的键盘 FIFO。每个按下事件置位 bit 7，松开时清除。相机的两个触点使用同一芯片的 SF 接线，分别接地 ROW0 和 ROW1。原厂手册图 21 列出 43 个触点，ROM 表还确认 Select 和 Enter 对应不同扫描码。RAPIDO 主机位于 PA `0x20032200`、IRQ 135，原版 I²C 例程按小端半字收发。地址 `0x42` 的 N2850 和地址 `0x4A` 的 N500 共用主机，其他地址返回 NACK。[Nokia N97 维修手册图 21](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf) · [TI LM8323 SNLS273A](https://www.ti.com/lit/ds/symlink/lm8323.pdf) · [TI OMAP5912 外设手册 SPRU760C](https://www.ti.com/lit/ug/spru760c/spru760c.pdf)
 
-N2850 的低有效 IRQ 接到 GENIO66（bank 2，IRQ 249）。`egpio.dll` 读取 PA `0x20031DD8` 和 `0x20031DCC`，再向 `0x20031DE0` 写 bit 2 确认。滑盖 Hall 传感器走 GENIO58（bank 1，IRQ 248），与同一输入寄存器中的 GENIO45 microSD 检测脚各自独立。原版 `switch.dll` 采到高电平后输出 `0xBB`（QwertyOn），采到低电平后输出 `0xBC`（QwertyOff），每次重新配置为检测相反边沿。接听与挂断触控、触摸屏、电源及锁定开关走各自的硬件路径，仍待接入。[Nokia RM-505/RM-507 维修板图第 2、8、9 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf)
+N2850 的低有效 IRQ 接到 GENIO66（bank 2，IRQ 249）。`egpio.dll` 读取 PA `0x20031DD8` 和 `0x20031DCC`，再向 `0x20031DE0` 写 bit 2 确认。滑盖 Hall 传感器走 GENIO58（bank 1，IRQ 248），与同一输入寄存器中的 GENIO45 microSD 检测脚各自独立。原版 `switch.dll` 采到高电平后输出 `0xBB`（QwertyOn），采到低电平后输出 `0xBC`（QwertyOff），每次重新配置为检测相反边沿。接听、挂断、电源和侧面锁定开关仍待接入。[Nokia RM-505/RM-507 维修板图第 2、8、9 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf)
 
 本地探针用未改动的 22.0.110 ROM 执行原版 `i2c.dll` 的传输和接收片段、`egpio.dll` 的中断接收和确认、`keypad_exp.dll` 的扫描码读取，以及 `switch.dll` 的滑盖读取和事件构造。43 个触点的按下与松开、两次滑盖切换均抵达原版 `Kern::AddEvent` 调用处。探针为这些例程提供最小 MMU、调用者对象和事件观测点，截在完整系统事件队列之前。Chrome 从常规控制台经过 CPU Worker 验证输入和失焦释放，并从库中挂起、恢复同一台机器，核对 Hall 电平和键盘显示一致。I²C 传输和矩阵扫描采用同步模型，机械抖动、模拟电气鬼键、LM8323 PWM 与低功耗时序尚未模拟。默认零售启动仍停在芯片 Boot ROM 依赖处，客体桌面上的交互尚未验证。
 
 ```sh
 node tools/symbian/keyboard-n97.mjs <output>/rom.xip.bin
 node --test tests/symbian/n97_keyboard.mjs
+```
+
+## 电阻触屏
+
+在 N97 控制台的设备屏幕上，可用鼠标或第一根手指按下和拖动，松开、取消、失焦、暂停或切换滑盖时释放接触。屏幕在合盖时按 360×640 竖屏计算，开盖时按 640×360 横屏计算。依据 0576555 ROFS1 的 `System/Data/Wsini.ini`，竖屏模式旋转 270°。原版窗口服务器将原生 `(x,y)` 转为 `(359−y,x)`，因此竖屏输入点 `(px,py)` 送入 `(py,359−px)`，横屏直接使用原生坐标。尺寸换算以屏幕实际显示区域为准，拖出边缘时坐标停在最近的像素。恢复挂起的 VM 时，屏幕方向跟随保存的 Hall 电平，原来手指的接触释放。显示输出尚待接入，当前区域呈黑色。[原版 `WsPointer::HandleRawEvent`](https://github.com/SymbianSource/oss.FCL.sf.os.graphics/blob/master/windowing/windowserver/nonnga/SERVER/POINTER.CPP#L429-L442)
+
+板图中 N500 的 TSC2004 接到同一 RAPIDO I²C 主机，与地址 `0x42` 的键盘扩展器共存。N500 的 AD1 接 VIO、AD0 接地，七位地址 `0x4A`。`exyin.dll` 从 `0x8016E458` 取原厂配置，启用十位自动 XY、Z1、Z2 采样，并以 10 ms 批次推进。读完整组测量值后释放低有效 PINTDAV。它连到 GENIO38 的 bank 1 bit 6 和 IRQ 234，原版按低电平触发。辅助复位从 N2850 的 KP-Y11 输出，`keypad_exp.dll` 将编号 19 映射为 GPIO0，通过 `0x85` 设输出、`0x86` 驱动电平。N500 识别有效低脉冲及软件复位，短于 5 µs 的低脉冲保留现有配置。[Nokia N97 维修手册第 8–25 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-506_service_manual-34_v1.pdf) · [Nokia 板图第 2、10 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf) · [TI TSC2004 SBAS408E，第 26–40 页](https://www.ti.com/lit/ds/symlink/tsc2004.pdf) · [TI LM8323 SNLS273A，表 6](https://www.ti.com/lit/ds/symlink/lm8323.pdf)
+
+原版 `0x8016DB30` 将 ADC 读数换为 `(1023−Y,X)`，再以原厂校准将两轴映射到屏幕。模拟按像素中心取样，并提供代表性的 Z1/Z2。公开测试核对两轴每个像素经过原版校准后的落点，并覆盖长按重采样、共用 GPIO 的并行中断、N500 复位和快照恢复。本地探针运行原版 `i2c.dll` 的发送和接收、`egpio.dll` 的确认，以及 `exyin.dll` 的采样、压力计算、校准与抬笔处理。原版 `Kern::AddEvent` 调用处收到按下 `(0,0)`、移动 `(320,180)`、`(639,359)`、`(15,42)` 和抬起 `(15,42)`。探针提供最小调用对象和回调调度。完整 AP 诊断中，真实 IRQ 234 也进入原版触屏处理，随后完整的异步读路径遇到尚缺的 `sisa_wrapper.dll` 服务。面板的模拟滤波、噪声和压力变化，以及窗口服务器中的完整交互仍待验证。
+
+```sh
+node tools/symbian/touch-n97.mjs <output>/rom.xip.bin
+node --test tests/symbian/n97_touch.mjs
+node tests/app/browser_runner.mjs tests/app/symbian_test.html
 ```
 
 ## 原生 SIS/SISX 递送与 v86 Notes

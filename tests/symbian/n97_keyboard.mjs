@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { create_n97_gpio_input, create_n97_interrupts, N97_KEYBOARD_IRQ, N97_SLIDER_IRQ } from "../../src/symbian/n97_devices.js";
 import { create_n97_i2c, N97_I2C_BASE, N97_I2C_IRQ } from "../../src/symbian/n97_i2c.js";
-import { create_n97_keyboard } from "../../src/symbian/n97_keyboard.js";
+import { create_n97_keyboard, N97_KEYBOARD_ADDRESS } from "../../src/symbian/n97_keyboard.js";
 import { N97_KEY_CODES } from "../../src/symbian/n97_keymap.js";
 
 const ICU = 0x20400000;
@@ -36,7 +36,7 @@ function board()
     const gpio = create_n97_gpio_input(io, BANK2, 0x20031D04, 2, true, level => irq.set_keyboard(level));
     const slider = create_n97_gpio_input(io, BANK1, 0x20031CF4, 26, false, level => irq.set_slider(level), () => card ? 0 : 1 << 13);
     const keys = create_n97_keyboard(level => gpio.set_input(!level));
-    const i2c = create_n97_i2c(io, keys, level => irq.set_i2c(level));
+    const i2c = create_n97_i2c(io, new Map([[N97_KEYBOARD_ADDRESS, keys]]), level => irq.set_i2c(level));
     function arm(source)
     {
         w(ICU + 4, 1);

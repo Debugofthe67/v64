@@ -25,6 +25,7 @@ import { show_ios_install } from "./ios_install.js";
 import { package_paths, show_sis_transfer } from "./symbian_packages.js";
 import { make_sis_card } from "../../symbian/sis_card.js";
 import { n97_keyboard_panel } from "./n97_keyboard.js";
+import { n97_touch_surface } from "./n97_touch.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Image} Image */
@@ -642,9 +643,13 @@ function console_ui(layout, emulator, ctx)
 
     const ipa_installer = ios ? new IOSInstallController(emulator, { graphics: !!options.gles_backdoor,
         storage_key: ctx.config?.id || location.href }) : null;
+    const n97_touch = symbian ? n97_touch_surface(layout.screen_container, (x, y, down) => emulator.symbian_set_touch(x, y, down),
+        () => running && !powered_off) : null;
     let slider_changes = 0;
     const n97_keyboard = symbian ? n97_keyboard_panel((code, pressed) => emulator.symbian_send_key(code, pressed), open => {
         slider_changes++;
+        n97_touch.set_slider(open);
+        if(zoom_to_fit) fit();
         emulator.symbian_set_slider(open);
     }) : null;
     async function refresh_slider()
@@ -652,7 +657,13 @@ function console_ui(layout, emulator, ctx)
         if(!n97_keyboard) return;
         const changes = slider_changes;
         const diagnostics = await emulator.get_diagnostics();
-        if(changes === slider_changes) n97_keyboard.set_slider(!!diagnostics?.symbian?.slider_open);
+        if(changes === slider_changes)
+        {
+            const open = !!diagnostics?.symbian?.slider_open;
+            n97_keyboard.set_slider(open);
+            n97_touch.set_slider(open);
+            if(zoom_to_fit) fit();
+        }
     }
     if(n97_keyboard)
     {
@@ -660,6 +671,7 @@ function console_ui(layout, emulator, ctx)
         emulator.add_listener("emulator-loaded", sync_slider);
         // A library resume restores the saved Hall level after emulator-loaded.
         emulator.add_listener("emulator-started", sync_slider);
+        emulator.add_listener("emulator-stopped", n97_touch.release);
     }
 
     // ---- power
@@ -670,6 +682,7 @@ function console_ui(layout, emulator, ctx)
             (written_back ? " Its disks written back keep what they completed." : ""), "Power off", true)) return;
         powered_off = true;
         n97_keyboard?.release();
+        n97_touch?.release();
         ipa_installer?.dispose();
         clearInterval(interval);
         await emulator.destroy();
@@ -811,6 +824,7 @@ function console_ui(layout, emulator, ctx)
             const was_running = emulator.is_running();
             if(was_running) await emulator.stop();
             n97_keyboard?.release();
+            n97_touch?.release();
             if(stream) await emulator.restore_state_stream(file);
             else await emulator.restore_state(await file.arrayBuffer());
             await refresh_slider().catch(() => {});
@@ -954,6 +968,17 @@ function console_ui(layout, emulator, ctx)
     }
     const fit = () =>
     {
+        if(n97_touch)
+        {
+            const main = layout.drawer.parentElement;
+            const main_style = window.getComputedStyle(main);
+            const drawer_width = !layout.drawer.hidden && main_style.flexDirection === "row" ?
+                layout.drawer.offsetWidth + (parseFloat(main_style.columnGap) || 0) : 0;
+            const available_height = window.innerHeight - main.getBoundingClientRect().top - layout.status.offsetHeight - 8;
+            n97_touch.set_fit(theatre ? window.innerWidth : main.clientWidth - drawer_width,
+                theatre ? window.innerHeight : available_height);
+            return;
+        }
         emulator.screen_set_scale(1, 1);
         const box = layout.screen_container.getBoundingClientRect();
         const room = theatre ? { width: window.innerWidth, height: window.innerHeight } :
@@ -974,6 +999,7 @@ function console_ui(layout, emulator, ctx)
         {
             window.removeEventListener("resize", fit);
             emulator.screen_set_scale(scale, scale);
+            n97_touch?.set_scale(scale);
         }
     };
     const set_scale = n =>
@@ -981,6 +1007,7 @@ function console_ui(layout, emulator, ctx)
         scale = n;
         if(zoom_to_fit) set_zoom_to_fit(false);
         emulator.screen_set_scale(n, n);
+        n97_touch?.set_scale(n);
     };
     const show_ui = h("button.theatre-show-ui", { type: "button", hidden: true, onclick: () => set_theatre(false) }, "Leave theatre mode");
     layout.root.append(show_ui);
@@ -1220,6 +1247,7 @@ function console_ui(layout, emulator, ctx)
         layout.drawer.hidden = !drawer;
         layout.drawer.classList.toggle("n97-keyboard-drawer", drawer === "keyboard");
         layout.root.classList.toggle("with-drawer", !!drawer);
+        if(n97_touch && zoom_to_fit) fit();
         if(!drawer) { update_toolbar(); return; }
         const title = { terminal: "Serial terminal", kernel: "Kernel console", files: "Shared folder", details: "Details", keyboard: "Nokia N97 keyboard" }[drawer];
         replace(layout.drawer, h("header", null, h("h2", null, title), h("button", { type: "button", "aria-label": "Close", onclick: () => open_drawer("") }, "×")),
@@ -1341,6 +1369,7 @@ function console_ui(layout, emulator, ctx)
             { label: running ? "Pause" : "Run", id: "menu_run", disabled: ipa_installer?.active(), action: () => running ? emulator.stop() : emulator.run() },
             { label: "Reset", id: "menu_reset", disabled: !!options.initial_state || ipa_installer?.active(), title: options.initial_state ? "Started from a saved state" : "", action: () => {
                 n97_keyboard?.release();
+                n97_touch?.release();
                 return emulator.restart();
             } },
             ...(iphone ? [{ label: "Shut down iPhone…", id: "menu_iphone_shutdown", disabled: !running || ipa_installer?.active(), action: shutdown_iphone }] : []),
