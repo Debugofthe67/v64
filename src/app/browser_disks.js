@@ -167,11 +167,12 @@ export async function import_disk(source, label, options = {})
     const dir = await disks_directory();
     const id = new_id();
     const handle = await dir.getFileHandle(id + ".img", { create: true });
-    const writable = await handle.createWritable();
+    let writable;
     const hash = new SHA256();
     let done = 0;
     try
     {
+        writable = await handle.createWritable();
         const reader = stream.getReader();
         for(;;)
         {
@@ -188,7 +189,7 @@ export async function import_disk(source, label, options = {})
     }
     catch(e)
     {
-        await writable.abort().catch(() => {});
+        await writable?.abort().catch(() => {});
         await dir.removeEntry(id + ".img").catch(() => {});
         throw e;
     }

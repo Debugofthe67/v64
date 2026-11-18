@@ -1,0 +1,8 @@
+&EN
+#{"v86 Notes"},(0xE0860505),1,0,0
+%{"v86 project"}
+:"v86 project"
+[0x1028315F],0,0,0,{"Series60ProductID"}
+"v86_notes.exe"-"!:\sys\bin\v86_notes.exe"
+"v86_notes_reg.rsc"-"!:\private\10003a3f\import\apps\v86_notes_reg.rsc"
+"v86_notes_loc.rsc"-"!:\resource\apps\v86_notes_loc.rsc"

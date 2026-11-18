@@ -13,7 +13,7 @@ import { h, replace, confirm, inform, dialog, download, pick_file, ask_text, men
 import { VMStore } from "../vm_store.js";
 import { read_state, delete_state, write_state, storage_space, state_estimate, machine_digest, hold_machine } from "../vm_state.js";
 import { config_to_options, android_display, uefi_vars_template, TPM_STATE_SIZE } from "../vm_config.js";
-import { import_disk, create_disk } from "../browser_disks.js";
+import { import_disk, create_disk, delete_disk } from "../browser_disks.js";
 import { combination_scancodes, COMBINATIONS } from "../keys.js";
 import { DEFAULT_FORM, DEFAULT_GRAPHICS_ADAPTER, settings_to_options } from "../../browser/vm_options.js";
 import { bool_arg, start_settings } from "../../browser/query_compat.js";
@@ -22,6 +22,8 @@ import { NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
 import { IOSInstallController } from "../ios_install.js";
 import { show_ios_install } from "./ios_install.js";
+import { package_paths, show_sis_transfer } from "./symbian_packages.js";
+import { make_sis_card } from "../../symbian/sis_card.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Image} Image */
@@ -641,7 +643,8 @@ function console_ui(layout, emulator, ctx)
         storage_key: ctx.config?.id || location.href }) : null;
 
     // ---- power
-    const power_off = async (ask = true) =>
+    /** @param {boolean} ask @param {() => Promise<void>} [after_destroy] */
+    const power_off = async (ask = true, after_destroy) =>
     {
         if(ask && !await confirm("Power off?", "The virtual machine stops as if its power were cut. What is only in its memory is lost." +
             (written_back ? " Its disks written back keep what they completed." : ""), "Power off", true)) return;
@@ -649,11 +652,62 @@ function console_ui(layout, emulator, ctx)
         ipa_installer?.dispose();
         clearInterval(interval);
         await emulator.destroy();
-        ctx.release();
-        replace(layout.toolbar, h("a.button", { href: location.pathname }, "Library"), h("span.console-name", null, ctx.name));
-        replace(layout.notice, h("p", null, "Powered off. ", h("a", { href: location.href }, "Power on again"), " or go back to the ",
-            h("a", { href: location.pathname }, "library"), "."));
-        ctx.set_status("Powered off");
+        try
+        {
+            await after_destroy?.();
+        }
+        finally
+        {
+            ctx.release();
+            replace(layout.toolbar, h("a.button", { href: location.pathname }, "Library"), h("span.console-name", null, ctx.name));
+            replace(layout.notice, h("p", null, "Powered off. ", h("a", { href: location.href }, "Power on again"), " or go back to the ",
+                h("a", { href: location.pathname }, "library"), "."));
+            ctx.set_status("Powered off");
+        }
+    };
+    const send_sis = async () =>
+    {
+        const { config, store } = ctx;
+        if(!config?.symbian || !store || powered_off) return;
+        if(!navigator.locks) { await inform("SIS/SISX transfer", "This transfer needs browser Web Locks to attach the card safely."); return; }
+        /** @param {VMConfig | undefined} current */
+        function card_slot(current)
+        {
+            if(!current?.symbian || current.suspended) throw new Error("Start the Nokia N97 from power off before sending packages.");
+            if(current.symbian.sd) throw new Error("A microSD is already inserted. Power off and eject it in Library → Settings → Symbian firmware. Its image stays in Browser disks.");
+            return current;
+        }
+        try { card_slot(await store.get(config.id)); }
+        catch(error) { await inform("SIS/SISX transfer", error.message); return; }
+        await show_sis_transfer(async packages => {
+            if(powered_off) throw new Error("Power on the Nokia N97 to begin a new transfer.");
+            card_slot(await store.get(config.id));
+            const image = make_sis_card(packages, crypto.getRandomValues(new Uint32Array(1))[0]);
+            const disk = await import_disk(image, ctx.name + " · SIS transfer card",
+                { prefs: store, symbian: { owner: config.id, role: "sd" } });
+            let stopped = false;
+            try
+            {
+                card_slot(await store.get(config.id));
+                await power_off(false, async () => {
+                    stopped = true;
+                    await store.update(config.id, latest => {
+                        const current = card_slot(latest);
+                        const sd = /** @type {const} */ ({ kind: "browser", path: disk.path, size: disk.size,
+                            sha256: disk.sha256, name: "SIS transfer card" });
+                        return { ...current, symbian: { ...current.symbian, sd } };
+                    });
+                });
+            }
+            catch(error)
+            {
+                await delete_disk(disk.id);
+                if(stopped) throw new Error("The VM powered off, but the card could not be attached. Power on again to retry. " + error.message);
+                throw error;
+            }
+            replace(layout.notice, h("p", { role: "status" }, "The transfer card is ready for the next boot. Open F:\\INSTALL in the phone's file manager. ",
+                h("a", { href: location.href }, "Power on again")), package_paths(packages));
+        });
     };
     const shutdown_iphone = async () =>
     {
@@ -1321,6 +1375,7 @@ function console_ui(layout, emulator, ctx)
                     " · RAPIDO ROM missing. Add a local chip dump in Library → Settings → Symbian firmware." :
                     !ctx.config.symbian.media.boot_media ? " · Legacy XIP. Reimport the RM-505 package to add its original modem images." : "") :
                 [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
+            symbian ? h("button#symbian_send_sis", { type: "button", onclick: send_sis }, "Send SIS/SISX…") : null,
             menu_button("View", items.view, "menu_view"),
             ios || symbian ? null : menu_button("Input", items.input, "menu_input"),
             symbian ? null : mute,

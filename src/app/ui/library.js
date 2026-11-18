@@ -190,16 +190,22 @@ export async function open_library(root)
             finally { lock.release(); }
         } : null;
         const edited = await open_settings(config, { store, service, erase_ios, persist: async (draft, bootrom, pending_sd) => {
-            if(!bootrom && pending_sd === undefined) return store.put(draft);
+            if(!draft.symbian) return store.put(draft);
             const lock = await hold_machine(draft.id);
-            if(!lock) throw new Error("Power off the Nokia N97 before changing its chip ROM or inserting a card");
+            if(!lock) throw new Error("Power off the Nokia N97 before changing these settings");
             const created = [];
+            const ensure_current = current => {
+                if(!current?.symbian || current.modified !== config.modified || current.symbian.sd?.path !== config.symbian.sd?.path)
+                    throw new Error("The virtual machine changed in another tab. Reopen its settings.");
+            };
             try
             {
                 const current = await store.get(draft.id);
-                if(!current?.symbian || current.suspended || draft.suspended)
+                ensure_current(current);
+                if(current.suspended || draft.suspended)
                 {
-                    throw new Error("Reopen the settings after the VM has shut down and any suspended state is cleared");
+                    if(bootrom || pending_sd !== undefined)
+                        throw new Error("Reopen the settings after the VM has shut down and any suspended state is cleared");
                 }
                 const next = { ...draft.symbian };
                 if(bootrom)
@@ -219,7 +225,10 @@ export async function open_library(root)
                     next.sd = { kind: "browser", path: disk.path, size: disk.size, sha256: disk.sha256, name: pending_sd.name };
                 }
                 if(pending_sd === null) delete next.sd;
-                return await store.put({ ...draft, symbian: next });
+                return await store.update(draft.id, latest => {
+                    ensure_current(latest);
+                    return { ...draft, symbian: next };
+                });
             }
             catch(error)
             {
@@ -299,7 +308,7 @@ export async function open_library(root)
         {
             const name = await ask_text("Rename", "Name", config.name);
             if(name === undefined || !name.trim() || name === config.name) return;
-            await store.put(Object.assign({}, config, { name: name.trim() }));
+            await store.update(config.id, current => ({ ...current, name: name.trim() }));
             await reload(config.id);
         };
         const remove = async () =>
@@ -314,25 +323,44 @@ export async function open_library(root)
             if(!await confirm("Delete " + config.name + "?", "Its settings" + (config.suspended ? ", its suspended state" : "") +
                 (own.length ? " and its browser disk" + (own.length > 1 ? "s" : "") : "") + " are deleted from this browser. " +
                 "Images on web sites, on your computer or on a disk service stay where they are.", "Delete", true)) return;
+            const lock = config.symbian ? await hold_machine(config.id) : null;
+            if(config.symbian && !lock)
+            {
+                await inform("Not deleted", "Power off the Nokia N97 before deleting it.");
+                return;
+            }
             try
             {
+                if(config.symbian && (await store.get(config.id))?.modified !== config.modified)
+                    throw new Error("The virtual machine changed. Open its library entry and confirm deletion again.");
                 for(const path of own) await delete_disk(disk_id(path));
+                await delete_state(config.id);
+                await store.delete(config.id);
             }
             catch(e)
             {
                 await inform("Not deleted", e.message);
                 return;
             }
-            await delete_state(config.id);
-            await store.delete(config.id);
+            finally { lock?.release(); }
             await reload(undefined);
         };
         const discard = async () =>
         {
             if(!await confirm("Discard the suspended state?", "The next power on starts " + config.name + " afresh: what it had in its memory is lost.",
                 "Discard", true)) return;
-            await delete_state(config.id);
-            await store.put(Object.assign({}, config, { suspended: null }));
+            const lock = config.symbian ? await hold_machine(config.id) : null;
+            if(config.symbian && !lock)
+            {
+                await inform("Suspend state kept", "Power off the Nokia N97 before discarding its suspended state.");
+                return;
+            }
+            try
+            {
+                await delete_state(config.id);
+                await store.update(config.id, current => ({ ...current, suspended: null }));
+            }
+            finally { lock?.release(); }
             await reload(config.id);
         };
         const p = config.template ? preset(config.template) : undefined;

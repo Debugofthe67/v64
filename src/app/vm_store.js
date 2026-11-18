@@ -77,6 +77,14 @@ function invalid(problems)
     return error;
 }
 
+/** @param {VMConfig} config */
+function checked_update(config)
+{
+    const problems = validate_config(config);
+    if(problems.length) throw invalid(problems);
+    return Object.assign({}, config, { modified: new Date().toISOString() });
+}
+
 export class VMStore
 {
     /**
@@ -162,12 +170,27 @@ export class VMStore
      */
     async put(config)
     {
-        const problems = validate_config(config);
-        if(problems.length) throw invalid(problems);
-        const stored = Object.assign({}, config, { modified: new Date().toISOString() });
+        const stored = checked_update(config);
         const transaction = this.db.transaction(VMS, "readwrite");
         transaction.objectStore(VMS).put(stored);
         await complete(transaction);
+        return stored;
+    }
+
+    /** Change the latest configuration under the same IndexedDB write transaction.
+     * @param {string} id @param {(config: VMConfig) => VMConfig} change
+     */
+    async update(id, change)
+    {
+        const transaction = this.db.transaction(VMS, "readwrite");
+        const completion = complete(transaction);
+        completion.catch(() => {});
+        const vms = transaction.objectStore(VMS);
+        const raw = await done(vms.get(id));
+        if(raw === undefined) throw new Error("The virtual machine is no longer in the library");
+        const stored = checked_update(change(migrate(raw)));
+        vms.put(stored);
+        await completion;
         return stored;
     }
 

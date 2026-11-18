@@ -152,3 +152,26 @@ node tests/symbian/fixtures/make_package.mjs
 node tests/app/browser_runner.mjs tests/app/symbian_test.html
 node tests/symbian/manual/browser_import.mjs <firmware-directory>
 ```
+
+## 原生 SIS/SISX 递送与 v86 Notes
+
+打开一台 microSD 槽为空的 N97，选择控制台的 **Send SIS/SISX…**。文件选择器接受本地 `.sis` 和 `.sisx`。确认框会列出原始文件名和对应的手机路径，例如 `F:\INSTALL\PKG00001.SIS`。8.3 文件名按选择顺序分配，同名、长名和中文名各占一个独立文件。**Prepare card and power off** 会创建该 VM 的新 microSD 映像，关机成功后才将新卡登记为下次开机的介质。确认前可以取消。看到 **The transfer card is ready for the next boot** 后，从手机文件管理器打开 `F:\INSTALL`。若已有卡，可在关机后到 **Library → Settings → Symbian firmware** 卸下，原映像仍在 **Browser disks**。
+
+递送工具检查 Symbian 9.x UID、UID CRC、文件及控制器边界、控制器内的包 UID 和实际提供的两个字段 CRC。高容量文件分段读取，解压控制器上限 8 MiB。新的 FAT16 卡按所选数据量采用 16 MiB 至 2 GiB 标准容量，并核对浏览器配额。包字节原样复制；签名、能力、安装和升级由客体的应用程序管理器判断。当前 N97 的零售引导仍需 RAPIDO 芯片 Boot ROM，存储 DMA 与客体文件服务器挂载尚未完成。浏览器冷开验证已附加可读写的卡，原版 N97 的安装与应用运行尚未在 V86 中执行。[Symbian OS v9.x SIS 文件格式说明](https://www.cryer.co.uk/file-types/s/sis/softwareinstallsis.pdf)
+
+随附的 **v86 Notes** 是可分发的 BSD-2-Clause 原创测试应用，使用测试 UID `0xE0860505` 和零额外能力。用 N97 键盘输入短文本，选 **Save** 写入私有目录 `C:\private\e0860505\note.txt`，下次打开读回。2.0 增加 **Clear**，两版继续使用同一个文本文件。应用使用真实 Window Server 和文件服务器 API。构建从原版 Nokia N97 SDK 的 ARM 导入库读取序号，用 symbian-platform v0.3.0 生成 E32，资源按原版 SDK 的格式编译，再由 Nokia MakeSIS 和 SignSIS 打包、签名。两版声明 S60v5 目标 UID `0x1028315F`。已按 RM-505 固件的导出表独立核对 v1 的 59 项和 v2 的 60 项符号。随附签名为同一测试证书，自签名有效期为 2026-11-18 至 2036-11-15，客体日期需处于有效期内。[symbian-platform v0.3.0](https://github.com/hpnkv/symbian-platform/releases/tag/v0.3.0) · [Nokia SIS 工具说明](https://devlib.symbian.slions.net/s3/GUID-AFE0238A-D6A4-5D07-BB99-85E8CF97BD26.html)
+
+| 可分发文件 | SHA-256 |
+| --- | --- |
+| [v86 Notes 1.0](../tests/symbian/fixtures/notes-v1.sisx) | `8bf046b06ef911359e54a7fcce18cfcd86a109d69d7cd7c1e3cced7d6c5990db` |
+| [v86 Notes 2.0](../tests/symbian/fixtures/notes-v2.sisx) | `10c4ddd39de689e1ffcdfe42529f401929c1240fc8927c28a884463cdfc505d0` |
+
+构建脚本的 `makesis`、`signsis` 参数可为本机命令，也可为调用原版 Windows 工具的包装命令。每次构建为两版生成一张新测试证书，因此签名和最终 SISX 摘要随构建变化。公开回归用 OpenSSL 验证两版的证书及 RSA-SHA1 签名，核对 UID、目标平台、E32 能力，以及主机卡上两个包的摘要。原版 `SignSIS -o` 和 `DumpSIS -l` 能读取两版。独立的 `INTERPRETSIS` 验收以 RM-505 的 237 个固件登记桩为只读输入，先离线安装 1.0，再升级到 2.0，核对 EXE 更换、AppArc 注册和已有私有测试文件保留。这个检查在主机目录完成。`fsck_msdos -n` 和 GNU mtools 独立读取了卡；原版 MakeSIS 生成的 105,906,908 字节附加样本也从 128 MiB 卡抽出并通过 SHA-256 比对。
+
+```sh
+sh tools/symbian/notes/build.sh <symbian-platform-sdk> <nokia-n97-sdk-epoc32> <makesis> <signsis> <output-directory>
+node --test tests/symbian/sis.mjs
+node tests/app/browser_runner.mjs tests/app/symbian_test.html
+mdir -i 'exported-card.img@@1048576' ::/INSTALL
+mcopy -i 'exported-card.img@@1048576' ::/INSTALL/PKG00001.SIS recovered.sis
+```
