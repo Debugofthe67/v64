@@ -14,7 +14,7 @@ const usage = `Usage:
   node tools/symbian/vpl.mjs check <firmware directory or VPL>
     [--product-code <code>] [--sw-version <version>] [--variant-version <version>]
   node tools/symbian/vpl.mjs extract <firmware directory or VPL> <new output directory>
-    [--product-code <code>] [--sw-version <version>] [--variant-version <version>]`;
+    [--product-code <code>] [--sw-version <version>] [--variant-version <version>] [--raw-onenand]`;
 
 async function* file_chunks(filename, max_size = Infinity)
 {
@@ -164,6 +164,7 @@ async function main()
             "product-code": { type: "string" },
             "sw-version": { type: "string" },
             "variant-version": { type: "string" },
+            "raw-onenand": { type: "boolean" },
         },
     });
     if(values.help)
@@ -173,7 +174,8 @@ async function main()
     }
     const [command, source, destination] = positionals;
     if(positionals.length !== (command === "extract" ? 3 : 2) || !["list", "check", "extract"].includes(command) ||
-        command === "list" && Object.keys(values).length || Object.values(values).some(value => !value))
+        command === "list" && Object.keys(values).length || command !== "extract" && values["raw-onenand"] ||
+        Object.values(values).some(value => !value))
     {
         throw new Error(usage);
     }
@@ -211,7 +213,7 @@ async function main()
     const { files, ...identity } = variant;
     if(command === "extract" && checked.ok)
     {
-        const result = extract_n97_images(await read_images(directory, names, checked.files));
+        const result = extract_n97_images(await read_images(directory, names, checked.files), { initialize_bml: !values["raw-onenand"] });
         const images = result.files.map(({ name, bytes, size, source_bytes, sha256 }) => ({ name, size, source_bytes: source_bytes ?? bytes.length, sha256 }));
         const report = { ...identity, ...checked, ...result.report, images };
         await save_extraction(resolve(destination), result.files, report);

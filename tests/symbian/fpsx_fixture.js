@@ -29,6 +29,24 @@ export function fpsx(blocks, tlvs = [])
     return Buffer.concat([prefix, ...tlvs, ...blocks]);
 }
 
+export function rm505_partition_tlv(entries, space = [0, 3, 0])
+{
+    const raw = Buffer.alloc(3 + 18 + entries.length * 16);
+    raw[0] = 0xEE;
+    raw.writeUInt16BE(raw.length - 3, 1);
+    raw.set([1, 0x2F, 0x4F, ...space, 0, 1, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF], 3);
+    raw.writeUInt32BE(entries.length, 17);
+    for(const [i, entry] of entries.entries())
+    {
+        entry.forEach((word, n) => raw.writeUInt32BE(word, 21 + i * 16 + n * 4));
+    }
+    return raw;
+}
+
+export const fixture_partitions = [
+    [3, 2, 0x80000, 0x20000], [4, 2, 0xA0000, 0x20000], [8, 1, 0xC0000, 0x280000], [10, 1, 0xFA00000, 0x20000],
+];
+
 export function rom_page(encoded)
 {
     const unpaged = Buffer.alloc(0x1000);
@@ -140,11 +158,11 @@ export function firmware_fixture(bootstrap)
     toc.fill(0xFF, modem.length * 32);
     const core = fpsx([
         block(toc, 0x80000), ...modem.flatMap(args => boot_group(...args)),
-        cert(0x98000, "SOS+ROFS1"), block(rofs_payload(), 0x98200),
-    ]);
-    const rofs2 = fpsx([cert(0x20000, "SOS+ROFS2"), block(rofs_payload(), 0x20200)]);
-    const rofs3 = fpsx([cert(0x30000, "SOS+ROFS3"), block(rofs_payload(), 0x30200)]);
-    const uda = fpsx([block(fat_payload(), 0x40000)]);
+        cert(0xA0000, "SOS+ROFS1"), block(rofs_payload(), 0xA0200),
+    ], [rm505_partition_tlv(fixture_partitions)]);
+    const rofs2 = fpsx([cert(0xA8000, "SOS+ROFS2"), block(rofs_payload(), 0xA8200)]);
+    const rofs3 = fpsx([cert(0xB0000, "SOS+ROFS3"), block(rofs_payload(), 0xB0200)]);
+    const uda = fpsx([block(fat_payload(), 0xC0000)]);
     const parts = [["core.C00", "Mcu", 1, core], ["rofs2.fpsx", "Ppm", 2, rofs2],
         ["rofs3.fpsx", "Ppm", 3, rofs3], ["n97.uda.fpsx", "Content", 0, uda]];
     const files = parts.map(([name, subtype, rofs_index]) => `<File><Name>${name}</Name><FileType>Binary</FileType>` +

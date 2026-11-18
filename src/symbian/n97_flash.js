@@ -14,6 +14,62 @@ export const N97_FLASH_ID = [0xEC, 0x40, 0x121];
 export const N97_FLASH_NAME = "onenand.img";
 const FORMAT = new TextEncoder().encode("V86N97N1");
 const BLOCK_SLOT = N97_FLASH_BLOCK / N97_FLASH_PAGE * N97_FLASH_SLOT;
+const LAST_BLOCK = N97_FLASH_SIZE / N97_FLASH_BLOCK - 1;
+export const N97_BML_RESERVOIR = LAST_BLOCK + 1 - 44;
+// BML_Format validates against 0x7D2 usable blocks. Two additional
+// management blocks precede the 44 blocks scanned for PCB metadata.
+export const N97_BML_USER_BLOCKS = N97_BML_RESERVOIR - 2;
+const BML_SECTOR = 512, BML_SPARE = 16;
+
+/**
+ * Construct the two initial XSR pool control blocks for this single-die
+ * OneNAND with no bad blocks. The original RM-505 BML_Format produces this
+ * four-page layout, including the Nokia PIA signature and OOB marks.
+ * @param {!Array<{id: number, attributes: number, start_block: number, blocks: number}>} partitions
+ */
+function* initial_bml_blocks(partitions)
+{
+    const encoder = new TextEncoder();
+    for(const [block, alternate, locked] of [[N97_BML_RESERVOIR, N97_BML_RESERVOIR + 1, false], [LAST_BLOCK, LAST_BLOCK - 1, true]])
+    {
+        const raw = new Uint8Array(2 * N97_FLASH_SLOT).fill(0xFF);
+        const view = new DataView(raw.buffer);
+        // Pool control header and its mirror. An unused remap entry stays erased.
+        raw.set(encoder.encode(locked ? "LOCKPCHD" : "ULOCKPCH"));
+        view.setUint16(8, 1, true); // pool control age
+        view.setUint16(10, alternate, true);
+        raw.fill(0, 12, 20); // initial erase signature
+        raw.copyWithin(BML_SECTOR, 0, BML_SECTOR);
+        const area = 2 * BML_SECTOR;
+        if(locked)
+        {
+            raw.fill(0, area, area + BML_SECTOR);
+            raw.set(encoder.encode("XSRPART5"), area);
+            view.setUint32(area + 8, 0x00011000, true);
+            view.setUint32(area + 12, partitions.length, true);
+            for(const [index, part] of partitions.entries())
+            {
+                const offset = area + 16 + index * 16;
+                view.setUint32(offset, part.id, true);
+                view.setUint32(offset + 4, part.attributes, true);
+                view.setUint32(offset + 8, part.start_block, true);
+                view.setUint32(offset + 12, part.blocks, true);
+            }
+        }
+        else view.setUint32(area + 4, BML_SECTOR - 8, true); // empty partition extension
+        raw.copyWithin(area + BML_SECTOR, area, area + BML_SECTOR);
+
+        for(let sector = 0; sector < 4; sector++)
+        {
+            // New block map (inf=0xFCFE, age=1). Its mappings stay erased.
+            view.setUint16(N97_FLASH_SLOT + sector * BML_SECTOR, 0xFCFE, true);
+            view.setUint16(N97_FLASH_SLOT + sector * BML_SECTOR + 2, 1, true);
+            raw[N97_FLASH_PAGE + sector * BML_SPARE + 5] = 0xFE;
+            if(sector !== 0) raw[N97_FLASH_SLOT + N97_FLASH_PAGE + sector * BML_SPARE + 5] = 0xFE;
+        }
+        yield { at: N97_FLASH_HEADER + block * BLOCK_SLOT, bytes: raw.map(byte => byte ^ 0xFF) };
+    }
+}
 
 export function n97_flash_header(rom_digest)
 {
@@ -38,8 +94,12 @@ export function check_n97_flash(buffer, rom_digest)
     }
 }
 
-/** @param {!Array<{address: number, bytes: !Uint8Array}>} extents @param {string} rom_digest */
-export function seed_n97_flash(extents, rom_digest)
+/**
+ * @param {!Array<{address: number, bytes: !Uint8Array}>} extents
+ * @param {string} rom_digest
+ * @param {?Array<{id: number, attributes: number, start_block: number, blocks: number}>} partitions
+ */
+export function seed_n97_flash(extents, rom_digest, partitions = null)
 {
     extents.sort((a, b) => a.address - b.address);
     let end = 0;
@@ -49,6 +109,10 @@ export function seed_n97_flash(extents, rom_digest)
         end = address + bytes.length;
     }
     const header = n97_flash_header(rom_digest);
+    // Only provision a blank reserved area in a new image. A supplied
+    // reservoir always wins, including when it contains only partial records.
+    const has_reservoir = end > N97_BML_USER_BLOCKS * N97_FLASH_BLOCK;
+    const seeded_bml = partitions !== null && !has_reservoir;
     // Iterate one erase block at a time. Neither preflight nor writing into
     // OPFS has to hold a second 264 MiB image in memory.
     function* chunks()
@@ -76,6 +140,7 @@ export function seed_n97_flash(extents, rom_digest)
             }
         }
         if(index >= 0) yield { at: N97_FLASH_HEADER + index * BLOCK_SLOT, bytes: block };
+        if(partitions && !has_reservoir) yield* initial_bml_blocks(partitions);
     }
     const hash = new SHA256();
     const zeros = new Uint8Array(BLOCK_SLOT);
@@ -98,5 +163,6 @@ export function seed_n97_flash(extents, rom_digest)
         hash.update(zeros.subarray(0, size));
         at += size;
     }
-    return { name: N97_FLASH_NAME, size: N97_FLASH_IMAGE_SIZE, sha256: hash.hex(), source_bytes, chunks };
+    return { name: N97_FLASH_NAME, size: N97_FLASH_IMAGE_SIZE, sha256: hash.hex(), source_bytes, chunks,
+        bml: { state: seeded_bml ? "initialized" : has_reservoir ? "supplied" : "unformatted", partitions } };
 }

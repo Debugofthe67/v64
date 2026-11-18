@@ -7,11 +7,12 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { fpsx_group_data, parse_fpsx, validate_fpsx_layout } from "../../src/symbian/fpsx.js";
-import { extract_n97_images, inspect_n97_uda, select_n97_boot_certificate } from "../../src/symbian/n97_images.js";
+import { extract_n97_images, inspect_n97_uda, rm505_bml_partitions, select_n97_boot_certificate } from "../../src/symbian/n97_images.js";
+import { N97_BML_RESERVOIR, N97_BML_USER_BLOCKS, N97_FLASH_BLOCK, N97_FLASH_HEADER, N97_FLASH_PAGE, N97_FLASH_SLOT } from "../../src/symbian/n97_flash.js";
 import { read_n97_boot_media } from "../../src/symbian/n97_boot_media.js";
 import { rebuild_eka2_rom } from "../../src/symbian/rom.js";
 
-import { block, cert, fat_payload, firmware_fixture, fpsx, rom_page, valid_page } from "./fpsx_fixture.js";
+import { block, cert, fat_payload, firmware_fixture, fixture_partitions, fpsx, rm505_partition_tlv, rom_page, valid_page } from "./fpsx_fixture.js";
 
 test("validates FPSX TLVs, record checksums, destination ranges and certificate alternatives", () => {
     const bytes = fpsx([
@@ -80,6 +81,7 @@ test("CLI exports separate certified DSP0 and ISASW regions bound to the selecte
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const report = JSON.parse(readFileSync(join(output, "firmware.json"), "utf8"));
     assert.deepEqual(report.containers.core.groups.map(group => group.label), [null, "SOS*DSP0", "SOS*ISASW", "SOS+CORE", "SOS+ROFS1"]);
+    assert.equal(report.nand.bml.state, "initialized");
     assert.equal(readFileSync(join(output, "core-prefix.bin"))[0], 0xDA);
     const digest = report.images.find(image => image.name === "rom.xip.bin").sha256;
     const bytes = readFileSync(join(output, "rapido-boot.bin"));
@@ -106,6 +108,60 @@ test("CLI exports separate certified DSP0 and ISASW regions bound to the selecte
     writeFileSync(join(input, "core.C00"), core.subarray(0, -1));
     assert.match(run(rejected).stderr, /truncated block data/);
     assert.equal(existsSync(rejected), false);
+});
+
+test("adds stock BML mirrors from the application TLV and preserves supplied reservoir records", () => {
+    const part = rm505_partition_tlv(fixture_partitions), unrelated = rm505_partition_tlv(fixture_partitions, [1, 3, 0]);
+    const parse = (...records) => rm505_bml_partitions(parse_fpsx(fpsx([block(Buffer.alloc(512), 0x80000)], records)));
+    assert.equal(parse(unrelated), null);
+    const unknown_format = Buffer.from(part);
+    unknown_format[5] = 0x5F;
+    assert.equal(parse(unknown_format), null);
+    const partitions = parse(part, unrelated);
+    assert.deepEqual(partitions, fixture_partitions.map(([id, attributes, start, length]) =>
+        ({ id, attributes, start_block: start / N97_FLASH_BLOCK, blocks: length / N97_FLASH_BLOCK })));
+    assert.throws(() => parse(part, part), /BML partition table/);
+    const invalid_count = Buffer.from(part);
+    invalid_count.writeUInt32BE(31, 17);
+    assert.throws(() => parse(invalid_count), /BML partition table/);
+    for(const entries of [
+        [[3, 2, 0, 0x40000], [4, 2, 0x20000, 0x20000]],
+        [[3, 2, 0, 0x20000], [3, 2, 0x20000, 0x20000]],
+        [[3, 2, 0, 1]],
+        [[3, 1, N97_BML_USER_BLOCKS * N97_FLASH_BLOCK, N97_FLASH_BLOCK]],
+        [[3, 1, 0, N97_FLASH_BLOCK], [4, 0x22, N97_FLASH_BLOCK, N97_FLASH_BLOCK]],
+    ]) assert.throws(() => parse(rm505_partition_tlv(entries)), /BML partition table/);
+    assert.ok(parse(rm505_partition_tlv([[3, 0x22, 0, N97_FLASH_BLOCK],
+        [4, 1, (N97_BML_USER_BLOCKS - 1) * N97_FLASH_BLOCK, N97_FLASH_BLOCK]])));
+
+    const fixture = firmware_fixture();
+    const nand = (inputs, options) => extract_n97_images(inputs, options).files.find(file => file.name === "onenand.img");
+    const raw = (chunk, from, to) => Buffer.from(chunk.bytes.subarray(from, to).map(byte => byte ^ 0xFF));
+    const page_slot = block => N97_FLASH_HEADER + block * (N97_FLASH_BLOCK / N97_FLASH_PAGE) * N97_FLASH_SLOT;
+    const unlocked = page_slot(N97_BML_RESERVOIR), locked = page_slot(0x7FF);
+    const fresh = nand(fixture);
+    const fresh_chunks = [...fresh.chunks()];
+    assert.deepEqual(fresh_chunks.slice(-2).map(chunk => chunk.at), [unlocked, locked]);
+    const [unlock, lock] = fresh_chunks.slice(-2);
+    assert.equal(raw(unlock, 0, 8).toString(), "ULOCKPCH");
+    assert.equal(raw(lock, 0, 8).toString(), "LOCKPCHD");
+    assert.deepEqual(raw(lock, 0, 512), raw(lock, 512, 1024));
+    const pia = raw(lock, 1024, 1536);
+    assert.equal(pia.subarray(0, 8).toString(), "XSRPART5");
+    assert.equal(pia.readUInt32LE(12), partitions.length);
+    assert.deepEqual(Array.from({ length: 4 }, (_, i) => pia.readUInt32LE(16 + i * 4)), [3, 2, 4, 1]);
+    assert.deepEqual(pia, raw(lock, 1536, 2048));
+    assert.equal(raw(lock, N97_FLASH_PAGE + 5, N97_FLASH_PAGE + 6)[0], 0xFE);
+
+    const blank = nand(fixture, { initialize_bml: false });
+    assert.equal(blank.bml.state, "unformatted");
+    assert.deepEqual([...blank.chunks()], fresh_chunks.slice(0, -2), "only BML pages differ from the raw extraction");
+    const start = N97_BML_USER_BLOCKS * N97_FLASH_BLOCK;
+    const supplied = nand({ ...fixture, eno: fpsx([block(Buffer.alloc(512, 0xA6), start)]) });
+    assert.equal(supplied.bml.state, "supplied");
+    const supplied_chunks = [...supplied.chunks()];
+    assert.equal(supplied_chunks.at(-1).at, page_slot(N97_BML_USER_BLOCKS));
+    assert.deepEqual(raw(supplied_chunks.at(-1), 0, 512), Buffer.alloc(512, 0xA6));
 });
 
 test("selects the RM-505 certificate key independently of its order", () => {

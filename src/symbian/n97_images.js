@@ -1,8 +1,8 @@
-import { c_string, equals, u16, u32 } from "../android/bytes.js";
+import { c_string, equals, u16, u32, u32be } from "../android/bytes.js";
 import { SHA256, sha256_hex } from "../image/sha256.js";
 import { fpsx_group_data, parse_fpsx, validate_fpsx_layout } from "./fpsx.js";
 import { N97_CORE_ADDRESS, N97_CORE_HEADER_OFFSET, usable_n97_modem_address, write_n97_boot_media } from "./n97_boot_media.js";
-import { seed_n97_flash } from "./n97_flash.js";
+import { N97_BML_USER_BLOCKS, N97_FLASH_BLOCK, seed_n97_flash } from "./n97_flash.js";
 import { inflate } from "../virt/inflate.js";
 import { rebuild_eka2_rom } from "./rom.js";
 
@@ -46,8 +46,47 @@ export function select_n97_boot_certificate(core, group)
     return { bytes, input_size: u32(bytes, 0x3D4), output_size: u32(bytes, 0x3D8), address: u32(bytes, 0x3DC) };
 }
 
+/** @param {ReturnType<typeof parse_fpsx>} core */
+export function rm505_bml_partitions(core)
+{
+    // The RM-505 type EE is a big-endian flash partition request for
+    // destination (0,3,0). In the 0x2F4F record, count is at +14 and the
+    // following entries hold byte offsets/lengths, converted to erase blocks.
+    const tables = core.tlvs.filter(tlv => tlv.type === 0xEE && tlv.size >= 6 &&
+        equals(core.bytes.subarray(tlv.data_offset + 3, tlv.data_offset + 6), [0, 3, 0]));
+    // Unknown partition request formats still allow an unmodified physical
+    // export. Reject corrupt or duplicate tables in the recognized format.
+    if(!tables.length || tables.some(tlv => (u32be(core.bytes, tlv.data_offset) >>> 8) !== 0x012F4F)) return null;
+    const invalid = () => { throw new Error("N97 OneNAND: invalid RM-505 BML partition table"); };
+    if(tables.length !== 1) invalid();
+    const { data_offset: offset, size } = tables[0];
+    if(size < 18) invalid();
+    const count = u32be(core.bytes, offset + 14);
+    if(!count || count > 31 || size !== 18 + count * 16) invalid();
+    const ids = new Set();
+    const partitions = [];
+    for(let i = 0; i < count; i++)
+    {
+        const at = offset + 18 + i * 16;
+        const id = u32be(core.bytes, at), attributes = u32be(core.bytes, at + 4);
+        const start_block = u32be(core.bytes, at + 8) / N97_FLASH_BLOCK;
+        const blocks = u32be(core.bytes, at + 12) / N97_FLASH_BLOCK;
+        if(ids.has(id) || ![1, 2, 0x22].includes(attributes) || !Number.isInteger(start_block) ||
+            !Number.isInteger(blocks) || !blocks || start_block + blocks > N97_BML_USER_BLOCKS ||
+            partitions.some(part => start_block < part.start_block + part.blocks && part.start_block < start_block + blocks))
+        {
+            invalid();
+        }
+        ids.add(id);
+        partitions.push({ id, attributes, start_block, blocks });
+    }
+    const frozen_end = Math.max(0, ...partitions.filter(part => part.attributes === 0x22).map(part => part.start_block + part.blocks));
+    if(partitions.some(part => part.attributes !== 0x22 && part.start_block < frozen_end)) invalid();
+    return partitions;
+}
+
 /** @param {!Array<ReturnType<typeof parse_fpsx>>} containers @param {string} rom_digest */
-function extract_n97_flash(containers, rom_digest)
+function extract_n97_flash(containers, rom_digest, partitions)
 {
     // Only the outer streams' application OneNAND destination (0,3,0).
     // Toolbox records and other target spaces are not physical CS0 data.
@@ -58,7 +97,7 @@ function extract_n97_flash(containers, rom_digest)
             bytes: container.bytes.subarray(record.data_offset, record.data_offset + record.size) }));
     }));
     if(!extents.length) throw new Error("No RM-505 application OneNAND records");
-    return seed_n97_flash(extents, rom_digest);
+    return seed_n97_flash(extents, rom_digest, partitions);
 }
 
 function flash_toc_record(toc, label)
@@ -339,7 +378,7 @@ function image(name, bytes, size = bytes.length)
 }
 
 /** @param {{core: !Uint8Array, rofs2: !Uint8Array, rofs3: !Uint8Array, uda: !Uint8Array, eno?: !Uint8Array}} inputs */
-export function extract_n97_images(inputs)
+export function extract_n97_images(inputs, { initialize_bml = true } = {})
 {
     const core = parse_fpsx(inputs.core);
     const rofs2 = parse_fpsx(inputs.rofs2);
@@ -377,7 +416,8 @@ export function extract_n97_images(inputs)
     const uda_data = fpsx_group_data(uda, uda_group);
     const uda_header = inspect_n97_uda(uda_data);
     files.push(image("uda.fat", uda_data, uda_header.logical_size));
-    files.push(extract_n97_flash(Object.values(containers), xip.sha256));
+    const nand = extract_n97_flash(Object.values(containers), xip.sha256, initialize_bml ? rm505_bml_partitions(core) : null);
+    files.push(nand);
 
     return {
         files,
@@ -385,7 +425,7 @@ export function extract_n97_images(inputs)
             containers: Object.fromEntries(Object.entries(containers).map(([key, parsed]) => [key, describe_fpsx(parsed)])),
             rom: { ...rom.header, pages: rom.page_counts, flash_address: core_group.data[0].start + SOS_PREFIX_SIZE,
                 core_flash_group_sha256: sha256_hex(core_data), rom_flash_span_sha256: sha256_hex(packed) },
-            rofs: rofs_headers, languages, ...(boot_media ? { boot_media: boot_media.report } : {}),
+            rofs: rofs_headers, languages, nand: { bml: nand.bml }, ...(boot_media ? { boot_media: boot_media.report } : {}),
             uda: { ...uda_header, flash_address: uda_group.data[0].start },
         },
     };

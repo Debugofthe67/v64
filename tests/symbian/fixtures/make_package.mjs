@@ -3,12 +3,12 @@ import { firmware_fixture } from "../fpsx_fixture.js";
 
 const directory = new URL("../../../build/symbian/test-package/", import.meta.url);
 // ARM probe entered by the fixture's normal XIP reset vector. Read the
-// final page through CS0; only if its first cell is erased, unlock and
+// first page of the last user block; only if its first cell is erased, unlock and
 // program 0xA55A. Leave all other guest-visible cells alone.
 const nand_probe = Buffer.from(
     "4c009fe54c109fe5b010c0e1793ba0e3021ba0e3b010c3e13c409fe50010" +
     "a0e3b010c4e1015ba0e3b060d5e12c709fe5070056e10500001a2710a0e3" +
-    "b010c4e11c109fe5b010c5e18010a0e3b010c4e1feffffea00e20100ff07" +
+    "b010c4e11c109fe5b010c5e18010a0e3b010c4e1feffffea00e20100d107" +
     "000040e40100ffff00005aa50000", "hex");
 nand_probe.writeUInt32LE(0xEA000004, 0x50); // branch over the literal table to the LCD test
 

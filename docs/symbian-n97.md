@@ -104,9 +104,9 @@ node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --ap-only
 
 RM-505 的 CS0 是单 die 256 MiB 的 SLC，块大小 128 KiB，页大小 2 KiB，另有每页 64 字节 spare。原版 RAP3NAND 在 `+0x2EB4` 读取物理 `0x1E000/2/4`，得到制造商 `00EC`、器件 `0040` 和修订 `0121`。有 OneNAND 的 VM 随正常冷启动发布 type 19，payload 为 `[0x10000000, 0, 0x20000, 0xEC, 0x40, 0, 0, 0x121]`。`mednand.pdd` 用这组 ID 选中 `XIP+0xF7A4C` 的第 50 条设备记录。记录 `+0x11` 为零，故 `0x800F6490–0x800F64C0` 选择 `0x800F3724` 的逐块解锁入口，经 F24C 和 `0x23` 解锁。原版解锁块 `0x7FA` 时在 SA1 写 `0x87FA`，在 SA2 写 `0x8000`。单 die 忽略 DDP 选择位 15，块地址仍使用 bits 10:0。[Samsung MuxOneNAND 手册 §2.8、§3.1 与 §3.4](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf) · [Samsung 向 Linux 提交的寄存器头](https://kernel.googlesource.com/pub/scm/linux/kernel/git/bp/bp/+/refs/heads/for-next/include/linux/mtd/onenand_regs.h)
 
-新导入的 VM 有独立的 `onenand.img`。提取器按原厂 `(0,3,0)` 目标空间，写入 CORE、ENO、两个 ROFS 覆盖层和 UDA 的外层记录。证书组按 RM-505 根键选用单个交付记录，包括 type 28 的 `PAPUBKEYS`。物理主区保留压缩的原始字节和记录间的擦除值。FPSX 未提供的 spare 初始化为 `FF`。磁盘文件由绑定 XIP 摘要的 512 字节头及交错的主区和 spare 构成。每个存储字节取反，使文件空洞从客体读取为 `FF`。0576555 的初始文件为 276,824,576 字节，SHA-256 `e41fe3a84fa2b8d0546ca9eda3cab73a677469b921dfdf4d45d56ef8835be5fc`。导入时校验完整的初始摘要。开机核对头和配套 XIP；快照绑定可写文件的标识、大小和代次，客体再次编程或擦除后拒绝恢复旧代次。
+新导入的 VM 有独立的 `onenand.img`。提取器按原厂 `(0,3,0)` 目标空间，写入 CORE、ENO、两个 ROFS 覆盖层和 UDA 的外层记录。证书组按 RM-505 根键选用单个交付记录，包括 type 28 的 `PAPUBKEYS`。物理主区保留压缩的原始字节和记录间的擦除值。FPSX 未提供的普通页 spare 初始化为 `FF`。磁盘文件由绑定 XIP 摘要的 512 字节头及交错的主区和 spare 构成。每个存储字节取反，使文件空洞从客体读取为 `FF`。导入时校验完整的初始摘要。开机核对头和配套 XIP。快照绑定可写文件的标识、大小和代次，客体再次编程或擦除后拒绝恢复旧代次。
 
-原版 RAP3NAND `+0x2CE8` 在 V86 中通过真实 CS0 读出以下整页。第一页的后半包含相邻的 ADA 证书。原版读 `F241h` 的完成位，核对 `FF00h`，再从 DataRAM0 复制 1024 个半字。验收工具另用最小 MMU 映射执行原版 `mednand.pdd` 的识别和解锁函数，`0x7FA–0x7FC` 三块解锁后返回 0。公开夹具在 Chrome CPU Worker 中用 ARM 指令编程末块，关机后仅本 VM 的 OPFS 文件保留该值，冷开再读取同一页。Node 侧另验证主区与 spare 的 `1→0`、擦除、冷复位、快照恢复，以及相同 XIP 的另一介质无法套用快照。
+原版 RAP3NAND `+0x2CE8` 在 V86 中通过真实 CS0 读出以下整页。第一页的后半包含相邻的 ADA 证书。原版读 `F241h` 的完成位，核对 `FF00h`，再从 DataRAM0 复制 1024 个半字。验收工具另用最小 MMU 映射执行原版 `mednand.pdd` 的识别和解锁函数，`0x7FA–0x7FC` 三块解锁后返回 0。公开夹具在 Chrome CPU Worker 中用 ARM 指令编程最后一个可用块 `0x7D1`，关机后仅本 VM 的 OPFS 文件保留该值，冷开再读取同一页。Node 侧另验证主区与 spare 的 `1→0`、擦除、冷复位、快照恢复，以及相同 XIP 的另一介质无法套用快照。
 
 | 物理主区页地址 | 内容 | 整页 SHA-256 |
 | --- | --- | --- |
@@ -120,12 +120,25 @@ RM-505 的 CS0 是单 die 256 MiB 的 SLC，块大小 128 KiB，页大小 2 KiB�
 
 D3000 的 INTo 经 MEMCONT[10] 接到 GENIO22。原版 `mednand.pdd` 设置 bank 0 的输入和上升沿，`egpio.dll` 给这一输入分配 IRQ 245。OneNAND 的 IOBE、INTpol 和完成位共同决定引脚电平。GPIO 保留边沿并经 ICU 提交，恢复快照时保留待处理状态。原版 PDD 另在 `0x800DF9B0` 向闪存接口配置地址 PA `0x20034094` 写入 `0x300`。当前模型保存此配置字，既有 CS0 地址解码不依赖该字。[Nokia RM-505/RM-507 板图第 2 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf) · [Samsung MuxOneNAND 2G §§2.8.19、7.1](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf)
 
-PDD 探针冷启真正的 AP 内核，在 SISA 依赖前调用原版 `mednand.pdd`。扩展向 LocDrv 注册 10 个 NAND 驱动。原版 PDD 硬件创建阶段识别 `EC/0040/0121`，扫描 44 个预留块（`0x7D4–0x7FF`），设备完成 528 次读操作，数据与 spare 均为擦除值。探针在原版异步完成回调之前停下，再调用原版 `PartitionInfo`。原版从 `0x800F085C` 获得 XSR 状态 `0x80110000`，随后返回 `KErrGeneral (-2)`。该路径使用由 FPSX 重建的同一 OneNAND 的私有副本，未编程或擦除任何页。样本中原版 ROFS 页已经存在，BML 预留区资料仍缺；未确认此处所需的出厂映射和初始化流程。[Samsung UniStore II v1.5.1](https://www.bitsavers.org/components/samsung/flash/UniStore_II_v1.5.1_Installation_Guide_200606.pdf) · [Symbian LocDrv](https://github.com/SymbianSource/oss.FCL.sf.os.kernelhwsrv/blob/master/kernel/eka/drivers/locmedia/locmedia.cpp)
+PDD 探针冷启真正的 AP 内核，在 SISA 依赖前调用原版 `mednand.pdd`。扩展向 LocDrv 注册 10 个 NAND 驱动。使用未预置 BML 的基线时，原版 PDD 硬件创建阶段识别 `EC/0040/0121`，扫描 44 个预留块（`0x7D4–0x7FF`），设备完成 528 次读操作，数据与 spare 均为擦除值。探针在原版异步完成回调之前停下，再调用原版 `PartitionInfo`。原版从 `0x800F085C` 获得 XSR 状态 `0x80110000`，随后返回 `KErrGeneral (-2)`。该路径使用由 FPSX 重建的同一 OneNAND 的私有副本，未编程或擦除任何页。[Samsung UniStore II v1.5.1](https://www.bitsavers.org/components/samsung/flash/UniStore_II_v1.5.1_Installation_Guide_200606.pdf) · [Symbian LocDrv](https://github.com/SymbianSource/oss.FCL.sf.os.kernelhwsrv/blob/master/kernel/eka/drivers/locmedia/locmedia.cpp)
 
 探针另启用芯片中断输出，经原版 PDD 确认 GPIO 并解除屏蔽，再触发一次诊断读。EKA2 实际领取 IRQ 245，经过原版 `egpio.dll` 的 `0x8009FEFC` 到达 PDD 中断入口 `0x800F6724`。这个检查在进入本地驱动请求回调前结束；前面的 528 次 BML 读取走轮询。
 
 ```sh
-node tools/symbian/nand-pdd-n97.mjs <extraction-directory>
+node tools/symbian/vpl.mjs extract <firmware-directory> <raw-output-directory> --raw-onenand
+node tools/symbian/nand-pdd-n97.mjs <raw-output-directory>
+```
+
+### 新机的 XSR/BML 分区
+
+浏览器导入和 CLI 提取从 CORE 的 type EE 读取 `(0,3,0)` 分区表。0576555 的四条记录按 ID、属性、起始逻辑块、块数表示为 `[3,2,4,205]`、`[4,2,209,1164]`、`[8,1,1373,604]` 和 `[10,1,1990,11]`。原版校验例程允许 2002 个可用块，末块为 `0x7D1`。新建介质使用 `0x7D4` 和 `0x7FF` 的前两页存放两份池控制头、分区信息及块映射的镜像和 spare 确认标记。Nokia 的分区签名是 `XSRPART5`。源固件已有管理区记录或分区表格式无法识别时保留原始记录。该流程只在新提取时运行，已入库的磁盘和快照沿用原配置。[Samsung RFS 预编程指南 §3](https://datasheet.datasheetarchive.com/originals/library/Datasheets-SW18/DSASW00343735.pdf)
+
+0576555 的初始化输出为 276824576 字节，SHA-256 `ca92e711e6126d042bf8831b83567678f2232b8a416f76702378f0cbc8963f84`，与原版 `BML_Format` 在私有副本上的输出逐字节一致。与 `--raw-onenand` 的基线摘要 `e41fe3a84fa2b8d0546ca9eda3cab73a677469b921dfdf4d45d56ef8835be5fc` 相比，只有四个管理页改变。正常浏览器导入也核对了同一初始摘要。
+
+原版 `BML_Open`、`BML_Read`、`BML_Close` 在首次打开及冷重开都返回 0，表中的 TOC、三层 ROFS 和原始 UDA 头五个整页的摘要均吻合。首次打开对管理区进行两次编程和两次擦除，冷重开无需继续写入。探针在两次关闭后核对全部用户区的主区和 spare 摘要。探针运行在 AP 内核诊断中，停在 PDD 启动 STL 初始化前。零售启动仍依赖 RAPIDO 芯片 ROM，STL 中的 C: 数据初始化、完整 `PartitionInfo` 和文件服务器挂载需另行验证。
+
+```sh
+node tools/symbian/nand-pdd-n97.mjs <extraction-directory> --bml
 ```
 
 ```sh
