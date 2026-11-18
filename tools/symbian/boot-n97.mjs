@@ -1,42 +1,81 @@
 #!/usr/bin/env node
 // Observes an unmodified RM-505 22.0.110 XIP with the selected board handoff.
+// NAND changes stay in memory, including when tracing the downstream ROM entry.
 // --reject-probe supplies only a Thumb caller-return test with status zero.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
 import { V86 } from "../../src/main.js";
+import { fpsx_group_data, parse_fpsx } from "../../src/symbian/fpsx.js";
 import { N97_BOOT_TOC, N97_RAM_BASE, N97_RAM_SIZE, N97_ROM_ADDRESS } from "../../src/symbian/n97_board.js";
 import { read_n97_boot_media } from "../../src/symbian/n97_boot_media.js";
 import { N97_BOOT_SOURCE, N97_CPU_PLL, N97_L2_BASE, N97_PLL3, N97_PLL3_CONTROL, N97_PLL_POWER, N97_RAPIDO_SELECT, N97_RESET_STATUS,
     N97_SHARED_CONTROL } from "../../src/symbian/n97_devices.js";
+import { N97_FLASH_IMAGE_SIZE } from "../../src/symbian/n97_flash.js";
 import { N97_COMPAT_XIP } from "../../src/symbian/n97_rapido_compat.js";
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     "ap-only": { type: "boolean" }, "boot-media": { type: "string" }, "boot-rom": { type: "string" }, "reject-probe": { type: "boolean" },
     "nand": { type: "string" }, "isa-probe": { type: "string" }, "rapido-compat-rom": { type: "boolean" },
-    "compat-negative": { type: "string" },
+    "compat-negative": { type: "string" }, "original-core": { type: "string" },
 } });
 const compat = values["rapido-compat-rom"];
 const negative = values["compat-negative"];
+const original_core = values["original-core"];
 const negative_outcome = new Map([["descriptor", "request"], ["toc-size", "request"], ["toc-name", "request"], ["root", "keys"], ["keys-signature", "keys"],
     ["modem-key", "keys"], ["certificate", "isasw"], ["certificate-trailer", "isasw"], ["isasw-payload", "isasw"], ["dsp0-payload", "dsp0"]]);
 if(positionals.length !== 1 || (values["boot-rom"] || values["reject-probe"]) && !values["boot-media"] ||
     values["ap-only"] && values["boot-media"] || values["boot-rom"] && values["reject-probe"] || values["isa-probe"] && !values["ap-only"] ||
     compat && (!values["boot-media"] || !values.nand || values["boot-rom"] || values["reject-probe"]) ||
-    negative !== undefined && (!compat || !negative_outcome.has(negative)))
+    negative !== undefined && (!compat || !negative_outcome.has(negative)) ||
+    original_core !== undefined && (!original_core || !compat || negative !== undefined))
 {
-    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--nand <onenand.img>] [--ap-only [--isa-probe <rapido-boot.bin>] | --boot-media <rapido-boot.bin> [--boot-rom <dump> | --reject-probe | --rapido-compat-rom [--compat-negative <" + [...negative_outcome.keys()].join("|") + ">]]]");
+    throw new Error("Usage: node tools/symbian/boot-n97.mjs <rom.xip.bin> [--nand <onenand.img>] [--ap-only [--isa-probe <rapido-boot.bin>] | --boot-media <rapido-boot.bin> [--boot-rom <dump> | --reject-probe | --rapido-compat-rom [--compat-negative <" + [...negative_outcome.keys()].join("|") + ">] [--original-core <RM-505_22.0.110_prd.core.C00>]]]");
 }
 const rom = await readFile(positionals[0]);
-const sha256 = createHash("sha256").update(rom).digest("hex");
+const sha256 = digest(rom);
 assert.equal(sha256, N97_COMPAT_XIP, "expected RM-505 22.0.110 XIP");
 const wasm_path = fileURLToPath(new URL("../../build/v86-arm64.wasm", import.meta.url));
 
 const instructions_per_ms = 8000;
+function digest(bytes)
+{
+    return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function read_exact(path, size)
+{
+    const fd = await open(path, "r");
+    try
+    {
+        const stat = await fd.stat();
+        assert.ok(stat.isFile() && stat.size === size, `${path}: expected a ${size}-byte file`);
+        const bytes = Buffer.allocUnsafe(size);
+        for(let at = 0; at < size;)
+        {
+            const { bytesRead } = await fd.read(bytes, at, size - at, at);
+            assert.ok(bytesRead, `${path}: truncated while reading`);
+            at += bytesRead;
+        }
+        return bytes;
+    }
+    finally
+    {
+        await fd.close();
+    }
+}
+
 const image = async path => path ? { buffer: Uint8Array.from(await readFile(path)).buffer } : undefined;
+async function nand_image(path)
+{
+    if(!path) return undefined;
+    const bytes = await read_exact(path, N97_FLASH_IMAGE_SIZE);
+    return { buffer: bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ?
+        bytes.buffer : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+}
 function rejection_image()
 {
     const bytes = new Uint8Array(0x2000);
@@ -47,7 +86,7 @@ const vm = new V86({ machine_type: "nokia-n97", graphics_adapter: "none", disabl
     autostart: false, log_level: 0, wasm_path, cpu_clock: { mode: "deterministic", instructions_per_ms },
     symbian: { rom: { buffer: Uint8Array.from(rom).buffer }, rom_sha256: sha256, application_processor_only: values["ap-only"],
         boot_media: await image(values["boot-media"]), bootrom: values["reject-probe"] ? rejection_image() : await image(values["boot-rom"]),
-        nand: values.nand ? { url: values.nand, disk_option: "read_write" } : undefined, rapido_compat_rom: compat } });
+        nand: await nand_image(values.nand), rapido_compat_rom: compat } });
 
 // The original TOC lookup and stores publish the physical pointer before the
 // chip-ROM call, even when the original lookup finds no ISASW entry.
@@ -152,7 +191,7 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
     const handoff = { boot_registers: [], cp15: [] };
     const cp15_reads = new Map([[0xC666B36C, ["data_remap", 0]], [0xC666B374, ["instruction_remap", 0]],
         [0xC666B37C, ["peripheral_remap", 0]], [0xC666B660, ["cache_dirty", 1]], [0xC666B6AC, ["block_status", 0]]]);
-    const observed = new Set([N97_BOOT_SOURCE, N97_BOOT_SOURCE + 4, N97_BOOT_SOURCE + 8, N97_RESET_STATUS,
+    const observed = new Set([N97_RAPIDO_SELECT, N97_BOOT_SOURCE, N97_BOOT_SOURCE + 4, N97_BOOT_SOURCE + 8, N97_RESET_STATUS,
         N97_SHARED_CONTROL + 4, N97_SHARED_CONTROL + 8, 0x20032CA8, 0x20032C44, N97_PLL_POWER, N97_PLL_POWER + 4, N97_PLL3, N97_PLL3_CONTROL]);
     let step = service_step;
     function record(owner, offset, width, direction, value)
@@ -206,11 +245,43 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
             {
                 const args = [0, 1, 2, 3].map(register);
                 const descriptor = [0, 4, 8, 12].map(offset => word(args[0] + offset));
-                handoff.rom_dispatch.push({ pc, step, args, descriptor, lr: register(14) });
+                const event = { pc, step, args, descriptor, lr: register(14) };
+                if(pc === 0xC6371454)
+                {
+                    // The original caller passes the translated address of the word after its completion field.
+                    const virtual = register(4);
+                    event.parameter_block = {
+                        virtual: virtual + 4,
+                        physical: supervisor_physical(virtual + 4, field, word),
+                        completion_word: word(supervisor_physical(virtual, field, word)),
+                    };
+                    event.ttbr = [field("ttbr0_el1"), field("ttbr1_el1")];
+                    assert.equal(event.parameter_block.physical, args[2]);
+                }
+                handoff.rom_dispatch.push(event);
             }
         }
+        if(thumb && pc === 0xC666B740 && !handoff.rom_selection)
+        {
+            // R3 is the original selector read masked by the driver's own code.
+            handoff.rom_selection = { pc, step, masked_id: register(3) };
+        }
+        if(thumb && pc === 0xC666B7F8 && handoff.rom_selection && handoff.rom_selection.arm === undefined)
+        {
+            const live_word = address => word(supervisor_physical(address, field, word));
+            Object.assign(handoff.rom_selection, { arm: live_word(0xC6807000), thumb: live_word(0xC6807004) });
+            // The wrapper translates a Thumb address taken from its literal pool
+            // and saves it on the stack before transferring to the ROM.
+            const virtual = live_word(0xC666B410);
+            handoff.rom_continuation = { virtual, physical: supervisor_physical(virtual, field, word) };
+        }
         if(pc === handoff.mmu_branch?.target && !handoff.rom_entry)
-            handoff.rom_entry = { pc, step, args: [0, 1, 2, 3].map(register), lr: register(14), thumb, sctlr: field("sctlr_el1") };
+        {
+            const sp = register(13);
+            handoff.rom_entry = { pc, step, args: [0, 1, 2, 3].map(register), r8: register(8), lr: register(14), sp,
+                stack_top: word(sp), thumb, sctlr: field("sctlr_el1") };
+            assert.equal(handoff.rom_entry.stack_top, handoff.rom_continuation?.physical);
+        }
         if(pc === 0xC666B6A4) handoff.cp15.push({ pc, step, write: "peripheral_remap", value: register(0) });
         if(pc === 0xC666B6F0 && (field("sctlr_el1") & 1))
         {
@@ -274,7 +345,51 @@ function observe_retail_handoff(cpu, service_step, isasw_record, pc_now, field, 
     assert.equal(handoff.mmu_off.branch_opcode, 0xE1A0F001);
     assert.equal(handoff.rom_entry?.pc, 0xFFFF8A94, "original MOV PC,R1 must reach the second RAPIDO ROM entry");
     assert.equal(handoff.rom_entry.thumb, false);
+
+    // The exact stock XIP was SHA-256 checked before starting. These are
+    // SecLdd.LDD literal-pool words, observed statically without invoking it.
+    const xip_word = address => rom.readUInt32LE(address - 0x80000000);
+    const descriptor_address = xip_word(0x800B9720);
+    handoff.secldd_selection = { descriptor_address, descriptor: [0, 4, 8, 12].map(offset => xip_word(descriptor_address + offset)),
+        selector_pc: 0x800BD820, masked_ids: [0x800BD878, 0x800BD87C].map(xip_word),
+        arm: xip_word(0x800BD8B0), thumb: xip_word(0x800BD86C) };
+    assert.deepEqual(handoff.secldd_selection.descriptor, handoff.rom_dispatch[0].descriptor);
+    assert.equal(handoff.rom_selection.arm, handoff.secldd_selection.arm);
+    assert.equal(handoff.rom_selection.thumb, handoff.secldd_selection.thumb);
+    assert.equal(handoff.rom_entry.r8, handoff.rom_selection.thumb);
+    assert.ok(handoff.secldd_selection.masked_ids.includes(handoff.rom_selection.masked_id));
     return handoff;
+}
+
+// Inventory the exact RM-505 CORE from the original VPL. Matches are byte
+// provenance only. This probe does not execute any embedded toolbox image.
+async function inventory_original_core(filename, descriptor)
+{
+    const bytes = await read_exact(filename, 111_508_110);
+    const sha256 = digest(bytes);
+    assert.equal(sha256, "d5b3cd2467edb812ab3a582b67168a962b47e40d222f90c52e89428bdbcf8a20", "expected stock RM-505 0576555 CORE");
+    const parsed = parse_fpsx(bytes);
+    const group = name => parsed.groups.find(item => item.label === name);
+    const loader = Buffer.from(fpsx_group_data(parsed, group("RAP3NAND")));
+    const key = Buffer.alloc(16);
+    descriptor.forEach((word, i) => key.writeUInt32LE(word, 4 * i));
+    const loader_descriptor = loader.indexOf(key);
+    const tlv = parsed.tlvs.find(item => item.type === 0xFA);
+    const toolbox = bytes.subarray(tlv.data_offset, tlv.data_offset + tlv.size);
+    const toolbox_loader = toolbox.indexOf(loader);
+    assert.equal(loader_descriptor, 0x15068);
+    assert.ok(toolbox_loader >= 0, "the stock toolbox contains a copy of the outer loader");
+    const toolbox_matches = [];
+    for(let at = toolbox.indexOf(key); at !== -1; at = toolbox.indexOf(key, at + 1))
+        toolbox_matches.push(at);
+    const pa_records = ["PASUBTOC", "PAPUBKEYS"].map(label => {
+        const { certificates } = group(label);
+        const { type, start, end } = certificates[0];
+        return { label, type, start, end, alternatives: certificates.length };
+    });
+    const flash_targets = [...new Set(parsed.groups.map(item => item.space.join(",")))];
+    return { sha256, flash_targets, pa_records, loader: { bytes: loader.length, sha256: digest(loader), descriptor_offset: loader_descriptor },
+        toolbox: { bytes: toolbox.length, loader_offset: toolbox_loader, descriptor_matches: toolbox_matches } };
 }
 
 // Observe a supervisor mapping from the live short-descriptor tables.
@@ -421,7 +536,9 @@ try
     assert.equal(pc_now(), N97_ROM_ADDRESS);
     if(values["boot-media"])
     {
-        console.log(JSON.stringify(observe_rapido_service(cpu, pc_now, field, register, word), null, 2));
+        const boot = observe_rapido_service(cpu, pc_now, field, register, word);
+        if(original_core) boot.original_core = await inventory_original_core(original_core, boot.handoff.rom_dispatch[0].descriptor);
+        console.log(JSON.stringify(boot, null, 2));
     }
     else
     {
