@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { N97_BML_USER_BLOCKS } from "../../../src/symbian/n97_flash.js";
 import { firmware_fixture } from "../fpsx_fixture.js";
 
 const directory = new URL("../../../build/symbian/test-package/", import.meta.url);
@@ -10,16 +11,60 @@ const nand_probe = Buffer.from(
     "a0e3b010c4e1015ba0e3b060d5e12c709fe5070056e10500001a2710a0e3" +
     "b010c4e11c109fe5b010c5e18010a0e3b010c4e1feffffea00e20100d107" +
     "000040e40100ffff00005aa50000", "hex");
-nand_probe.writeUInt32LE(0xEA000004, 0x50); // branch over the literal table to the LCD test
+nand_probe.writeUInt32LE(0xEA000004, 0x50); // branch over the literal table to the next test
 
 // The ARM guest paints four quadrants into RGB565 SDRAM and sends them
 // through DISPC and the two LoSSI targets.
-function display_probe()
+function device_probe()
 {
     const instructions = [], loads = [];
     const emit = (...words) => instructions.push(...words);
     const literal = (register, value) => { loads.push([instructions.length, register, value]); emit(0); };
     const branch = (condition, target) => emit(condition << 28 | 0x0A000000 | (target - instructions.length - 2) & 0xFFFFFF);
+    // r6/r7 are the old probe word and 0xFFFF, respectively. Only the first
+    // boot programs and then erases the two preceding user blocks.
+    emit(0xE1560007); // CMP r6, r7
+    const skip_erase = instructions.length;
+    emit(0);
+    const write_half = (address, value) => {
+        literal(0, address);
+        literal(1, value);
+        emit(0xE1C010B0); // STRH r1, [r0]
+    };
+    const require_half = (address, value) => {
+        literal(0, address);
+        emit(0xE1D010B0); // LDRH r1, [r0]
+        literal(2, value);
+        emit(0xE1510002, 0x1AFFFFFE); // CMP r1, r2; BNE .
+    };
+    const nand_command = (value, status, interrupt) => {
+        write_half(0x1E482, 0);
+        write_half(0x1E440, value);
+        require_half(0x1E480, status);
+        require_half(0x1E482, interrupt);
+    };
+    const first = N97_BML_USER_BLOCKS - 3, last = first + 1;
+    for(const block of [first, last])
+    {
+        write_half(0x1E200, block);
+        write_half(0x1E498, block);
+        nand_command(0x23, 0, 0x8000);
+        nand_command(0, 0, 0x8080);
+        write_half(0x400, 0x125A);
+        write_half(0x10020, 0x4567);
+        nand_command(0x80, 0, 0x8040);
+    }
+    write_half(0x1E200, first);
+    nand_command(0x95, 0x8800, 0x8020);
+    write_half(0x1E200, last);
+    nand_command(0x94, 0, 0x8020);
+    for(const block of [first, last])
+    {
+        write_half(0x1E200, block);
+        nand_command(0x71, 0, 0x8000);
+    }
+    instructions[skip_erase] = 0x1A000000 | instructions.length - skip_erase - 2; // BNE to display
+
     const buffer = 0x0A000000, dispc = 0x20024800, dimensions = 359 << 16 | 639;
     literal(0, buffer);
     for(const [left, right] of [[0xF800, 0x07E0], [0x001F, 0xFFFF]])
@@ -85,7 +130,7 @@ function display_probe()
     }
     return Buffer.from(Uint32Array.from(instructions).buffer);
 }
-const { parts, manifest } = firmware_fixture(Buffer.concat([nand_probe, display_probe()]));
+const { parts, manifest } = firmware_fixture(Buffer.concat([nand_probe, device_probe()]));
 mkdirSync(directory, { recursive: true });
 const files = { ...parts, "RM505-test.vpl": manifest("059TEST"), "RM505-other.vpl": manifest("059OTHER") };
 for(const [name, bytes] of Object.entries(files)) writeFileSync(new URL(name, directory), bytes);

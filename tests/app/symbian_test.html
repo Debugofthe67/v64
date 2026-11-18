@@ -522,7 +522,10 @@ try
     await check_n97_keyboard(console_frame, emulator);
     if(!local)
     {
-        await until(async () => (await worker_diagnostics(emulator)).symbian?.onenand?.programs === 1, "guest programs an erased page");
+        await until(async () => {
+            const flash = (await worker_diagnostics(emulator)).symbian?.onenand;
+            return flash?.programs === 3 && flash.erases === 2;
+        }, "guest programs three pages and verifies the two-block erase");
     }
     await power_off(local ? console_frame : await check_n97_keyboard_resume(console_frame, store, config.id));
     if(!local)
@@ -534,6 +537,11 @@ try
         };
         check(await word(nand) === 0xA55A && await word(window.second_nand) === 0xFFFF,
             "CPU Worker flushes the programmed cells to this VM only");
+        const written = await disk_file(disk_id(nand.path));
+        const block_length = N97_FLASH_BLOCK / N97_FLASH_PAGE * N97_FLASH_SLOT;
+        const erased = new Uint8Array(await written.slice(probe_page - 2 * block_length, probe_page).arrayBuffer());
+        check(erased.length === 2 * block_length && erased.every(byte => byte === 0),
+            "CPU Worker flushes both blocks' erased main and spare cells");
         const open_rom_settings = async () => {
             (await until(() => button(doc, "Edit settings…"), "edit settings")).click();
             const dialog = await until(() => doc.querySelector("dialog.settings-dialog"), "settings dialog");
@@ -591,7 +599,7 @@ try
             const chip = (await worker_diagnostics(worker)).symbian?.onenand;
             return chip?.reads && chip;
         }, "cold-open guest reads the same programmed page");
-        check(flash.programs === 0, "cold-open guest leaves the programmed page in place");
+        check(flash.programs === 0 && flash.erases === 0, "cold-open guest leaves the programmed page and erased blocks in place");
         reopened.contentDocument.querySelector("#symbian_send_sis").click();
         const occupied = await until(() => reopened.contentDocument.querySelector("dialog[open]"), "existing microSD notice");
         check(occupied.textContent.includes("A microSD is already inserted") && (await store.get(config.id)).symbian.sd.path === saved_card.path,

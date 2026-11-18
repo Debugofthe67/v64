@@ -116,7 +116,7 @@ RM-505 的 CS0 是单 die 256 MiB 的 SLC，块大小 128 KiB，页大小 2 KiB�
 | `0x09CA1000` | ROFS3 | `7ff2686472083798be88dd71c55a3952059207bbe7abcb74550741014ba64cf6` |
 | `0x0ABA0000` | UDA FAT16 BPB，逻辑字节数 `0x04917000` | `6b5f0abf82be73c4d3572cfda1098c7a148bfc3f29b40da55e9ebf1fba31f37b` |
 
-当前模型同步完成常规读、编程和单块擦除。理想介质的读出 ECC 为零。无法读取介质数据时返回控制器失败和 ECC 不可纠正位，ECC bypass 只屏蔽 ECC 位。硬件的 ECC 编码与单比特纠正、厂级坏块资料和完整 XSR/BML/STL 挂载仍待验证。接入 OneNAND 后，正常零售引导第 1,550 步到达 `0xFFFF1208`，须通过 RAPIDO 芯片 Boot ROM 才能进入完整存储初始化。
+当前模型同步完成常规读、编程和实际擦除。理想介质的读出 ECC 为零。无法读取介质数据时返回控制器失败和 ECC 不可纠正位，ECC bypass 只屏蔽 ECC 位。硬件的 ECC 编码、单比特纠正和厂级坏块资料仍待验证。接入 OneNAND 后，正常零售引导第 1,550 步到达 `0xFFFF1208`，须通过 RAPIDO 芯片 Boot ROM 才能进入完整存储初始化。
 
 D3000 的 INTo 经 MEMCONT[10] 接到 GENIO22。原版 `mednand.pdd` 设置 bank 0 的输入和上升沿，`egpio.dll` 给这一输入分配 IRQ 245。OneNAND 的 IOBE、INTpol 和完成位共同决定引脚电平。GPIO 保留边沿并经 ICU 提交，恢复快照时保留待处理状态。原版 PDD 另在 `0x800DF9B0` 向闪存接口配置地址 PA `0x20034094` 写入 `0x300`。当前模型保存此配置字，既有 CS0 地址解码不依赖该字。[Nokia RM-505/RM-507 板图第 2 页](https://www.s-manuals.com/manuals/phone/nokia/nokia_n97_rm-505_rm-507_service_schematics_v4.pdf) · [Samsung MuxOneNAND 2G §§2.8.19、7.1](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf)
 
@@ -145,6 +145,18 @@ node tools/symbian/nand-pdd-n97.mjs <extraction-directory> --bml
 node tools/symbian/onenand-n97.mjs <output> <firmware-directory>/RM-505_22.0.110_prd.core.C00
 node tools/symbian/boot-n97.mjs <output>/rom.xip.bin --boot-media <output>/rapido-boot.bin --nand <output>/onenand.img
 ```
+
+### 多块擦除与原版 STL 写入
+
+原版 `mednand.pdd` 在 `0x800F5A98` 用 `0x95` 锁存地址，在 `0x800F5B7C` 用 `0x94` 提交，批次最多 64 块。锁存完成时 `F241=0x8020`，`F240=0x8800` 保留忙状态。若最后一块受保护，先前锁存的地址可由下一次有效提交继续使用。中间块失败时，其余可擦除块继续执行。原版在 `0x800F4554` 用 `0x71` 分别检查每块。该命令以 `F241=0x8000` 通知完成，由 `F240` 的错误位反映该块结果。验证读取主区和 spare。开始其他命令或复位可取消尚未提交的批次。快照保留锁存地址及最近一次批次失败，旧快照从空批次恢复。[Samsung MuxOneNAND 2G §§2.8.21–22、3.13.2–3](https://www.kontest.ru/datasheet/SAMSUNGELECTR0NICS/KFxxG16Q2M.pdf)
+
+```sh
+node tools/symbian/nand-pdd-n97.mjs <extraction-directory> --stl-erase
+```
+
+探针使用带 BML 预置的 0576555 提取目录。它仅在一次性副本上运行原版 `STL_Format`，按原版配置准备分区 8 和 10。在新启动的 AP 内核中，原版 PDD 完成硬件创建阶段并返回 0。探针停在通知异步队列之前，随后调用原版分区查询。`PartitionInfo` 返回 `KErrCompletion (-17)`，原版 LocDrv 将其作为成功。分区 8 的原版异步写入锁存 `0x7B7–0x7B3`，提交 `0x7B8` 并逐块验证六块。同次开机中，`STL_Read` 从扇区 0、3377、2048 分别读回 4、2、16 个扇区，与 UDA 原始字节完全一致。
+
+关闭 STL 并冷开同一副本后，原版 STL 对这三段返回擦除值。原版 `0x800E4AA8` 验证单元头中的主区 ECC，当前编程留下的空 ECC 使其跳过已写单元。本次交付验证了原版 STL 同次开机读写及硬件多块擦除。普通新机仍使用上节的 BML 预置，生产可冷读的 STL FAT16 UDA 与整机文件服务器挂载仍待验收。
 
 ### 从原版 ROFS 按路径读取文件
 

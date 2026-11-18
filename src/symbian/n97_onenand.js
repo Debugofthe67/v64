@@ -11,6 +11,7 @@ const BLOCK_SLOT = PAGES_PER_BLOCK * N97_FLASH_SLOT;
 const MASTER = 0x8000, READ = 0x80, WRITE = 0x40, ERASE = 0x20, RESET = 0x10;
 const ERROR = 0x400, LOCK_ERROR = 0x4000;
 const LOAD_ERROR = ERROR | 0x2000, PROGRAM_ERROR = ERROR | 0x1000, ERASE_ERROR = ERROR | 0x800;
+const ERASE_ONGOING = 0x8800, ERASE_BATCH_LIMIT = 64;
 const LOCKED = 2, UNLOCKED = 4, LOCKED_TIGHT = 1;
 const CONFIG1 = 0xF221;
 const IOBE = 0x20, INT_POLARITY = 0x40;
@@ -28,6 +29,7 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
     const locks = new Uint8Array(BLOCK_COUNT);
     let regs = new Map();
     let boot_command = 0;
+    let erase_queue = new Set(), failed_erases = new Set();
     const blank_block = new Uint8Array(BLOCK_SLOT);
     let reads = 0, programs = 0, erases = 0;
     const offset_page = page => N97_FLASH_HEADER + page * N97_FLASH_SLOT;
@@ -59,6 +61,8 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
         regs.set(CONFIG1, config1);
         regs.set(INTERRUPT, MASTER | interrupt);
         boot_command = 0;
+        erase_queue.clear();
+        failed_erases.clear();
     }
 
     function reset()
@@ -151,15 +155,74 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
         return mode;
     }
 
+    // Samsung §§3.13.2–3.13.3. Address latches finish with EI set while
+    // the controller still reports OnGo. Only 0x94 commits the batch.
+    function queue_erase(block)
+    {
+        if(block >= BLOCK_COUNT || !erase_queue.has(block) && erase_queue.size === ERASE_BATCH_LIMIT - 1)
+        {
+            return ERASE_ERROR | (erase_queue.size ? ERASE_ONGOING : 0);
+        }
+        erase_queue.add(block);
+        return ERASE_ONGOING;
+    }
+
+    function erase_block(block)
+    {
+        if(locks[block] !== UNLOCKED) return ERASE_ERROR | LOCK_ERROR;
+        try
+        {
+            write_bytes(offset_page(block * PAGES_PER_BLOCK), blank_block);
+            erases++;
+            return 0;
+        }
+        catch(e) { return ERASE_ERROR; }
+    }
+
+    function commit_erase(block)
+    {
+        // A protected final address prevents the operation from starting.
+        // Keep the original address latches for the next valid final address.
+        const pending = erase_queue.size ? ERASE_ONGOING : 0;
+        if(block >= BLOCK_COUNT) return pending | ERROR;
+        if(locks[block] !== UNLOCKED) return pending | ERASE_ERROR | LOCK_ERROR;
+
+        erase_queue.add(block);
+        failed_erases.clear();
+        let result = 0;
+        for(const address of erase_queue)
+        {
+            const error = erase_block(address);
+            if(error) failed_erases.add(address);
+            result |= error;
+        }
+        erase_queue.clear();
+        return result;
+    }
+
+    function verify_erase(block)
+    {
+        if(block >= BLOCK_COUNT || failed_erases.has(block)) return ERASE_ERROR;
+        try
+        {
+            const bytes = buffer.get_from_cache(offset_page(block * PAGES_PER_BLOCK), BLOCK_SLOT);
+            if(bytes?.length === BLOCK_SLOT && bytes.every(byte => !byte)) return 0;
+        }
+        catch(e) { /* An unreadable block cannot verify as erased. */ }
+        return ERASE_ERROR;
+    }
+
     function run_command(command)
     {
         regs.set(INTERRUPT, 0);
         update_interrupt();
+        if(command !== 0x94 && command !== 0x95) erase_queue.clear();
         if(command === 0xF0 || command === 0xF3)
         {
             if(command === 0xF3) reset_registers(RESET, 0x4000 | regs.get(CONFIG1) & 0xE0);
             else
             {
+                failed_erases.clear();
                 regs.set(ECC, 0);
                 regs.set(STATUS, 0);
                 regs.set(INTERRUPT, MASTER | RESET);
@@ -176,15 +239,16 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
             case 0: case 0x13: case 0x80: case 0x1A:
                 mode = transfer(command, block);
                 break;
+            case 0x95:
+                mode = ERASE;
+                regs.set(STATUS, queue_erase(block));
+                break;
             case 0x94:
                 mode = ERASE;
-                if(block >= BLOCK_COUNT) regs.set(STATUS, ERROR);
-                else if(locks[block] !== UNLOCKED) regs.set(STATUS, ERASE_ERROR | LOCK_ERROR);
-                else
-                {
-                    try { write_bytes(offset_page(block * PAGES_PER_BLOCK), blank_block); erases++; }
-                    catch(e) { regs.set(STATUS, ERASE_ERROR); }
-                }
+                regs.set(STATUS, commit_erase(block));
+                break;
+            case 0x71: // Verify sets the master completion bit with no BufferRAM transfer.
+                regs.set(STATUS, verify_erase(block));
                 break;
             case 0x23: case 0x2A: case 0x2C: {
                 const address = regs.get(0xF24C);
@@ -208,6 +272,11 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
     {
         const previous = boot_command;
         boot_command = value === 0x90 || value === 0xE0 ? value : 0;
+        if(boot_command && erase_queue.size)
+        {
+            erase_queue.clear();
+            regs.set(STATUS, 0);
+        }
         if(value === 0xF0) run_command(0xF3);
         else if(value === 0 && previous === 0xE0)
         {
@@ -285,7 +354,7 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
         status: () => ({ "capacity": N97_FLASH_SIZE, "manufacturer": NAND_ID[0], "device": NAND_ID[1],
             "revision": NAND_ID[2], "reads": reads, "programs": programs, "erases": erases }),
         get_state: () => [buffer.get_state(), Array.from(regs), boot.slice(), boot_spare.slice(), data.slice(), spare.slice(), locks.slice(),
-            boot_command, reads, programs, erases],
+            boot_command, reads, programs, erases, [...erase_queue], [...failed_erases]],
         set_state(state)
         {
             buffer.set_state(state[0]);
@@ -295,7 +364,9 @@ export function create_n97_onenand(io, buffer, rom_digest, set_interrupt = () =>
             data.set(state[4]);
             spare.set(state[5]);
             locks.set(state[6]);
-            [boot_command, reads, programs, erases] = state.slice(7);
+            [boot_command, reads, programs, erases] = state.slice(7, 11);
+            erase_queue = new Set(state[11]);
+            failed_erases = new Set(state[12]);
         },
         check_state: state => check_disk_state("symbian_nand", buffer, state[0]),
     };

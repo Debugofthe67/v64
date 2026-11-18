@@ -283,3 +283,130 @@ test("N97 OneNAND programs 1→0, erases a block and preserves per-VM media acro
     assert.equal(d.word(DATA), 0xFFFF);
     assert.equal(d.word(SPARE), 0xFFFF);
 });
+
+test("OneNAND latches and restores erase addresses, retries a locked final block and verifies individual results", async t => {
+    const directory = mkdtempSync(join(tmpdir(), "v86-n97-nand-batch-"));
+    const file = join(directory, "flash.img"), rom = Uint32Array.of(0xEAFFFFFE).buffer;
+    make_image(file, rom);
+    const a = await start(rom, file);
+    t.after(async () => {
+        await a.vm.destroy();
+        rmSync(directory, { recursive: true, force: true });
+    });
+    const device = a.vm.v86.cpu.devices.n97_onenand;
+    const first = 0x3FF, locked = 0x400, last = 0x7FF, untouched = 0x123;
+    for(const block of [first, locked, last, untouched])
+    {
+        a.select(block, 63 << 2);
+        a.store(UNLOCK, block);
+        assert.equal(a.command(0x23), 0);
+        assert.equal(a.command(0), 0);
+        a.store(DATA, block === untouched ? 0xFFFF : 0x4567);
+        a.store(SPARE, 0x1234);
+        assert.equal(a.command(0x80), 0);
+    }
+    a.store(UNLOCK, locked);
+    assert.equal(a.command(0x2A), 0);
+    assert.equal(a.command(0x71), 0xC00, "verification checks spare bytes even with erased main data");
+    assert.equal(a.word(INTERRUPT), 0x8000);
+
+    a.store(CONFIG, 0x40E0);
+    const controller_before_batch_support = device.get_state().slice(0, 11);
+    for(const block of [first, locked | 0x8000])
+    {
+        a.select(block);
+        assert.equal(a.command(0x95), 0x8800);
+        assert.equal(a.word(INTERRUPT), 0x8020);
+        assert.ok(device.interrupt_level());
+    }
+    assert.equal(a.command(0x94), 0xCC00, "a protected final address keeps the queue");
+    assert.equal(a.word(INTERRUPT), 0x8020);
+    assert.equal(device.status().erases, 0);
+    a.store(INTERRUPT, 0);
+    assert.equal(device.interrupt_level(), false);
+    const saved = await a.vm.save_state();
+    a.select(first, 63 << 2);
+    assert.equal(a.command(0), 0, "a new command cancels the address latches");
+    assert.equal(a.word(DATA), 0x4567);
+    assert.equal(a.word(SPARE), 0x1234);
+    assert.equal(device.status().erases, 0);
+
+    await a.vm.restore_state(saved);
+    assert.equal(a.word(STATUS), 0xCC00);
+    assert.equal(a.word(INTERRUPT), 0);
+    assert.equal(device.interrupt_level(), false);
+    device.set_state(controller_before_batch_support);
+    assert.equal(device.get_state()[11].length, 0, "an older controller snapshot has no saved latches");
+    await a.vm.restore_state(saved);
+    assert.equal(a.command(0xF0), 0, "hot reset cancels a pending batch");
+    assert.equal(device.get_state()[11].length, 0);
+    assert.equal(device.status().erases, 0);
+
+    await a.vm.restore_state(saved);
+    a.select(last | 0x8000);
+    assert.equal(a.command(0x94), 0x4C00, "both unlocked targets erase despite another queued block failing");
+    assert.equal(a.word(INTERRUPT), 0x8020);
+    assert.equal(device.status().erases, 2);
+    for(const [block, expected] of [[first, 0], [last, 0], [locked, 0xC00], [untouched, 0xC00]])
+    {
+        a.select(block, 63 << 2);
+        assert.equal(a.command(0x71), expected);
+        assert.equal(a.word(INTERRUPT), 0x8000);
+        assert.equal(a.command(0), 0);
+        assert.equal(a.word(DATA), block === locked ? 0x4567 : 0xFFFF);
+        assert.equal(a.word(SPARE), expected ? 0x1234 : 0xFFFF);
+    }
+    await assert.rejects(a.vm.restore_state(saved), /generation/i);
+    await a.vm.restart("power-on");
+    for(const [block, expected] of [[first, 0], [last, 0], [locked, 0xC00], [untouched, 0xC00]])
+    {
+        a.select(block);
+        assert.equal(a.command(0x71), expected, "erase results survive a cold reset");
+    }
+});
+
+test("OneNAND bounds an erase batch and reports individual backing-store failures", () => {
+    const block_size = 64 * N97_FLASH_SLOT;
+    const failed = 19;
+    const changed = [];
+    const backend = {
+        byteLength: N97_FLASH_IMAGE_SIZE,
+        get_from_cache(offset, length) {
+            return offset === 0 ? n97_flash_header(digest) : new Uint8Array(length);
+        },
+        set(offset, bytes, done) {
+            assert.equal(bytes.length, block_size);
+            const block = (offset - N97_FLASH_HEADER) / block_size;
+            if(block === failed) done(new Error("test media erase failed"));
+            else { changed.push(block); done(); }
+        },
+        get_state: () => [],
+        set_state() {},
+    };
+    let handler;
+    const device = create_n97_onenand({ register_mmio(base, size, h) { handler = h; } }, backend, digest);
+    const a = access(handler.read, handler.write);
+    assert.equal(a.command(0x27), 0);
+    a.select(0x8800);
+    assert.equal(a.command(0x95), 0xC00);
+    assert.equal(device.get_state()[11].length, 0);
+    for(let block = 0; block < 63; block++)
+    {
+        a.select(block);
+        assert.equal(a.command(0x95), 0x8800);
+    }
+    a.select(64);
+    assert.equal(a.command(0x95), 0x8C00);
+    assert.deepEqual(changed, []);
+    a.select(63);
+    assert.equal(a.command(0x94), 0xC00);
+    assert.deepEqual(changed, Array.from({ length: 64 }, (_, n) => n).filter(n => n !== failed));
+    assert.equal(device.status().erases, 63);
+    a.select(failed);
+    assert.equal(a.command(0x71), 0xC00, "a failed erase cannot verify using pre-existing erased bytes");
+    const saved = device.get_state();
+    device.reset();
+    assert.equal(a.command(0x71), 0);
+    device.set_state(saved);
+    assert.equal(a.command(0x71), 0xC00, "the last batch failure is preserved in controller snapshots");
+});

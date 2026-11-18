@@ -3,7 +3,7 @@
 // RM-505 AP kernel, using a disposable copy of an FPSX-derived OneNAND.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { constants, copyFileSync, createReadStream, mkdtempSync, rmSync } from "node:fs";
+import { closeSync, constants, copyFileSync, createReadStream, mkdtempSync, openSync, readSync, rmSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,8 +12,11 @@ import { V86 } from "../../src/main.js";
 import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
 import { N97_BML_USER_BLOCKS, N97_FLASH_BLOCK, N97_FLASH_HEADER, N97_FLASH_NAME, N97_FLASH_PAGE, N97_FLASH_SLOT } from "../../src/symbian/n97_flash.js";
 
-const { positionals: [directory, ...extra], values } = parseArgs({ allowPositionals: true, options: { bml: { type: "boolean" } } });
-if(!directory || extra.length) throw new Error("Usage: node tools/symbian/nand-pdd-n97.mjs <extraction-directory> [--bml]");
+const { positionals: [directory, ...extra], values } = parseArgs({
+    allowPositionals: true, options: { bml: { type: "boolean" }, "stl-erase": { type: "boolean" } },
+});
+if(!directory || extra.length || values.bml && values["stl-erase"])
+    throw new Error("Usage: node tools/symbian/nand-pdd-n97.mjs <extraction-directory> [--bml | --stl-erase]");
 const scratch = mkdtempSync(join(tmpdir(), "v86-n97-pdd-"));
 const nand = join(scratch, N97_FLASH_NAME);
 
@@ -25,7 +28,21 @@ async function user_region_sha256()
     return hash.digest("hex");
 }
 
-async function probe()
+function sample_uda_sectors()
+{
+    const fd = openSync(join(directory, "uda.fat"), "r");
+    try
+    {
+        return [[0, 4], [3377, 2], [2048, 16]].map(([sector, count]) => {
+            const bytes = Buffer.alloc(count * 512);
+            assert.equal(readSync(fd, bytes, 0, bytes.length, sector * 512), bytes.length);
+            return { sector, count, bytes };
+        });
+    }
+    finally { closeSync(fd); }
+}
+
+async function probe(mode, samples = [])
 {
     const vm = new V86({ machine_type: "nokia-n97", graphics_adapter: "none", disable_jit: true, autostart: false,
         cpu_clock: { mode: "deterministic", instructions_per_ms: 8000 }, log_level: 0,
@@ -96,6 +113,17 @@ async function probe()
                 start = end;
             }
         }
+        function read_guest(va, length)
+        {
+            const bytes = Buffer.alloc(length);
+            for(let at = 0; at < length;)
+            {
+                const count = Math.min(length - at, 4096 - ((va + at) & 4095));
+                bytes.set(cpu.read_blob_physical(physical(va + at), count), at);
+                at += count;
+            }
+            return bytes;
+        }
         const put = (va, ...values) => write_guest(va, new Uint8Array(Uint32Array.from(values).buffer));
         const read = va => cpu.read32_physical(physical(va));
         const stack = register(13) - 0x180;
@@ -117,7 +145,8 @@ async function probe()
         }
 
         // Trace the actual bus traffic while passing every operation to the board.
-        const ids = [], scanned_blocks = new Set(), claims = [];
+        const ids = [], scanned_blocks = new Set(), claims = [], erase_commands = [];
+        let trace_erases = false;
         let erased_reads = 0, populated_reads = 0, block = 0, timing, input, rising;
         const read_mmio = io.mmio_read.bind(io), write_mmio = io.mmio_write.bind(io);
         io.mmio_read = (owner, offset, width) => {
@@ -142,6 +171,11 @@ async function probe()
             if(address === 0x1E200) block = Number(value) & 0x7FF;
             if(address === 0x1E440 && (value === 0n || value === 0x13n)) scanned_blocks.add(block);
             write_mmio(owner, offset, width, value);
+            if(trace_erases && address === 0x1E440 && [0x95n, 0x94n, 0x71n].includes(value))
+            {
+                erase_commands.push({ command: hex(Number(value)), block: hex(block),
+                    status: hex(Number(read_mmio(owner, 0x1E480, 2))), interrupt: hex(Number(read_mmio(owner, 0x1E482, 2))) });
+            }
         };
 
         assert.equal(call(0x800DEEE8, [0xFFFFFFFF]), 0); // stock media extension entry
@@ -152,15 +186,30 @@ async function probe()
         const factory = call(0x800DF0C8), slot = allocate(16);
         assert.equal(read(read(factory) + 40), 0x800DF984);
         put(stack, factory + 32); // TVersion reference from the original factory
-        // BML verification uses the initialized PDD hardware before automatic
-        // STL format can act on the imported UDA. The raw-media probe also runs
-        // the full hardware phase, stopping before its async completion callback.
-        const detected = call(0x800DF984, [factory, slot, read(media + 4), 0], values.bml ? 0x800DF2D4 : 0x800DFA8C);
+        // BML and explicit STL formatting stop before automatic STL initialization.
+        const before_stl = mode === "bml" || mode === "stl-format";
+        const detected = call(0x800DF984, [factory, slot, read(media + 4), 0], before_stl ? 0x800DF2D4 : 0x800DFA8C);
         assert.equal(detected, 0);
         assert.equal(timing, 0x300);
         assert.deepEqual([input, rising], [1 << 22, 1 << 22]);
         const identity = [0xEC, 0x40, 0x121];
-        if(values.bml)
+        if(mode === "stl-format")
+        {
+            const configs = read(0x800DF8F0), partitions = read(0x800DF904);
+            const formatted = [];
+            for(let index = 0; index < 3; index++)
+            {
+                const id = read(partitions + index * 4);
+                if(id !== 8 && id !== 10) continue; // writable volumes present in 0576555's type EE
+                const result = call(0x800E1CDC, [0, id, configs + index * 12, 0]);
+                assert.equal(result, 0, "stock STL_Format");
+                formatted.push(id);
+            }
+            assert.deepEqual(formatted, [8, 10]);
+            assert.deepEqual(ids.slice(0, 3), identity);
+            return { formatted, ...cpu.devices.n97_onenand.status() };
+        }
+        if(mode === "bml")
         {
             const open = call(0x800F059C, [0]);
             assert.equal(open, 0, "stock BML_Open");
@@ -178,13 +227,7 @@ async function probe()
                 // BML_Read(volume, sector, count, destination, OOB, flags).
                 put(stack, 0, 6);
                 assert.equal(call(0x800F10C8, [0, address / 512, N97_FLASH_PAGE / 512, buffer]), 0);
-                const content = Buffer.alloc(N97_FLASH_PAGE);
-                for(let at = 0; at < content.length;)
-                {
-                    const count = Math.min(content.length - at, 4096 - ((buffer + at) & 4095));
-                    content.set(cpu.read_blob_physical(physical(buffer + at), count), at);
-                    at += count;
-                }
+                const content = read_guest(buffer, N97_FLASH_PAGE);
                 const sha256 = createHash("sha256").update(content).digest("hex");
                 assert.equal(sha256, expected, label);
                 return { address: hex(address), label, sha256 };
@@ -198,11 +241,68 @@ async function probe()
             return { firmware, drives, identity, open, close, pages, after_open, after_read,
                 after_close: cpu.devices.n97_onenand.status() };
         }
-        assert.deepEqual(ids, [...identity, ...identity, ...identity]);
-
         const driver = read(slot), info = allocate(0x800), partition_info = read(read(driver) + 20);
         assert.equal(partition_info, 0x800E0458); // DMediaDriverNand::PartitionInfo
         const result = call(partition_info, [driver, info]) | 0;
+        if(mode === "stl-write" || mode === "stl-cold")
+        {
+            assert.deepEqual(ids, identity);
+            assert.equal(result, -17, "LocDrv treats KErrCompletion as a successful PartitionInfo");
+            const after_open = cpu.devices.n97_onenand.status();
+            const buffer = allocate(Math.max(...samples.map(sample => sample.bytes.length)));
+            const completed = allocate(4);
+            const transfers = [];
+            trace_erases = true;
+            for(const { sector, count, bytes } of samples)
+            {
+                const steps = [];
+                if(mode === "stl-write")
+                {
+                    for(let written = 0; written < count;)
+                    {
+                        write_guest(buffer, bytes.subarray(written * 512));
+                        put(completed, 0);
+                        put(stack, buffer, completed);
+                        assert.equal(call(0x800E29AC, [0, 8, sector + written, count - written]), 0, "stock STL_Write");
+                        const accepted = read(completed);
+                        assert.ok(accepted > 0 && accepted <= count - written);
+                        let progress = 0x20000, ticks = 0;
+                        while(progress === 0x20000 && ticks < 1000)
+                        {
+                            progress = call(0x800E27D8, [0, 1]);
+                            ticks++;
+                        }
+                        assert.equal(progress, 0x10000, "stock asynchronous STL completion");
+                        steps.push({ accepted, ticks });
+                        written += accepted;
+                    }
+                }
+                // Clear SDRAM first so readback cannot pass by seeing the write buffer.
+                write_guest(buffer, new Uint8Array(bytes.length).fill(0xAD));
+                put(stack, buffer);
+                assert.equal(call(0x800E2724, [0, 8, sector, count]), 0, "stock STL_Read");
+                const contents = read_guest(buffer, bytes.length);
+                const matches_uda = contents.equals(bytes);
+                if(mode === "stl-write") assert.ok(matches_uda, "same-boot STL sector readback");
+                transfers.push({ sector, count, steps, matches_uda, erased: contents.every(byte => byte === 0xFF),
+                    sha256: createHash("sha256").update(contents).digest("hex") });
+            }
+            if(mode === "stl-write")
+            {
+                const queued = erase_commands.filter(row => row.command === "0x95");
+                const committed = erase_commands.filter(row => row.command === "0x94");
+                const verified = erase_commands.filter(row => row.command === "0x71");
+                assert.ok(queued.length > 0 && committed.length > 0);
+                assert.ok(queued.every(row => row.status === "0x8800" && row.interrupt === "0x8020"));
+                assert.ok(committed.every(row => row.status === "0x0" && row.interrupt === "0x8020"));
+                assert.ok(verified.every(row => row.status === "0x0" && row.interrupt === "0x8000"));
+                assert.deepEqual(new Set(verified.map(row => row.block)), new Set([...queued, ...committed].map(row => row.block)));
+            }
+            assert.equal(call(0x800E2654, [0, 8]), 0, "stock STL_Close");
+            return { firmware, drives, identity, partition_info: result, after_open, transfers, erase_commands,
+                after_close: cpu.devices.n97_onenand.status() };
+        }
+        assert.deepEqual(ids, [...identity, ...identity, ...identity]);
         assert.equal(result, -2);
         assert.deepEqual(bml_status, [0x80110000]);
         assert.deepEqual([...scanned_blocks], Array.from({ length: 44 }, (_, i) => 0x7D4 + i));
@@ -237,16 +337,25 @@ async function probe()
 try
 {
     copyFileSync(join(directory, N97_FLASH_NAME), nand, constants.COPYFILE_FICLONE);
-    const user_before = values.bml ? await user_region_sha256() : null;
-    const first = await probe();
-    let result = first;
-    if(values.bml)
+    let result;
+    if(values["stl-erase"])
     {
+        const samples = sample_uda_sectors();
+        const format = await probe("stl-format");
+        const write = await probe("stl-write", samples);
+        const cold_reopen = await probe("stl-cold", samples);
+        result = { format, write, cold_reopen };
+    }
+    else if(values.bml)
+    {
+        const user_before = await user_region_sha256();
+        const first = await probe("bml");
         assert.equal(await user_region_sha256(), user_before, "first BML mount left all user cells unchanged");
-        const cold_reopen = await probe();
+        const cold_reopen = await probe("bml");
         assert.equal(await user_region_sha256(), user_before, "cold BML reopen left all user cells unchanged");
         result = { first, cold_reopen, user_region_sha256: user_before };
     }
+    else result = await probe("raw");
     console.log(JSON.stringify(result, null, 2));
 }
 finally { rmSync(scratch, { recursive: true, force: true }); }
