@@ -438,6 +438,9 @@ GLESExecutor.prototype.command = function(record)
         case "glEGLImageTargetTexture2D": return this.invalidate_texture(c, args[0]);
         case "glBufferData": return this.buffer_data(c, args, false);
         case "glBufferSubData": return this.buffer_data(c, args, true);
+        case "glUnmapBufferAEMU":
+            if(args[3] & 2 && !(args[3] & 16)) this.buffer_data(c, [args[0], args[1], args[2], args[4]], true);
+            return undefined;
         case "glRenderbufferStorage": case "glEGLImageTargetRenderbufferStorage": return this.renderbuffer_storage(c);
         case "glVertexAttribPointerData":
             // (the client array's data, tight, from the draw's first vertex: the encoder's)

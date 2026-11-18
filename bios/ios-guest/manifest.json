@@ -6,13 +6,13 @@
   "sources": {
     "tools/ios/guest/build-gles.sh": "b922f014ca6fdc1d9fdbc799c356bd1e30df9d74b60c2c2241970883c7c92e25",
     "tools/ios/guest/eagl.c": "292d560a2110bcd340d0a90287257aa313d7f2bdd0f697f09a7b40494521fefe",
-    "tools/ios/guest/gli-context.c": "4662a28a03b54d591fbc8ee1d7cadc8ea00b975e70fdb4c36258005a8ec81a55",
+    "tools/ios/guest/gli-context.c": "d8e1cd29fcae7f1a90a9e86177ea564ef77645a0ed30429821b2dd31dc9dd4f1",
     "tools/ios/guest/gli-photo.c": "def705590893cbca209f124200513cf4fa4b9be82755a5a2747d628470dbc927",
     "tools/ios/guest/gli-gates.s": "0fef9009ae9d35adcaa5f456d5bdb8526624ca0eefec064b7828d6780d578ffc",
     "tools/ios/guest/gles-transport.h": "2fd6ee9caf41015569b524bba257ba358c513b793039e1a657ead0b01b2ea8ab",
     "tools/ios/guest/gles-driver.h": "8973b472ab733c10759e2e4912a5f280a8cf01be4c99efbcfa8969fbeb590a0d",
-    "tools/ios/guest/gli-surface.h": "94b9a54ec76a73ccaf29e16fc64a41606b5ed791e8542ef3f0b2ce94b84aa4f7",
-    "tools/ios/guest/gli-draw.h": "50bec781957d29b5436e86b5f249f103cfdc3f1d5917f305b1738a33b6c3612a",
+    "tools/ios/guest/gli-surface.h": "875209e0a5160a9aec91bb3e5247b368c16de7cfe7df6700fd722744a38e5a9e",
+    "tools/ios/guest/gli-draw.h": "f079a9d3e88fc736fa9c85e331b365cea820f4086cacc41acb8655c965cbb749",
     "tools/ios/guest/gli-texture.h": "8c259303df239bf648848e1703b82cdbef8f2c9e0896a0cae303abde35649fbb",
     "tools/ios/guest/gli-query.h": "caec9ce60982e5019a3026aba3787cd94831ba8a6b19a2ac4f21a56da63efac0",
     "tools/ios/guest/gli-uniform.h": "73f952d90156e0af6e64ae6098bbca1ec9eef58e7540c9e5f53003c4528216b3",
@@ -26,6 +26,6 @@
     "src/gles/gles_wire.js": "6c54987c71dc9fb849b6180511a37cce6d0ceb77bb9e042adf9cd2c8aec8e2a0"
   },
   "files": {
-    "libv86gles.dylib": "ffd1102a9463850da5e03e9d265398c134f2bb565d57a101c61ab6eacbc25b3c"
+    "libv86gles.dylib": "057f20c1f179d0a1416a1b71dde32504cd69d5a7141a5c19f999f47387f3c11e"
   }
 }

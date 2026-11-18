@@ -70,7 +70,8 @@ const BUFFER_TARGETS = new Map([[GL3.ARRAY_BUFFER, "array"], [GL3.ELEMENT_ARRAY_
 /** The buffer targets only GLES 3.1 has */
 const TARGETS31 = new Set([0x90D2, 0x92C0, 0x90EE, 0x8F3F]);
 /** @return {boolean} whether a context of its version has the buffer target */
-const target_ok = (c, target) => BUFFER_TARGETS.has(target) && (c.version >= 31 || !TARGETS31.has(target));
+const target_ok = (c, target) => c.version < 30 ? target === 0x8892 || target === 0x8893 :
+    BUFFER_TARGETS.has(target) && (c.version >= 31 || !TARGETS31.has(target));
 const USAGES3 = new Set([0x88E0, 0x88E1, 0x88E2, 0x88E4, 0x88E5, 0x88E6, 0x88E8, 0x88E9, 0x88EA]);
 const COMPARE_FUNCS = new Set([0x0200, 0x0201, 0x0202, 0x0203, 0x0204, 0x0205, 0x0206, 0x0207]);
 const WRAPS = new Set([GL3.REPEAT, GL3.CLAMP_TO_EDGE, GL3.MIRRORED_REPEAT]);
@@ -910,9 +911,10 @@ export function gles3_handlers(h)
             }
             buffer.mapped = { offset, length, access };
             // (the mapped bytes: the CPU side's copy; of a buffer the page wrote since, the page's: the host asks for them, stale_map)
+            const read_snapshot_buffer = c.version < 30 && !buffer.bytes;
             const bytes = bytes_of(shadow, buffer);
             if(bytes && mapped && mapped.size) mapped.data.set(bytes.subarray(offset, offset + Math.min(length, mapped.size)));
-            if(buffer.gpu_newer && bytes && !(access & (GL.MAP_INVALIDATE_RANGE_BIT | GL.MAP_INVALIDATE_BUFFER_BIT)))
+            if((buffer.gpu_newer || read_snapshot_buffer) && bytes && !(access & (GL.MAP_INVALIDATE_RANGE_BIT | GL.MAP_INVALIDATE_BUFFER_BIT)))
             {
                 shadow.stale_map = { name: buffer_binding(c, target), offset, length, bytes };
             }

@@ -472,6 +472,7 @@ static void object_names(struct context *ctx, unsigned op, unsigned target, int 
                 for(unsigned unit = 0; unit < ctx->texture_limit; unit++)
                     if(ctx->textures[unit] == names[i]) ctx->textures[unit] = 0;
             if(target) replace_binding(ctx->group, target, names[i], 0);
+            if(op == gles2_glDeleteBuffers) release_buffer_mapping(ctx->group, names[i]);
         }
         else if(!SEND(c, op, 1, 4) || !gles_read(c, &names[i], 4)) { ctx->driver.ok = 0; return; }
     }

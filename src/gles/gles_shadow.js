@@ -473,9 +473,10 @@ GLESShadow.prototype.call = function(handle, command, args)
     const context = this.contexts.get(handle);
     if(!context) return { ret: 0, keep: false };
     const name = command.name, base = name.replace(/OES$/, "");
+    const native_map = this.native_buffers && (name === "glMapBufferRangeAEMU" || name === "glUnmapBufferAEMU");
     const handler = context.api === 1 && (GLES1_HANDLERS[name] || GLES1_HANDLERS[base]) ||
         context.version >= 31 && (GLES31_HANDLERS[name] || GLES31_HANDLERS[base]) ||
-        context.api === 3 && (GLES3_HANDLERS[name] || GLES3_HANDLERS[base]) || HANDLERS[name] || HANDLERS[base];
+        (context.api === 3 || native_map) && (GLES3_HANDLERS[name] || GLES3_HANDLERS[base]) || HANDLERS[name] || HANDLERS[base];
     this.keep = true;
     if(!handler)
     {
@@ -1237,10 +1238,10 @@ const HANDLERS = {
         if(size < 0) return fail(c, GL.INVALID_VALUE);
         const buffer = bound_buffer(c, target);
         if(!buffer) return REFUSED;
-        // Native ES1 can combine client arrays with an element VBO. Keep
-        // its indices so the native bridge can bound the live array copy.
+        // The native bridge reads back mapped buffers and bounds ES1's
+        // client arrays when an element VBO supplies the indices.
         let bytes = null;
-        if(c.api === 1 && shadow.keep_bytes)
+        if((c.api === 1 || shadow.native_buffers) && shadow.keep_bytes)
         {
             try { bytes = new Uint8Array(size); }
             catch(e) { return fail(c, GL.OUT_OF_MEMORY); }
@@ -1248,6 +1249,7 @@ const HANDLERS = {
         }
         buffer.size = size;
         buffer.usage = usage;
+        buffer.mapped = null;
         if(bytes) buffer.bytes = bytes;
     },
     "glBufferSubData": (shadow, c, [target, offset, size, data]) =>
@@ -1255,15 +1257,19 @@ const HANDLERS = {
         const buffer = bound_buffer(c, target);
         if(!buffer) return REFUSED;
         if(offset < 0 || size < 0 || offset + size > buffer.size) return fail(c, GL.INVALID_VALUE);
-        if(c.api === 1 && shadow.keep_bytes && buffer.bytes && data) buffer.bytes.set(data.subarray(0, size), offset);
+        if(buffer.mapped) return fail(c, GL.INVALID_OPERATION);
+        if(shadow.keep_bytes && buffer.bytes && data) buffer.bytes.set(data.subarray(0, size), offset);
     },
     "glGetBufferParameteriv": (shadow, c, [target, pname, params]) =>
     {
         query(shadow);
-        if(pname !== 0x8764 && pname !== 0x8765) { fail(c, GL.INVALID_ENUM); return; }
+        if(pname !== 0x8764 && pname !== 0x8765 && !(shadow.native_buffers && (pname === 0x88BB || pname === 0x88BC)))
+        { fail(c, GL.INVALID_ENUM); return; }
         const buffer = bound_buffer(c, target);
         if(!buffer) return;
-        put(params, [pname === 0x8764 ? buffer.size : buffer.usage], "i", "i");
+        const values = { 0x8764: buffer.size, 0x8765: buffer.usage,
+            0x88BB: buffer.mapped?.access === 3 ? 0x88BA : 0x88B9, 0x88BC: buffer.mapped ? 1 : 0 };
+        put(params, [values[pname]], "i", "i");
     },
 
     // ---- renderbuffers and framebuffers

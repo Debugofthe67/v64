@@ -590,6 +590,7 @@ A64CPU.prototype.init_gles_backdoor = function(settings, display, present)
             "present": present,
             "prepared": settings.gles_prepared || null,
             "max_version": settings.ranchu_gles_version || "2.0",
+            "native_buffers": this.machine_type === "s5l8930",
         });
         gles = this.devices.gles;
     }

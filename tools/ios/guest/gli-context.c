@@ -30,6 +30,12 @@ struct client_attrib {
     unsigned char normalized, enabled, client;
 };
 
+struct buffer_mapping {
+    struct buffer_mapping *next;
+    unsigned name, size, access;
+    unsigned char bytes[];
+};
+
 struct context {
     struct n90_driver driver;    // also the opaque argument of public GL calls
     struct context *next;
@@ -46,6 +52,7 @@ struct context {
 struct group {
     struct group *next;
     struct binding *bindings;
+    struct buffer_mapping *mapped_buffers;
     unsigned connection, handle, api;
     unsigned surface_textures;
 };
@@ -92,6 +99,7 @@ static unsigned invalid_operation(struct context *ctx)
     return 0;
 }
 
+static void release_buffer_mapping(struct group *, unsigned);
 #include "gli-surface.h"
 #include "gli-draw.h"
 #include "gli-texture.h"
@@ -119,7 +127,8 @@ static const char *get_string(struct context *ctx, unsigned name)
     unsigned conn = ctx->driver.connection;
     if(!SEND(conn, rc_rcGetGLString, name, 0, 0) || !gles_read(conn, &size, 4) || size >= 0 || size < -65536) return 0;
     size = -size;
-    char *text = malloc(size);
+    static const char map_extension[] = " GL_OES_mapbuffer";
+    char *text = malloc(size + (name == 0x1f03 ? sizeof(map_extension) : 0));
     if(!text) { if(!ctx->error) ctx->error = 0x505; return 0; }
     if(!SEND(conn, rc_rcGetGLString, name, size, size) || !gles_read(conn, text, size) ||
         !gles_read(conn, &count, 4) || count != size || text[size - 1])
@@ -127,7 +136,11 @@ static const char *get_string(struct context *ctx, unsigned name)
         free(text);
         return 0;
     }
-    if(name == 0x1f03) native_extensions(text);
+    if(name == 0x1f03)
+    {
+        native_extensions(text);
+        memcpy(text + fragment_size(text, -1, size), map_extension, sizeof(map_extension));
+    }
     return ctx->strings[i] = text;
 }
 
@@ -304,6 +317,7 @@ static void dispose_group(void *obj, void *sel)
             g->bindings = b->next;
             release_binding(b);
         }
+        while(g->mapped_buffers) release_buffer_mapping(g, g->mapped_buffers->name);
         close_handle(g->connection, g->handle);
         free(g);
     }

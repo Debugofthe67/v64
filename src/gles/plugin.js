@@ -34,7 +34,8 @@ register_device_plugin("V86GlesHosts", {
     {
         const display = options["display"];
         const host = new GLESHost({ width: display["width"], height: display["height"], dpi: display["dpi"] }, options["renderer"] || null,
-            options["present"], { glslang: options["prepared"] || null, max_version: options["max_version"] || "2.0" });
+            options["present"], { glslang: options["prepared"] || null, max_version: options["max_version"] || "2.0",
+                native_buffers: !!options["native_buffers"] });
         return {
             // (a service as src/virt/goldfish.js takes one; with a snapshot's state of it)
             "service": (name, wake, saved) => host.service(name, wake, saved),
