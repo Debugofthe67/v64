@@ -10,7 +10,7 @@ import { SHA256 } from "../image/sha256.js";
 import { new_id } from "./vm_config.js";
 
 /** @typedef {{id: string, path: string, size: number, label: string, created: string, generation: number,
- *     ios?: {model: string, build: string}}} BrowserDisk */
+ *     ios?: {model: string, build: string}, symbian?: {owner: string, role: string}}} BrowserDisk */
 
 const DISKS = ["v86", "disks"];
 /** The prefix of a browser disk's path (an image's `path`) */
@@ -89,8 +89,10 @@ export async function list_disks()
         if(!match || handle.kind !== "file") continue;
         const file = await handle.getFile();
         const record = await read_record(dir, match[1]);
+        if(/-symbian-(?:rom|rofs[123]|phone)$/.test(match[1]) && !record.symbian) continue;
         disks.push({ id: match[1], path: disk_path(match[1]), size: file.size, label: record.label || match[1],
-            created: record.created || new Date(file.lastModified).toISOString(), generation: record.generation || 1, ios: record.ios });
+            created: record.created || new Date(file.lastModified).toISOString(), generation: record.generation || 1,
+            ios: record.ios, symbian: record.symbian });
     }
     return disks.sort((a, b) => a.label.localeCompare(b.label));
 }
@@ -340,9 +342,11 @@ export async function delete_disk(id)
     }
     catch(e)
     {
-        if(e.name === "NotFoundError") return;
-        if(e.name === "NoModificationAllowedError" || e.name === "InvalidModificationError") throw new Error("The disk is in use: power its machine off first");
-        throw e;
+        if(e.name !== "NotFoundError")
+        {
+            if(e.name === "NoModificationAllowedError" || e.name === "InvalidModificationError") throw new Error("The disk is in use: power its machine off first");
+            throw e;
+        }
     }
     await dir.removeEntry(id + ".json").catch(() => {});
     await dir.removeEntry(id + ".ios-system").catch(() => {});

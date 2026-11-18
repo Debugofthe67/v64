@@ -3,6 +3,7 @@
 // and the hardware table of the library's summary and the settings list.
 
 import { format_size } from "./dom.js";
+import { firmware_languages } from "../../symbian/catalog.js";
 import { NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
@@ -37,6 +38,14 @@ export function describe_image(image)
  */
 export function hardware_rows(c)
 {
+    if(c.symbian) return [
+        ["Device", "S60v5 · Nokia N97 · Experimental boot"],
+        ["Firmware", [c.symbian.model, c.symbian.sw_version, c.symbian.product_code, c.symbian.variant_version].join(" · ")],
+        ["Processor", "ARM1136"],
+        ["Memory", "128 MiB"],
+        ["Phone data", describe_image(c.symbian.media.phone)],
+        .../** @type {Array<[string, string]>} */ (c.symbian.languages?.length ? [["Languages", firmware_languages(c.symbian.languages)]] : []),
+    ];
     if(c.ios) return [
         ["iPhone", "iPhone 4 (GSM) · iOS 6.1.3 (" + c.ios.build + ")"],
         ["Processor", "Apple A4 (Cortex-A8)"],

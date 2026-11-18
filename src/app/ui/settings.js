@@ -9,7 +9,7 @@
 import { h, replace, confirm } from "./dom.js";
 import { choices, change, fitted } from "../vm_model.js";
 import { check_config } from "../vm_config.js";
-import { describe_image } from "./describe.js";
+import { describe_image, hardware_rows } from "./describe.js";
 import { general_panel, memory_panel, processor_panel, machine_panel, advanced_panel, CPU_LABELS, MACHINE_LABELS } from "./panels/system.js";
 import { disk_panel, usb_disk_panel, cdrom_panel, floppy_panel, direct_boot_panel } from "./panels/storage.js";
 import { network_panel, sound_panel, usb_panel, tpm_panel, display_panel, serial_panel, shared_folder_panel, virt_panel, NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
@@ -48,6 +48,10 @@ import { USB_PORTS } from "../../machine_options.js";
  */
 export function hardware_items(c)
 {
+    if(c.symbian) return [
+        { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
+        { id: "symbian", label: "Firmware", summary: "Nokia N97 · " + c.symbian.sw_version, panel: symbian_panel, remove: null },
+    ];
     if(c.ios) return [
         { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
         { id: "ios", label: "iPhone", summary: "iPhone 4 · iOS 6.1.3", panel: ios_panel, remove: null },
@@ -99,6 +103,15 @@ export function hardware_items(c)
     if(virt) items.push({ id: "virt", label: "virt devices", summary: c.virt.transport + (c.virt.vsock ? ", vsock" : ""), panel: virt_panel, remove: null });
     items.push({ id: "advanced", label: "Advanced", summary: c.advanced.cpu_worker ? "CPU in a Worker" : "CPU in the page", panel: advanced_panel, remove: null });
     return items;
+}
+
+/** @param {PanelContext} ctx */
+function symbian_panel(ctx)
+{
+    const firmware = ctx.config.symbian;
+    const rows = [...hardware_rows(ctx.config), ["VPL", firmware.manifest], ["VPL SHA-256", firmware.manifest_sha256]];
+    return h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
+        h("tr", null, h("th", null, label), h("td", null, value)))));
 }
 
 /** @param {PanelContext} ctx */
@@ -180,6 +193,7 @@ function ios_sound_panel(ctx)
 export function item_of(path)
 {
     const [head, index] = path.split(".");
+    if(head === "symbian") return "symbian";
     if(head === "ios") return index === "nand" ? "ios-nand" : "ios";
     // (a USB disk's: usb.disks.<i>)
     if(head === "usb" && index === "disks" && /^\d+$/.test(path.split(".")[2] || "")) return "usb-disk-" + path.split(".")[2];
@@ -204,7 +218,7 @@ export function item_of(path)
  */
 function additions(c)
 {
-    if(c.ios) return [];
+    if(c.ios || c.symbian) return [];
     const virt = c.machine.type === "virt", arm = virt || c.machine.type === "ranchu";
     /** @type {Array<[string, (next: VMConfig) => void]>} */
     const list = [];
@@ -352,7 +366,7 @@ export function open_settings(config, options)
             replace(element,
                 h("div.settings", null,
                     h("header.settings-header", null, h("h2", null, options.title || "Settings: " + working.name)),
-                    h("aside.settings-list", null, list, working.ios ? null : h("div.settings-list-actions", null, add, remove)),
+                    h("aside.settings-list", null, list, working.ios || working.symbian ? null : h("div.settings-list-actions", null, add, remove)),
                     h("section.settings-panel", { "aria-label": item.label }, h("h3", null, item.label),
                         own_problems.length ? h("ul.problems", { role: "alert" }, own_problems.map(p => h("li", null, p.message))) : null,
                         item.panel(ctx)),

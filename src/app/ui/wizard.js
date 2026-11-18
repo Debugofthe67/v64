@@ -22,6 +22,8 @@ import { inspect_android_package, import_android_package, import_android_package
 import { ANDROID_CATALOG } from "../android_catalog.js";
 import { N90_RESTORE, import_ios_package, inspect_ios_package, verify_ios_keys } from "../ios_import.js";
 import { new_ios_config } from "../vm_config.js";
+import { check_symbian_package, firmware_path, import_symbian_package, scan_symbian_packages } from "../symbian_import.js";
+import { firmware_languages, N97_DEVICE, SYMBIAN_DEVICES } from "../../symbian/catalog.js";
 import { MAX_ARRAY_BUFFER_SIZE_MB } from "../../browser/vm_options.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
@@ -36,12 +38,14 @@ const SOURCES = [
     ["direct", "A kernel and initrd (and the system's CD as a read-only disk)"],
     ["android", "An Android image package (.zip)"],
     ["ios", "iOS (.ipsw)"],
+    ["symbian", "Symbian"],
     ["later", "Install the system later"],
 ];
 
 /**
  * The wizard; resolves with the new configuration (stored by the caller) or null when cancelled
- * @param {{store: {put_handle: (handle: any) => Promise<string>, get_pref?: any, put_pref?: any}, service: Service | null, names: string[]}} options
+ * @param {{store: {put_handle: (handle: any) => Promise<string>, get_pref?: any, put_pref?: any, put?: (config: VMConfig) => Promise<VMConfig>},
+ *     service: Service | null, names: string[]}} options
  *     names: the library's
  * @return {Promise<VMConfig | null>}
  */
@@ -72,6 +76,10 @@ export function open_wizard(options)
             ios: { name: unique(IOS_NAME), file: /** @type {File | null} */ (null), library: /** @type {File | null} */ (null),
                 checked: false, keys: "", key_file: "", keys_ok: false, acceleration: true, network: true, checking: /** @type {AbortController | null} */ (null),
                 results: /** @type {Array<[string, boolean, string]>} */ ([]) },
+            symbian: { device: "", name: unique(N97_DEVICE.name), files: /** @type {File[]} */ ([]),
+                supplements: /** @type {Map<string, File[]>} */ (new Map()),
+                variants: /** @type {any[]} */ ([]), selected: -1, messages: /** @type {string[]} */ ([]),
+                report: /** @type {any} */ (null), checking: /** @type {AbortController | null} */ (null) },
             progress: "",
             /** @type {AbortController | null} the import going on (its Cancel) */
             importing: null,
@@ -79,11 +87,13 @@ export function open_wizard(options)
         const element = /** @type {HTMLDialogElement} */ (h("dialog.wizard-dialog", { "aria-label": "New virtual machine" }));
         const close = value => {
             state.ios.checking?.abort();
+            state.symbian.checking?.abort();
             state.ios.keys = "";
             element.close(); element.remove(); resolve(value);
         };
         element.addEventListener("cancel", e => { e.preventDefault(); if(state.importing) state.importing.abort(); else close(null); });
-        const step_titles = () => state.source === "ios" ? ["Source", "Keys", "Name", "NAND", "Summary"] : ["Source", "System", "Name", "Hard disk", "Summary"];
+        const step_titles = () => state.source === "symbian" ? ["Source", "Name", "Summary"] :
+            state.source === "ios" ? ["Source", "Keys", "Name", "NAND", "Summary"] : ["Source", "System", "Name", "Hard disk", "Summary"];
 
         function unique(name)
         {
@@ -156,6 +166,28 @@ export function open_wizard(options)
         {
             state.error = "";
             let url;
+            if(state.source === "symbian")
+            {
+                const s = state.symbian;
+                if(!s.report?.media) return;
+                const abort = state.importing = new AbortController();
+                state.progress = "Preparing Nokia N97 firmware…";
+                render();
+                try
+                {
+                    const config = await import_symbian_package(s.files, s.variants[s.selected], s.report, s.name.trim(), state.notes,
+                        { store: options.store, signal: abort.signal, progress: symbian_progress, supplements: symbian_supplements() });
+                    close(config);
+                }
+                catch(error)
+                {
+                    state.error = abort.signal.aborted ? "The import was cancelled" : error.message;
+                    state.progress = "";
+                    state.importing = null;
+                    render();
+                }
+                return;
+            }
             const new_disk = !["disk", "android", "ios"].includes(state.source) && state.disk === "new";
             if(state.source === "ios")
             {
@@ -261,19 +293,26 @@ export function open_wizard(options)
 
         const source_step = () =>
         {
-            const radios = SOURCES.map(([value, text]) => h("label.check", null,
+            const radios = SOURCES.map(([value, text]) => [h("label.check", null,
                 h("input", { type: "radio", name: "source", value, checked: state.source === value, onchange: () => {
                     if(state.source === "ios")
                     {
                         state.ios.checking?.abort();
                         state.ios.checking = null;
                     }
+                    if(state.source === "symbian")
+                    {
+                        state.symbian.checking?.abort();
+                        state.symbian.checking = null;
+                        state.symbian.report = null;
+                    }
                     state.source = value; state.image = null; state.error = ""; state.progress = "";
-                    if(value !== "ios") choose_preset(state.preset);
+                    if(value !== "ios" && value !== "symbian") choose_preset(state.preset);
+                    if(value === "symbian" && state.symbian.files.length) void scan_symbian_files(state.symbian.files);
                     render();
                     /** @type {HTMLInputElement | null} */ (element.querySelector("input[name=source]:checked"))?.focus();
                 } }),
-                " " + text));
+                " " + text), value === "symbian" && state.source === value ? symbian_picker() : null]);
             const pickers = [];
             if(state.source === "cdrom" || state.source === "floppy" || state.source === "disk")
             {
@@ -304,6 +343,170 @@ export function open_wizard(options)
             }
             return [h("fieldset", null, h("legend", null, "Where does the system come from?"), radios), pickers];
         };
+
+        function symbian_progress(text)
+        {
+            state.progress = text;
+            const status = element.querySelector(".wizard-status");
+            if(status) status.textContent = text;
+        }
+
+        async function scan_symbian_files(files)
+        {
+            const s = state.symbian;
+            s.checking?.abort();
+            const checking = s.checking = new AbortController();
+            s.files = files;
+            s.variants = [];
+            s.selected = -1;
+            s.report = null;
+            s.messages = [];
+            state.error = "";
+            state.progress = "Reading VPL manifests…";
+            render();
+            try
+            {
+                const found = await scan_symbian_packages(files, { signal: checking.signal });
+                if(s.checking !== checking) return;
+                s.messages = found.errors;
+                s.variants = found.variants.filter(variant => variant.type_designator === N97_DEVICE.model);
+                for(const variant of found.variants)
+                {
+                    if(variant.type_designator !== N97_DEVICE.model)
+                        s.messages.push(variant.manifest + " is for " + variant.type_designator + ". Choose an RM-505 package.");
+                }
+                if(!s.variants.length && !s.messages.length) s.messages = ["Choose an RM-505 .vpl and its companion files."];
+            }
+            catch(error)
+            {
+                if(s.checking === checking) state.error = error.message;
+            }
+            finally
+            {
+                if(s.checking === checking)
+                {
+                    s.checking = null;
+                    state.progress = "";
+                    if(s.variants.length === 1) void select_symbian_variant(0);
+                    else render();
+                }
+            }
+        }
+
+        async function select_symbian_variant(index)
+        {
+            const s = state.symbian;
+            s.checking?.abort();
+            s.selected = index;
+            s.report = null;
+            state.error = "";
+            state.progress = "";
+            if(index < 0)
+            {
+                s.checking = null;
+                render();
+                return;
+            }
+            const checking = s.checking = new AbortController();
+            state.progress = "Checking the firmware package…";
+            render();
+            try
+            {
+                const report = await check_symbian_package(s.files, s.variants[index], { signal: checking.signal,
+                    progress: symbian_progress, supplements: symbian_supplements() });
+                if(s.checking === checking) s.report = report;
+            }
+            catch(error)
+            {
+                if(s.checking === checking) state.error = error.message;
+            }
+            finally
+            {
+                if(s.checking === checking)
+                {
+                    s.checking = null;
+                    state.progress = "";
+                    render();
+                }
+            }
+        }
+
+        function symbian_variant_key()
+        {
+            const variant = state.symbian.variants[state.symbian.selected];
+            return variant ? JSON.stringify([variant.manifest, variant.index, variant.manifest_sha256]) : "";
+        }
+
+        function symbian_supplements()
+        {
+            return state.symbian.supplements.get(symbian_variant_key()) || [];
+        }
+
+        function symbian_picker()
+        {
+            const s = state.symbian;
+            const device = h("select", { "aria-label": "Symbian device", onchange: e => {
+                s.checking?.abort();
+                s.checking = null;
+                s.device = e.currentTarget.value;
+                s.files = [];
+                s.supplements.clear();
+                s.variants = [];
+                s.selected = -1;
+                s.report = null;
+                s.messages = [];
+                state.error = "";
+                state.progress = "";
+                render();
+            } }, h("option", { value: "", selected: !s.device }, "Choose a device…"),
+            SYMBIAN_DEVICES.map(device => h("option", { value: device.id, selected: s.device === device.id }, device.family + " · " + device.name)));
+            if(!s.device) return h("div.indent", null, device);
+            const picker = (directory, label) => h("label.field", null, h("span", null, label),
+                h("input", { type: "file", multiple: true, ...(directory ? { webkitdirectory: "" } : {}), "aria-label": label,
+                    onchange: e => {
+                        const files = Array.from(/** @type {FileList} */ (e.currentTarget.files));
+                        if(!files.length) return;
+                        const folder_selected = s.files.some(file => !!file.webkitRelativePath);
+                        if(!directory && folder_selected && !files.some(file => /\.vpl$/i.test(file.name)))
+                        {
+                            const key = symbian_variant_key();
+                            if(!key)
+                            {
+                                state.error = "Choose the variant that needs these files";
+                                render();
+                                return;
+                            }
+                            const supplements = new Map(symbian_supplements().map(file => [file.name, file]));
+                            for(const file of files) supplements.set(file.name, file);
+                            s.supplements.set(key, [...supplements.values()]);
+                            void select_symbian_variant(s.selected);
+                            return;
+                        }
+                        if(directory || folder_selected) s.supplements.clear();
+                        const selected = new Map((directory || folder_selected ? [] : s.files).map(file => [firmware_path(file), file]));
+                        for(const file of files) selected.set(firmware_path(file), file);
+                        void scan_symbian_files([...selected.values()]);
+                    } }));
+            const report = s.report;
+            const languages = firmware_languages(report?.languages);
+            const problems = report ? [...report.check.issues, ...report.check.files
+                .filter(file => !["ok", "optional-missing"].includes(file.status))
+                .map(file => file.name + " — " + (file.status === "mismatch" ?
+                    file.mismatches.map(issue => ({ size: "size mismatch", crc32: "CRC-32 mismatch", flash_version: "firmware version mismatch" })[issue]).join(", ") :
+                    file.error || file.status))] : [];
+            return h("div.indent", null, device,
+                h("p.note", null, "Choose a local RM-505 folder, or select the VPL and its companion files. You can add missing files to a selection."),
+                picker(true, "Nokia N97 firmware folder"), picker(false, "Nokia N97 firmware files"),
+                s.variants.length ? h("label.field", null, h("span", null, "Firmware variant"),
+                    h("select", { "aria-label": "Firmware variant", onchange: e => void select_symbian_variant(Number(e.currentTarget.value)) },
+                        h("option", { value: "-1", selected: s.selected < 0 }, "Choose a variant…"),
+                        s.variants.map((variant, i) => h("option", { value: String(i), selected: s.selected === i },
+                            [variant.type_designator, variant.sw_version, variant.product_code, variant.variant_version, variant.description, variant.manifest]
+                                .filter(Boolean).join(" · "))))) : null,
+                s.messages.concat(problems).length ? h("ul.error", null, s.messages.concat(problems).map(message => h("li", null, message))) : null,
+                report?.media ? h("p.note", null, report.check.files.filter(file => file.status === "ok").length + " firmware files verified.") : null,
+                languages ? h("p.note", null, languages) : null);
+        }
 
         function ios_progress(stage, percent)
         {
@@ -560,9 +763,16 @@ export function open_wizard(options)
 
         const name_step = () =>
         {
-            const machine = state.source === "ios" ? state.ios : state;
-            const name = /** @type {HTMLInputElement} */ (h("input", { type: "text", value: machine.name, size: 40, "aria-label": "Name" }));
-            name.addEventListener("input", () => { machine.name = name.value; });
+            const machine = state.source === "ios" ? state.ios : state.source === "symbian" ? state.symbian : state;
+            const name = /** @type {HTMLInputElement} */ (h("input", { type: "text", value: machine.name, size: 40, maxlength: 200, "aria-label": "Name" }));
+            name.addEventListener("input", () => {
+                machine.name = name.value;
+                if(state.source === "symbian")
+                {
+                    const button = /** @type {HTMLButtonElement} */ (element.querySelector(".wizard-footer button.primary"));
+                    button.disabled = !machine.name.trim();
+                }
+            });
             const notes = /** @type {HTMLTextAreaElement} */ (h("textarea", { rows: 4, cols: 40, "aria-label": "Notes" }));
             notes.value = state.notes;
             notes.addEventListener("input", () => { state.notes = notes.value; });
@@ -679,6 +889,23 @@ export function open_wizard(options)
 
         const summary_step = () =>
         {
+            if(state.source === "symbian")
+            {
+                const s = state.symbian, variant = s.variants[s.selected], media = s.report.media;
+                const required = /** @type {Array<{size: number}>} */ (Object.values(media)).reduce((sum, disk) => sum + disk.size, 0);
+                const rows = [
+                    ["Device", N97_DEVICE.family + " · " + N97_DEVICE.name],
+                    ["Firmware", [variant.type_designator, variant.sw_version, variant.product_code, variant.variant_version].join(" · ")],
+                    ["System images", format_size(required - media.phone.size)],
+                    ["Phone data", format_size(media.phone.size) + " · private to this VM"],
+                    ["Estimated browser storage", format_size(required)],
+                ];
+                const languages = firmware_languages(s.report.languages);
+                if(languages) rows.push(["Languages", languages]);
+                return [h("h3", null, s.name.trim()), h("p.note", null, "Experimental boot. This machine runs the original start-up code while board and display support are in development."),
+                    h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
+                        h("tr", null, h("th", null, label), h("td", null, value)))))];
+            }
             const config = build();
             if(state.source === "ios") return [
                 h("h3", null, config.name),
@@ -699,6 +926,14 @@ export function open_wizard(options)
         {
             if(state.step === 0)
             {
+                if(state.source === "symbian")
+                {
+                    const s = state.symbian;
+                    if(!s.device) return "Choose a Symbian device";
+                    if(s.checking) return "Checking the firmware…";
+                    if(s.selected < 0) return s.files.length ? "Choose an RM-505 variant" : "Choose the firmware files";
+                    return s.report?.media ? "" : "Complete firmware preflight";
+                }
                 if(state.source === "ios") return state.ios.checked ? "" : state.ios.checking ? "Checking the IPSW…" : "Choose the supported IPSW";
                 if(state.source === "direct") return state.direct.bzimage ? "" : "Choose the kernel";
                 if(state.source === "android")
@@ -719,6 +954,7 @@ export function open_wizard(options)
                 if(state.source !== "later" && !state.image) return "Choose the image";
                 if(state.image && state.image.kind === "url" && !state.image.url) return "Give the image's URL";
             }
+            if(state.source === "symbian") return state.step === 1 && !state.symbian.name.trim() ? "Give the machine a name" : "";
             if(state.step === 1 && state.source === "ios" && !state.ios.keys_ok)
                 return state.ios.keys ? "Verify the firmware keys" : "Choose the keys JSON file";
             if(state.step === 2 && !(state.source === "ios" ? state.ios.name : state.name).trim()) return "Give the machine a name";
@@ -729,7 +965,8 @@ export function open_wizard(options)
         function render()
         {
             const steps = step_titles();
-            const body = [source_step, system_step, name_step, disk_step, summary_step][state.step]();
+            const body = (state.source === "symbian" ? [source_step, name_step, summary_step] :
+                [source_step, system_step, name_step, disk_step, summary_step])[state.step]();
             const blocked = ready();
             const last = state.step === steps.length - 1;
             replace(element, h("div.wizard", null,
@@ -742,7 +979,7 @@ export function open_wizard(options)
                     state.importing ? h("button", { type: "button", onclick: () => state.importing && state.importing.abort() }, "Cancel import") : [
                         h("button", { type: "button", onclick: () => close(null) }, "Cancel"),
                         h("button", { type: "button", disabled: state.step === 0, onclick: () => { state.step--; render(); } }, "Back"),
-                        last ? [state.source === "ios" ? null : h("button", { type: "button", onclick: () => finish(true) }, "Customize hardware…"),
+                        last ? [["ios", "symbian"].includes(state.source) ? null : h("button", { type: "button", onclick: () => finish(true) }, "Customize hardware…"),
                             h("button.primary", { type: "button", onclick: () => finish(false) }, "Finish")] :
                             h("button.primary", { type: "button", disabled: !!blocked, onclick: () => { state.step++; render(); } }, "Next")])));
         }

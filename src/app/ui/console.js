@@ -489,6 +489,7 @@ function console_ui(layout, emulator, ctx)
     const options = ctx.options;
     const tag = ctx.profile?.id || (ctx.config ? ctx.config.name.replace(/[^\w.-]+/g, "_") : "v86");
     const ios = ctx.config?.ios;
+    const symbian = ctx.config?.symbian;
     const iphone = options.machine_type === "s5l8930";
     const virt = options.cpu_type === "arm64";
     const written_back = [options.hda, options.hdb, options.fda, options.fdb, options.ios?.nand,
@@ -1314,13 +1315,14 @@ function console_ui(layout, emulator, ctx)
         replace(layout.toolbar,
             h("a.button", { href: location.pathname }, "Library"),
             menu_button("Power", items.power, "menu_power"),
-            ios ? iphone_controls : [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
+            ios ? iphone_controls : symbian ? h("span.note", null, "Nokia N97 · Experimental boot") :
+                [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
             menu_button("View", items.view, "menu_view"),
-            ios ? null : menu_button("Input", items.input, "menu_input"),
-            mute,
-            ios ? null : menu_button("Tools", items.tools, "menu_tools"),
+            ios || symbian ? null : menu_button("Input", items.input, "menu_input"),
+            symbian ? null : mute,
+            ios || symbian ? null : menu_button("Tools", items.tools, "menu_tools"),
             h("span.toolbar-gap"),
-            !ios || ctx.config.serial.some(serial => serial.attach === "terminal") ? drawer_button("terminal", "Terminal") : null,
+            !symbian && (!ios || ctx.config.serial.some(serial => serial.attach === "terminal")) ? drawer_button("terminal", "Terminal") : null,
             kernel_console ? drawer_button("kernel", "Kernel console") : null,
             files_tab ? drawer_button("files", "Files") : null,
             drawer_button("details", "Details"),

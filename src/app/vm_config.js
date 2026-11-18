@@ -11,6 +11,7 @@ import { ANDROID_DEVICES as ANDROID_DEVICE_MODELS } from "../android/bootloader.
 import { DEFAULT_GLES_VERSION, GLES_VERSIONS } from "../android/devices.js";
 import { N90_RESTORE } from "../ios/catalog.js";
 import { IOS_NETWORK_RELAY } from "../ios/network.js";
+import { N97_DEVICE, N97_MEDIA } from "../symbian/catalog.js";
 import { DISK_OPTIONS, DISK_ERRORS, check_disk_options } from "../disk_options.js";
 import { DEFAULT_FORM, DEFAULT_MEMORY_SIZE, MAX_MEMORY_SIZE, MAX_HEAP_MEMORY_SIZE, MAX_ARRAY_BUFFER_SIZE_MB, DEFAULT_VGA_MEMORY_SIZE,
     DEFAULT_MTU, apply_form, settings_to_options } from "../browser/vm_options.js";
@@ -108,6 +109,7 @@ export const TPM_STATE_SIZE = 512 * 1024;
  * @property {Android | null} android Android booted from its disk: the kernel and initrd from its boot partitions
  *     (kernel's cmdline, if any, after the device's)
  * @property {IOS | null} ios iPhone boot files and system on a prepared NAND disk
+ * @property {Symbian} [symbian] N97 firmware and each VM's phone data image
  * @property {{adapter: string, vram_mb: number | null, proxy: boolean, vulkan: "none" | "venus" | "gfxstream", displays: number}} display
  *     vram_mb: null with an initial_state, whose video memory it is; vulkan: virtio-gpu's Vulkan, drawn by the graphics
  *     proxy's WebGPU renderer: Venus contexts, or gfxstream's (its contexts only: Android's official images)
@@ -126,6 +128,13 @@ export const TPM_STATE_SIZE = 512 * 1024;
  * @property {{cpu_worker: boolean, ir_tier0: boolean, x87_fast_math: boolean, x87_jit_cache: boolean,
  *     cpuid_level: number | null, mouse_disabled: boolean}} advanced
  * @property {{size: number, time: string, digest: string} | null} suspended the suspended state (U5)
+ */
+
+/**
+ * @typedef {{ kind: "browser", path: string, size: number, sha256: string }} SymbianDisk
+ * @typedef {{ device: string, model: string, product_code: string, sw_version: string, variant_version: string,
+ *     description: string | null, manifest: string, manifest_sha256: string, media: Record<string, SymbianDisk>,
+ *     languages?: {id: number, default: boolean}[] }} Symbian
  */
 
 /**
@@ -232,6 +241,20 @@ export function new_ios_config(name, nand, gles_proxy)
     c.sound.device = "none";
     c.ios = { ...IOS_DEFAULTS, nand, gles_proxy, network: true };
     return c;
+}
+
+/** @param {string} name @param {string} [notes] */
+export function new_symbian_config(name, notes = "")
+{
+    const config = new_config({ name, notes, guest: "symbian" });
+    Object.assign(config.machine, { type: N97_DEVICE.id, acpi: false });
+    Object.assign(config.cpu, { type: "arm32", profile: "arm1136", cores: 1, parallel: false, jit: false });
+    config.memory.mb = 128;
+    Object.assign(config.display, { adapter: "none", vram_mb: null, proxy: false });
+    config.network = [];
+    config.serial = [];
+    config.sound.device = "none";
+    return config;
 }
 
 /** @param {*} value */
@@ -424,6 +447,51 @@ export function validate_config(config)
     if(typeof config.notes !== "string") problem("notes", "must be text");
 
     const machine = config.machine, cpu = config.cpu;
+    if(machine.type === N97_DEVICE.id)
+    {
+        const firmware = config.symbian;
+        const digest = /^[a-f0-9]{64}$/;
+        if(!firmware || firmware.device !== N97_DEVICE.id || firmware.model !== N97_DEVICE.model ||
+            !digest.test(firmware.manifest_sha256) ||
+            ![firmware.product_code, firmware.sw_version, firmware.variant_version, firmware.manifest].every(s => typeof s === "string" && !!s))
+        {
+            problem("symbian", "Choose a Nokia N97 RM-505 firmware package");
+        }
+        else
+        {
+            if(firmware.languages !== undefined && (!Array.isArray(firmware.languages) || firmware.languages.some(language =>
+                !Number.isInteger(language?.id) || language.id < 0 || language.id > 999 || typeof language.default !== "boolean")))
+            {
+                problem("symbian.languages", "Invalid language list");
+            }
+            for(const role of Object.keys(N97_MEDIA))
+            {
+                const image = firmware.media?.[role];
+                check_image(image, "symbian.media." + role, problems);
+                if(image?.kind !== "browser" || image.path !== "v86/disks/" + config.id + "-symbian-" + role + ".img" || !digest.test(image.sha256))
+                {
+                    problem("symbian.media." + role, "Choose the firmware again to create storage for this Nokia N97");
+                }
+            }
+            if(Object.keys(firmware.media || {}).some(role => !Object.hasOwn(N97_MEDIA, role))) problem("symbian.media", "Unknown firmware image");
+        }
+        if(cpu.type !== "arm32" || cpu.cores !== 1 || cpu.parallel || cpu.profile !== "arm1136" ||
+            config.memory.mb !== 128 || config.advanced.cpu_worker !== true || cpu.jit !== false)
+        {
+            problem("symbian", "Nokia N97 uses one ARM1136 CPU, 128 MiB of RAM and the CPU Worker");
+        }
+        if(machine.acpi || machine.hpet || machine.smbus || machine.pcie_root_ports || machine.bios || machine.vga_bios ||
+            machine.firmware !== "seabios" || machine.uefi_vars || machine.secure_boot || machine.boot_order || machine.fastboot || machine.bootmenu ||
+            config.disks.length || config.cdrom.image || config.floppies.length || config.usb || config.tpm || config.network.length ||
+            config.filesystem || config.kernel || config.android || config.ios || config.serial.length || config.sound.device !== "none" ||
+            config.display.adapter !== "none" || config.display.proxy || config.display.vulkan !== "none" || config.display.displays !== 1 ||
+            config.virt.input || config.virt.console_ports || config.virt.vsock || config.virt.transport !== "mmio")
+        {
+            problem("symbian", "Nokia N97 uses its built-in hardware configuration");
+        }
+        return problems;
+    }
+    if(config.symbian) problem("symbian", "Symbian firmware requires the Nokia N97 machine");
     if(machine.type === "s5l8930")
     {
         const ios = config.ios;
@@ -890,6 +958,18 @@ export function config_to_options(config, env)
     const MB = 1024 * 1024;
     const image = value => image_option(value, env.file);
     const machine = config.machine, cpu = config.cpu, display = config.display, advanced = config.advanced;
+    if(machine.type === N97_DEVICE.id && config.symbian)
+    {
+        const rom = config.symbian.media.rom;
+        return {
+            machine_type: N97_DEVICE.id, cpu_type: "arm32", cpu_profile: "arm1136", cpu_cores: 1, memory_size: 128 * MB,
+            cpu_worker: true, disable_jit: true, cpu_worker_url: "build/cpu-worker.js" + env.query_append,
+            wasm_path: "build/" + (env.debug ? "v86-arm64-debug.wasm" : "v86-arm64.wasm") + env.query_append,
+            screen: { container: env.screen_container }, graphics_adapter: "none", net_device: { type: "none" },
+            symbian: { rom: image(rom), rom_sha256: rom.sha256 },
+            initial_state: image(config.initial_state), autostart: true, disable_speaker: true,
+        };
+    }
     if(machine.type === "s5l8930" && config.ios)
     {
         const ios = config.ios, nand = image(ios.nand);

@@ -15,6 +15,7 @@ import { preset } from "../guest_presets.js";
 import { probe, LOCAL_SERVICE } from "../disk_service_client.js";
 import { delete_state, hold_machine, running_machines, storage_space } from "../vm_state.js";
 import { reset_ios_data } from "../ios_import.js";
+import { recover_symbian_imports } from "../symbian_import.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Image} Image */
@@ -147,6 +148,7 @@ export async function open_library(root)
 {
     document.title = "Virtual machines - v86";
     const store = await VMStore.open();
+    await recover_symbian_imports(store).catch(error => console.warn("Firmware import cleanup will retry next time", error));
     let configs = await store.list();
     let service = await current_service(store);
     /** @type {Set<string>} the machines running in a tab now */
@@ -168,7 +170,7 @@ export async function open_library(root)
     {
         const config = await open_wizard({ store, service, names: configs.map(c => c.name) });
         if(!config) return;
-        await reload((await store.put(config)).id);
+        await reload(config.symbian ? config.id : (await store.put(config)).id);
     };
 
     const edit = async config =>
@@ -223,7 +225,8 @@ export async function open_library(root)
             tabindex: "0",
             onclick: () => { selected = c.id; render(); },
             onkeydown: e => { if(e.key === "Enter" || e.key === " ") { selected = c.id; render(); } },
-        }, h("span.vm-name", null, c.name), c.ios ? h("span.vm-state", null, "iPhone 4 · iOS 6.1.3") : null,
+        }, h("span.vm-name", null, c.name), c.ios ? h("span.vm-state", null, "iPhone 4 · iOS 6.1.3") :
+            c.symbian ? h("span.vm-state", null, "Nokia N97 · Experimental boot") : null,
         h("span.vm-state", null, running.has(c.id) ? "Running in another tab" :
             c.suspended ? "Suspended" : "Powered off"))));
         const sidebar = h("aside.library-list", null,

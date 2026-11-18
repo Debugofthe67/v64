@@ -60,3 +60,18 @@ make build/v86-arm64.wasm
 node --test tests/symbian/*.mjs
 node tools/symbian/boot-n97.mjs <new-output-directory>/rom.xip.bin
 ```
+
+## 浏览器导入与重新打开
+
+在新建虚拟机的 **Source** 页选择 **Symbian → S60v5 · Nokia N97**，再选择本地固件目录或多选 VPL 和配套文件。若目录有多个 RM-505 变体，选中一个后才开始完整预检。目录缺件可在该变体下用文件多选框补入，同目录已有的文件优先。真实 0576555 样本的 ROFS 语言清单识别为 Arabic、English（默认）及 Farsi。[Nokia S60 SDK 语言枚举](https://docs.huihoo.com/symbian/s60-5th-edition-cpp-developers-library-v2.1/GUID-35228542-8C95-4849-A73F-2B4F082F0C44/sdk/doc_source/ToolsAndUtilities94/Installing-ref/PKG_format/PKG_languages_table.html)
+
+导入 Worker 核对清单和 FPSX 分组，重建 XIP、ROFS1–3 与 UDA。五个图像按各自逻辑长度写入浏览器私有存储并读回核对 SHA-256。此版本为每台 VM 保留独立手机数据图像，系统图像从 VM 的内部资产引用。导入取消或页面刷新留下的未提交文件按其导入记录回收。重新打开时，CPU Worker 在装载前核对保存的 XIP 摘要。
+
+库、向导和控制台将此机型标为 **Experimental boot**。默认运行的边界见上节。ROFS 和 UDA 的客体挂载、大容量盘、显示与输入属于后续板级与系统工作。
+
+```sh
+make build/v86_app.js build/symbian-import-worker.js build/libv86.mjs build/v86-arm64.wasm
+node tests/symbian/fixtures/make_package.mjs
+node tests/app/browser_runner.mjs tests/app/symbian_test.html
+node tests/symbian/manual/browser_import.mjs <firmware-directory>
+```

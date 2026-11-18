@@ -1,0 +1,235 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>VM manager: Nokia N97 firmware import</title>
+<pre id="log"></pre>
+<pre id="result"></pre>
+<script type="module">
+import { VMStore, config_images } from "../../src/app/vm_store.js";
+import { disk_file, disk_id, list_disks } from "../../src/app/browser_disks.js";
+
+const local = new URLSearchParams(location.search).has("local");
+const fixture = "/build/symbian/test-package/";
+const log = text => document.querySelector("#log").textContent += text + "\n";
+const result = document.querySelector("#result");
+function check(value, what) { if(!value) throw new Error(what); }
+async function until(callback, what)
+{
+    for(let attempt = 0; attempt < 1200; attempt++)
+    {
+        const found = await callback();
+        if(found) return found;
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error("Timed out waiting for " + what);
+}
+function frame(url)
+{
+    const element = document.createElement("iframe");
+    element.src = url;
+    element.style.cssText = "width:100%;height:730px;";
+    document.body.append(element);
+    return element;
+}
+function change(element, value)
+{
+    element.value = value;
+    element.dispatchEvent(new element.ownerDocument.defaultView.Event("change", { bubbles: true }));
+}
+function choose(input, files)
+{
+    const w = input.ownerDocument.defaultView;
+    const data = new w.DataTransfer();
+    for(const file of files) data.items.add(file);
+    input.files = data.files;
+    input.dispatchEvent(new w.Event("change", { bubbles: true }));
+}
+function button(scope, label)
+{
+    return [...scope.querySelectorAll("button")].find(button => !button.disabled && button.textContent.trim() === label);
+}
+function expected_assets(config)
+{
+    const roles = Object.keys(config.symbian.media).sort().join(",");
+    check(roles === "phone,rofs1,rofs2,rofs3,rom", "all five outputs are registered");
+    return config_images(config);
+}
+async function hash(file)
+{
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
+    return [...digest].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+
+let library;
+async function open_library()
+{
+    library?.remove();
+    library = frame("/index.html");
+    await until(() => library.contentDocument?.querySelector("#new_vm"), "library");
+    return library.contentDocument;
+}
+function start_wizard(doc)
+{
+    doc.querySelector("#new_vm").click();
+    const wizard = doc.querySelector("dialog.wizard-dialog");
+    wizard.querySelector('input[name="source"][value="symbian"]').click();
+    check(!wizard.querySelector('input[type="file"]'), "firmware picker is hidden until a device is selected");
+    const select = wizard.querySelector('select[aria-label="Symbian device"]');
+    check(select.options.length === 2 && select.options[1].textContent === "S60v5 · Nokia N97", "N97 is the implemented Symbian device");
+    change(select, "nokia-n97");
+    check(wizard.querySelector('input[webkitdirectory]') && wizard.querySelector('input[multiple]:not([webkitdirectory])'), "folder and multi-select inputs");
+    return wizard;
+}
+async function to_summary(wizard, name)
+{
+    (await until(() => button(wizard, "Next"), "successful preflight")).click();
+    const input = wizard.querySelector('input[aria-label="Name"]');
+    input.value = name;
+    input.dispatchEvent(new input.ownerDocument.defaultView.Event("input", { bubbles: true }));
+    button(wizard, "Next").click();
+    check(wizard.textContent.includes("Experimental boot") && wizard.textContent.includes("Estimated browser storage"), "honest firmware summary");
+}
+async function save(wizard, name)
+{
+    await to_summary(wizard, name);
+    button(wizard, "Finish").click();
+    await until(() => library.contentDocument.querySelector(".vm-list")?.textContent.includes(name), "saved VM");
+}
+
+try
+{
+    const store = await VMStore.open();
+    let doc = await open_library();
+    let wizard = start_wizard(doc);
+    if(local)
+    {
+        log("Waiting for Chrome to choose the original RM-505 folder");
+        window.local_firmware_input = wizard.querySelector('input[webkitdirectory]');
+    }
+    else
+    {
+        const all = await Promise.all((await (await fetch(fixture + "fixtures.json")).json()).map(async name =>
+            new File([await (await fetch(fixture + name)).blob()], name)));
+        const files = () => wizard.querySelector('input[multiple]:not([webkitdirectory])');
+        const manifest = all.find(file => file.name === "RM505-test.vpl");
+        choose(files(), [manifest]);
+        await until(() => wizard.textContent.includes("core.C00 — missing"), "filename-specific error for VPL alone");
+        check(!button(wizard, "Next"), "VPL alone cannot advance");
+        choose(files(), all.filter(file => file !== manifest));
+        const variants = await until(() => {
+            const selector = wizard.querySelector('select[aria-label="Firmware variant"]');
+            return selector?.options.length === 3 && selector;
+        }, "two selectable firmware variants");
+        check(!button(wizard, "Next"), "multiple valid variants require a choice");
+        const select_variant = () => {
+            const selector = wizard.querySelector('select[aria-label="Firmware variant"]');
+            change(selector, [...selector.options].find(option => option.textContent.includes("059TEST")).value);
+        };
+        select_variant();
+        wizard.querySelector('input[name="source"][value="later"]').click();
+        check(!wizard.querySelector('select[aria-label="Firmware variant"]'), "old checks are abandoned when switching source");
+        wizard.querySelector('input[name="source"][value="symbian"]').click();
+        await until(() => wizard.querySelector('select[aria-label="Firmware variant"]'), "variant choices restored");
+        check(!button(wizard, "Next"), "a stale check did not unblock the reset selection");
+        select_variant();
+        await to_summary(wizard, "Fixture N97");
+        button(wizard, "Finish").click();
+        button(wizard, "Cancel import").click();
+        await until(() => wizard.textContent.includes("The import was cancelled"), "cancelled import");
+        check((await list_disks()).length === 0 && (await store.list()).length === 0, "cancel created no persistent VM or disk");
+        button(wizard, "Finish").click();
+        await until(() => doc.querySelector(".vm-list")?.textContent.includes("Fixture N97"), "retry after cancel");
+        log("Fixture passed missing-file, variant, stale-check and cancellation gates");
+
+        const first = (await store.list())[0];
+        wizard = start_wizard(doc);
+        choose(files(), all.filter(file => file.name !== "RM505-other.vpl"));
+        await save(wizard, "Second N97");
+        const second = (await store.list()).find(config => config.name === "Second N97");
+        check(first.symbian.media.phone.path !== second.symbian.media.phone.path, "phone data paths are isolated");
+        check(expected_assets(first).length === 5 && expected_assets(second).length === 5, "all assets participate in VM lifecycle");
+        wizard = start_wizard(doc);
+        // Native folder input sets these paths. Each variant is in a
+        // separate folder and both are missing the same CORE basename.
+        const folder = dir => all.filter(file => file.name !== "core.C00" && (!file.name.endsWith(".vpl") ||
+            file.name === (dir === "A" ? "RM505-test.vpl" : "RM505-other.vpl"))).map(file => {
+                const copy = new File([file], file.name);
+                Object.defineProperty(copy, "webkitRelativePath", { value: "Firmware/" + dir + "/" + file.name });
+                return copy;
+            });
+        const input = wizard.querySelector("input[webkitdirectory]");
+        Object.defineProperty(input, "files", { value: [...folder("A"), ...folder("B")] });
+        input.dispatchEvent(new doc.defaultView.Event("change", { bubbles: true }));
+        await until(() => wizard.querySelector('select[aria-label="Firmware variant"]'), "folder variants");
+        select_variant();
+        await until(() => wizard.textContent.includes("core.C00 — missing"), "folder's missing CORE");
+        choose(files(), [all.find(file => file.name === "core.C00")]);
+        await until(() => button(wizard, "Next"), "explicit loose file fills the selected folder's missing CORE");
+        const selector = wizard.querySelector('select[aria-label="Firmware variant"]');
+        change(selector, [...selector.options].find(option => option.textContent.includes("059OTHER")).value);
+        await until(() => wizard.textContent.includes("core.C00 — missing"), "other folder still lacks its same-named CORE");
+        check(!button(wizard, "Next"), "the loose file is scoped to one variant");
+        select_variant();
+        await until(() => button(wizard, "Next"), "the original selection retains its loose file");
+        button(wizard, "Cancel").click();
+        log("Folder supplement fills only the selected variant's missing basename");
+        const root = await navigator.storage.getDirectory();
+        const v86 = await root.getDirectoryHandle("v86");
+        const journal = await v86.getDirectoryHandle("symbian-imports");
+        const disks = await v86.getDirectoryHandle("disks");
+        const abandoned = crypto.randomUUID();
+        await journal.getFileHandle(abandoned, { create: true });
+        await journal.getFileHandle(first.id, { create: true });
+        const orphan = abandoned + "-symbian-rom.img";
+        await disks.getFileHandle(orphan, { create: true });
+        doc = await open_library();
+        let recovered = false;
+        try { await disks.getFileHandle(orphan); }
+        catch(error) { recovered = error.name === "NotFoundError"; }
+        check(recovered && (await list_disks()).length === 10, "reopen reclaimed only abandoned output");
+        check((await disk_file(disk_id(first.symbian.media.rom.path))).size > 0, "completed files survived recovery");
+    }
+    if(local) await save(wizard, "Original RM-505");
+    const config = (await store.list()).find(entry => entry.name === (local ? "Original RM-505" : "Fixture N97"));
+    check(config && expected_assets(config).length === 5, "stored configuration");
+    const rom = config.symbian.media.rom;
+    check(await hash(await disk_file(disk_id(rom.path))) === rom.sha256, "stored ROM digest");
+    if(local)
+    {
+        check(config.symbian.product_code === "0576555" && config.symbian.sw_version === "22.0.110", "original variant identity");
+        check(rom.sha256 === "9c0863e379d243f953d3cfcd87d11c98231f2d0469e69244d9ee059472c99194", "original XIP digest");
+        check(JSON.stringify(config.symbian.languages) === JSON.stringify([
+            { id: 37, default: false }, { id: 1, default: true }, { id: 50, default: false },
+        ]), "language list read from the original ROFS overlay");
+    }
+    doc = await open_library();
+    const row = [...doc.querySelectorAll(".vm-list [role=option]")].find(row => row.dataset.id === config.id);
+    check(row?.textContent.includes("Experimental boot"), "reopened library shows the machine as experimental");
+    row.click();
+    doc.defaultView.open = url => { window.power_on_url = url; };
+    (await until(() => button(doc, "Power on"), "Power on")).click();
+    const console_frame = frame(await until(() => window.power_on_url, "console URL"));
+    const console_state = await until(() => console_frame.contentWindow.v86_console, "CPU Worker console");
+    const { emulator, options } = console_state;
+    check(options.cpu_worker === true && options.machine_type === "nokia-n97", "the standard config selects the CPU Worker");
+    const diagnostics = await until(async () => {
+        const diagnostics = await emulator.get_diagnostics();
+        return emulator.get_instruction_counter() > 10 && (!local || diagnostics.symbian?.clocks.pll3_locked) && diagnostics;
+    }, "guest instruction execution");
+    check(diagnostics.machine_type === "nokia-n97" && diagnostics.cpu_type === "arm32", "Worker ran the N97 machine");
+    if(local)
+    {
+        check(diagnostics.symbian.l2_enabled && diagnostics.symbian.clocks.configured_cpu_hz === 433920000 &&
+            emulator.get_instruction_counter() >= 1360000, "original ROM booted the kernel and exercised the RAPIDO variant clocks");
+    }
+    check(console_frame.contentDocument.body.textContent.includes("Experimental boot"), "console names its boot milestone");
+    check(!console_frame.contentDocument.querySelector("#menu_keys, #menu_devices, #iphone_install_ipa"), "no unsupported phone controls");
+    await emulator.destroy();
+    store.close();
+    result.textContent = "PASS " + (local ? "original firmware via Chrome folder selection" : "public firmware fixture") +
+        "; OPFS assets retained after reopening; CPU Worker ran the XIP";
+}
+catch(error)
+{
+    result.textContent = "FAIL " + error.stack;
+}
+</script>

@@ -32,6 +32,7 @@ const FILES = [
     "index.html", "manifest.json", "192.png", "LICENSE", "src/app/app.css", "src/app/xterm.css",
     "build/v86_app.js", "build/v86_app.js.map", "build/android-import-worker.js", "build/android-import-worker.js.map",
     "build/ios-import-worker.js", "build/ios-import-worker.js.map", "build/ios-install-worker.js", "build/ios-install-worker.js.map", "build/libv86.mjs", "build/cpu-worker.js", "build/vcpu-worker.js", "build/xterm.js",
+    "build/symbian-import-worker.js", "build/symbian-import-worker.js.map",
     ...["v86-app-agent","libv86appbootstrap.dylib","libv86install.dylib"].map(n=>"build/ios-install-fixtures/"+n),
     "bios/ios-guest/README.md", "bios/ios-guest/manifest.json",
     "build/v86.wasm", "build/v86-fallback.wasm", "build/v86-parallel.wasm",

@@ -581,7 +581,7 @@ run: browser glbridge build/v86.wasm
 
 # The VM manager as a static site in build/pages (tools/pages_dist.mjs, for
 # Cloudflare Pages: .github/workflows/pages.yml, docs/vm-manager.md)
-PAGES_BUILD=build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js build/xterm.js \
+PAGES_BUILD=build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/symbian-import-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js build/xterm.js \
 	build/v86.wasm build/v86-fallback.wasm build/v86-parallel.wasm \
 	build/v86-arm64.wasm build/v86-arm64-fallback.wasm build/v86-arm64-parallel.wasm $(DEVICE_PLUGINS)
 .PHONY: pages
@@ -974,13 +974,13 @@ disk-image-browser-tests: build/libv86.mjs build/cpu-worker.js build/v86.wasm $(
 # stays its own file: index.html's import map names it "v86"), checked by tsc
 # against v86.d.ts. The tools are package.json's devDependencies (npm ci).
 APP_FILES=$(shell find src/app -name '*.js') $(wildcard src/android/*.js src/ios/*.js) src/browser/vm_options.js src/browser/query_compat.js \
-	src/machine_options.js src/disk_options.js
+	src/machine_options.js $(wildcard src/symbian/*.js) src/disk_options.js
 node_modules/.bin/esbuild node_modules/.bin/tsc: package.json package-lock.json
 	npm ci
 	touch node_modules/.bin/esbuild node_modules/.bin/tsc
 
 .PHONY: app app-check
-app: build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js ios-install-assets
+app: build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/symbian-import-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js ios-install-assets
 
 build/v86_app.js: $(APP_FILES) node_modules/.bin/esbuild
 	mkdir -p build
@@ -1003,6 +1003,11 @@ build/ios-install-worker.js: src/app/ios_install_worker.js $(wildcard src/ios/*.
 	mkdir -p build
 	node_modules/.bin/esbuild src/app/ios_install_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
 		--outfile=build/ios-install-worker.js --log-level=warning
+
+build/symbian-import-worker.js: src/app/symbian_import_worker.js $(wildcard src/symbian/*.js) src/android/bytes.js src/image/sha256.js node_modules/.bin/esbuild
+	mkdir -p build
+	node_modules/.bin/esbuild src/app/symbian_import_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
+		--outfile=build/symbian-import-worker.js --log-level=warning
 
 # Locally built v86 graphics adapter, using exports from the owner's 10B329 cache.
 .PHONY: ios-guest
@@ -1062,6 +1067,8 @@ app-tests: app-shared-tests app-check app build/v86.wasm build/v86-debug.wasm bu
 	node tests/app/browser_runner.mjs tests/app/ios_install_test.html
 	node tests/app/browser_runner.mjs tests/app/wizard_test.html part=service service=1
 	node tests/app/browser_runner.mjs tests/app/wizard_test.html part=android_service service=1
+	node tests/symbian/fixtures/make_package.mjs
+	node tests/app/browser_runner.mjs tests/app/symbian_test.html
 	node tests/app/browser_runner.mjs tests/app/console_test.html part=main
 	node tests/app/browser_runner.mjs tests/app/console_test.html part=main worker=0
 	node tests/app/browser_runner.mjs tests/app/console_test.html part=disk service=1

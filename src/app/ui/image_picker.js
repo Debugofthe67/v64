@@ -204,6 +204,7 @@ function browser_disk_choice(o, image)
     const status = h("small.reason", { role: "status" });
     list_disks().then(disks =>
     {
+        disks = disks.filter(disk => !disk.symbian);
         const choose = /** @type {HTMLSelectElement} */ (h("select", { "aria-label": o.label + ": the browser disk" },
             h("option", { value: "", selected: !image.path }, "Choose a disk…"),
             disks.map(d => h("option", { value: d.path, selected: d.path === image.path }, d.label + " (" + format_size(d.size) + ")"))));
