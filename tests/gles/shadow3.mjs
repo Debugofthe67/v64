@@ -529,6 +529,18 @@ void main() { gl_Position = p + vec4(d.mC.mA[2][3], float(d.mC.mB.x), e) + vec4(
     const strict = "#version 300 es\nprecision mediump float;\nout vec4 color;\n#ifdef unused\n#endif;\n" +
         "void main() { color = vec4(1.0); }";
     assert.equal(shadow.compile(strict, 0x8B30, true, false).ok, false);
+    const light_vs = "attribute vec4 p; uniform vec4 light; void main() { gl_Position = p + light; }";
+    const light_fs = "precision mediump float;\n#ifdef PER_PIXEL\nuniform mediump vec4 light;\n#endif\n" +
+        "void main() { gl_FragColor = vec4(1.0); }";
+    const per_vertex = link(light_vs, light_fs);
+    assert.ok(per_vertex.ok, per_vertex.log);
+    assert.deepEqual(per_vertex.uniforms.map(u => [u.name, u.type, u.stages]), [["light", 0x8B52, 1]]);
+    const per_pixel = link(light_vs, "#define PER_PIXEL\n" + light_fs.replace("vec4(1.0)", "light"));
+    assert.match(per_pixel.log, /precision/i);
+    const structured = (precision, output) => `struct Light { ${precision} vec4 color; }; uniform Light light[2];
+void main() { ${output} = light[1].color; }`;
+    const member_mismatch = link(structured("highp", "gl_Position"), structured("mediump", "gl_FragColor"));
+    assert.match(member_mismatch.log, /precision of uniform light\.color/i);
     // (unused attributes: locations of their own, not one glBindAttribLocation gave a used one)
     const unused = link("attribute vec4 a_coords; attribute vec4 a_position; attribute mat2 a_m; void main() { gl_Position = a_position; }",
         "precision mediump float; void main() { gl_FragColor = vec4(1.0); }", new Map([["a_position", 1]]));
