@@ -444,7 +444,10 @@ static int present_view(struct context *ctx)
     OSSpinLockUnlock(&lock);
     if(!b) return 0;
     struct native_window *win = b->window;
-    int published = win && publish_bytes(b) && win->post(win, 1) == 1;
+    // Version 3 windows defer a post with flag 1 until the GPU signals
+    // completion. The readback already wrote the pixels, so post as ready.
+    unsigned post_flags = win && win->version < 3 ? 1 : 0;
+    int published = win && publish_bytes(b) && win->post(win, post_flags) == 1;
     if(published)
     {
         void *next = win->surface(win);

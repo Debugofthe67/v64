@@ -64,10 +64,10 @@ static void close_window(struct fixture *w) { w->opened = 0; }
 static void *next_surface(struct fixture *w) { return w->surface[w->posted & 1]; }
 static int post(struct fixture *w, unsigned flags)
 {
-    if(!w->opened || flags != 1 || !check_pixels(next_surface(w), w->posted != 0)) return 0;
+    if(!w->opened || flags != 0 || !check_pixels(next_surface(w), w->posted != 0)) return 0;
     w->posted++; return 1;
 }
-static struct fixture fixture = { 1, open_window, close_window, next_surface, post };
+static struct fixture fixture = { 3, open_window, close_window, next_surface, post };
 static void *native_window(void *self, void *sel) { return &fixture; }
 extern const void *const kEAGLDrawablePropertyRetainedBacking;
 extern void *const kCFBooleanTrue;
