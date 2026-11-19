@@ -31,6 +31,39 @@
 
 表中的装载条件以 S0 采集的对照数据为准。Syborg 原始 BSP 与 qembian 的现代 QEMU 板级实现提供核对依据。[Symbian Foundation 的 Syborg BSP](https://github.com/SymbianSource/oss.FCL.sf.adapt.Qemu/tree/master/baseport/syborg) · [qembian Syborg 板级源码](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm/syborg.c) · [sym94 ABI 记录](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/personalities/sym94/README.md)
 
+### 代码级启动约定
+
+以下是拟新增的浏览器 API。示例启动已在本地构建的 Nokia 5800（RM-356）`31.0.101` 混合镜像。首次启动前，调用方从盘种子为这台 VM 创建 `C:` 文件。重开同一台 VM 时使用同一个 OPFS 路径。
+
+```js
+const vm = new V86({
+    cpu_type: "arm32",
+    machine_type: "symbian-syborg",
+    cpu_worker: true,
+    graphics_adapter: "none",
+    net_device: { type: "none" },
+    screen_container: document.getElementById("screen"),
+    autostart: false,
+    symbian: {
+        manifest: { url: "./5800/manifest.json" },
+        rom: { url: "./5800/ROM.img" },
+        rofs: { url: "./5800/ROM.rofs" },
+        devicetree: { url: "./5800/syborg.dtb" },
+        nvmemory: {
+            url: "opfs:v86/disks/5800-vm1-c.img",
+            disk_option: "read_write",
+        },
+    },
+});
+
+vm.add_listener("emulator-loaded", () => vm.run());
+```
+
+- `manifest` 标识机型、固件版本和产物格式，提供各只读文件的大小和 SHA-256。v86 据此选择 CPU、RAM 和板级配置，并在启动前校验传入的产物。`rom` 是本地组装的混合 XIP，包含开源 EKA2、Syborg BSP 和原厂用户态模块。`rofs` 是按固件顺序合并的只读分区。`devicetree` 提供 Syborg 平台设备树。示例用本地站点的文件 URL，浏览器文件夹导入也可传入 `{ buffer: ArrayBuffer }`。
+- `nvmemory` 是 `C:` 的可写介质。需要 `E:` 时，按同样的磁盘描述提供可选 `nvmemory2`。浏览器新建向导和程序化调用使用同一套构造参数。
+- qembian 使用 ARM 启动存根，混合 XIP 的物理装载地址为 `0x00010000`，ROFS 只读窗口从 `0x60000000` 开始，设备树由平台设备在 `0xC0012000` 提供。v86 从所选配置取得装载条件。S0 记录首次取指地址、CPU 模式及寄存器交接，S2 对照实现。[qembian Syborg 板级源码](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm/syborg.c#L1-L32)
+- 镜像校验和机器初始化完成后触发 `emulator-loaded`。示例随后调用 `run()` 开始执行。客体继续启动后，S60 主屏经 Syborg framebuffer 输出到 `screen_container`。后续 WebGPU 选项在 S6 验证。
+
 ### 混合镜像和存储
 
 在本地构建开源内核、BSP 和替代驱动，用固件提取的原厂用户态组合混合 XIP，并生成一个可导入目录。保留原厂用户模块的链接地址和导入关系，检查模块范围、ROM 目录、异常查找表和 ROFS 合并顺序。把必要的配置差异和修补逐项记录在构建清单中，附原始文件摘要和回归场景。系统应用仍在客体中执行 ARM 代码并通过 EKA2 发起系统调用。[Symbian Foundation EKA2 源码](https://github.com/SymbianSource/oss.FCL.sf.os.kernelhwsrv) · [qembian 镜像组合工具](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/tools/romcompose.py)
@@ -73,13 +106,13 @@ qembian 的工具、客体内核相关代码和 QEMU 板级源码按文件适用
 
 ### S1　稳定混合镜像的构建与导入格式
 
-从 S0 导出固定清单，验证用户模块的链接地址、导入序号和 ROM 目录。复核 `sym94` 的关键接口，优先覆盖进程和线程创建、块分配、计时器、LDD/PDD 通道与 IPC 请求完成。用现有固件解析器识别 RM-356 的 CORE、ROFS2、ROFS3 和可选 UDA。固定 v86 导入所需的产物版本和盘符定义。
+从 S0 导出固定清单，验证用户模块的链接地址、导入序号和 ROM 目录。复核 `sym94` 的关键接口，优先覆盖进程和线程创建、块分配、计时器、LDD/PDD 通道与 IPC 请求完成。用现有固件解析器识别 RM-356 的 CORE、ROFS2、ROFS3 和可选 UDA。固定 v86 导入所需的产物版本、盘符定义和 `new V86(...)` 参数。
 
 **通过条件**为本地工具能校验固件与产物，并能识别缺件、错版本、错摘要及 ROM 地址重叠。清单足以从原始输入重复生成这套镜像。
 
 ### S2　接入 v86 的 Syborg 板级模型
 
-先启动同一 BSP 构建的开源内核诊断镜像，沿正常入口验证 ARM/Thumb、MMU、异常、中断确认、定时器、串口和冷重启。再接 framebuffer、键盘与指针、只读 ROFS 窗口及 NVMemory。使用合成客体程序验证设备，然后执行 S0 的同一套镜像。按首个不同的 PC、异常寄存器或 MMIO 事件定位差异，验证解释器与正常 JIT 入口。
+先启动同一 BSP 构建的开源内核诊断镜像，沿正常入口验证 ARM/Thumb、MMU、异常、中断确认、定时器、串口和冷重启。再接 framebuffer、键盘与指针、只读 ROFS 窗口及 NVMemory。使用合成客体程序验证设备，然后通过 `new V86(...)` 执行 S0 的同一套镜像。按首个不同的 PC、异常寄存器或 MMIO 事件定位差异，验证解释器与正常 JIT 入口。
 
 **通过条件**为开源内核能接管机器、处理中断并从 IRQ 返回，客体通过实际设备访问读写虚拟盘、接收输入和输出像素，混合镜像进入文件服务器启动路径。
 
