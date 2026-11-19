@@ -1,6 +1,6 @@
 # Symbian S60v5（EKA2 + Syborg）实施计划
 
-2026-11-20 起，v86 的 Symbian 开发主线采用开源 EKA2、Syborg 虚拟板和原厂 S60v5 用户态。首个固件配置选用 Nokia 5800 XpressMusic（RM-356）`31.0.101`。目标是在浏览器离线冷启动到 S60 主屏，使用触摸和按键，完成自编 SIS/SISX 的安装、运行、保存、升级和卸载。
+2026-11-20 起，v86 的 Symbian 开发主线采用开源 EKA2、Syborg 虚拟板和原厂 S60v5 用户态。首个固件配置选用 Nokia 5800 XpressMusic（RM-356）`31.0.101`。首轮目标是在浏览器离线冷启动到 S60 主屏，使用触摸和按键，完成自编 SIS/SISX 的安装、运行、保存、升级和卸载。随后接入 WebGPU，用原生 S60v5 3D 游戏验收图形兼容性与性能。
 
 `nokia-n97` 机型、RAPIDO ROM 兼容实现和 RM-505 的整机冷启动归入历史硬件研究。此前实施记录可用 `git show 4d3311a5b:docs/plan/n97-plan.md` 查看，硬件资料及复现命令见 [N97 技术记录](../symbian-n97.md)。Syborg 各阶段均待本仓库实测。
 
@@ -26,6 +26,7 @@
 | 系统服务 | 保留原厂文件服务器、窗口服务器、S60 库、桌面和应用。由客体 Syborg BSP 及替代驱动承接启动和交互所需的板级请求，覆盖异步完成、取消及错误。离线模式验证无网状态和相关请求的正常收尾。 |
 | 板级设备 | 以参考 BSP 和实际 MMIO 轨迹核对中断控制器、定时器、RTC、串口、平台寄存器、framebuffer、指针键盘及 NVMemory 的访问宽度、时序、IRQ 和复位语义。 |
 | 显示与输入 | 首轮采用软件绘图，客体 framebuffer 经 DisplayHub 进入浏览器画布。以 360×640 竖屏校验触摸坐标、画面方向、菜单键和文本输入，支持指针取消与失焦释放。 |
+| 3D 加速 | WebGPU 作为按虚拟机选择的宿主后端。Syborg 客体通过 EGL/OpenGL ES 接入 v86 的共用 GLES 执行器，输出与软件 framebuffer 共同呈现。软件绘图是离线桌面和安装验收的基线。 |
 | 存储 | `Z:` 由混合 XIP 和三层 ROFS 提供，`C:` 由 NVMemory 提供实例独享的可写卷。首个配置按参考映射接入临时 `D:` 和可选的 `E:` 卡，盘符与容量由固件配置描述。 |
 
 表中的装载条件以 S0 采集的对照数据为准。Syborg 原始 BSP 与 qembian 的现代 QEMU 板级实现提供核对依据。[Symbian Foundation 的 Syborg BSP](https://github.com/SymbianSource/oss.FCL.sf.adapt.Qemu/tree/master/baseport/syborg) · [qembian Syborg 板级源码](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm/syborg.c) · [sym94 ABI 记录](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/personalities/sym94/README.md)
@@ -35,6 +36,14 @@
 在本地构建开源内核、BSP 和替代驱动，用固件提取的原厂用户态组合混合 XIP，并生成一个可导入目录。保留原厂用户模块的链接地址和导入关系，检查模块范围、ROM 目录、异常查找表和 ROFS 合并顺序。把必要的配置差异和修补逐项记录在构建清单中，附原始文件摘要和回归场景。系统应用仍在客体中执行 ARM 代码并通过 EKA2 发起系统调用。[Symbian Foundation EKA2 源码](https://github.com/SymbianSource/oss.FCL.sf.os.kernelhwsrv) · [qembian 镜像组合工具](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/tools/romcompose.py)
 
 导入目录包含混合 XIP、只读 ROFS、板级描述和驱动兼容版本、磁盘种子及清单。清单记录固件标识、镜像版本、文件大小和摘要、构建来源、CPU 与盘符映射。首次建机时为每台 VM 生成独立的可写盘，后续冷启动重挂同一份持久介质。快照保存机器配置、镜像指纹、可写介质身份和设备状态，包括待处理 IRQ、计时器、输入队列和 NVMemory 请求。恢复时先核对这些标识。
+
+### 3D 图形路径
+
+固定的 qembian 5800 配置声明 `gpu = "none"`。S0 以该配置复现软件绘图，S6 在同一 S60v5 用户态上验证新增的 3D 路径。先从固件和拟测应用核对 EGL/GLES 的 DLL 导入、导出序号和调用约定，再选择可复用的客体适配层。实现 EGL 配置查询、上下文与表面绑定、`eglSwapBuffers` 及与窗口服务器的交接，能力报告由实际实现决定。[5800 固件机型配置](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/models/nokia-5800-rm356/model.toml) · [qembian 的 Syborg 图形设备](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm/syborg.c) · [Khronos EGL](https://www.khronos.org/egl/)
+
+调用通过 Syborg 图形设备传给 CPU Worker。S6 决定设备协议如何映射到共用 GLES 代理，优先复用 `src/gles/` 的状态、命令批次、着色器转换和 WebGPU 执行器。窗口交换由客体触发，GPU 颜色缓冲经现有合成通道显示，软件 framebuffer 继续提供桌面和普通窗口画面。验证两类内容的遮挡、方向和切换，按 API 语义完成同步与必要的回读。适配器不可用时提供软件桌面，GPU 设备丢失时验证应用退出或重建上下文后的桌面恢复。[v86 共用 GLES 代理](gles-proxy-plan.md) · [WebGPU 规范](https://www.w3.org/TR/webgpu/)
+
+首轮 3D 验收覆盖 OpenGL ES 1.1 固定功能与 OpenGL ES 2.0 可编程着色器。按游戏实际使用的纹理格式、扩展和 EGL 能力补齐兼容性。测试清单标明原生 GLES、J2ME/M3G 或私有接口等运行依赖，以便定位无法启动的游戏。[Khronos OpenGL ES 规范](https://registry.khronos.org/OpenGL/index_es.php)
 
 ### 仓库落点
 
@@ -85,3 +94,15 @@ qembian 的工具、客体内核相关代码和 QEMU 板级源码按文件适用
 新建虚拟机沿用 `Symbian → S60v5`，展示首个已验证固件配置。使用一个文件夹入口导入本机构建目录，在 Worker 中校验内容和指纹，再保存到浏览器私有存储。建机时检查配额，支持取消和重试。控制台提供触控、菜单输入、软件包递送、关机和重开。页面刷新后从库中打开同一 VM，再验证挂起恢复。
 
 **通过条件**为通过浏览器的正常入口完成“导入 → 冷启动 → 安装 → 保存 → 刷新页面并重开 → 读回”，并用第二台 VM 验证磁盘隔离。后续 S60v3 或 Symbian^3 通过独立的固件配置和 ABI 验收接入。
+
+### S6　用 WebGPU 验证 EGL 与 OpenGL ES
+
+先用可重复构建的客体测试程序验证 EGL 窗口表面、交换和回到桌面。分别用 GLES 1.1 固定功能场景、GLES 2.0 着色器场景覆盖纹理、深度、混合和读回。核对参考像素与浏览器结果，允许记录清楚且可复现的精度差异。随后验证 GPU 模式下的图形资源恢复，以及关闭加速或适配器不可用时的主屏、输入和 Notes 安装流程。
+
+**通过条件**为发布版浏览器的 CPU Worker 路径能让两个客体场景分别通过实际 WebGPU 提交持续出图。画面可随窗口切换正确显示，软件模式仍通过 S5 的主要用户流程。
+
+### S7　验收真实 S60v5 3D 游戏
+
+从用户提供的游戏包中选择与首个固件配置匹配的样本，优先覆盖 GLES 1.1 和 GLES 2.0 各一款。固定游戏版本、场景、输入步骤、浏览器和 GPU；从原生安装器安装，再从 S60 菜单启动，进入可操作的 3D 场景，检查纹理、深度遮挡、按键或触摸、暂停返回以及再次启动。
+
+**通过条件**为实际游戏持续输出可操作画面，退出后能返回桌面，并可按固定步骤复测。记录帧时间的中位数和 P95、客体 CPU 时间、GPU 提交与回读开销；按游戏记录缺失扩展、渲染偏差和影响范围。两种 GLES 路径各有实测结果后发布兼容性结论。
