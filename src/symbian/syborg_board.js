@@ -7,10 +7,11 @@ import { syborg_irq_controller, syborg_rtc, syborg_timer, syborg_uart } from "./
 import { syborg_framebuffer } from "./syborg_framebuffer.js";
 import { validate_syborg_artifacts } from "./syborg_import.js";
 import { syborg_keyboard, syborg_pointer } from "./syborg_input.js";
+import { syborg_offline_modem } from "./syborg_modem.js";
 import { blank_syborg_card, syborg_nvmemory } from "./syborg_nvmemory.js";
 import { SYBORG_DIAGNOSTIC, SYBORG_PROFILE, SYBORG_MIB } from "./syborg_profile.js";
 
-export const SYBORG_LAYOUT_VERSION = 1;
+export const SYBORG_LAYOUT_VERSION = 2;
 const PLATFORM_ADDRESS = SYBORG_PROFILE.devicetree_address - 0x1000;
 const DTB_OFFSET = 0x1000, CONFIG_OFFSET = 0x400, DEVICE_ID_OFFSET = 0x800;
 const BOOT_DTB_ADDRESS = SYBORG_PROFILE.ram_size / 2;
@@ -104,17 +105,13 @@ function create_platform(cpu, boot)
     });
 }
 
-// The guest board drivers probe these slots and the ISC drivers initialize
-// both mailbox ports before the file server starts. The offline ports have
-// no received frames or IRQs. Other drivers see down or absent hardware.
+// Other board drivers see down or absent hardware in this offline profile.
 function map_offline_slots(cpu)
 {
     for(const [address, length, name, id] of [
         [0xC000A000, 0x2000, "Syborg hostfs and snapshot slots", 0],
         [0xC000C000, 0x1000, "Syborg offline Ethernet", 0xC51D0040],
         [0xC000E000, 0x2000, "Syborg optional audio and graphics slots", 0],
-        [0xC0019000, 0x2000, "Syborg offline modem port 0", 0xC51D0020],
-        [0xC001B000, 0x2000, "Syborg offline modem port 1", 0xC51D0020],
         [0xC001D000, 0x1000, "Syborg optional sensor slot", 0],
     ])
     {
@@ -143,6 +140,7 @@ export function create_syborg_board(cpu, boot, bus, screen)
     const hub = new DisplayHub(bus, screen);
     const irq = syborg_irq_controller(cpu);
     const timer = syborg_timer(cpu, irq.source(1));
+    const modem = syborg_offline_modem(cpu, irq);
     const [nvmemory, nvmemory2] = boot.disks;
     const disks = [
         syborg_nvmemory(cpu, 0xC0010000, "NVMemory C:", nvmemory, irq.source(12)),
@@ -152,14 +150,14 @@ export function create_syborg_board(cpu, boot, bus, screen)
         irq, timer, syborg_rtc(cpu),
         syborg_keyboard(cpu, bus, irq.source(2)), syborg_pointer(cpu, bus, irq.source(3)),
         syborg_framebuffer(cpu, hub, irq.source(4)),
-        ...[0, 1, 2, 3].map(port => syborg_uart(cpu, bus, port, irq.source(5 + port))), ...disks,
+        ...[0, 1, 2, 3].map(port => syborg_uart(cpu, bus, port, irq.source(5 + port))), modem, ...disks,
     ];
     return {
         nvmemory, nvmemory2,
         timer(now)
         {
             const was_asserted = irq.asserted();
-            const next = Math.min(timer.poll(now), hub.timer(now));
+            const next = Math.min(timer.poll(now), hub.timer(now), modem.poll(now));
             return !was_asserted && irq.asserted() ? 0 : next;
         },
         reset() { for(const device of devices) device.reset?.(); },

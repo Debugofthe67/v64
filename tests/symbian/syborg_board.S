@@ -47,11 +47,14 @@ _start:
     cmp r0, r1
     bne fail
 
-    /* Install low-vector SVC and IRQ handlers. */
+    /* Install low-vector SVC and IRQ handlers, and fail on undefined instructions. */
     ldr r0, =0xe59ff018
     mov r1, #0
+    str r0, [r1, #0x04]
     str r0, [r1, #0x08]
     str r0, [r1, #0x18]
+    ldr r0, =fail
+    str r0, [r1, #0x24]
     ldr r0, =svc_entry
     str r0, [r1, #0x28]
     ldr r0, =irq_entry

@@ -128,6 +128,8 @@ qembian 的工具、客体内核相关代码和 QEMU 板级源码按文件适用
 
 **通过条件**为从持久卷冷启动到由客体输出的原厂主屏，能通过触摸和按键打开菜单、启动系统应用并返回。关键服务持续存活，原版用户态的重复操作与 S0 对照一致。
 
+**实测通过。** Chrome 发布构建使用 S0 的 RM-356 `31.0.101` 产物，从空白 OPFS `C:` 完成首次向导，随后用同一持久卷冷启动进入 360×640 原厂主屏。两次都通过客体菜单键打开菜单，触摸启动原厂 Notes 后退出并返回主屏。串口确认文件服务器、窗口服务器和应用框架启动，以及无 SIM、无服务和静音 DSP 的应答。合成诊断复测延迟完成、取消、端口隔离和状态恢复。[S3 浏览器验收与复现命令](../symbian-syborg-reference.md#s3-浏览器内的原厂主屏)
+
 ### S4　验证 SIS/SISX 的安装和持久化
 
 运行有源码的 [v86 Notes 1.0](../../tests/symbian/fixtures/notes-v1.sisx) 和 [2.0](../../tests/symbian/fixtures/notes-v2.sisx)。现有包的导入序号已对照 RM-505 核对，在 RM-356 上先检查 UID、实际导入、签名策略和有效期，再决定复用现有包或按首个固件的导入表重新构建同一份应用。把包送入客体可访问的卷，从原生安装界面完成安装，再从客体菜单启动。qembian 调试工具的 SIS 安装记录覆盖 Belle，S60v5 的验收以实际运行结果为准。[Notes 构建记录](../symbian-n97.md#原生-sissisx-递送与-v86-notes) · [qembian SIS 工具范围](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/docs/sydb.md#installing-sis--sisx-sydb-sis-install)

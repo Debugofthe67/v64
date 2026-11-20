@@ -180,7 +180,7 @@ PY
 
 混合镜像在解释器和 JIT 下均从 S0 的同一组文件冷启动，依次记录三层 `SYBROFS`、原厂 `EStart.exe` 和 `Thread efile.exe::CFat32BitCachePopulator_drv_4 Killed -39`。达到文件服务器标记约需 4.65 亿条客体指令，独立复测中 JIT 编译 624 次，解释器编译次数为 0。串口记录及本地固件留在被忽略的 `build/syborg-s0/`。
 
-Chrome 的发布构建 CPU Worker 复测见 `tests/symbian/syborg_browser.html`。页面加载 S0 产物，以一份空白种子建立独立的 OPFS `C:`，从画布读到 360×640 framebuffer 并核实盘写入。浏览器串口在文件服务器标记之后记录了未定义指令异常 `ExcCode 00000002`，当时 `R15=0x827135BC`、`DFAR=0xEE070F90`。继续启动到主屏属于 S3 的验收。
+S2 的 Chrome 发布构建 CPU Worker 加载 S0 产物，以一份空白种子建立独立的 OPFS `C:`，从画布读到 360×640 framebuffer 并核实盘写入。文件服务器启动后，串口记录了未定义指令异常 `ExcCode 00000002`，当时 `R15=0x827135BC`、`DFAR=0xEE070F90`。S3 修复了这个异常，并扩展同一浏览器测试以复测整个路径。[更新后的浏览器复测命令](#s3-浏览器内的原厂主屏)
 
 ```bash
 make build/v86-arm64.wasm build/libv86.mjs
@@ -189,5 +189,29 @@ open_rom=build/syborg-s0/diagnostic/syborg_tshell_ARMV5_udeb.img
 node tests/symbian/syborg_board.mjs "$open_rom" "$artifacts/syborg.dtb"
 node tools/symbian/boot-syborg.mjs "$artifacts"
 node tools/symbian/boot-syborg.mjs "$artifacts" --interpreter
-TIMEOUT_MS=110000 node tests/app/browser_runner.mjs tests/symbian/syborg_browser.html
+```
+
+## S3 浏览器内的原厂主屏
+
+S2 的首个启动异常在两种执行方式下都发生于 `KASYBORG.DLL` 的空闲路径。ROM 虚拟地址 `0x827135BC` 的指令字 `0xEE070F90` 是 ARM1136 的 `MCR p15, 0, r0, c7, c0, 4`（Wait For Interrupt）。该操作现在通过现有的 CPU 等待和唤醒路径执行。合成板级客体安装了未定义指令失败处理程序，并让实际 Syborg 定时器唤醒 CPU，核对 IRQ 应答及返回。使用同一 S0 混合镜像复测，解释器和 JIT 均在执行约 4.75 亿条指令后到达 `System start ok`。[ARM1136 技术参考手册 DDI 0211I](https://documentation-service.arm.com/static/5e8e4306fd977155116aade2) · [qembian ARM1136 BSP 补丁](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/patches/qemu-baseport/0011-cpu-arm1136.patch)
+
+在 `System start ok` 之后，SAServer 和 ETel 通过原有 ISC 客体驱动查询 SIM、无线状态及设备属性。Syborg 的两个离线邮箱位于 `0xC0019000` 和 `0xC001B000`，使用 IRQ 15、16。立即应答由客体在发送路径中收取。静音 DSP 周期借助客体时钟延后完成，并触发邮箱中断，直到客体取走待处理帧。每个端口保留至多 64 个接收帧和 16 个延迟应答，溢出帧被丢弃。关闭或复用 ISC 句柄会清除该句柄未收取的帧和待完成请求。SIM 接收通知的取消由客体驱动处理。浏览器串口复核 `09 EF` 无 SIM 指示、`0A 01` 无服务登记应答和 `F3 35` DSP 周期完成。合成测试另核对队列上限、端口隔离、取消、复位和带待完成请求的状态恢复。该配置使用离线网络和静音 DSP。[qembian 邮箱协议](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm/syborg_modem.c) · [ISC 客体驱动](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/standins/_shared/iscpeer.inl) · [RM-356 应答](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/models/nokia-5800-rm356/isi-replies.txt)
+
+邮箱为 Syborg 设备布局版本 2 增加了待传输帧、虚拟时钟期限和句柄状态。S2 的布局版本 1 快照需要从持久 `C:` 冷启动。
+
+测试页面从空白 OPFS `C:` 启动，经地区、日期和时间向导进入原厂主屏。页面比较实际 360×640 画布与 S0 参考画面的固定区域，并等待客体主屏进程发布 `101f8766/43 = 101` 后发送菜单键。菜单和应用文件夹的检测包含图标区域，确保目标图标显示后才触摸。测试用 `EStdKeyApplication0`（`0xB4`）打开菜单，触摸选择 Applications 和原厂 Notes，并操作原厂软键退出 Notes 和菜单。第二次创建 CPU Worker 时重新打开同一 `C:`，在主屏复测同一流程。[RM-356 键位表](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/models/nokia-5800-rm356/keymap.toml)
+
+本地 Chrome 158 发布构建中，首次启动在 62.7 秒进入地区向导，95.9 秒进入主屏，107.7 秒打开菜单，114.4 秒进入 Notes，124.9 秒返回主屏。沿用同一 `C:` 的冷启动在 67.4 秒直接进入主屏，88.2 秒打开菜单，95.3 秒进入 Notes，107.6 秒返回主屏。计时均从各自 Worker 的构造开始，包含测试输入和画面确认。两次启动都记录了文件服务器挂载、系统启动、窗口服务器和 Uikon 服务，各收到一次无 SIM 指示、两次无服务登记应答和 110 次静音 DSP 完成。串口和实际画面保存在本地 `build/syborg-s0/s3-browser-full/`，其中包括 `cold-home.png`、`cold-menu.png`、`cold-notes.png` 和 `cold-home-return.png`。
+
+未启用截图记录的默认测试也通过。首次启动在 98.7 秒进入主屏，冷启动在 60.5 秒进入主屏，两次均在客体主屏进程发布状态后按菜单键，完成 Notes 的启动与退出。该次日志保存在本地 `build/syborg-s0/s3-browser-no-capture-final.log`。
+
+```bash
+make build/v86-arm64.wasm build/libv86.mjs
+artifacts=build/syborg-s0/reference
+node --test tests/symbian/syborg_modem.mjs
+node tools/symbian/boot-syborg.mjs "$artifacts" --system-start
+node tools/symbian/boot-syborg.mjs "$artifacts" --system-start --interpreter
+TIMEOUT_MS=430000 node tests/app/browser_runner.mjs tests/symbian/syborg_browser.html
+TIMEOUT_MS=430000 TEST_ARTIFACT_DIR=build/syborg-s0/s3-browser-full \
+  node tests/app/browser_runner.mjs tests/symbian/syborg_browser.html capture=1
 ```

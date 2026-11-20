@@ -7,15 +7,18 @@ import { parseArgs } from "node:util";
 import { V86 } from "../../src/main.js";
 import { parse_syborg_manifest, SYBORG_MANIFEST_NAME } from "../../src/symbian/syborg_import.js";
 
-const usage = "Usage: node tools/symbian/boot-syborg.mjs ARTIFACT_DIR [--interpreter] [--timeout SECONDS]";
+const usage = "Usage: node tools/symbian/boot-syborg.mjs ARTIFACT_DIR [--interpreter] [--system-start] [--timeout SECONDS]";
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     interpreter: { type: "boolean" },
+    "system-start": { type: "boolean" },
     timeout: { type: "string", default: "120" },
     help: { type: "boolean" },
 } });
 
 async function boot(directory, timeout)
 {
+    const milestone = values["system-start"] ? "System startup" : "File server bootstrap";
+    const ready = values["system-start"] ? /^System start ok$/ : /^(Thread efile\.exe::|About to start system)/i;
     const manifest_bytes = await readFile(join(directory, SYBORG_MANIFEST_NAME));
     const manifest = parse_syborg_manifest(manifest_bytes);
     const image = bytes => ({ buffer: bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ?
@@ -43,7 +46,7 @@ async function boot(directory, timeout)
     {
         await new Promise((resolve, reject) => {
             deadline = setTimeout(() => reject(new Error(
-                `File server bootstrap timed out after ${timeout}s (${vm.get_instruction_counter()} instructions, last serial line: ${last_line || "none"})`)),
+                `${milestone} timed out after ${timeout}s (${vm.get_instruction_counter()} instructions, last serial line: ${last_line || "none"})`)),
             timeout * 1000);
             let line = "";
             let rofs_ready = false;
@@ -59,7 +62,7 @@ async function boot(directory, timeout)
                 console.log(last_line);
                 if(last_line.startsWith("FAULT:")) reject(new Error(last_line));
                 if(last_line.startsWith("SYBROFS:")) rofs_ready = true;
-                if(rofs_ready && /^(Thread efile\.exe::|About to start system)/i.test(last_line)) resolve();
+                if(rofs_ready && ready.test(last_line)) resolve();
             });
             vm.add_listener("emulator-error", failure => reject(new Error(failure?.message || String(failure))));
             vm.add_listener("emulator-loaded", () => vm.run().catch(reject));
@@ -69,7 +72,7 @@ async function boot(directory, timeout)
         {
             throw new Error(`Unexpected ARM JIT compilation count: ${compiled}`);
         }
-        console.log(`File server bootstrap reached (${vm.get_instruction_counter()} instructions, ${compiled} JIT compilations)`);
+        console.log(`${milestone} reached (${vm.get_instruction_counter()} instructions, ${compiled} JIT compilations)`);
     }
     finally
     {

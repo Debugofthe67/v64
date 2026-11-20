@@ -680,6 +680,8 @@ pub fn cp15(
         (0, 0, 1..=2, n) if arm1136 => constant(ARM1136_ID[crm as usize - 1][n as usize]),
         (1..=2, 0, _, _) | (0, 12 | 14, _, _) | (0, 4, 6, 0) if arm1136 => Err(Exception::Undefined),
         (0, 1, 0, 1) if arm1136 => half(actlr_el1, false),
+        // ARM1136 Wait For Interrupt (DDI 0211I, tables 3-2 and 3-85).
+        (0, 7, 0, 4) if arm1136 && !read => Ok(Flow::Wait(1)),
         // The ARM1136 invalidates both caches with this operation. Memory is coherent here.
         (0, 7, 7, 0) if arm1136 && !read => Ok(Flow::Next),
         // DDI 0211I Tables 3-80/81 and 3-86/89. Synchronous, coherent

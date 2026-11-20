@@ -1,90 +1,229 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Syborg CPU Worker boot</title>
+<title>Nokia 5800 Syborg CPU Worker boot</title>
 <pre id="result">Starting Syborg</pre>
-<pre id="log"></pre>
 <div id="screen"><div></div><canvas></canvas></div>
+<pre id="log"></pre>
 <script type="module">
 import { V86 } from "../../build/libv86.mjs";
 
 const result = document.querySelector("#result");
 const log = document.querySelector("#log");
+const screen = document.querySelector("#screen");
 const directory = new URL("/build/syborg-s0/reference/", location.href);
-const disk_name = "syborg-s2-" + crypto.randomUUID();
+const disk_name = "syborg-s3-" + crypto.randomUUID();
 const disk_url = "opfs:v86/disks/" + disk_name + ".img";
 const image = name => ({ url: new URL(name, directory).href });
+const artifacts = new URLSearchParams(location.search).has("capture");
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function load()
+// FNV-1a over RGB in static regions from the S0 reference frames. Clock,
+// profile, indicators, and selected rows vary between boots.
+const landmarks = {
+    region: [[17, 224, 245, 27, 0x8FDA0DDD]],
+    date: [[12, 124, 60, 27, 0x3B06B304]],
+    time: [[12, 124, 60, 27, 0x04B8ADB9]],
+    home: [[112, 361, 55, 80, 0xE4C12CB3], [85, 555, 70, 70, 0xA6A38E6C]],
+    menu: [[25, 12, 60, 25, 0x4A509670], [262, 465, 61, 62, 0x604ABE38]], // Applications icon
+    applications: [[25, 12, 137, 25, 0x73E12815], [141, 472, 58, 67, 0xCD339319]], // Notes icon
+    notes: [[25, 12, 62, 25, 0xF9915111], [26, 256, 304, 93, 0xE1A2434F]],
+};
+
+function log_line(line)
 {
-    const reply = await fetch(image("manifest.json").url);
-    if(!reply.ok) throw new Error("Missing the local S0 artifact directory");
-    const manifest = await reply.json();
-    const seed = await fetch(image(manifest.files.c_seed.name).url);
-    if(!seed.ok) throw new Error("Could not read the local C: seed");
-    let disks = await navigator.storage.getDirectory();
-    for(const part of ["v86", "disks"]) disks = await disks.getDirectoryHandle(part, { create: true });
-    const handle = await disks.getFileHandle(disk_name + ".img", { create: true });
-    const writer = await handle.createWritable();
-    await seed.body.pipeTo(writer);
+    log.append(line + "\n");
+}
 
+async function artifact(name, body)
+{
+    if(!artifacts) return;
+    const reply = await fetch("/__artifact?name=" + name, { method: "POST", body });
+    if(!reply.ok) throw new Error("Could not write test artifact " + name);
+}
+
+function matches_crop(context, [x, y, width, height, expected])
+{
+    const pixels = context.getImageData(x, y, width, height).data;
+    let hash = 2166136261;
+    for(let i = 0; i < pixels.length; i += 4)
+    {
+        hash = Math.imul(hash ^ pixels[i], 16777619);
+        hash = Math.imul(hash ^ pixels[i + 1], 16777619);
+        hash = Math.imul(hash ^ pixels[i + 2], 16777619);
+    }
+    return (hash >>> 0) === expected;
+}
+
+function matches_screen(canvas, context, kind)
+{
+    return canvas.width === 360 && canvas.height === 640 && landmarks[kind].every(crop => matches_crop(context, crop));
+}
+
+async function setup_disk(disks, name)
+{
+    const seed = await fetch(image(name).url);
+    if(!seed.ok) throw new Error("Could not read the local C: seed");
+    const handle = await disks.getFileHandle(disk_name + ".img", { create: true });
+    await seed.body.pipeTo(await handle.createWritable());
+}
+
+async function boot(manifest, cold)
+{
+    screen.innerHTML = "<div></div><canvas></canvas>";
     const vm = new V86({
         cpu_type: "arm32", machine_type: "symbian-syborg", cpu_worker: true, autostart: false,
-        graphics_adapter: "none", screen_container: document.querySelector("#screen"),
-        wasm_path: "/build/v86-arm64.wasm", cpu_worker_url: "/build/cpu-worker.js",
-        disable_speaker: true,
+        graphics_adapter: "none", screen_container: screen, net_device: { type: "none" },
+        wasm_path: "/build/v86-arm64.wasm", cpu_worker_url: "/build/cpu-worker.js", disable_speaker: true,
         symbian: {
             manifest: image("manifest.json"), rom: image(manifest.files.rom.name),
             rofs: image(manifest.files.rofs.name), devicetree: image(manifest.files.devicetree.name),
             nvmemory: { url: disk_url, disk_option: "read_write" },
         },
     });
+    const canvas = screen.querySelector("canvas");
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    const serial = [];
+    const prefix = cold ? "cold" : "first";
+    let line = "", failure, home_ready = false;
+    const started = performance.now();
+    vm.add_listener("emulator-error", error => { failure = new Error(error?.message || String(error)); });
+    vm.add_listener("serial0-output-byte", byte => {
+        if(byte === 13) return;
+        if(byte !== 10) { line += String.fromCharCode(byte); return; }
+        serial.push(line);
+        if(/^(FAULT:|Thread (?:efile\.exe|EwSrv\.exe::Wserv|ALF::ALF|Menu::Menu|akncapserver).* Panic)/i.test(line))
+            failure = new Error(line);
+        if(line === "SYBPROP: Home screen::Home screen sets 101f8766/43 = 101")
+        {
+            home_ready = true;
+            log_line(line);
+        }
+        else if(/^(SYBROFS:|System start ok|SYBPROP: (?:EwSrv\.exe::Wserv|Startup::startup sets 100058f4))/i.test(line))
+            log_line(line);
+        line = "";
+    });
+    vm.add_listener("emulator-loaded", () => vm.run().catch(error => { failure = error; }));
+
+    async function capture(name)
+    {
+        if(artifacts) await artifact(prefix + "-" + name + ".png", await new Promise(resolve => canvas.toBlob(resolve)));
+    }
+    async function wait_screen(kind, name = kind, timeout = 45000, retry_menu_key = false)
+    {
+        const begin = performance.now(), until = begin + timeout;
+        let seen = false, menu_started = false, retried = false;
+        while(performance.now() < until)
+        {
+            if(failure) throw failure;
+            const match = (kind !== "home" || home_ready) && matches_screen(canvas, context, kind);
+            if(match && seen)
+            {
+                log_line(prefix + " " + name + " at " + ((performance.now() - started) / 1000).toFixed(1) + "s");
+                await capture(name);
+                return;
+            }
+            seen = match;
+            if(kind === "menu" && canvas.width === 360 && canvas.height === 640)
+                menu_started ||= matches_crop(context, landmarks.menu[0]);
+            // The first key can arrive during the handoff to the home app.
+            // Once the Menu title appears, let its animation finish.
+            if(retry_menu_key && !retried && !menu_started && performance.now() - begin >= 20000 &&
+                home_ready && matches_screen(canvas, context, "home"))
+            {
+                retried = true;
+                log_line(prefix + " retrying the menu key on the home screen");
+                await press_menu();
+            }
+            await sleep(200);
+        }
+        const status = kind === "menu" ?
+            ` (home pixels: ${matches_screen(canvas, context, "home")}, menu title appeared: ${menu_started})` : "";
+        throw new Error(prefix + " guest timed out waiting for " + name + status);
+    }
+    async function tap(x, y)
+    {
+        vm.symbian_set_touch(x, y, true);
+        await sleep(120);
+        vm.symbian_set_touch(x, y, false);
+    }
+    async function press_menu()
+    {
+        vm.symbian_send_key(0xB4, true);  // RM-356 EStdKeyApplication0
+        await sleep(120);
+        vm.symbian_send_key(0xB4, false);
+    }
+
     try
     {
-        let timer;
-        try
+        if(!cold)
         {
-            await new Promise((resolve, reject) => {
-                timer = setTimeout(() => reject(new Error("Timed out before file-server startup and a 360×640 display frame")), 90000);
-                let line = "", rofs = false, boot = false, screen = false;
-                const check = () => { if(boot && screen) resolve(); };
-                vm.add_listener("emulator-error", error => reject(new Error(error?.message || String(error))));
-                vm.add_listener("screen-set-size", ([width, height]) => {
-                    screen = width === 360 && height === 640;
-                    check();
-                });
-                vm.add_listener("serial0-output-byte", byte => {
-                    if(byte !== 10) { line += String.fromCharCode(byte); return; }
-                    log.textContent += line + "\n";
-                    if(/FAULT:/.test(line)) reject(new Error(line));
-                    if(line.startsWith("SYBROFS:")) rofs = true;
-                    if(rofs && /Thread efile\.exe::|About to start system/.test(line)) boot = true;
-                    line = "";
-                    check();
-                });
-                vm.add_listener("emulator-loaded", () => vm.run().catch(reject));
-            });
+            await wait_screen("region", "region", 165000);
+            await tap(35, 610);
+            await wait_screen("date");
+            await tap(90, 295);
+            await wait_screen("time");
+            await tap(90, 295);
         }
-        finally
-        {
-            clearTimeout(timer);
-        }
+        await wait_screen("home", "home", cold ? 165000 : 65000);
+        await press_menu();
+        await wait_screen("menu", "menu", 65000, true);
+        await tap(295, 505);
+        await wait_screen("applications");
+        await tap(165, 500);
+        await wait_screen("notes");
+        await tap(325, 609);
+        await wait_screen("applications", "notes-exited");
+        await tap(325, 609);
+        await wait_screen("menu", "applications-exited");
+        await tap(325, 609);
+        await wait_screen("home", "home-return");
+        const output = serial.join("\n");
+        for(const marker of ["SYBROFS:", "System start ok", "EwSrv.exe::Wserv", "EikSrvs.exe::UikonWatchers"])
+            if(!output.includes(marker)) throw new Error("Missing guest service marker " + marker);
+        if(!output.includes("00 6c 00 09 06 00 23 00 00 ef 05 06") ||
+            !/00 6c 00 0a 22 00 07 00 .. 01 00 02 00 04 06 02/.test(output))
+            throw new Error("Missing the no-SIM indication or no-service response");
+        if(!cold && !/00 6c 00 f3 0a 00 24 00 .. 35/.test(output))
+            throw new Error("Missing the delayed silent-DSP completion");
         const diagnostic = await vm.get_diagnostics();
         if(diagnostic.machine_type !== "symbian-syborg" || !(diagnostic.page_tier.compiled > 0))
             throw new Error("Expected the Syborg CPU Worker to compile ARM code");
-        const canvas = document.querySelector("#screen canvas");
-        if(canvas.width !== 360 || canvas.height !== 640 || canvas.getContext("2d").getImageData(0, 0, 1, 1).data[3] !== 255)
-            throw new Error("The worker did not present a 360×640 framebuffer to the canvas");
+        if(failure) throw failure;
         await vm.stop();
-        const record = JSON.parse(await (await (await disks.getFileHandle(disk_name + ".json")).getFile()).text());
-        if(record.size !== manifest.files.c_seed.bytes || !(record.generation > 0))
-            throw new Error("The file server did not write to the OPFS C: disk");
-        return "PASS Syborg CPU Worker boot, 360×640 framebuffer and writable OPFS C:";
+    }
+    catch(error)
+    {
+        await capture("failure");
+        throw error;
     }
     finally
     {
         await vm.destroy();
-        await disks.removeEntry(disk_name + ".img");
-        await disks.removeEntry(disk_name + ".json").catch(error => { if(error.name !== "NotFoundError") throw error; });
+        await artifact(prefix + "-serial.txt", serial.join("\n") + "\n");
+    }
+}
+
+async function load()
+{
+    const reply = await fetch(image("manifest.json").url);
+    if(!reply.ok) throw new Error("Missing the local S0 artifact directory");
+    const manifest = await reply.json();
+    let disks = await navigator.storage.getDirectory();
+    for(const part of ["v86", "disks"]) disks = await disks.getDirectoryHandle(part, { create: true });
+    try
+    {
+        await setup_disk(disks, manifest.files.c_seed.name);
+        await boot(manifest, false);
+        const record = JSON.parse(await (await (await disks.getFileHandle(disk_name + ".json")).getFile()).text());
+        if(record.size !== manifest.files.c_seed.bytes || !(record.generation > 0))
+            throw new Error("The stock guest did not write to the OPFS C: disk");
+        await boot(manifest, true);
+        return "PASS Stock S60 first boot and OPFS C: cold boot, 360×640 home, guest menu key, touch launch and exit of Notes";
+    }
+    finally
+    {
+        for(const extension of [".img", ".json"])
+            await disks.removeEntry(disk_name + extension).catch(error => { if(error.name !== "NotFoundError") throw error; });
     }
 }
 
