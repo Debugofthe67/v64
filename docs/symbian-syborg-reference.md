@@ -1,0 +1,104 @@
+# Nokia 5800 Syborg 启动对照
+
+2026-11-20 在 qembian 上验证 Nokia 5800（RM-356）`31.0.101`。在 Debian x86-64 上组装两次镜像，混合 XIP、只读 ROFS、设备树、出厂盘种子和组合清单逐字节一致。将同一份镜像交给 Debian ARM64 上的同版本 Syborg QEMU，完成离线启动到原厂 S60 主屏、按键和触摸、原厂 Notes 保存以及冷启动读回。首个可复现配置采用空白 `C:` 种子。
+
+## 构建环境
+
+qembian 固定为 `aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb`。参考构建在 Debian 13.7 x86-64（内核 `6.12.111+deb13-cloud-amd64`）上进行。Apple Silicon 主机用 QEMU 10.2.0 运行该 Debian 虚拟机，分配六核和 6 GiB。为现代 QEMU 使用 `qemu-system-arm` 构建目标。旧工具、EKA2、BSP 和替代驱动用 Podman 5.4.2 中的 Debian squeeze i386 构建。容器依赖安装完成后，编译在断网的容器内执行。[qembian 构建说明](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/README.md#building)
+
+| 输入 | 版本或摘要 |
+| --- | --- |
+| Debian 云镜像 | `debian-13-genericcloud-amd64-20261001-2618.qcow2` |
+| Debian 云镜像 SHA-512 | `f46f0671a6e5bdec5291ab8972bae2f10e5408c2f64a74078f11efc2f06a436a9d0313ed50e0472542eeabf780e9f7c792ac0a314c6c20507fcd9fd81b468c3d` |
+| qembian 源码归档 SHA-256 | `4bc2323407c8d1965f24748f36afa36533503d7e34fca727ed39ba5cea0a7501` |
+| Debian squeeze i386 容器基础 | `docker.io/debian/eol@sha256:4a306675b658d01a453bb89404daa87367f894b6ee62ea8f8980484099ca9bea` |
+| PDK | `PDK_4_0a.zip`，SHA-256 `1ca8e880d36288bd3c478042e62f7b2b7b1d368910dbd2b654d1cd6a5b93b08e` |
+| GCCE | CodeSourcery 2009q3-63，GCC 4.4.1，归档 SHA-256 `21f91d1692e3987d1d9cb23bda7b10822b3134cf63d985b95c2b55d35ebde789` |
+| QEMU | 11.1.3，归档 SHA-256 `5a8289c7940dc77d3873c81a6c29ba3afe1446fc9d36e77fa1658cdbecb84b22` |
+
+先按 qembian 的 `sources.lock` 验证四个 Symbian Foundation 源码提交、工具归档及 libgcc 辅助文件。CORE、V05、C01 三份固件文件使用计划中的摘要，另可导入同一归档里的 `RM356_31.0.008_020_xxx_U01.uda.fpsx`，SHA-256 为 `04072dad58a5a01c794955dda3f0cebf24008612c185930290cb0d3c22775ba7`。[qembian 源码锁定文件](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/sources.lock) · [固件摘要](plan/n97-plan.md#选型和对照环境) · [固件归档目录](https://firmware.center/firmware/Nokia/5800%20%28RM-356%2C%20RM-428%29/Flash%20Files/)
+
+交互验收使用同一 Debian 云镜像发布版本的 `debian-13-genericcloud-arm64-20261001-2618.qcow2`，SHA-512 为 `d8470b8c6c38fead046c794b5800a5a7b96672d5bcf543cc230ceb0c4b8ace05ed341a0c8928045422243fde26b2f1f2f58e99244c65709ffda2e3d4b674dd5a`。用 Apple Hypervisor Framework 运行该 Linux 虚拟机，分配六核和 5 GiB。重编译相同的 Syborg QEMU 11.1.3，给 `scripts/build-qemu-modern.sh` 设置 `SYVG_CXX=g++` 以使用 ARM64 编译器的默认位宽。复用 x86-64 生成并核验过摘要的客体镜像。
+
+## 构建步骤
+
+在干净的 qembian 副本中准备锁定输入。构建前把 `patches/qemu-baseport/` 下各补丁以及其引用的 `external/oss.FCL.sf.adapt.Qemu/` 源文件从 CRLF 统一为 LF。补丁 `0020-nvmemory-reopen-geometry-unsupported-requests.patch` 的删除侧有一行 `-// Instance parameters, overridable so that a second NVMemory device (syborg-pg: the N95 E: drive,`，把该行的 `syborg-pg:` 改为 `qembian:`，使它与先应用的 0006 补丁匹配。独立重放该系列后，`baseport/syborg/fb/syborg_fb.cpp` 和 `baseport/syborg/mednvmemory/syborg_mednvmemory.cpp` 的 SHA-256 分别为 `0fae52de88a9bffc7fa4d60818a0cc8eb5da2f3716e3172cc0f012c7228100dd` 和 `fc3825ae4ba4d3d44b77fb8e83fe79de0780375d7e3659ffec678b7ec2191a28`。
+
+在 `scripts/build-standins.sh` 的 AWK 程序里跳过原 `time=` 行，并在输出 `romname=` 后输出 `time=16/09/2009 00:00:00.0`。这样混合 XIP 的时间戳取自固件标注日期。两次组装均使用该设置。[rombuild 时间格式](https://github.com/SymbianSource/oss.FCL.interim.SFTools.LinuxBuild/blob/5da968bda7c82d2e7cb5392a40447a2523eac077/imgtools/romtools/group/release.txt)
+
+```bash
+device=nokia-5800-rm356@31.0.101
+python3 -I tools/fw/store.py import /path/to/firmware
+python3 -I tools/fw/inventory.py --device "$device"
+python3 -I tools/device.py drive-image "$device" --kind nvmem --out C-factory-seed.img
+
+scripts/build-qemu-modern.sh
+scripts/setup-epocroot.sh
+export CONTAINER_ARGS='--network none -e MAKEFLAGS=-j4'
+scripts/build-hosttools.sh
+
+kernel=build/epocroot/sf/os/kernelhwsrv/kernel/eka/kernel
+maps=()
+for mapping in personalities/*/exec.map; do
+    personality=${mapping%/exec.map}
+    maps+=("${personality#personalities/}=$mapping")
+done
+python3 -I tools/personality/gen_exec_map.py "$kernel/execs.txt" "$kernel/execpers_map.h" "${maps[@]}"
+scripts/build-kernel.sh
+python3 -I tools/device.py build "$device" --kernel --out ROM.img
+```
+
+如果只构建 QEMU 的 ARM 系统模拟器，配置生成后可执行 `ninja -C build/qemu-modern/build qemu-system-arm`，并在启动时把 `SYBORG_QEMU` 指向该目录的 `qemu-system-arm`。组合工具把 ROFS 写成 `ROM.img.rofs`。设备树和组合清单用 `tools/device.py paths "$device" dtb` 和 `tools/device.py paths "$device" manifest` 定位。
+
+## 参考产物
+
+| 文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `ROM.img` | 45060096 | `977483ad88275c596570a74c4cc4b8ba1a0b387eee58460b401f8968d00bf90c` |
+| `ROM.rofs` | 96337920 | `526d6370802739af79cda1855c5d32f48958ecd76f86b9ad6adc8c50eebdb9bf` |
+| `syborg.dtb` | 2533 | `cbb986294b68586d85d3d2c6dca82e3d3f4f6001a143bd9f8cb4b22618ba8714` |
+| `C-factory-seed.img` | 90316800 | `677adef8b0567d754a9f66e4accae829324ebbfe1a15443ba241f55dc794ab4a` |
+| `C-blank-seed.img` | 67108864 | `3b6a07d0d404fab4e23b6d34bc6696a6a312dd92821332385e5af7c01c421351` |
+| `hybrid-manifest.txt` | 109769 | `c2b191d508a322e33565d9bf0dda9b897da9470bcf353dbdc35456d863284b94` |
+
+ROM 链接地址为 `0x80000000`，根目录位于 `0x82af6c68`，`efile.exe` 的目录项为 `0x82ae5ff8`。`SYBROFS` v2 的表头位于物理地址 `0x60000000`，三层 ROFS 对应本地驱动号 9、10、11，其内容摘要分别与固件提取所得的三层 ROFS 一致。
+
+## 启动参数和交接
+
+以 `-M syborg -cpu arm1136-r2 -m 172M` 启动，显式传入设备树，使用 360×640 framebuffer、`-nic none` 和 `syborg-gl.backend=off`。复位 PC 为 `0x00000000`。执行启动存根后在 `0x00010000` 交接，ROM 的首条指令分支到 `0x00010200`。交接时 `R0/R1/R3/SP/LR` 均为 0，`R2=0x05600000`，`CPSR=0x400001d3`（ARM SVC）。设备树同时由平台设备从 `0xC0012000` 提供。
+
+| 首批设备访问 | 物理地址 | 宽度 | 值 |
+| --- | --- | ---: | --- |
+| 读取平台 RAM 容量 | `0xC001100C` | 4 | `0xAC` |
+| 读取 UART ID | `0xC0006000` | 4 | `0xC51D0001` |
+| 写入中断控制器 | `0xC000000C` | 4 | `0` |
+
+最先记录的 CPU 异常是正常 IRQ。原厂 `sospmmhandler.exe` 因缺少 PMM 分区报告 `SosPmmHandler -5`，启动继续进入 EStart、Starter 和文件服务器。在 Apple Silicon 上用软件模拟的 Debian x86-64 环境做交接和早期设备采样。出厂盘种子的两次测试在开机画面后遇到 AlarmServer 相关内核异常。空白盘配合 `-icount shift=5,align=off,sleep=on` 启动到地区选择界面。两组测试保存了日志和画面。[qembian 的 5800 启动记录](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/docs/devices/nokia-5800-rm356/bring-up.md)
+
+## 交互与持久化验收
+
+在 Debian ARM64 上通过 qembian 的普通启动脚本启用软件显示。用 `SYBORG_UDA=0` 生成新实例的空白 64 MiB `C:`，并为该实例准备 FAT32 `E:`。`ROM.img.rofs` 指向上表的只读 `ROM.rofs`。从同一目录启动，第二次保留 `C.img`。TOML 配置和模拟设备响应使用固定提交的原始配置。
+
+```bash
+device=nokia-5800-rm356@31.0.101
+export SYBORG_QEMU="$PWD/build/qemu-modern/build/qemu-system-arm"
+test -e ROM.img.rofs || ln -s ROM.rofs ROM.img.rofs
+if ! test -e C.img; then
+    SYBORG_UDA=0 python3 -I tools/device.py drive-image "$device" --kind nvmem --out C.img
+fi
+if ! test -e E.img; then
+    truncate -s 1G E.img
+    mkfs.fat -F 32 E.img
+fi
+
+scripts/run-modern.sh --device "$device" --dtb syborg.dtb \
+    --qmp phone.qmp --serial-log serial.log --nvmem C.img --nvmem2 E.img \
+    ROM.img -nic none -global syborg-gl.backend=off
+```
+
+1. 触摸选择地区，确认日期和时间，进入 360×640 原厂 S60 主屏。
+2. 用 F8 对应的菜单键打开菜单，触摸打开 Applications 和原厂应用。File manager 显示内部盘和存储卡，执行复制时返回了应用列表。持久化验收随即改用原厂 Notes。
+3. 在 Notes 中选择 New note，用屏幕数字键盘输入 `580026`，按 Done 保存，核对列表的内容。
+4. 退出 Notes，用 QMP `quit` 结束模拟器进程。保留 `C.img`，把 `E.img` 换成空白 FAT32 存储卡。启动全新的 QEMU 进程，进入显示 Offline 的原厂主屏，再用菜单键和触摸进入 Notes，读到 `580026`。
+
+本地 `build/syborg-s0/reference/` 保存镜像与组合清单，`build/syborg-s0/preflight/` 保存构建输入记录，`build/syborg-s0/run-arm64/` 保存启动参数、串口记录、`note-saved.png`、`cold-screen.png` 和 `cold-note-readback.png`。保存后、冷启动前的 `C.img` SHA-256 为 `8aaad5540f4f7aee89f685f3a507bdc4b431051de9ce23c0a463cfad52b6bca7`。
