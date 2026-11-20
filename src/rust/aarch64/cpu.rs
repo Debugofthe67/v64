@@ -84,6 +84,7 @@ pub const FEATURE_AARCH32: u32 = 1 << 1;
 pub const FEATURE_A32: u32 = 1 << 2;
 pub const FEATURE_CORTEX_A8: u32 = 1 << 3;
 pub const FEATURE_ARM1136: u32 = 1 << 4;
+pub const FEATURE_ARM1136_R2: u32 = 1 << 5;
 static mut FEATURES: u32 = 0;
 
 /// The optional features of the machine's profile: FEATURE_PAN (v2),
@@ -92,7 +93,7 @@ static mut FEATURES: u32 = 0;
 pub fn a64_set_features(mask: u32) {
     unsafe {
         *crate::parallel::machine(&raw mut FEATURES) =
-            mask & (FEATURE_PAN | FEATURE_AARCH32 | FEATURE_A32 | FEATURE_CORTEX_A8 | FEATURE_ARM1136)
+            mask & (FEATURE_PAN | FEATURE_AARCH32 | FEATURE_A32 | FEATURE_CORTEX_A8 | FEATURE_ARM1136 | FEATURE_ARM1136_R2)
     };
     crate::aarch64::tlb::flush(true);
 }
@@ -105,6 +106,11 @@ pub fn cortex_a8() -> bool {
 #[inline(always)]
 pub fn arm1136() -> bool {
     unsafe { *crate::parallel::machine(&raw mut FEATURES) & FEATURE_ARM1136 != 0 }
+}
+
+#[inline(always)]
+pub fn arm1136_r2() -> bool {
+    unsafe { *crate::parallel::machine(&raw mut FEATURES) & FEATURE_ARM1136_R2 != 0 }
 }
 
 #[inline(always)]

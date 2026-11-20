@@ -7,7 +7,7 @@
 
 import { dbg_assert, dbg_log } from "../log.js";
 import { LOG_CPU, WASM_TABLE_OFFSET } from "../const.js";
-import { set_jit_switches } from "../jit_switches.js";
+import { parse_jit_switches, set_jit_switches } from "../jit_switches.js";
 import { relaxed_fma_fused } from "../cpu.js";
 import { view, Bitmap } from "../lib.js";
 import { v86 } from "../main.js";
@@ -48,6 +48,8 @@ import { create_n97_cbus } from "../symbian/n97_cbus.js";
 import { create_n97_dispc } from "../symbian/n97_dispc.js";
 import { create_n97_panel } from "../symbian/n97_panel.js";
 import { create_n97_lossi } from "../symbian/n97_lossi.js";
+import { create_syborg_board, load_syborg_rom, syborg_boot_files, SYBORG_LAYOUT_VERSION } from "../symbian/syborg_board.js";
+import { SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -73,8 +75,9 @@ const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldf
     ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
     "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
     "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma", "n97_touch_gpio", "n97_touch",
-    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus", "n97_power_gpio", "n97_cbus", "n97_sd_detect", "n97_rapido_compat", "n97_boot_source"];
-const machine_layout = machine => machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
+    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus", "n97_power_gpio", "n97_cbus", "n97_sd_detect", "n97_rapido_compat", "n97_boot_source", "syborg"];
+const machine_layout = machine => machine === SYBORG_MACHINE ? SYBORG_LAYOUT_VERSION :
+    machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
 const STATE_MAX_SINGLE_BUFFER = 0x7FFFFFFF;
@@ -260,6 +263,7 @@ A64CPU.prototype.init = function(settings, device_bus)
     this.machine_type = machine_type;
     const ranchu = machine_type === "ranchu";
     const n97 = machine_type === "nokia-n97";
+    const syborg = machine_type === SYBORG_MACHINE ? syborg_boot_files(settings) : null;
     const n97_address = n97 ? settings.symbian?.["load_address"] : undefined;
     const n97_boot = n97 && settings.symbian_rom ? n97_boot_files(settings.symbian_rom, n97_address, settings.symbian["boot_registers"], {
         media: settings.symbian_boot_media, media_digest: settings.symbian["boot_media_sha256"],
@@ -278,7 +282,9 @@ A64CPU.prototype.init = function(settings, device_bus)
     this.set_profile((this.cpu_type === "arm32" ? ARM32_PROFILES : A64_PROFILES)[cpu_profile][0]);
     // the A64 page tier (J2): synchronous publication (tests), the JIT switches by name
     this.ir_sync_publication = settings["ir_sync_publication"] === true;
-    set_jit_switches(this.wm.exports, this.wasm_memory, settings["jit_switches"]);
+    const jit = syborg ? Object.assign({ "a64_page": true }, parse_jit_switches(settings["jit_switches"])) : settings["jit_switches"];
+    if(syborg && settings.disable_jit) jit["a64_page"] = false;
+    set_jit_switches(this.wm.exports, this.wasm_memory, jit);
     // (the GIC's distributor and redistributors: decoded in the core, P4.2;
     // ranchu's with a 32-bit kernel a GICv2's distributor and CPU interface)
     /** whether the GIC is a GICv2 (ranchu with a 32-bit kernel) */
@@ -292,10 +298,22 @@ A64CPU.prototype.init = function(settings, device_bus)
     const adapter = this.graphics_adapter_descriptor;
     this.create_memory(memory_size, adapter ? Math.max(DEVICE_MEMORY_SIZE,
         adapter["device_memory_size"]?.({ "test": settings.graphics_adapter_test }) || 0) :
-        machine_type === "s5l8930" ? 1 << 20 : n97 ? N97_DEVICE_MEMORY + (n97_boot?.bootrom?.length ?? 0) : 0,
-        n97 ? (n97_address < N97_RAM_BASE ? 0 : N97_RAM_BASE) : VIRT_RAM_BASE);
+        syborg ? syborg.profile.rofs_window_size : machine_type === "s5l8930" ? 1 << 20 :
+        n97 ? N97_DEVICE_MEMORY + (n97_boot?.bootrom?.length ?? 0) : 0,
+        syborg ? 0 : n97 ? (n97_address < N97_RAM_BASE ? 0 : N97_RAM_BASE) : VIRT_RAM_BASE);
     this.configure_extended_memory(settings.extended_memory_size || 0, settings.extended_memory_cache);
     this.device_bus = device_bus;
+    if(syborg)
+    {
+        const board = create_syborg_board(this, syborg, device_bus, settings.screen);
+        this.devices = { syborg: board, display: board.display };
+        this.virtio_devices = [];
+        this.shared_spi_sources = new Map();
+        this.virtio_transport = "none";
+        this.boot_files = syborg;
+        this.load_boot_files();
+        return;
+    }
     if(n97)
     {
         this.boot_files = n97_boot;
@@ -609,7 +627,13 @@ A64CPU.prototype.init_gles_backdoor = function(settings, display, present)
 A64CPU.prototype.load_boot_files = function()
 {
     if(!this.boot_files) return;
-    if(this.machine_type === "nokia-n97")
+    if(this.machine_type === SYBORG_MACHINE)
+    {
+        load_syborg_rom(this, this.boot_files);
+        this.boot_entry = this.boot_x0 = 0;
+        this.booted = true;
+    }
+    else if(this.machine_type === "nokia-n97")
     {
         const { address, registers } = this.boot_files;
         load_n97_rom(this, this.boot_files);
@@ -822,6 +846,7 @@ A64CPU.prototype.run_machine_core = function()
         const next = Math.min(run(this.clock.now()), devices);
         // (PSCI SYSTEM_RESET: the machine resets and boots again, P4.8)
         if(this.wm.exports["a64_take_reset_request"]()) this.reboot_internal("restart");
+        if(this.devices.syborg) return Math.min(next, this.devices.syborg.timer(this.clock.now()));
         // The application core can be in WFI while the ARM7 still handles
         // its flash request. Sleeping for the AP's timer then throttles
         // an independent runnable processor (and every NAND transaction).
@@ -901,6 +926,7 @@ A64CPU.prototype.state_block_of = function(core)
 /** (env.run_hardware_timers) the virt machine's device timers (the PL031's alarm, the display's); the cores' timers are their own */
 A64CPU.prototype.run_hardware_timers = function(acpi, now)
 {
+    if(this.devices.syborg) return this.devices.syborg.timer(now);
     if(this.devices.n97_os_timer)
         return Math.min(this.devices.n97_os_timer.poll(now), this.devices.n97_dma.poll(), this.devices.n97_touch.poll(now),
             this.devices.n97_lossi.poll(now), this.devices.n97_panel.poll(now), this.devices.n97_dispc.poll(now),
@@ -982,8 +1008,10 @@ A64CPU.prototype.reboot_internal = function(reason)
         // (after PSCI SYSTEM_OFF, P8.1: RAM and device memory do not keep their contents)
         this.mem8.fill(0);
         this.wm.exports["a64_bus_written"](0, this.memory_size[0]);
-        new Uint8Array(this.wasm_memory.buffer, this.mem8.byteOffset + this.device_memory.start,
-            this.device_memory.end - this.device_memory.start).fill(0);
+        // Syborg device backing holds the immutable ROFS window.
+        if(!this.devices.syborg)
+            new Uint8Array(this.wasm_memory.buffer, this.mem8.byteOffset + this.device_memory.start,
+                this.device_memory.end - this.device_memory.start).fill(0);
         this.clear_extended_memory();
     }
     for(const device of Object.values(this.devices)) device.reset?.();
@@ -1395,7 +1423,8 @@ A64CPU.prototype.validate_state = function(state)
     const layout = machine_layout(this.machine_type);
     const legacy_n97 = machine === "nokia-n97" && identity[1] === 4;
     if(identity[1] !== layout && !legacy_n97 || !profiles.some(p => p[0] === identity[2]) ||
-        (machine === "nokia-n97") !== (identity[2] === "arm1136"))
+        (machine === "nokia-n97") !== (identity[2] === "arm1136") ||
+        (machine === SYBORG_MACHINE) !== (identity[2] === SYBORG_PROFILE.cpu))
     {
         throw new Error("The snapshot is from " + machine + " layout " + identity[1] + " with CPU profile " + identity[2] +
             "; this machine is layout " + layout + ", " + this.profile);
@@ -1415,6 +1444,7 @@ A64CPU.prototype.validate_state = function(state)
         if(!!rapido_compat !== !!this.devices.n97_rapido_compat) throw new Error("Snapshot RAPIDO compatibility ROM configuration differs");
         this.devices.n97_rapido_compat?.check_state(rapido_compat);
     }
+    this.devices.syborg?.check_state(state[4]?.[DEVICE_ORDER.indexOf("syborg")]);
     if(this.machine_type === "s5l8930" && !!state[4]?.[DEVICE_ORDER.indexOf("apple_nand")] !== !!this.devices.apple_nand)
     {
         throw new Error("snapshot and machine must use the same N90 NAND configuration");

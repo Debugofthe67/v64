@@ -1,0 +1,92 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Syborg CPU Worker boot</title>
+<pre id="result">Starting Syborg</pre>
+<pre id="log"></pre>
+<div id="screen"><div></div><canvas></canvas></div>
+<script type="module">
+import { V86 } from "../../build/libv86.mjs";
+
+const result = document.querySelector("#result");
+const log = document.querySelector("#log");
+const directory = new URL("/build/syborg-s0/reference/", location.href);
+const disk_name = "syborg-s2-" + crypto.randomUUID();
+const disk_url = "opfs:v86/disks/" + disk_name + ".img";
+const image = name => ({ url: new URL(name, directory).href });
+
+async function load()
+{
+    const reply = await fetch(image("manifest.json").url);
+    if(!reply.ok) throw new Error("Missing the local S0 artifact directory");
+    const manifest = await reply.json();
+    const seed = await fetch(image(manifest.files.c_seed.name).url);
+    if(!seed.ok) throw new Error("Could not read the local C: seed");
+    let disks = await navigator.storage.getDirectory();
+    for(const part of ["v86", "disks"]) disks = await disks.getDirectoryHandle(part, { create: true });
+    const handle = await disks.getFileHandle(disk_name + ".img", { create: true });
+    const writer = await handle.createWritable();
+    await seed.body.pipeTo(writer);
+
+    const vm = new V86({
+        cpu_type: "arm32", machine_type: "symbian-syborg", cpu_worker: true, autostart: false,
+        graphics_adapter: "none", screen_container: document.querySelector("#screen"),
+        wasm_path: "/build/v86-arm64.wasm", cpu_worker_url: "/build/cpu-worker.js",
+        disable_speaker: true,
+        symbian: {
+            manifest: image("manifest.json"), rom: image(manifest.files.rom.name),
+            rofs: image(manifest.files.rofs.name), devicetree: image(manifest.files.devicetree.name),
+            nvmemory: { url: disk_url, disk_option: "read_write" },
+        },
+    });
+    try
+    {
+        let timer;
+        try
+        {
+            await new Promise((resolve, reject) => {
+                timer = setTimeout(() => reject(new Error("Timed out before file-server startup and a 360×640 display frame")), 90000);
+                let line = "", rofs = false, boot = false, screen = false;
+                const check = () => { if(boot && screen) resolve(); };
+                vm.add_listener("emulator-error", error => reject(new Error(error?.message || String(error))));
+                vm.add_listener("screen-set-size", ([width, height]) => {
+                    screen = width === 360 && height === 640;
+                    check();
+                });
+                vm.add_listener("serial0-output-byte", byte => {
+                    if(byte !== 10) { line += String.fromCharCode(byte); return; }
+                    log.textContent += line + "\n";
+                    if(/FAULT:/.test(line)) reject(new Error(line));
+                    if(line.startsWith("SYBROFS:")) rofs = true;
+                    if(rofs && /Thread efile\.exe::|About to start system/.test(line)) boot = true;
+                    line = "";
+                    check();
+                });
+                vm.add_listener("emulator-loaded", () => vm.run().catch(reject));
+            });
+        }
+        finally
+        {
+            clearTimeout(timer);
+        }
+        const diagnostic = await vm.get_diagnostics();
+        if(diagnostic.machine_type !== "symbian-syborg" || !(diagnostic.page_tier.compiled > 0))
+            throw new Error("Expected the Syborg CPU Worker to compile ARM code");
+        const canvas = document.querySelector("#screen canvas");
+        if(canvas.width !== 360 || canvas.height !== 640 || canvas.getContext("2d").getImageData(0, 0, 1, 1).data[3] !== 255)
+            throw new Error("The worker did not present a 360×640 framebuffer to the canvas");
+        await vm.stop();
+        const record = JSON.parse(await (await (await disks.getFileHandle(disk_name + ".json")).getFile()).text());
+        if(record.size !== manifest.files.c_seed.bytes || !(record.generation > 0))
+            throw new Error("The file server did not write to the OPFS C: disk");
+        return "PASS Syborg CPU Worker boot, 360×640 framebuffer and writable OPFS C:";
+    }
+    finally
+    {
+        await vm.destroy();
+        await disks.removeEntry(disk_name + ".img");
+        await disks.removeEntry(disk_name + ".json").catch(error => { if(error.name !== "NotFoundError") throw error; });
+    }
+}
+
+load().then(message => { result.textContent = message; }, error => { result.textContent = "FAIL " + (error?.stack || error); });
+</script>

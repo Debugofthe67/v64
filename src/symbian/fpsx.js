@@ -155,7 +155,7 @@ export function parse_fpsx(bytes)
     return parsed;
 }
 
-/** @param {!Array<ReturnType<typeof parse_fpsx>>} containers */
+/** @param {!Array<{groups: !Array}>} containers */
 export function validate_fpsx_layout(containers)
 {
     // Certificates with different keys in the same group represent the same
@@ -174,8 +174,8 @@ export function validate_fpsx_layout(containers)
 /**
  * Extract one image in flash-address order. Certificate variants can share
  * flash addresses, but each byte in the requested data region has one source.
- * @param {ReturnType<typeof parse_fpsx>} parsed
- * @param {ReturnType<typeof collect_groups>[number]} group
+ * @param {{bytes: !Uint8Array}} parsed
+ * @param {{data: !Array}} group
  */
 export function fpsx_group_data(parsed, group)
 {

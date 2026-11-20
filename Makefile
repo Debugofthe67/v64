@@ -184,6 +184,8 @@ CORE_FILES=cjs.js const.js io.js machine_clock.js machine_options.js main.js lib
 	   parallel/relocate.js parallel/control.js parallel/machine.js \
 	   ios/crypto.js ios/lzss.js ios/nand_boot.js ios/sparse_nand.js ios/guest_load.js ios/install_trust.js ios/install_protocol.js ios/install_service.js ios/network.js ios/runtime_trust.js ios/install_api.js apple/amc.js apple/amc_codec.js apple/audio_decode.js apple/audio.js apple/boot.js apple/n90_compat.js apple/bootlogo.js apple/cdma.js apple/uid.js apple/clcd.js apple/dart.js apple/devicetree.js apple/h2fmi.js apple/i2c.js apple/iop.js apple/macho.js apple/multitouch.js apple/nand.js apple/nand_geometry.js apple/s5l8930.js apple/sensors.js apple/spi.js apple/timer.js apple/uart.js apple/vic.js \
 	   arm/state_layout.js arm/cpu.js arm/backdoor_a32.js symbian/n97_board.js symbian/n97_boot_media.js symbian/n97_rapido_compat.js symbian/n97_devices.js symbian/n97_flash.js symbian/n97_onenand.js symbian/n97_mmc.js symbian/n97_mmc_card.js symbian/n97_mmc_media.js symbian/n97_keymap.js symbian/n97_keyboard.js symbian/n97_i2c.js symbian/n97_dma.js symbian/n97_touch.js symbian/n97_cbus.js symbian/n97_dispc.js symbian/n97_panel.js symbian/n97_lossi.js virt/platform.js virt/io.js virt/pl011.js virt/pl031.js virt/inflate.js virt/dtb.js virt/ranchu.js virt/goldfish.js virt/loader.js \
+	   symbian/syborg_board.js symbian/syborg_devices.js symbian/syborg_framebuffer.js symbian/syborg_input.js symbian/syborg_nvmemory.js \
+	   symbian/syborg_profile.js symbian/syborg_import.js symbian/syborg_xip.js symbian/firmware_partitions.js symbian/fpsx.js symbian/rom.js \
 	   android/bytes.js android/gpt.js android/avb.js android/bootimg.js android/bootconfig.js android/devices.js android/boot.js android/bootloader.js android/partition_buffer.js android/cpio.js android/ramdisk_overlay.js \
 	   image/sha256.js image/sparse_blocks.js image/source.js image/overlay.js image/disk_image.js image/qcow2.js image/vhd.js image/vdi.js image/vmdk.js image/vhdx.js image/ova.js image/factory.js image/export.js image/qcow2_export.js
 LIB_FILES=9p.js filesystem.js marshall.js
@@ -1215,8 +1217,8 @@ display-browser-tests: build/cpu-worker.js build/libv86.mjs build/libv86.js buil
 	node tests/glbridge/gl_multipass_browser_runner.js vx_transfer_browser_test.html
 
 # A browser/library rebuild must ship the matching wire-protocol implementation.
-build/libv86.js build/libv86.mjs build/libv86-debug.js build/libv86-debug.mjs: $(wildcard src/symbian/n97_*.js) | build/cpu-worker.js
-build/cpu-worker.js: $(wildcard src/symbian/n97_*.js)
+build/libv86.js build/libv86.mjs build/libv86-debug.js build/libv86-debug.mjs: $(wildcard src/symbian/*.js) | build/cpu-worker.js
+build/cpu-worker.js: $(wildcard src/symbian/*.js)
 
 # Keep the terminal available even when building the page bundle directly.
 build/v86_app.js: | build/xterm.js

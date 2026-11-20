@@ -546,6 +546,9 @@ pub fn reset(entry: u64, context: u64) {
             MODE_SVC | PSTATE_A | PSTATE_I | PSTATE_F | if entry & 1 != 0 { PSTATE_T } else { 0 };
         *pc = entry & !1;
         *x = context as u32 as u64;
+        if cpu::arm1136_r2() {
+            set_nzcv(NZCV_Z);
+        }
         *sctlr_el1 = if cpu::arm1136() { SCTLR_RESET_ARM1136 } else { SCTLR_RESET_A32 };
         for i in 0..12 {
             *a32_bank.add(i) = 0;
@@ -669,9 +672,10 @@ pub fn cp15(
     let a8 = cpu::cortex_a8();
     let arm1136 = cpu::arm1136();
     match (opc1, crn, crm, opc2) {
-        (0, 0, 0, 0 | 4 | 7) if arm1136 => constant(0x4117_B363),
-        // DDI 0211K §3.3.2: Ctype 1110, separate 16 KiB caches, 4 ways and 32-byte lines.
-        (0, 0, 0, 1) if arm1136 => constant(0x1D15_2152),
+        (0, 0, 0, 0 | 4 | 7) if arm1136 => constant(if cpu::arm1136_r2() { 0x4107_B362 } else { 0x4117_B363 }),
+        // Syborg advertises 32 KiB I/D with aliasing (qembian's cache-type patch).
+        // The N97 geometry is 16 KiB I/D. Both use Ctype 1110, four ways and 32-byte lines.
+        (0, 0, 0, 1) if arm1136 => constant(if cpu::arm1136_r2() { 0x1D99_2992 } else { 0x1D15_2152 }),
         (0, 0, 0, 2..=3 | 5..=6) if arm1136 => constant(0),
         (0, 0, 1..=2, n) if arm1136 => constant(ARM1136_ID[crm as usize - 1][n as usize]),
         (1..=2, 0, _, _) | (0, 12 | 14, _, _) | (0, 4, 6, 0) if arm1136 => Err(Exception::Undefined),

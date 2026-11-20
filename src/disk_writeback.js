@@ -606,6 +606,11 @@ export function disk_buffers(cpu)
     // (the UEFI firmware's variable store, src/pflash.js; the TPM's state, src/tpm/store.js)
     if(cpu.devices?.apple_nand) add("ios_nand", cpu.devices.apple_nand.buffer);
     if(cpu.devices?.n97_onenand) add("symbian_nand", cpu.devices.n97_onenand.buffer);
+    if(cpu.devices?.syborg)
+    {
+        add("symbian_nvmemory", cpu.devices.syborg.nvmemory);
+        add("symbian_nvmemory2", cpu.devices.syborg.nvmemory2);
+    }
     if(cpu.devices?.n97_mmc)
     {
         add("symbian_emmc", cpu.devices.n97_mmc.emmc);

@@ -29,7 +29,7 @@ export function disk_kind(name)
     // (the UEFI firmware's variable store and the TPM's state are written
     // back as a disk is: docs/uefi.md, docs/tpm.md)
     if(name === "hda" || name === "hdb" || /^sata\d+$/.test(name) || /^virtio_disk\d+$/.test(name) || name.startsWith("usb:") ||
-        name === "firmware_vars" || name === "tpm_state" || name === "ios_nand" || /^symbian_(?:nand|emmc|sd)$/.test(name)) return "hard_disk";
+        name === "firmware_vars" || name === "tpm_state" || name === "ios_nand" || /^symbian_(?:nand|emmc|sd|nvmemory2?)$/.test(name)) return "hard_disk";
     if(name === "cdrom") return "cdrom";
     if(name === "fda" || name === "fdb") return "floppy";
     return "other";
@@ -218,7 +218,7 @@ export function check_disk_options(options, also)
     const disks = [["hda", options.hda], ["hdb", options.hdb], ["cdrom", options.cdrom], ["fda", options.fda], ["fdb", options.fdb]]
         .filter(([, file]) => file);
     if(options.ios?.nand) disks.push(["ios_nand", options.ios.nand]);
-    for(const role of ["nand", "emmc", "sd"])
+    for(const role of ["nand", "emmc", "sd", "nvmemory", "nvmemory2"])
     {
         if(options["symbian"]?.[role]) disks.push(["symbian_" + role, options["symbian"][role]]);
     }

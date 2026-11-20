@@ -20,10 +20,12 @@ const TEST_RELEASE_BUILD = +process.env.TEST_RELEASE_BUILD;
 const { V86 } = await import(TEST_RELEASE_BUILD ? "../../build/libv86.mjs" : "../../src/main.js");
 
 assert.deepEqual(CPU_TYPES, ["x86", "x86_64", "arm64", "arm32"]);
-assert.deepEqual(MACHINE_TYPES, ["i440fx", "q35", "virt", "ranchu", "s5l8930"]);
+assert.deepEqual(MACHINE_TYPES, ["i440fx", "q35", "virt", "ranchu", "s5l8930", "nokia-n97", "symbian-syborg"]);
 
 // the matrix
-const runs = { x86: ["i440fx", "q35"], x86_64: ["i440fx", "q35"], arm64: ["virt", "ranchu"], arm32: ["virt", "ranchu", "s5l8930"] };
+const runs = { x86: ["i440fx", "q35"], x86_64: ["i440fx", "q35"], arm64: ["virt", "ranchu"],
+    arm32: ["virt", "ranchu", "s5l8930", "nokia-n97", "symbian-syborg"] };
+const board_profiles = { "s5l8930": "cortex-a8", "nokia-n97": "arm1136", "symbian-syborg": "arm1136-r2" };
 for(const cpu_type of CPU_TYPES)
 {
     for(const machine_type of MACHINE_TYPES)
@@ -31,7 +33,7 @@ for(const cpu_type of CPU_TYPES)
         const options = { cpu_type, machine_type };
         if(runs[cpu_type].includes(machine_type))
         {
-            assert.deepEqual(check_machine_options(options), { ...options, cpu_profile: machine_type === "s5l8930" ? "cortex-a8" : DEFAULT_CPU_PROFILES[cpu_type] });
+            assert.deepEqual(check_machine_options(options), { ...options, cpu_profile: board_profiles[machine_type] || DEFAULT_CPU_PROFILES[cpu_type] });
         }
         else
         {

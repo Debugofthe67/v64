@@ -144,7 +144,7 @@ export function audit_syborg_xip(bytes, xip, core, composition)
         // qembian calls the source side "N95" for every model passed as --n95.
         const row = /^([0-9a-f]{8}) +([0-9]+) ([0-9a-f]{2}) (N95 |OURS) (.+)$/.exec(line);
         if(!row) invalid("invalid qembian composition inventory row");
-        const [, address, size, attr, source, name] = row;
+        const address = row[1], size = row[2], attr = row[3], source = row[4], name = row[5];
         const path = name.toLowerCase();
         const file = xip.directory.files.get(path);
         if(!file || files.has(path) || file.address !== parseInt(address, 16) ||

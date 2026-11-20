@@ -1,5 +1,7 @@
 import { N97_MATRIX_CODES, n97_control } from "../symbian/n97_keymap.js";
 import { n97_touch_point } from "../symbian/n97_touch.js";
+import { syborg_key, syborg_touch } from "../symbian/syborg_input.js";
+import { SYBORG_BOOT_FILES, SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
 import { instantiate_v86, memory_import } from "../parallel/relocate.js";
 import { default_worker_url, parallel_unsupported_reason } from "../parallel/machine.js";
@@ -256,6 +258,8 @@ export function V86(options)
     const machine = check_machine_options(options);
     this.cpu_type = machine.cpu_type;
     this.machine_type = machine.machine_type;
+    if(this.machine_type === SYBORG_MACHINE && options["symbian"] === undefined)
+        throw new Error("Syborg requires symbian.manifest");
     // the ranchu machine's GLES host (ranchu_gpu "host", or an emulator
     // image's GPU mode "host"): it needs the page's renderer, as a 3D
     // display adapter does (docs/plan/gles-proxy-plan.md)
@@ -540,7 +544,15 @@ V86.prototype.continue_init = async function(emulator, options)
     {
         options[name] = await opfs_readable(name, options[name]);
     }
-    if(options["symbian"]?.["rom"])
+    if(this.machine_type === SYBORG_MACHINE)
+    {
+        const media = options["symbian"];
+        options["symbian"] = Object.assign({}, media);
+        await Promise.all(SYBORG_BOOT_FILES.map(async key => {
+            if(media[key]) options["symbian"][key] = Object.assign({}, await opfs_readable("Syborg " + key, media[key]));
+        }));
+    }
+    else if(options["symbian"]?.["rom"])
     {
         options["symbian"] = Object.assign({}, options["symbian"], {
             "rom": await opfs_readable("Nokia N97 firmware", options["symbian"]["rom"]),
@@ -643,7 +655,7 @@ V86.prototype.continue_init = async function(emulator, options)
     settings["x87_fast_math"] = options["x87_fast_math"];
     settings["x87_jit_cache"] = options["x87_jit_cache"];
     settings.load_devices = true;
-    settings.memory_size = options.memory_size || (this.machine_type === "nokia-n97" ? N97_RAM_SIZE :
+    settings.memory_size = options.memory_size || (this.machine_type === SYBORG_MACHINE ? SYBORG_PROFILE.ram_size : this.machine_type === "nokia-n97" ? N97_RAM_SIZE :
         (this.machine_type === "s5l8930" ? 512 : 64) * 1024 * 1024);
     settings.high_memory_size = options.high_memory_size;
     settings.extended_memory_size = options.extended_memory_size;
@@ -663,6 +675,7 @@ V86.prototype.continue_init = async function(emulator, options)
     settings.cmdline = options.ios ? options.ios.boot_args : options.cmdline;
     settings.ios_network = !!options.ios?.network;
     settings.symbian = options["symbian"];
+    settings.syborg_media = {};
     settings.preserve_mac_from_state_image = options.preserve_mac_from_state_image;
     settings.mac_address_translation = options.mac_address_translation;
     settings.cpuid_level = options.cpuid_level;
@@ -964,6 +977,12 @@ V86.prototype.continue_init = async function(emulator, options)
             settings.usb_disks[i] = { id: disks[i].id, buffer, read_only: !!disks[i].read_only };
             return;
         }
+        if(this.machine_type === SYBORG_MACHINE && name.startsWith("symbian_"))
+        {
+            const key = name.slice("symbian_".length);
+            settings.syborg_media[key] = key === "nvmemory" || key === "nvmemory2" ? buffer : buffer.buffer;
+            return;
+        }
         switch(name)
         {
             case "hda":
@@ -1192,6 +1211,10 @@ V86.prototype.continue_init = async function(emulator, options)
         add_file("symbian_emmc", options["symbian"]["emmc"]);
         add_file("symbian_sd", options["symbian"]["sd"]);
         add_file("symbian_bootrom", options["symbian"]["bootrom"]);
+    }
+    if(this.machine_type === SYBORG_MACHINE)
+    {
+        for(const key of SYBORG_BOOT_FILES) add_file("symbian_" + key, options["symbian"][key]);
     }
     add_file("initrd", options.ios ? options.ios.ramdisk : options.initrd);
     add_file("kernel", options.ios ? options.ios.kernelcache : options.kernel);
@@ -2795,15 +2818,17 @@ V86.prototype.ios_send_button = function(button, pressed)
 V86.prototype["ios_send_button"] = V86.prototype.ios_send_button;
 
 /**
- * Close or open one Nokia N97 keypad switch by its LM8323 matrix code.
+ * Send an N97 keypad matrix code or a Syborg guest scan code.
  * @param {number} code
  * @param {boolean} pressed
  */
 V86.prototype.symbian_send_key = function(code, pressed)
 {
-    if(this.machine_type !== "nokia-n97" || !N97_MATRIX_CODES.has(code) || typeof pressed !== "boolean")
+    const valid = this.machine_type === SYBORG_MACHINE ? syborg_key(code, pressed) :
+        this.machine_type === "nokia-n97" && N97_MATRIX_CODES.has(code) && typeof pressed === "boolean";
+    if(!valid)
     {
-        throw new Error("symbian_send_key: expected a Nokia N97 matrix code and a boolean state");
+        throw new Error("symbian_send_key: expected a keyboard code for this Symbian machine and a boolean state");
     }
     this.bus.send("symbian-key", [code, pressed]);
 };
@@ -2823,16 +2848,18 @@ V86.prototype.symbian_set_slider = function(open)
 V86.prototype["symbian_set_slider"] = V86.prototype.symbian_set_slider;
 
 /**
- * Set the N97 resistive contact in native 640×360 screen coordinates.
+ * Set the Symbian touch contact in screen coordinates.
  * @param {number} x
  * @param {number} y
  * @param {boolean} pressed
  */
 V86.prototype.symbian_set_touch = function(x, y, pressed)
 {
-    if(this.machine_type !== "nokia-n97" || !n97_touch_point(x, y, pressed))
+    const valid = this.machine_type === SYBORG_MACHINE ? syborg_touch(x, y, pressed) :
+        this.machine_type === "nokia-n97" && n97_touch_point(x, y, pressed);
+    if(!valid)
     {
-        throw new Error("symbian_set_touch: expected Nokia N97 native screen coordinates and a boolean state");
+        throw new Error("symbian_set_touch: expected screen coordinates for this Symbian machine and a boolean state");
     }
     this.bus.send("symbian-touch", [x, y, pressed]);
 };

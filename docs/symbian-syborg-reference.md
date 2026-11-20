@@ -130,7 +130,7 @@ node tools/symbian/syborg.mjs verify "$artifacts" "$firmware"
 node tests/symbian/syborg_import.mjs "$artifacts"
 ```
 
-浏览器构造参数约定见 [代码级启动约定](plan/n97-plan.md#代码级启动约定) 和 [`V86SyborgOptions`](../v86.d.ts)。`symbian.manifest`、`rom`、`rofs` 和 `devicetree` 接受 URL 或 `{ buffer: ArrayBuffer }`。`nvmemory` 对应本地驱动 1，为每台 VM 单独从选定的 `C:` 种子建立可写磁盘。可选的 `nvmemory2` 对应可移除的 `E:`（本地驱动 2）。`D:` 是客体临时存储（本地驱动 0）。持久盘用 `disk_option: "read_write"`，冷启动时重挂同一盘。启动校验以只读产物为准，盘种子摘要用于新建实例时的导入校验。S2 接通构造函数的启动路径。
+浏览器构造参数约定见 [代码级启动约定](plan/n97-plan.md#代码级启动约定) 和 [`V86SyborgOptions`](../v86.d.ts)。`symbian.manifest`、`rom`、`rofs` 和 `devicetree` 接受 URL 或 `{ buffer: ArrayBuffer }`。`nvmemory` 对应本地驱动 1，为每台 VM 单独从选定的 `C:` 种子建立可写磁盘。`nvmemory2` 对应可移除的 `E:`（本地驱动 2）。省略此描述符时，v86 提供一张空白的 1 GiB 临时卡，只有改写的扇区占用宿主内存。`D:` 是客体临时存储（本地驱动 0）。持久盘用 `disk_option: "read_write"`，冷启动时重挂同一盘。启动校验以只读产物为准，盘种子摘要用于新建实例时的导入校验。
 
 ### 镜像检查结果
 
@@ -168,4 +168,26 @@ print(hex(table), count)
 for call in (0x37, 0x68, 0x6b, 0x83, 0x97, 0x98):
     print(f"S{call:02X}", [hex(size) for size in sizes[call]])
 PY
+```
+
+## S2 v86 板级验收
+
+`symbian-syborg` 通过普通 `new V86(...)` 接入单核 ARM1136 r0p2，默认启用现有 ARM 页 JIT，可用 `disable_jit: true` 走解释器。加载经过 S1 校验的产物后才发出 `emulator-loaded`。从物理地址 `0x0` 执行 S0 的 ARM 启动存根，以 `CPSR=0x400001D3` 和 `R2=0x05600000` 交接到 `0x00010000`。R2 指向按 172 MiB RAM 调整的启动设备树。平台窗口 `0xC0012000` 提供原始设备树。CTR 使用 qembian 补丁中的 `0x1D992992`。未修补的 QEMU 默认值会在 EKA2 的 `InternalCache::Init1` 触发故障。[qembian ARM1136 缓存类型修复](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/patches/qemu-modern/0002-arm1136-cache-type.patch)
+
+中断控制器以最低编号的已使能中断驱动 CPU IRQ，定时器以 100 kHz 计数。串口使用现有的 `serialN-output-byte` 事件。软件 framebuffer 通过 DisplayHub 输出，触控坐标使用 360×640 逻辑屏幕，`symbian_send_key` 接收 8 位客体扫描码。ROFS 是独立的只读物理窗口。NVMemory 以 512 字节扇区在共享 RAM 和块设备之间传输，并在读取状态时撤销 IRQ。首次开源 BSP 对照从 `0xC0010060` 读取盘容量，确认寄存器布局是每项间隔 16 字节。平台的关机和重启寄存器接入 CPU 生命周期。快照在恢复前比对启动清单和盘身份，保存中断、计时与输入队列，并沿用块后端对在途 I/O 的等待。[Syborg 板级接口](https://github.com/emgfc/qembian/tree/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm)
+
+用 S0 的锁定环境运行 `scripts/build-syborg.sh udeb`。将开源诊断镜像 `build/epocroot/epoc32/rom/syborg_tshell_ARMV5_udeb.img` 放到 v86 的本地产物目录。验收使用的镜像 SHA-256 为 `8ac75e4b7327ca17a1c86d2cc49c74244a36ee7fec5718940e21227f39defa96`。在固定 QEMU 上用同一设备树和空白 C:、E: 盘启动后，串口记录 EStart 属性 `1020e34e = 65535` 及 `Thread svphostfs.exe::Main Killed -44`。v86 在解释器和 JIT 下都到达同样的两个标记。另一个从仓库汇编构建的诊断通过了启动寄存器、ARM/Thumb、MMU 别名、非对齐读、SVC、定时器 IRQ 和返回、UART 收发、旋转画面像素、按键与触摸队列、ROFS 写入保护、NVMemory 读写、客体重启及快照恢复。
+
+混合镜像在解释器和 JIT 下均从 S0 的同一组文件冷启动，依次记录三层 `SYBROFS`、原厂 `EStart.exe` 和 `Thread efile.exe::CFat32BitCachePopulator_drv_4 Killed -39`。达到文件服务器标记约需 4.65 亿条客体指令，独立复测中 JIT 编译 624 次，解释器编译次数为 0。串口记录及本地固件留在被忽略的 `build/syborg-s0/`。
+
+Chrome 的发布构建 CPU Worker 复测见 `tests/symbian/syborg_browser.html`。页面加载 S0 产物，以一份空白种子建立独立的 OPFS `C:`，从画布读到 360×640 framebuffer 并核实盘写入。浏览器串口在文件服务器标记之后记录了未定义指令异常 `ExcCode 00000002`，当时 `R15=0x827135BC`、`DFAR=0xEE070F90`。继续启动到主屏属于 S3 的验收。
+
+```bash
+make build/v86-arm64.wasm build/libv86.mjs
+artifacts=build/syborg-s0/reference
+open_rom=build/syborg-s0/diagnostic/syborg_tshell_ARMV5_udeb.img
+node tests/symbian/syborg_board.mjs "$open_rom" "$artifacts/syborg.dtb"
+node tools/symbian/boot-syborg.mjs "$artifacts"
+node tools/symbian/boot-syborg.mjs "$artifacts" --interpreter
+TIMEOUT_MS=110000 node tests/app/browser_runner.mjs tests/symbian/syborg_browser.html
 ```
