@@ -125,8 +125,19 @@ function branch_vector(data, offset, rom_base, header_size, unpaged_end)
     return { instruction, offset, target_offset, linked_target_address: rom_base + target_offset };
 }
 
+/** Read the already-flat Syborg ROM. @param {!Uint8Array} bytes */
+export function read_flat_eka2_rom(bytes)
+{
+    return read_eka2_rom(bytes, true).header;
+}
+
 /** Rebuild the ROM in its linked virtual address order. @param {!Uint8Array} packed */
 export function rebuild_eka2_rom(packed)
+{
+    return read_eka2_rom(packed, false);
+}
+
+function read_eka2_rom(packed, flat)
 {
     if(packed.length < 512) invalid("truncated ROM header");
     const rom_base = u32(packed, 0x8C);
@@ -138,7 +149,12 @@ export function rebuild_eka2_rom(packed)
     const pageable_start = u32(packed, 0x148);
     const pageable_size = u32(packed, 0x14C);
     const page_index = u32(packed, 0x150);
-    if(header_size !== 512 || compression !== 0 || u32(packed, 0x164) !== 0)
+    const unpaged_stored = u32(packed, 0x164);
+    // romcompose leaves the original flat kernel's unpaged extent in these fields.
+    if(header_size !== 512 || compression !== 0 || (flat ?
+        page_index || rom_size !== packed.length || stored_size !== rom_size ||
+            unpaged_stored !== u32(packed, 0x168) || unpaged_stored > stored_size :
+        unpaged_stored !== 0))
     {
         invalid("unsupported ROM header or compression of the unpaged image");
     }
@@ -158,6 +174,7 @@ export function rebuild_eka2_rom(packed)
         rom_base, rom_size, header_size, stored_size, image_size, pageable_start, pageable_size, page_index,
         rom_root_directory: u32(packed, 0x94), kernel_data_address: u32(packed, 0x98), kernel_limit: u32(packed, 0x9C),
         variant_entry: u32(packed, 0xCC), checksum: u32(packed, 0xA8),
+        kernel_config_flags: u32(packed, 0xB8), exception_table: u32(packed, 0xBC),
         version: [packed[0xE8], packed[0xE9], u16(packed, 0xEA)],
         bootstrap_vector: branch_vector(packed, 0, rom_base, header_size, unpaged_end),
         restart_vector: branch_vector(packed, 0x7C, rom_base, header_size, unpaged_end),
@@ -214,4 +231,80 @@ export function rebuild_eka2_rom(packed)
         }
     }
     return { bytes, header, page_counts };
+}
+
+/** Walk the linked, unpaged or rebuilt image's TRomRootDirectoryList and TRomDirs. */
+export function read_eka2_rom_directory(bytes, header)
+{
+    const offset = (address, size) => entry_offset(address, size, header.rom_base, bytes.length);
+    const root_list = offset(header.rom_root_directory, 4);
+    const count = u32(bytes, root_list);
+    if(count !== 1) invalid("expected one hardware variant for this ROM directory");
+    offset(header.rom_root_directory, 12);
+    const seen = new Set();
+    const files = new Map();
+    const ranges = [];
+    const decoder = new TextDecoder("utf-16le", { fatal: true });
+    const root = u32(bytes, root_list + 8);
+    const directories = [{ address: root, path: "" }];
+    while(directories.length)
+    {
+        const { address, path } = directories.pop();
+        if(address % 4 || seen.has(address)) invalid("misaligned or repeated ROM directory");
+        seen.add(address);
+        const at = offset(address, 4);
+        const size = u32(bytes, at);
+        const end = at + 4 + size;
+        const names = new Set();
+        const subdirectories = new Set();
+        const file_entries = new Set();
+        offset(address, size + 8);
+        for(let pos = at + 4; pos < end;)
+        {
+            if(end - pos < 10) invalid("truncated ROM directory entry");
+            const data_size = u32(bytes, pos);
+            const data_address = u32(bytes, pos + 4);
+            const attr = bytes[pos + 8];
+            const name_size = bytes[pos + 9] * 2;
+            const entry_size = (10 + name_size + 3) & ~3;
+            if(!name_size || pos + entry_size > end) invalid("invalid ROM directory entry name");
+            const name = decoder.decode(bytes.subarray(pos + 10, pos + 10 + name_size)).toLowerCase();
+            if(/[\\/\0]/.test(name) || name === "." || name === ".." || names.has(name))
+            {
+                invalid("invalid or duplicate ROM directory entry " + name);
+            }
+            names.add(name);
+            const key = path + name;
+            if(key.length > 256) invalid("ROM directory path is too long");
+            const entry = (pos - at - 4) / 4;
+            if(attr & 0x10)
+            {
+                subdirectories.add(entry);
+                directories.push({ address: data_address, path: key + "/" });
+            }
+            else
+            {
+                file_entries.add(entry);
+                offset(data_address, data_size);
+                files.set(key, { address: data_address, size: data_size, attr, directory_entry: header.rom_base + pos });
+            }
+            pos += entry_size;
+        }
+        const table_size = (4 + 2 * names.size + 3) & ~3;
+        offset(address, 4 + size + table_size);
+        const subdirectory_count = subdirectories.size;
+        if(u16(bytes, end) !== subdirectory_count || u16(bytes, end + 2) !== file_entries.size)
+        {
+            invalid("ROM directory index counts do not match its entries");
+        }
+        for(let i = 0; i < names.size; i++)
+        {
+            const index = u16(bytes, end + 4 + 2 * i);
+            const expected = i < subdirectory_count ? subdirectories : file_entries;
+            if(!expected.delete(index)) invalid("invalid ROM directory index");
+        }
+        ranges.push({ start: address, end: address + 4 + size + table_size });
+    }
+    ranges.push({ start: header.rom_root_directory, end: header.rom_root_directory + 12 });
+    return { root, files, ranges };
 }

@@ -102,3 +102,70 @@ scripts/run-modern.sh --device "$device" --dtb syborg.dtb \
 4. 退出 Notes，用 QMP `quit` 结束模拟器进程。保留 `C.img`，把 `E.img` 换成空白 FAT32 存储卡。启动全新的 QEMU 进程，进入显示 Offline 的原厂主屏，再用菜单键和触摸进入 Notes，读到 `580026`。
 
 本地 `build/syborg-s0/reference/` 保存镜像与组合清单，`build/syborg-s0/preflight/` 保存构建输入记录，`build/syborg-s0/run-arm64/` 保存启动参数、串口记录、`note-saved.png`、`cold-screen.png` 和 `cold-note-readback.png`。保存后、冷启动前的 `C.img` SHA-256 为 `8aaad5540f4f7aee89f685f3a507bdc4b431051de9ce23c0a463cfad52b6bca7`。
+
+## S1 本地导入
+
+产物格式为 `v86-symbian-syborg` 版本 1，固件配置为 `nokia-5800-rm356` / `31.0.101`。`manifest.json` 记录每个文件的名称、大小和 SHA-256，并包含原厂文件摘要、qembian 提交、`sources.lock` 摘要、组合清单、CPU、内存、客体 ABI、ROFS 层序、盘符和 `C:` 种子。构建严格使用上文的依赖、补丁和时间戳。保留组合工具输出的 `hybrid-manifest.txt`，供本地核对生成目录和原始固件。
+
+在 qembian 工作目录完成上面的构建后，把 `ROM.img`、`ROM.img.rofs`、设备树和组合清单放到一个本地目录。v86 导入使用下列名称。
+
+| 文件 | 用途 |
+| --- | --- |
+| `ROM.img` | EKA2、Syborg BSP、替代驱动及原厂用户态的混合 XIP |
+| `ROM.rofs` | 原 `ROM.img.rofs`，SYBROFS v2 格式，`Z:` 的 ROFS1/2/3 分别对应本地驱动 9/10/11 |
+| `syborg.dtb` | 参考机型的设备树 |
+| `C-blank-seed.img` | 默认 64 MiB 空白种子，通过 `SYBORG_UDA=0 python3 -I tools/device.py drive-image "$device" --kind nvmem --out C-blank-seed.img` 生成 |
+| `C-factory-seed.img` | 可选出厂种子，通过上文带 UDA 的命令生成。S0 的交互验收使用空白种子 |
+| `hybrid-manifest.txt` | qembian 生成的组合清单 |
+| `manifest.json` | v86 生成的导入清单 |
+
+在 v86 仓库运行下列命令。`firmware` 校验原厂 CORE、V05、C01 和存在的 UDA。`manifest` 在全部校验通过后写入清单。要选择出厂种子，可在 `manifest` 命令末尾加 `--factory-seed`。向 `verify` 提供原厂目录会同时比对 CORE 和组合清单。
+
+```bash
+firmware=/path/to/firmware
+artifacts=build/syborg-s0/reference
+node tools/symbian/syborg.mjs firmware "$firmware"
+node tools/symbian/syborg.mjs manifest "$firmware" "$artifacts"
+node tools/symbian/syborg.mjs verify "$artifacts" "$firmware"
+node tests/symbian/syborg_import.mjs "$artifacts"
+```
+
+浏览器构造参数约定见 [代码级启动约定](plan/n97-plan.md#代码级启动约定) 和 [`V86SyborgOptions`](../v86.d.ts)。`symbian.manifest`、`rom`、`rofs` 和 `devicetree` 接受 URL 或 `{ buffer: ArrayBuffer }`。`nvmemory` 对应本地驱动 1，为每台 VM 单独从选定的 `C:` 种子建立可写磁盘。可选的 `nvmemory2` 对应可移除的 `E:`（本地驱动 2）。`D:` 是客体临时存储（本地驱动 0）。持久盘用 `disk_option: "read_write"`，冷启动时重挂同一盘。启动校验以只读产物为准，盘种子摘要用于新建实例时的导入校验。S2 接通构造函数的启动路径。
+
+### 镜像检查结果
+
+两个 S0 构建的参考文件生成相同的清单。原厂 CORE 去分页后的 SHA-256 为 `7e5c51639926d9f9e6ade21f46c1aed4950a56592e669aceb1e4e65548133ea5`。混合 ROM 的 `0x80286DD0` 到 `0x825FD000` 与该 CORE 逐字节相同。目录将 2,017 个原厂文件保留在原链接地址，其中包括原厂 EUser 和文件服务器，另外列出 38 个替代或配置文件。2,055 个目录路径指向 1,995 个独立的可执行镜像及其他文件。异常查找表有 1,958 个代码起始地址和一个尾界。
+
+链接检查确认导出表和依赖指针的边界，并检查文件、目录和异常查找表的地址范围。原厂存在多个文件名指向同一个镜像的条目，具有相同的地址、大小和属性。EUser 保留原地址的 2,259 个导出槽。沿原厂保留镜像扫描 ARM 的绝对跳转导入桩，77,867 个导入桩与 EUser 导出的目标匹配，涉及 1,570 个序号。多个序号可共用目标地址，计数包含对应的全部序号。
+
+负例检查覆盖缺件、固件或清单版本错误、摘要不匹配、清单文件路径越界、ROFS 层顺序错误、ROM 地址重叠和无效导出序号。空白种子流程使用有 UDA 和无 UDA 两种输入复测，出厂种子通过产物校验。
+
+### sym94 ABI 核对
+
+解包的原厂 EUser 指令区起始地址为 `0x8028A998`，SHA-256 为 `3952090365629b2ad9deacd335a19e126fa6113fcf5e1c88a0ea70cd007f9de0`，组合后内容相同。扫描可识别的 ARM SVC 指令，共 280 个位置，其中快速调用 28 个，慢速调用 252 个。用原厂 `ekern.exe` 核对慢速表及以下 copy-in 常数，慢速表地址为 `0x8005F384`、表头计数为 246。表中调用号对应同一份 EUser 中观察到的 SVC。检查方法见 [sym94 执行调用映射](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/personalities/sym94/exec.map) 和 [固件内核 copy-in 检查](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/tools/personality/exec_sizes.py)。
+
+| 功能 | 原厂调用号 | 接口核对 |
+| --- | --- | --- |
+| 进程加载和启动 | S97 `ProcessCreate`、S98 `ProcessLoaded` | 原厂内核处理函数使用 `0x208` 字节。ROM 的 personality 字段为 3，混合内核从启动日志所示的 `472+44` 字节计算拷贝长度 |
+| 线程创建与启动 | S68 `ThreadCreate`、S28 `ThreadResume` | `ThreadCreate` 的原厂内核处理函数可见 `0x30` 字节的 copy-in 常数 |
+| 块分配 | S6B `ChunkCreate`、S6C `ChunkAdjust` | `TChunkCreate` 为 `0x18` 字节，包含 `iClearByte` |
+| 计时器 | S35 `TimerCancel`、S36 `TimerAfter`、S37 `TimerAt` | `TimerAt` 从引用读取 8 字节时间值，qembian 的 shim 转为内核所用的两个 32 位值 |
+| LDD/PDD | S81 `DeviceLoad`、S82 `DeviceFree`、S83 `ChannelCreate`、S0A `ChannelRequest` | 原厂通道创建处理函数可见 `0x10` 字节 copy-in 常数。客体驱动处理请求及异步完成 |
+| IPC 完成 | S25 `SessionSend`、S4D `SessionSendSync`、S42 `MessageComplete`、S43 `MessageCompleteWithHandle`、SA6–SA8 描述符访问 | 会话提交、消息完成、带句柄完成和描述符拷贝使用原厂编号，执行由客体内核负责 |
+
+`0x208` 是原厂拷贝长度，混合内核按 `iFlags` 偏移截断进程附加字段。S0 使用该内核完成两次冷启动，日志记录为 `Symbian 9.4 exec personality enabled (28 fast, 243 slow; loader structs 472+44)`。S1 沿用这套已通过启动的内核。S2/S3 的运行对照继续检查实际驱动请求、取消和错误路径。[sym94 内核补丁](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/personalities/sym94/patches/0014-sym94-personality.patch) · [计时器兼容补丁](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/personalities/sym92/patches/0005-exec92-timerat-by-reference.patch)
+
+原厂调用检查可在完成固件 inventory 的 qembian 工作目录重复执行。第二条命令读取同一份 `core-flat.img` 和 `core.json`，打印原厂慢速表及所选调用的候选 copy-in 常数。
+
+```bash
+python3 -I tools/fw/probe.py --device nokia-5800-rm356@31.0.101 stubs
+PYTHONPATH=tools/personality python3 - /path/to/core-flat.img /path/to/core.json <<'PY'
+import sys
+from exec_sizes import kernel
+
+table, count, sizes = kernel(*sys.argv[1:])
+print(hex(table), count)
+for call in (0x37, 0x68, 0x6b, 0x83, 0x97, 0x98):
+    print(f"S{call:02X}", [hex(size) for size in sizes[call]])
+PY
+```

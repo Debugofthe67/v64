@@ -1,6 +1,5 @@
-// FPSX records used by Nokia RM-505. Header layouts are cross-checked with
-// EKA2L1's FPSX reader and saur0n/unpacker. The checksums and the outer
-// OneNAND layout were verified against the five 22.0.110 image containers.
+// Nokia BB5 FPSX records used by RM-505 and RM-356. Header layouts are
+// cross-checked with EKA2L1's FPSX reader and saur0n/unpacker.
 
 import { c_string, u32be } from "../android/bytes.js";
 
@@ -97,7 +96,7 @@ function read_block(bytes, offset)
     if(!size || end > 2 ** 32) invalid("invalid block destination range", offset);
     if(next > bytes.length) invalid("truncated block data", offset);
 
-    // RM-505 payload checksums are the XOR of big-endian 16-bit words.
+    // Payload checksums are the XOR of big-endian 16-bit words.
     let xor = 0;
     const data_end = data_offset + size;
     for(let i = data_offset; i < data_end; i += 2) xor ^= bytes[i] << 8 | (i + 1 < data_end ? bytes[i + 1] : 0);
@@ -139,7 +138,7 @@ function collect_groups(blocks)
 /** @param {!Uint8Array} bytes */
 export function parse_fpsx(bytes)
 {
-    if(bytes.length < 9 || bytes[0] !== 0xB2) invalid("expected an outer RM-505 FPSX header", 0);
+    if(bytes.length < 9 || bytes[0] !== 0xB2) invalid("expected an outer BB5 FPSX header", 0);
     const header_end = 5 + u32be(bytes, 1);
     if(header_end < 9 || header_end > bytes.length) invalid("invalid FPSX header length", 1);
     const tlvs = read_tlvs(bytes, 9, header_end, u32be(bytes, 5));

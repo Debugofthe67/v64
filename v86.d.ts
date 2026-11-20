@@ -193,6 +193,29 @@ export type V86DiskImageOptions =
  */
 export type V86HardDiskImage = V86Image & V86DiskImageOptions;
 
+/** Raw Syborg NVMemory. Persist guest writes with a writable local/OPFS disk. */
+export type V86SyborgDisk = V86BufferImage |
+    { url: string; size?: number; disk_option: "read_write" };
+
+/** Nokia 5800 Syborg boot media with the version 1 local build manifest. */
+export interface V86SyborgMedia {
+    manifest: V86Image;
+    rom: V86Image;
+    rofs: V86Image;
+    devicetree: V86Image;
+    /** Instance-owned C: disk, initialized from the manifest's seed on first boot. */
+    nvmemory: V86SyborgDisk;
+    /** Optional E: card. */
+    nvmemory2?: V86SyborgDisk;
+}
+
+/** Constructor option contract for the Syborg board. */
+export type V86SyborgOptions = Omit<V86Options, "cpu_type" | "machine_type" | "symbian"> & {
+    cpu_type: "arm32";
+    machine_type: "symbian-syborg";
+    symbian: V86SyborgMedia;
+};
+
 /**
  * Config for virtio/serial console.
  */
