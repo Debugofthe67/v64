@@ -276,3 +276,44 @@ macOS 上可用 `/sbin/newfs_msdos -F 32 -S 512 -s 131072 -v V86S4 "$card"` 代�
 ```sh
 BROWSER_FOCUS=1 node tests/app/browser_runner.mjs tests/app/syborg_test.html part=controls prepared=1
 ```
+
+## S6 Syborg EGL 和 WebGPU
+
+在 5800 的 **Symbian firmware** 设置中为单台虚拟机选用 **WebGPU acceleration**。API 接收 `symbian.webgpu: true`。默认使用软件显示。浏览器找不到 WebGPU 适配器时，CPU Worker 仍可冷启动并操作原厂系统。启用时保留软件 framebuffer，并另建一个 WebGPU 设备供 EGL/GLES 使用。
+
+### 客体接口与固件 ABI
+
+固定的 qembian 5800 配置使用 `gpu = "none"`，S0 混合 XIP 仍含其开源 `d_display.ldd`。该驱动已提供 `0x7f10` 能力查询和 `0x7f11` 命令及结果复制。v86 在 `0xC000F000` 实现这两个控制所用的 Syborg 寄存器。驱动以调用者进程 ID 提交物理 RAM 中的请求和响应缓冲，各限 1 MiB。v86 只接受特权 MMIO，核对进程和 EGL 会话，每个会话只保留一个待回读请求，最后一个驱动通道关闭时释放该进程的对象。用独立的轮询与取数步骤等待 WebGPU 回读。客体包采用独立实现的 `VGL1` 协议，命令只复用仓库已有 GLES 编码，RenderControl 上下文和颜色缓冲句柄由设备创建并保留。[5800 配置](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/models/nokia-5800-rm356/model.toml) · [DisplayDriver 控制接口](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/standins/d_display/d_display.cpp)
+
+原始 RM-356 XIP 中的图形 DLL 模块版本均为 `0x000A0000`。`libGLES_CM.dll` 有 175 个导出，合并早期 EGL 和 GLES 1.x。分开的 `libEGL.dll` 和 `libGLESv1_CM.dll` 分别有 270 和 252 个导出。原厂 S60v5 SDK 的 `libgles_cm.dso` 对应合并 DLL。核对了 EGL 的 `eglChooseConfig` 1、`eglCreateContext` 3、`eglCreateWindowSurface` 6、`eglGetDisplay` 14、`eglInitialize` 17、`eglMakeCurrent` 18 和 `eglSwapBuffers` 22，以及 GLES 1.x 的 `glColor4f` 38、`glDrawArrays` 54、`glGetError` 68、`glMatrixMode` 90、`glReadPixels` 108 和 `glTexImage2D` 125。该 XIP 和 S60v5 SDK 没有 GLES 2.0 系统 DLL 和导入库。S6 测试程序静态链接仓库中的客体适配层，提供一致的窗口表面、配置查询、上下文创建与绑定、交换和销毁。原厂 DLL 及其导出保留在固件中，原厂游戏的导入和扩展留到各游戏样本验收。
+
+S6 EGL 配置为 RGBA8888、24 位深度、无多重采样，用 CPU Worker 的共用 GLES 主机创建真实 1.1 或 2.0 上下文。浏览器从 WebGPU 读取 `eglSwapBuffers` 的颜色缓冲后，按自顶向下的行序把 RGBA 交还客体。客体将每行像素转换为原厂 Font and Bitmap Server 支持的 32 位位图并画入自己的 `RWindow`。窗口服务器负责裁剪、遮挡和焦点，DisplayHub 提交最终画面。应用失焦时停画，GLES API 的 `glReadPixels` 保留左下角原点。GPU 丢失后应用报告 `EGL_CONTEXT_LOST`，软件窗口仍能重绘。
+
+S5 的软件快照可在相同固件和软件后端恢复。WebGPU 快照要求原有后端可用，保存 Syborg 寄存器和共用 GLES 状态。活跃 EGL 会话期间保存会返回明确错误，退出应用后可保存。持久的 C: 和 E: 与 CPU Worker 的后端选择独立。
+
+### 可复现构建与实测
+
+```sh
+make build/v86-arm64.wasm build/libv86.mjs build/cpu-worker.js build/v86-gles.js glbridge
+probe=build/syborg-s0/s6-probe
+sh tools/symbian/gles-probe/build.sh <symbian-platform-sdk> <S60v5-epoc32> <makesis> <signsis> "$probe"
+cp build/browser-test-output/syborg-s4-stock-notes-v1-C.img "$probe/C.img"
+truncate -s 67108864 "$probe/E.img"
+/sbin/newfs_msdos -F 32 -S 512 -s 131072 -v V86S6 "$probe/E.img"
+mcopy -i "$probe/E.img" "$probe/v86_gles.sisx" ::EGL.SIS
+BROWSER_DEBUG_PORT=23961 BROWSER_FOCUS=1 TIMEOUT_MS=1800000 TEST_ARTIFACT_DIR="$probe" \
+  node tests/app/browser_runner.mjs tests/symbian/syborg_gles.html webgpu=1
+```
+
+命令用无头 Chrome 验收，可通过调试端口操作该测试页。手动复现时可用 `python3 -m http.server 8000 --bind 127.0.0.1` 启动站点，再在独立 Chrome 配置中打开 `/tests/symbian/syborg_gles.html`。测试页将 C: 和 E: 分别复制到当前标签页独享的 OPFS 路径。
+
+使用 symbian-platform SDK 0.3.0 ARM64、原厂 S60v5 导入库及可运行的 MakeSIS 和 SignSIS。两次独立构建产生相同的 E32 可执行文件，SHA-256 为 `022909c3b1e2029a6dee1274e73013b9079bba9ddf06724c645085ac32593c51`。测试证书每次生成，实测 SISX SHA-256 为 `8ab379bf1d29ecbb8dca41d8978bafe4a978bd68c357589250414ce8c38ff82d`。包 UID 为 `0xE0860506`，零能力。可执行文件的 68 个导入均在同一份混合 XIP 中核对。应用和适配层源码位于 `tools/symbian/gles-probe/`，驱动来自原有 S0 混合镜像。保持原厂软件安装设置和证书库。
+
+1. 在测试页面等原厂主屏就绪，从 **Menu → Applications → File mgr.** 进入 E:。选择 **EGL.SIS → Options → Organise → Copy to folder → C: Phone mem. → Root folder → Copy**。在同一开机期间选中 C: 的复制件，用 **Enter** 打开，接受测试证书并安装到 C:。
+2. 从原厂 **Applications** 启动 **v86 EGL**。应用先绘制 ES 1.1 场景。等 **Readback 0** 和 **Swaps** 数值增长，在页面开发者工具运行 `await s6.measure_scene()`。触摸应用底部的 **ES 2.0**，再次核对读回和持续出图。
+3. 用 **Menu** 将原厂菜单置于 GPU 窗口前，检查菜单覆盖窗口并停止交换。退出后重新打开探针，确认再次绘制。在探针前台时点测试页面的 **Lose WebGPU device**，确认收到 `EGL_CONTEXT_LOST`，再用探针的 **Exit** 返回原厂菜单和主屏。
+4. 用 `gpu=off` 复测软件桌面和输入。验证无适配器路径时在测试参数加入 `gpu=unavailable seed=fallback`。测试的 `C-fallback.img` 取自 S4 卸载后测试盘的副本，`E-fallback.img` 是只含已签名 Notes 1.0 的递送卡。可用 S4 的 FAT32 制卡命令，也可用应用的 FAT16 递送卡流程。沿用 S4 步骤完成安装、启动和保存。
+
+Chrome 158.0.8127.36 发布版使用 Apple M1 Pro 的 Metal 适配器。两种场景均绘制 192×144 窗口，绘制四象限最近邻纹理、半透明前景，并由深度测试挡住后方的图元。两者的客体回读与浏览器画布采样均为 `E62814 0AD21E 143CF0 E6D214 7D3282 143CF0`。ES 1.1 首次采样得到 42 次交换、126 次绘制和 48 次 WebGPU 回读。切换到 ES 2.0 后约 6 秒得到该上下文 48 次交换，累计 546 次绘制和两次着色器转换。两次采样中 WebGPU 执行器均无拒绝或错误。窗口被原厂菜单覆盖后，两次间隔 2.1 秒的采样停在同一交换计数 299。连开两个探针时各有自己的 GPU 会话，关掉前台实例后只余一条隐藏会话，新实例仍可持续绘制。
+
+复测用两个各 2.3 秒的独立区间，每个场景新增 19 次交换和 57 次 WebGPU 绘制，六像素全部一致。显式销毁 WebGPU 设备后，主机累计停在 251 次交换和 753 次绘制，活跃会话归零。客体收到十进制 `12302`，即 `EGL_CONTEXT_LOST`。应用退出并返回原厂主屏，物理 Menu 键再次打开完整菜单，触摸进入 Applications。实测日志和截图保存在本机 `build/syborg-s0/s6-probe/`。关闭 WebGPU 时，CPU Worker 冷启动到原厂主屏，用 Menu 键和触摸进入 Applications。请求 WebGPU 但无适配器时，CPU Worker 同样完成主屏和输入验证，并通过原厂签名安装器安装 Notes、运行和保存 `580086`。关机后核对 C: 上的登记、包字节和应用私有数据。

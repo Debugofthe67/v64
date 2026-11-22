@@ -64,7 +64,7 @@ vm.add_listener("emulator-loaded", () => vm.run());
 - `manifest` 标识机型、固件版本和产物格式，提供各只读文件的大小和 SHA-256。v86 据此选择 CPU、RAM 和板级配置，并在启动前校验传入的产物。`rom` 是本地组装的混合 XIP，包含开源 EKA2、Syborg BSP 和原厂用户态模块。`rofs` 是按固件顺序合并的只读分区。`devicetree` 提供 Syborg 平台设备树。示例用本地站点的文件 URL，浏览器文件夹导入也可传入 `{ buffer: ArrayBuffer }`。
 - `nvmemory` 是 `C:` 的可写介质。需要 `E:` 时，按同样的磁盘描述提供可选 `nvmemory2`。浏览器新建向导和程序化调用使用同一套构造参数。
 - qembian 使用 ARM 启动存根，混合 XIP 的物理装载地址为 `0x00010000`，ROFS 只读窗口从 `0x60000000` 开始，设备树由平台设备在 `0xC0012000` 提供。v86 从所选配置取得装载条件。S0 记录首次取指地址、CPU 模式及寄存器交接，S2 对照实现。[qembian Syborg 板级源码](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm/syborg.c#L1-L32)
-- 镜像校验和机器初始化完成后触发 `emulator-loaded`。示例随后调用 `run()` 开始执行。客体继续启动后，S60 主屏经 Syborg framebuffer 输出到 `screen_container`。后续 WebGPU 选项在 S6 验证。
+- 镜像校验和机器初始化完成后触发 `emulator-loaded`。示例随后调用 `run()` 开始执行。客体继续启动后，S60 主屏经 Syborg framebuffer 输出到 `screen_container`。可按虚拟机启用 `symbian.webgpu: true`。[WebGPU 接入与运行条件](../symbian-syborg-reference.md#s6-syborg-egl-和-webgpu)
 
 ### 混合镜像和存储
 
@@ -76,7 +76,7 @@ vm.add_listener("emulator-loaded", () => vm.run());
 
 固定的 qembian 5800 配置声明 `gpu = "none"`。S0 以该配置复现软件绘图，S6 在同一 S60v5 用户态上验证新增的 3D 路径。先从固件和拟测应用核对 EGL/GLES 的 DLL 导入、导出序号和调用约定，再选择可复用的客体适配层。实现 EGL 配置查询、上下文与表面绑定、`eglSwapBuffers` 及与窗口服务器的交接，能力报告由实际实现决定。[5800 固件机型配置](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/models/nokia-5800-rm356/model.toml) · [qembian 的 Syborg 图形设备](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm/syborg.c) · [Khronos EGL](https://www.khronos.org/egl/)
 
-调用通过 Syborg 图形设备传给 CPU Worker。S6 决定设备协议如何映射到共用 GLES 代理，优先复用 `src/gles/` 的状态、命令批次、着色器转换和 WebGPU 执行器。窗口交换由客体触发，GPU 颜色缓冲经现有合成通道显示，软件 framebuffer 继续提供桌面和普通窗口画面。验证两类内容的遮挡、方向和切换，按 API 语义完成同步与必要的回读。适配器不可用时提供软件桌面，GPU 设备丢失时验证应用退出或重建上下文后的桌面恢复。[v86 共用 GLES 代理](gles-proxy-plan.md) · [WebGPU 规范](https://www.w3.org/TR/webgpu/)
+S6 用现有 Syborg DisplayDriver 的复制控制把调用送至 CPU Worker，并复用 `src/gles/` 的状态、命令批次、着色器转换和 WebGPU 执行器。客体在交换窗口表面时读回颜色缓冲并提交位图，由原厂窗口服务器处理位置和遮挡，DisplayHub 继续显示最终画面。适配器不可用时直接使用软件桌面。GPU 设备丢失时让应用收到 EGL 上下文丢失错误，软件窗口和输入继续工作。[v86 共用 GLES 代理](gles-proxy-plan.md) · [S6 传输与画面验证](../symbian-syborg-reference.md#s6-syborg-egl-和-webgpu)
 
 首轮 3D 验收覆盖 OpenGL ES 1.1 固定功能与 OpenGL ES 2.0 可编程着色器。按游戏实际使用的纹理格式、扩展和 EGL 能力补齐兼容性。测试清单标明原生 GLES、J2ME/M3G 或私有接口等运行依赖，以便定位无法启动的游戏。[Khronos OpenGL ES 规范](https://registry.khronos.org/OpenGL/index_es.php)
 
@@ -153,6 +153,8 @@ qembian 的工具、客体内核相关代码和 QEMU 板级源码按文件适用
 先用可重复构建的客体测试程序验证 EGL 窗口表面、交换和回到桌面。分别用 GLES 1.1 固定功能场景、GLES 2.0 着色器场景覆盖纹理、深度、混合和读回。核对参考像素与浏览器结果，允许记录清楚且可复现的精度差异。随后验证 GPU 模式下的图形资源恢复，以及关闭加速或适配器不可用时的主屏、输入和 Notes 安装流程。
 
 **通过条件**为发布版浏览器的 CPU Worker 路径能让两个客体场景分别通过实际 WebGPU 提交持续出图。画面可随窗口切换正确显示，软件模式仍通过 S5 的主要用户流程。
+
+**实测通过。** Chrome 发布版的 CPU Worker 通过 Apple M1 Pro 实际提交 GLES 1.1 固定功能和 GLES 2.0 着色器场景。两者的纹理、深度、混合像素和读回与参考一致。原厂菜单遮挡后停画，关闭并重开应用可继续出图，设备丢失后可退出到原厂主屏并继续操作。关闭 WebGPU 验证主屏、Menu 和触摸。无适配器时用原厂安装器安装 Notes 并保存，关机后读回登记和笔记。[S6 实测和复现步骤](../symbian-syborg-reference.md#s6-syborg-egl-和-webgpu)
 
 ### S7　验收真实 S60v5 3D 游戏
 

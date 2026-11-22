@@ -305,8 +305,16 @@ A64CPU.prototype.init = function(settings, device_bus)
     this.device_bus = device_bus;
     if(syborg)
     {
-        const board = create_syborg_board(this, syborg, device_bus, settings.screen);
+        const gles = settings.gles_plugin && new PluginDevice(/** @type {?} */ (this), GLES_PLUGINS, settings.gles_plugin, -1, {}, {
+            "display": { "width": syborg.profile.screen.width, "height": syborg.profile.screen.height, "dpi": 213 },
+            "prepared": settings.gles_prepared || null,
+            "renderer": settings.graphics_adapter_renderer,
+            "syborg": true,
+        });
+        const board = create_syborg_board(this, syborg, device_bus, settings.screen, gles ? gles.device["syborg"] : null,
+            () => (view(Uint32Array, this.wasm_memory, this.state_base + STATE_OFFSETS.pstate, 1)[0] & 0x1F) !== 0x10);
         this.devices = { syborg: board, display: board.display };
+        if(gles) this.devices.gles = gles;
         this.virtio_devices = [];
         this.shared_spi_sources = new Map();
         this.virtio_transport = "none";
@@ -1638,6 +1646,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
             "now_ms": this.clock.now(), "paused": this.clock.paused }, this.clock.get_diagnostics()),
         "cpu_type": this.cpu_type,
         "machine_type": this.machine_type,
+        "syborg_graphics": this.devices.syborg && this.devices.gles?.device["syborg"]?.["summary"]() || null,
         "active_core": exports["a64_current_core"](),
         "parallel": this.parallel ? Object.assign(this.parallel.status(), { "machine_core": {
             "tlbi_posted": exports["a64_tlb_ring_stat"](0), "dsb_waits": exports["a64_tlb_ring_stat"](1),

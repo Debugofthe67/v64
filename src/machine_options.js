@@ -249,6 +249,8 @@ export function check_machine_options(options)
             throw new Error("Syborg source-tree diagnostics require the local CPU and no production manifest");
         if(media !== undefined)
         {
+            if(media?.["webgpu"] !== undefined && typeof media["webgpu"] !== "boolean")
+                throw new Error("symbian.webgpu must be a boolean");
             for(const key of diagnostic ? ["rom"] : ["manifest", "rom", "rofs", "devicetree", "nvmemory"])
                 if(!media?.[key]) throw new Error("Syborg requires symbian." + key);
             for(const key of ["nvmemory", "nvmemory2"])

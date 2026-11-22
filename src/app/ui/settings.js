@@ -120,9 +120,13 @@ function symbian_panel(ctx)
     if(ctx.config.machine.type === SYBORG_DEVICE.id)
     {
         const rows = [...hardware_rows(ctx.config), ["Build manifest", firmware.manifest], ["Manifest SHA-256", firmware.manifest_sha256]];
+        const webgpu = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: firmware.webgpu === true,
+            disabled: !!ctx.config.suspended }));
+        webgpu.onchange = () => ctx.set("symbian.webgpu", webgpu.checked);
         return [
             h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
                 h("tr", null, h("th", null, label), h("td", null, value))))),
+            h("label.field", null, h("span", null, "WebGPU acceleration"), webgpu),
             firmware.sd && !ctx.config.suspended && (ctx.pending_sd === null ?
                 h("p.note", null, "The transfer card will be ejected when you save. Its image stays in Browser disks.") :
                 h("button", { type: "button", onclick: () => ctx.stage_sd(null) }, "Eject transfer card")),

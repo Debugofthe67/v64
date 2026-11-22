@@ -148,6 +148,9 @@
             if (!GLES) return null;
             if (!executor.device) await executor.initialize();
             gles = new GLES.GLESExecutor({ device: executor.device, layer, features: executor.deviceFeatures || {} });
+            if (options.ownGlesDevice) executor.device.lost.then(info => {
+                if (!executor.destroyed) fail("WebGPU device lost: " + info.reason);
+            });
             return gles;
         };
         const glesUnanswered = bytes => {
@@ -283,6 +286,7 @@
                 ++generation;
                 executor.destroyed = true;
                 if (executor.shaderWorker) executor.shaderWorker.terminate();
+                if (options.ownGlesDevice) executor.device?.destroy();
             },
         };
     }

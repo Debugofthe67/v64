@@ -139,9 +139,11 @@ V86.prototype.create_adapter_renderer = async function(options, host)
     // compositor of its own takes over the screen canvas, as the proxy's
     // does, so that a posted frame is a layer over the screen and is not read
     // back, docs/plan/gles-proxy-plan.md E5; the 2D canvas again if it cannot start)
-    if(!compositor && this.gles_host && this.machine_type !== "s5l8930") compositor = await this.gles_screen_compositor();
+    if(!compositor && this.gles_host && this.machine_type !== "s5l8930" && this.machine_type !== SYBORG_MACHINE)
+        compositor = await this.gles_screen_compositor();
     const layer = compositor ? compositor["createLayer"]("display adapter") : null;
-    const renderer_options = layer ? { "canvas": layer["canvas"], "executorOptions": { "host": layer["host"] }, "scanoutLayer": layer } : {};
+    const renderer_options = layer ? { "canvas": layer["canvas"], "executorOptions": { "host": layer["host"] }, "scanoutLayer": layer } :
+        this.machine_type === SYBORG_MACHINE ? { "ownGlesDevice": true } : {};
     if(host)
     {
         this.adapter_renderer = create(host, renderer_options);
@@ -264,7 +266,8 @@ export function V86(options)
     // image's GPU mode "host"): it needs the page's renderer, as a 3D
     // display adapter does (docs/plan/gles-proxy-plan.md)
     const android_device = options.android && ANDROID_DEVICES[options.android.device || "cf_arm64_only_phone"];
-    this.gles_host = options.ranchu_gpu === "host" || !!options.gles_backdoor || !!(android_device && android_device.machine === "ranchu" &&
+    this.gles_host = this.machine_type === SYBORG_MACHINE && options["symbian"]?.["webgpu"] === true ||
+        options.ranchu_gpu === "host" || !!options.gles_backdoor || !!(android_device && android_device.machine === "ranchu" &&
         ranchu_gpu_mode(android_device, options.android.gpu_mode).ranchu_gpu === "host");
     // each disk's disk_option and disk_error (docs/plan/disk-persistence-plan.md
     // "启动校验"); the disks, to find an image bound twice (attach_sata_drive)
@@ -1506,7 +1509,8 @@ V86.prototype.continue_init = async function(emulator, options)
 
         // the GLES host's plugin (ranchu_gpu "host", gles_backdoor; docs/plan/gles-proxy-plan.md):
         // the machine's GPU mode is known only now, after Android's bootloader
-        if(settings.ranchu_gpu === "host" || settings.gles_backdoor)
+        const syborg_gpu = settings.machine_type === SYBORG_MACHINE && settings.symbian?.["webgpu"] === true;
+        if(settings.ranchu_gpu === "host" || settings.gles_backdoor || syborg_gpu && settings.graphics_adapter_renderer)
         {
             settings.gles_plugin = await load_device_plugin(GLES_PLUGINS, "gles", options.ranchu_gpu_path, "ranchu_gpu_path");
             // (its GLSL ES compiler, glslang: GLSL ES 3.x's shaders; docs/plan/gles3-plan.md)

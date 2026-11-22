@@ -5,6 +5,7 @@ import { DisplayHub } from "../display.js";
 import { sha256_hex } from "../image/sha256.js";
 import { syborg_irq_controller, syborg_rtc, syborg_timer, syborg_uart } from "./syborg_devices.js";
 import { syborg_framebuffer } from "./syborg_framebuffer.js";
+import { syborg_graphics } from "./syborg_graphics.js";
 import { validate_syborg_artifacts } from "./syborg_import.js";
 import { syborg_keyboard, syborg_pointer } from "./syborg_input.js";
 import { syborg_offline_modem } from "./syborg_modem.js";
@@ -108,12 +109,13 @@ function create_platform(cpu, boot)
 }
 
 // Other board drivers see down or absent hardware in this offline profile.
-function map_offline_slots(cpu)
+function map_offline_slots(cpu, accelerated)
 {
     for(const [address, length, name, id] of [
         [0xC000A000, 0x2000, "Syborg hostfs and snapshot slots", 0],
         [0xC000C000, 0x1000, "Syborg offline Ethernet", 0xC51D0040],
-        [0xC000E000, 0x2000, "Syborg optional audio and graphics slots", 0],
+        [0xC000E000, 0x1000, "Syborg optional audio slot", 0],
+        ...(accelerated ? [] : [[0xC000F000, 0x1000, "Syborg optional graphics slot", 0]]),
         [0xC001D000, 0x1000, "Syborg optional sensor slot", 0],
     ])
     {
@@ -125,7 +127,7 @@ function map_offline_slots(cpu)
     }
 }
 
-export function create_syborg_board(cpu, boot, bus, screen)
+export function create_syborg_board(cpu, boot, bus, screen, graphics = null, privileged = () => false)
 {
     const backing = cpu.memory_size[0];
     const flash = boot.profile.rofs_address;
@@ -138,7 +140,8 @@ export function create_syborg_board(cpu, boot, bus, screen)
     boot.rofs = null;
 
     create_platform(cpu, boot);
-    map_offline_slots(cpu);
+    map_offline_slots(cpu, !!graphics);
+    const gpu = graphics ? syborg_graphics(cpu, graphics, privileged) : null;
     const hub = new DisplayHub(bus, screen);
     const irq = syborg_irq_controller(cpu);
     const timer = syborg_timer(cpu, irq.source(1));
@@ -162,16 +165,27 @@ export function create_syborg_board(cpu, boot, bus, screen)
             const next = Math.min(timer.poll(now), hub.timer(now), modem.poll(now));
             return !was_asserted && irq.asserted() ? 0 : next;
         },
-        reset() { for(const device of devices) device.reset?.(); },
-        get_state() { return [boot.identity, devices.map(device => device.get_state())]; },
+        reset() { for(const device of devices) device.reset?.(); gpu?.reset(); },
+        get_state()
+        {
+            const state = [boot.identity, devices.map(device => device.get_state())];
+            if(gpu) state.push(gpu.get_state());
+            return state;
+        },
         check_state(state)
         {
             if(state?.[0] !== boot.identity || state[1]?.length !== devices.length)
                 throw new Error("The snapshot requires the same Syborg firmware and device layout");
+            if(!!state[2] !== !!gpu || gpu && (!(state[2] instanceof Uint32Array) || state[2].length !== 10))
+                throw new Error("The snapshot requires the original Syborg graphics backend");
             disks[0].check_state(state[1][devices.length - 2]);
             disks[1].check_state(state[1][devices.length - 1]);
         },
-        set_state(state) { devices.forEach((device, index) => device.set_state(state[1][index])); },
+        set_state(state)
+        {
+            devices.forEach((device, index) => device.set_state(state[1][index]));
+            gpu?.set_state(state[2]);
+        },
         display: hub,
     };
 }

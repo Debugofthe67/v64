@@ -1,0 +1,16 @@
+[project]
+name = "v86_gles"
+kind = "e32-import"
+architecture = "armv6"
+uid3 = 0xe0860506
+
+[package]
+uid = 0xe0860506
+name = "v86 EGL"
+vendor = "v86 project"
+executable_name = "v86_gles.exe"
+version = [1, 0, 0]
+
+[application]
+caption = "v86 EGL"
+short_caption = "v86 EGL"

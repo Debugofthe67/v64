@@ -317,6 +317,11 @@ export async function open_console(root, target)
                 }
             }
             if(config.display.proxy || config.ios?.gles_proxy) await load_graphics_proxy();
+            if(config.symbian?.webgpu)
+            {
+                try { await load_graphics_proxy(); }
+                catch(e) { console.warn("Using the Symbian software display: " + e.message); }
+            }
             // (an emulator image's GLES on the host's GPU, docs/plan/gles-proxy-plan.md
             // E5: the WebGPU renderer's bundle; without WebGPU the guest's CPU
             // draws, this start only: a suspended machine resumes with its own)

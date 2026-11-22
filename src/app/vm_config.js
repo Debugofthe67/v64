@@ -137,7 +137,7 @@ export const TPM_STATE_SIZE = 512 * 1024;
 /**
  * @typedef {{ kind: "browser", path: string, size: number, sha256: string }} SymbianDisk
  * @typedef {{ device: string, model: string, product_code?: string, sw_version: string, variant_version?: string,
- *     description?: string | null, manifest: string, manifest_sha256: string, media: Record<string, SymbianDisk>,
+ *     description?: string | null, manifest: string, manifest_sha256: string, media: Record<string, SymbianDisk>, webgpu?: boolean,
  *     languages?: {id: number, default: boolean}[], bootrom?: SymbianDisk & {name: string, reported_id?: string},
  *     emmc?: {kind: "browser", path: string, size: number}, sd?: SymbianDisk & {name: string} }} Symbian
  */
@@ -461,6 +461,8 @@ export function validate_config(config)
         const device = symbian_device(machine.type);
         if(syborg)
         {
+            if(firmware?.webgpu !== undefined && typeof firmware.webgpu !== "boolean")
+                problem("symbian.webgpu", "Choose whether to use WebGPU");
             if(!firmware || firmware.device !== device.id || firmware.model !== device.model ||
                 firmware.sw_version !== SYBORG_PROFILE.firmware_version ||
                 typeof firmware.manifest !== "string" || !firmware.manifest ||
@@ -1034,7 +1036,7 @@ export function config_to_options(config, env)
             memory_size: SYBORG_PROFILE.ram_size, cpu_worker: true, cpu_worker_url: "build/cpu-worker.js" + env.query_append,
             wasm_path: "build/" + (env.debug ? "v86-arm64-debug.wasm" : "v86-arm64.wasm") + env.query_append,
             screen: { container: env.screen_container }, graphics_adapter: "none", net_device: { type: "none" },
-            symbian: { manifest: image(manifest), manifest_sha256: manifest.sha256,
+            symbian: { manifest: image(manifest), manifest_sha256: manifest.sha256, webgpu: config.symbian.webgpu === true,
                 rom: image(rom), rofs: image(rofs), devicetree: image(devicetree),
                 nvmemory: { ...image(phone), disk_option: "read_write" },
                 ...(sd ? { nvmemory2: { ...image(sd), disk_option: "read_write" } } : {}) },

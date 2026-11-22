@@ -12,6 +12,7 @@
 import { register_device_plugin } from "../device_machine.js";
 import { GLESHost } from "./gles_host.js";
 import { compile_glslang, create_glslang } from "./glslang.js";
+import { create_syborg_transport } from "./syborg_transport.js";
 
 register_device_plugin("V86GlesHosts", {
     "name": "gles",
@@ -36,17 +37,36 @@ register_device_plugin("V86GlesHosts", {
         const host = new GLESHost({ width: display["width"], height: display["height"], dpi: display["dpi"] }, options["renderer"] || null,
             options["present"], { glslang: options["prepared"] || null, max_version: options["max_version"] || "2.0",
                 native_buffers: !!options["native_buffers"] });
+        const syborg = options["syborg"] ? create_syborg_transport(host) : null;
         return {
+            "syborg": syborg,
             // (a service as src/virt/goldfish.js takes one; with a snapshot's state of it)
             "service": (name, wake, saved) => host.service(name, wake, saved),
             "summary": () => host.summary(),
             "performance": () => host.performance(),
-            "reset": () => host.reset(),
+            "reset": () => {
+                const lost = host.lost;
+                syborg?.["reset"]();
+                host.reset();
+                if(syborg && lost) host.lost = true;
+            },
+            "destroy": () => syborg?.["reset"](),
             // (E5: the calls waiting for the page answered, the page's state fetched;
             // then the snapshot's slot, restored after the pipe's channels)
-            "prepare_save": () => host.prepare_save(),
-            "get_state": () => host.get_state(),
-            "set_state": state => host.set_state(state),
+            "prepare_save": () => {
+                syborg?.["check_save"]();
+                return host.prepare_save();
+            },
+            "get_state": () => {
+                syborg?.["check_save"]();
+                return host.get_state();
+            },
+            "set_state": state => {
+                const lost = host.lost;
+                syborg?.["reset"]();
+                host.set_state(state);
+                if(syborg && lost) host.lost = true;
+            },
         };
     },
 });
