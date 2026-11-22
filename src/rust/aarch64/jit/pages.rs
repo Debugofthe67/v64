@@ -522,11 +522,16 @@ pub struct A64Code {
 }
 #[derive(Default)]
 pub struct A64Page;
+const FUNCTION_CACHE_SIZE: usize = 1024;
+
 pub struct A64Extra {
     /// the page of the last activation's or boundary's PC, for heat
     last_key: u32,
     /// instructions interpreted since the last boundary
     interpreted: u32,
+    /// Recently dispatched functions, indexed by the physical page and code
+    /// mode. Entries are checked against the current function before use.
+    recent_functions: [usize; FUNCTION_CACHE_SIZE],
 }
 impl PageFrontend for A64 {
     type Code = A64Code;
@@ -541,6 +546,7 @@ fn rt() -> &'static mut Runtime {
             Runtime::new(A64Extra {
                 last_key: u32::MAX,
                 interpreted: 0,
+                recent_functions: [usize::MAX; FUNCTION_CACHE_SIZE],
             })
         })
     }
@@ -804,11 +810,24 @@ pub fn run(budget: u32) -> Ran {
         }
     }
     r.x.last_key = key;
-    if let Some(&index) = r.by_page.get(&key) {
+    let position = (key ^ (key >> MODE_SHIFT)) as usize & (FUNCTION_CACHE_SIZE - 1);
+    let recent = r.x.recent_functions[position];
+    let index = if r
+        .functions
+        .get(recent)
+        .is_some_and(|f| f.page == key && f.phase == Phase::Ready)
+    {
+        Some(recent)
+    }
+    else {
+        r.by_page.get(&key).copied()
+    };
+    if let Some(index) = index {
         let f = &r.functions[index];
         if f.phase == Phase::Ready {
             if f.serves(0, offset) {
                 let slot = f.slot;
+                r.x.recent_functions[position] = index;
                 r.clock += 1;
                 r.functions[index].last_used = r.clock;
                 let ran = execute(slot, budget, pc);

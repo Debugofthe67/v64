@@ -231,7 +231,7 @@ async function wait_screen(name, timeout)
     }, timeout);
     await artifact(name);
 }
-async function menu(name = "menu")
+async function menu(name = "menu", profile)
 {
     await until("original home services", () => guest_home_ready, 100000);
     const deadline = performance.now() + 65000;
@@ -244,7 +244,11 @@ async function menu(name = "menu")
         }
         if(matches("welcome") || matches("settings_wizard"))
             await (screen().hasAttribute("data-landscape") ? tap(30, 325, 1800) : tap(325, 609, 1800));
-        else if(matches("home")) await press("menu", 2200);
+        else if(matches("home"))
+        {
+            if(profile) profile.menu_presses.push(Math.round(performance.now() - profile.start));
+            await press("menu", 2200);
+        }
         else await sleep(800);
     }
     throw new Error("The stock Menu did not appear");
@@ -412,17 +416,20 @@ async function profile_boot(input)
     for(let run = 0; run < runs; run++)
     {
         await reset_disk(disk, seed);
-        const report = { times: {}, serial_bytes: 0, samples: [] };
+        const report = { times: {}, serial_bytes: 0, samples: [], menu_presses: [] };
         await open_machine(config, report);
+        await until("running CPU", () => vm()?.is_running(), 90000);
         let done = false;
         const sample = async () => {
             while(!done)
             {
                 const d = await vm().get_diagnostics();
-                const { compiled, compile_ms, live, retired, retries, uncached_accesses } = d.page_tier;
+                const { compiled, compile_ms, live, retired, retries, uncached_accesses,
+                    activations, chained, access_fills, access_refused, asid_tag_switches } = d.page_tier;
                 report.samples.push({ ms: Math.round(performance.now() - report.start),
                     instructions: d.retired, pc: d.pc, cpu: d.cores[0].state, clock: d.clock.now_ms,
-                    compiled, compile_ms, live, jit_instructions: retired, retries, uncached_accesses });
+                    compiled, compile_ms, live, jit_instructions: retired, retries, uncached_accesses,
+                    activations, chained, access_fills, access_refused, asid_tag_switches });
                 await sleep(2000);
             }
         };
@@ -431,7 +438,7 @@ async function profile_boot(input)
         {
             await until("visible 5800 desktop", () => matches("home"), 200000);
             report.times.visible_desktop = Math.round(performance.now() - report.start);
-            await menu();
+            await menu("menu", report);
             report.times.usable_desktop = Math.round(performance.now() - report.start);
         }
         finally { done = true; }
