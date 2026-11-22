@@ -5,7 +5,7 @@ const ENTRY = "v86_install.exe";
 const ESTART_HASH = "c6f852048198facd63788bdae3f2cd723fc4e5aedf8c2f356745cdc96e30c289";
 const CLOSE_IMPORT = 0x78EE28;
 const align = (size, boundary) => Math.ceil(size / boundary) * boundary;
-const decode = value => Uint8Array.from(atob(value), byte => byte.charCodeAt(0));
+const decode = value => Uint8Array.from(globalThis.atob(value), byte => byte.charCodeAt(0));
 
 // Add the small open-source helper to the ROM filesystem for this boot. The
 // original package and installation server are never written by the host.

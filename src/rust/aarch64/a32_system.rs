@@ -613,7 +613,16 @@ const CTR_A15: u32 = 0x8444_C004;
 // ARM1136 r1p3 register identities from Arm DDI 0211 and QEMU's arm1136.
 const ARM1136_ID: [[u32; 8]; 2] = [
     [0x111, 1, 2, 3, 0x0113_0003, 0x1003_0302, 0x0122_2110, 0],
-    [0x0014_0011, 0x1200_2111, 0x1123_1111, 0x0110_2131, 0x141, 0, 0, 0],
+    [
+        0x0014_0011,
+        0x1200_2111,
+        0x1123_1111,
+        0x0110_2131,
+        0x141,
+        0,
+        0,
+        0,
+    ],
 ];
 
 /// MRC (read, Rt := the value) or MCR (`value`) of CP15 at PL1
@@ -672,13 +681,19 @@ pub fn cp15(
     let a8 = cpu::cortex_a8();
     let arm1136 = cpu::arm1136();
     match (opc1, crn, crm, opc2) {
-        (0, 0, 0, 0 | 4 | 7) if arm1136 => constant(if cpu::arm1136_r2() { 0x4107_B362 } else { 0x4117_B363 }),
+        (0, 0, 0, 0 | 4 | 7) if arm1136 => {
+            constant(if cpu::arm1136_r2() { 0x4107_B362 } else { 0x4117_B363 })
+        },
         // Syborg advertises 32 KiB I/D with aliasing (qembian's cache-type patch).
         // The N97 geometry is 16 KiB I/D. Both use Ctype 1110, four ways and 32-byte lines.
-        (0, 0, 0, 1) if arm1136 => constant(if cpu::arm1136_r2() { 0x1D99_2992 } else { 0x1D15_2152 }),
+        (0, 0, 0, 1) if arm1136 => {
+            constant(if cpu::arm1136_r2() { 0x1D99_2992 } else { 0x1D15_2152 })
+        },
         (0, 0, 0, 2..=3 | 5..=6) if arm1136 => constant(0),
         (0, 0, 1..=2, n) if arm1136 => constant(ARM1136_ID[crm as usize - 1][n as usize]),
-        (1..=2, 0, _, _) | (0, 12 | 14, _, _) | (0, 4, 6, 0) if arm1136 => Err(Exception::Undefined),
+        (1..=2, 0, _, _) | (0, 12 | 14, _, _) | (0, 4, 6, 0) if arm1136 => {
+            Err(Exception::Undefined)
+        },
         (0, 1, 0, 1) if arm1136 => half(actlr_el1, false),
         // ARM1136 Wait For Interrupt (DDI 0211I, tables 3-2 and 3-85).
         (0, 7, 0, 4) if arm1136 && !read => Ok(Flow::Wait(1)),
@@ -687,7 +702,12 @@ pub fn cp15(
         // DDI 0211I Tables 3-80/81 and 3-86/89. Synchronous, coherent
         // accesses leave no dirty L1 data or outstanding prefetch range.
         (0, 7, 10, 6) if arm1136 => {
-            if read { constant(0) } else { Err(Exception::Undefined) }
+            if read {
+                constant(0)
+            }
+            else {
+                Err(Exception::Undefined)
+            }
         },
         (0, 7, 12, 4) if arm1136 && read => constant(0),
         (0, 7, 12, 5) if arm1136 && !read => Ok(Flow::Next),
@@ -695,7 +715,8 @@ pub fn cp15(
         // settings for context switches. The coherent physical bus already
         // routes each PA to its device, whether the MMU is on or off.
         (0, 15, 2, op @ (0..=2 | 4)) if arm1136 => {
-            let (index, mask, reset) = if op == 4 { (3, 0xFFFF_F01F, 0) } else { (op as usize, 0x01FF_FFFF, 0x01C9_7CC8) };
+            let (index, mask, reset) =
+                if op == 4 { (3, 0xFFFF_F01F, 0) } else { (op as usize, 0x01FF_FFFF, 0x01C9_7CC8) };
             let slot = unsafe { a32_mem_remap.add(index) };
             if read {
                 set_reg(rt, unsafe { *slot } ^ reset);
@@ -711,7 +732,10 @@ pub fn cp15(
                 set_reg(rt, (unsafe { *contextidr_el1 } >> 32) as u32);
             }
             else {
-                unsafe { *contextidr_el1 = *contextidr_el1 & 0xFFFF_FFFF | ((value & 0xFE00_0000) as u64) << 32 };
+                unsafe {
+                    *contextidr_el1 =
+                        *contextidr_el1 & 0xFFFF_FFFF | ((value & 0xFE00_0000) as u64) << 32
+                };
                 crate::aarch64::mmu::ttbr_changed();
             }
             Ok(Flow::Next)

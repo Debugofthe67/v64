@@ -1192,8 +1192,8 @@ pub fn cp15(
     value: u32,
     cond: u32,
 ) -> Result<Flow, Exception> {
-    if crate::aarch64::a32_system::privileged() ||
-        arm1136() && matches!((opc1, crn, crm, opc2), (0, 7, 5, 4) | (0, 7, 12, 4 | 5))
+    if crate::aarch64::a32_system::privileged()
+        || arm1136() && matches!((opc1, crn, crm, opc2), (0, 7, 5, 4) | (0, 7, 12, 4 | 5))
     {
         return crate::aarch64::a32_system::cp15(read, opc1, crn, crm, opc2, rt, value);
     }
@@ -1327,7 +1327,10 @@ pub fn prefetch_before_mmu_switch() {
     let mut address = (get_pc() as u32).wrapping_add(instruction_length());
     let thumb = thumb();
     for index in [0, 3] {
-        let Ok((word, length)) = fetch(address as u64, thumb) else { break };
+        let Ok((word, length)) = fetch(address as u64, thumb)
+        else {
+            break;
+        };
         unsafe {
             *a32_prefetch.add(index) = address;
             *a32_prefetch.add(index + 1) = word;

@@ -92,8 +92,13 @@ static mut FEATURES: u32 = 0;
 #[no_mangle]
 pub fn a64_set_features(mask: u32) {
     unsafe {
-        *crate::parallel::machine(&raw mut FEATURES) =
-            mask & (FEATURE_PAN | FEATURE_AARCH32 | FEATURE_A32 | FEATURE_CORTEX_A8 | FEATURE_ARM1136 | FEATURE_ARM1136_R2)
+        *crate::parallel::machine(&raw mut FEATURES) = mask
+            & (FEATURE_PAN
+                | FEATURE_AARCH32
+                | FEATURE_A32
+                | FEATURE_CORTEX_A8
+                | FEATURE_ARM1136
+                | FEATURE_ARM1136_R2)
     };
     crate::aarch64::tlb::flush(true);
 }

@@ -1063,7 +1063,12 @@ fn control(i: &Inst32, offset: u16) -> Option<(Vec<u64>, bool)> {
         Kind::Interwork { .. } => Some((vec![offset as u64 + i.length as u64], false)),
         Kind::CompareBranch { target, .. } => Some((vec![target], true)),
         // (a return: LDM, POP, LDR of the PC)
-        Kind::Multiple { load: true, list, cond, .. } if list & 0x8000 != 0 => Some((vec![], cond != 14)),
+        Kind::Multiple {
+            load: true,
+            list,
+            cond,
+            ..
+        } if list & 0x8000 != 0 => Some((vec![], cond != 14)),
         Kind::Mem {
             load: true,
             rt: 15,

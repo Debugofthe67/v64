@@ -679,15 +679,14 @@ pub unsafe fn a64_allocate_memory(size: u32) -> u32 {
 
 /// RAM of `size` bytes at 0x4000_0000, backed by the start of guest memory
 #[no_mangle]
-pub unsafe fn a64_bus_set_ram(size: u32) -> bool {
-    a64_bus_set_ram_at(size, RAM_BASE as u32)
-}
+pub unsafe fn a64_bus_set_ram(size: u32) -> bool { a64_bus_set_ram_at(size, RAM_BASE as u32) }
 
 /// The board's contiguous main RAM, backed by the start of guest memory.
 #[no_mangle]
 pub unsafe fn a64_bus_set_ram_at(size: u32, base: u32) -> bool {
     let base = base as u64;
-    if size > MEM8_SIZE || base & 0xFFF != 0
+    if size > MEM8_SIZE
+        || base & 0xFFF != 0
         || bus()
             .regions
             .iter()
