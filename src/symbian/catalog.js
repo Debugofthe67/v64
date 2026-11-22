@@ -18,7 +18,7 @@ export const SYBORG_DEVICE = {
             { id: "camera-full", label: "Capture", scan: 0xAB },
         ],
         top: [
-            { id: "power", label: "Power", scan: 0xA6 },
+            { id: "power", label: "Phone power", scan: 0xA6 },
             { id: "media", label: "Media", scan: 0xF0 },
         ],
     },

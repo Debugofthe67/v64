@@ -184,14 +184,14 @@ details.checklist { margin: 10px 0; }
     border-radius: 12px;
 }
 .syborg-body { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
-.syborg-top, .syborg-front { display: flex; gap: 6px; }
-.syborg-top { justify-content: space-between; }
+.syborg-front { display: flex; gap: 6px; }
 .syborg-front > button { flex: 1; }
 .syborg-side { display: grid; gap: 6px; }
-.syborg-phone button { min-height: 32px; padding-inline: 7px; touch-action: none; }
+.syborg-phone button { min-height: 32px; padding-inline: 7px; }
+.syborg-key { touch-action: none; }
 .syborg-phone button[data-key="call"] { color: #1d9855; }
 .syborg-phone button[data-key="end"] { color: #d55c66; }
-.syborg-phone button[data-down] { border-color: var(--accent); background: var(--selected); }
+.syborg-key[data-down] { border-color: var(--accent); background: var(--selected); }
 #screen_container.syborg-touch-screen {
     display: block;
     width: var(--syborg-screen-width, 360px);
@@ -200,7 +200,8 @@ details.checklist { margin: 10px 0; }
     touch-action: none;
 }
 #screen_container.syborg-touch-screen #vga, #screen_container.syborg-touch-screen #screen { position: absolute; inset: 0; }
-#screen_container.syborg-touch-screen #vga { height: 100%; width: 100%; object-fit: contain; }
+/* The touchscreen frame sets the scale. Override the screen adapter's inline canvas dimensions. */
+#screen_container.syborg-touch-screen #vga { height: 100% !important; width: 100% !important; object-fit: contain; }
 #screen_container.syborg-touch-screen:focus-visible { outline: 2px solid var(--accent); }
 .console-drawer {
     flex: 0 0 360px;
@@ -266,8 +267,7 @@ body.theatre-body footer { display: none; }
 }
 #vga { background-color: #000; touch-action: none; transform-origin: top left; }
 #screen_container:fullscreen { display: flex !important; align-items: center; justify-content: center; }
-#screen_container:fullscreen #vga { width: auto !important; height: 100% !important; }
-#screen_container.syborg-touch-screen:fullscreen #vga { width: 100% !important; }
+#screen_container:fullscreen:not(.syborg-touch-screen) #vga { width: auto !important; height: 100% !important; }
 .phone_keyboard { position: absolute; opacity: 0; width: 0; height: 0; resize: none; left: -9999em; top: 0; z-index: -10; }
 
 footer { color: var(--muted); padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.9em; }

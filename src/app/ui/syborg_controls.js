@@ -39,7 +39,7 @@ export function syborg_controls(screen, send_key, send_touch, ready)
     /** @param {{id: string, label: string, scan: number, min_press_ms?: number}} key */
     function control({ id, label, scan, min_press_ms = 0 })
     {
-        const button = /** @type {HTMLButtonElement} */ (h("button", { type: "button", "data-key": id }, label));
+        const button = /** @type {HTMLButtonElement} */ (h("button.syborg-key", { type: "button", "data-key": id }, label));
         /** @type {number | null} */
         let pointer = null;
         let timer = 0, down = false, started = 0;
@@ -86,7 +86,6 @@ export function syborg_controls(screen, send_key, send_touch, ready)
         return button;
     }
     stage.append(
-        h("div.syborg-top", null, top.map(control)),
         h("div.syborg-body", null, screen, h("div.syborg-side", null, side.map(control))),
         h("div.syborg-front", null, front.map(control)),
     );
@@ -127,6 +126,7 @@ export function syborg_controls(screen, send_key, send_touch, ready)
     return {
         release,
         dispose() { release(); controls.abort(); },
+        top: top.map(control),
         select: control({ id: "select", label: "Open selected file", scan: 0x03 }),
         set_scale,
         set_fit(room_width, room_height)

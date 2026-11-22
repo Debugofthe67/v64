@@ -694,7 +694,7 @@ function console_ui(layout, emulator, ctx)
         clearInterval(interval);
         await emulator.destroy();
         ctx.release();
-        replace(layout.toolbar, h("a.button", { href: location.pathname }, "Library"), h("span.console-name", null, ctx.name));
+        replace(layout.toolbar, h("a.button", { href: location.pathname }, "Library"), syborg ? null : h("span.console-name", null, ctx.name));
         replace(layout.notice, h("p", null, "Powered off. ", h("a", { href: location.href }, "Power on again"), " or go back to the ",
             h("a", { href: location.pathname }, "library"), "."));
         ctx.set_status("Powered off");
@@ -1061,7 +1061,7 @@ function console_ui(layout, emulator, ctx)
     };
     layout.screen_container.addEventListener("click", e =>
     {
-        if(ios) return;
+        if(ios || syborg) return;
         // (a guest that follows the host's cursor needs no lock; the menu's Lock mouse is still there for games)
         if(mouse_enabled && stats.guest_mouse && !stats.absolute_mouse && !stats.usb_tablet) emulator.lock_mouse();
         if(window.getSelection()?.isCollapsed)
@@ -1448,7 +1448,7 @@ function console_ui(layout, emulator, ctx)
         replace(layout.toolbar,
             h("a.button", { href: location.pathname }, "Library"),
             menu_button("Power", items.power, "menu_power"),
-            ios ? iphone_controls : syborg ? h("span.note", null, SYBORG_DEVICE.name + " (" + SYBORG_DEVICE.model + ") · " + symbian.sw_version) :
+            ios ? iphone_controls : phone_screen ? phone_screen.top :
                 [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
             symbian ? h("button#symbian_send_sis", { type: "button", onclick: open_sis }, "Send SIS/SISX…") : null,
             syborg && symbian.sd ? phone_screen.select : null,
@@ -1457,11 +1457,11 @@ function console_ui(layout, emulator, ctx)
             symbian ? null : mute,
             ios || symbian ? null : menu_button("Tools", items.tools, "menu_tools"),
             h("span.toolbar-gap"),
-            !symbian && (!ios || ctx.config.serial.some(serial => serial.attach === "terminal")) ? drawer_button("terminal", "Terminal") : null,
+            !ios || ctx.config.serial.some(serial => serial.attach === "terminal") ? drawer_button("terminal", "Terminal") : null,
             kernel_console ? drawer_button("kernel", "Kernel console") : null,
             files_tab ? drawer_button("files", "Files") : null,
             drawer_button("details", "Details"),
-            h("span.console-name", null, ctx.name));
+            syborg ? null : h("span.console-name", null, ctx.name));
     };
     update_toolbar();
     if(syborg)

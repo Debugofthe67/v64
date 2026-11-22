@@ -155,8 +155,10 @@ function screen_point(x, y)
 }
 async function tap(x, y, rest = 550)
 {
-    const target = screen();
     const point = screen_point(x, y);
+    const target = doc().elementFromPoint(point.clientX, point.clientY);
+    check(target === canvas(), "the guest pixel is on the visible canvas at " + x + ", " + y);
+    point.pointerType = "mouse";
     pointer(target, "down", point);
     await sleep(130);
     pointer(target, "up", point);
@@ -225,8 +227,23 @@ async function menu()
 async function setup()
 {
     await wait_screen("region", 165000);
+    const check_screen_size = () => {
+        const box = canvas().getBoundingClientRect(), frame_box = screen().getBoundingClientRect();
+        check(box.left === frame_box.left && box.top === frame_box.top &&
+            box.width === frame_box.width && box.height === frame_box.height &&
+            Math.abs(box.height - box.width * 640 / 360) < 0.1,
+        "the canvas fills the proportional touchscreen");
+    };
+    check_screen_size();
+    doc().querySelector("#menu_view").click();
+    doc().querySelector("#view_scale_50").click();
+    check(screen().getBoundingClientRect().width === 180, "50% scale fits the expected guest width");
+    check_screen_size();
     await tap(35, 610);
     await wait_screen("date");
+    doc().querySelector("#menu_view").click();
+    doc().querySelector("#view_zoom_to_fit").click();
+    check_screen_size();
     await tap(90, 295);
     await wait_screen("time");
     await tap(90, 295);
@@ -342,8 +359,11 @@ async function run()
     }
     await open_machine(first);
     await until("running 5800", () => status("Running"), 90000);
-    check(doc().querySelector(".console-toolbar").textContent.includes("Nokia 5800 (RM-356) · 31.0.101") &&
-        !doc().querySelector("#drawer_keyboard"), "5800 console has the profile and physical controls");
+    const toolbar = doc().querySelector(".console-toolbar");
+    check(doc().title.includes(first.name) && !toolbar.querySelector(".console-name") &&
+        !toolbar.textContent.includes("RM-356"), "the VM name is shown in the tab and firmware details stay out of the toolbar");
+    check(toolbar.querySelector('[data-key="power"]') && toolbar.querySelector('[data-key="media"]') &&
+        !toolbar.querySelector("#drawer_keyboard"), "the 5800 Power and Media keys are in the main toolbar");
     doc().querySelector("#drawer_details").click();
     const console_details = doc().querySelector(".console-drawer");
     check(console_details.textContent.includes("Nokia 5800 (RM-356)") && console_details.textContent.includes("31.0.101"),
@@ -360,6 +380,10 @@ async function run()
     if(part === "boot")
     {
         await menu();
+        doc().querySelector("#drawer_terminal").click();
+        await until("Symbian boot output in the serial terminal",
+            () => doc().querySelector(".console-drawer .terminal .xterm-rows")?.textContent.trim());
+        doc().querySelector('.console-drawer button[aria-label="Close"]').click();
         await power_off();
         result.textContent = "PASS Nokia 5800 archive import, offline cold boot and stock Menu";
         return;
