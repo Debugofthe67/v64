@@ -5,7 +5,6 @@
 // machine runs the arm64 CPU; an option of the other family is an error,
 // never silently ignored.
 
-import { N97_RAM_BASE, N97_RAM_SIZE } from "./symbian/n97_board.js";
 import { SYBORG_DIAGNOSTIC, SYBORG_MACHINE, SYBORG_PROFILE } from "./symbian/syborg_profile.js";
 
 /** The guest CPUs (`cpu_type`); the first is the default */
@@ -38,7 +37,6 @@ export const CPU_PROFILES = {
     "generic-arm64-v1.1": { cpu_type: "arm64", hidden: true },
     "cortex-a15": { cpu_type: "arm32" },
     "cortex-a8": { cpu_type: "arm32" },
-    "arm1136": { cpu_type: "arm32" },
     "arm1136-r2": { cpu_type: "arm32" },
 };
 
@@ -47,7 +45,7 @@ export const DEFAULT_CPU_PROFILES = { "x86": "generic-x86", "x86_64": "generic-x
 
 /** The CPU models a machine takes, where it is choosy: machine_type → cpu_type → models */
 export const MACHINE_CPU_PROFILES = { "virt": { "arm32": ["cortex-a15"] }, "ranchu": { "arm32": ["cortex-a15"] },
-    "s5l8930": { "arm32": ["cortex-a8"] }, "nokia-n97": { "arm32": ["arm1136"] },
+    "s5l8930": { "arm32": ["cortex-a8"] },
     [SYBORG_MACHINE]: { "arm32": [SYBORG_PROFILE.cpu] } };
 
 /**
@@ -69,10 +67,10 @@ export function cpu_profiles_of(cpu_type, machine_type)
  * management, AHCI; docs/q35.md), "virt" (the ARM board, docs/virt.md) and
  * "ranchu" (the Android emulator's ARM board: its SDK images, src/virt/ranchu.js)
  */
-export const MACHINE_TYPES = ["i440fx", "q35", "virt", "ranchu", "s5l8930", "nokia-n97", SYBORG_MACHINE];
+export const MACHINE_TYPES = ["i440fx", "q35", "virt", "ranchu", "s5l8930", SYBORG_MACHINE];
 /** The ARM CPUs' machines */
-export const ARM_MACHINE_TYPES = ["virt", "ranchu", "s5l8930", "nokia-n97", SYBORG_MACHINE];
-const ARM32_MACHINES = ["s5l8930", "nokia-n97", SYBORG_MACHINE];
+export const ARM_MACHINE_TYPES = ["virt", "ranchu", "s5l8930", SYBORG_MACHINE];
+const ARM32_MACHINES = ["s5l8930", SYBORG_MACHINE];
 
 /**
  * The most cores (`cpu_cores`) of the PC machines (src/platform.js): must
@@ -135,7 +133,7 @@ export const Q35_ONLY = ["hpet", "smbus", "pcie_root_ports"];
 
 const APPLE_UNAVAILABLE = ["hda", "hdb", "cdrom", "extended_memory_size", "virtio_rng", "virtio_disks", "virtio_input",
             "virtio_vsock", "virtio_transport", "virtio_sound", "virtio_console", "virtio_balloon", "virtio_console_ports", "virtio_gpu_pci_slot"];
-const N97_UNAVAILABLE = [...new Set([...APPLE_UNAVAILABLE, ...VIRT_ONLY, "initrd"])];
+const SYBORG_UNAVAILABLE = [...new Set([...APPLE_UNAVAILABLE, ...VIRT_ONLY, "initrd"])];
 
 const given = value => value !== undefined && value !== null && value !== false;
 
@@ -177,7 +175,7 @@ export function check_machine_options(options)
     }
     const arm = is_arm(cpu_type);
     const machine_type = options["machine_type"] === undefined ?
-        (cpu_profile === "cortex-a8" ? "s5l8930" : cpu_profile === "arm1136" ? "nokia-n97" :
+        (cpu_profile === "cortex-a8" ? "s5l8930" :
             cpu_profile === SYBORG_PROFILE.cpu ? SYBORG_MACHINE : arm ? "virt" : "i440fx") : options["machine_type"];
     if(!MACHINE_TYPES.includes(machine_type))
     {
@@ -230,15 +228,14 @@ export function check_machine_options(options)
         if(options["graphics_adapter"] && options["graphics_adapter"] !== "none" ||
             options["net_device"] && options["net_device"]["type"] !== "none") throw new Error("s5l8930 requires graphics and network adapters set to none");
     }
-    const n97 = machine_type === "nokia-n97";
     const syborg = machine_type === SYBORG_MACHINE;
-    if(options["symbian"] !== undefined && !n97 && !syborg) throw new Error("symbian requires machine_type nokia-n97 or " + SYBORG_MACHINE);
+    if(options["symbian"] !== undefined && !syborg) throw new Error("symbian requires machine_type " + SYBORG_MACHINE);
     if(syborg)
     {
         if(cpu_type !== "arm32" || options["cpu_cores"] !== undefined && options["cpu_cores"] !== 1 ||
             options["memory_size"] !== undefined && options["memory_size"] !== SYBORG_PROFILE.ram_size)
             throw new Error("Syborg requires one ARM32 core and " + (SYBORG_PROFILE.ram_size >> 20) + " MiB RAM");
-        for(const name of N97_UNAVAILABLE)
+        for(const name of SYBORG_UNAVAILABLE)
             if(given(options[name])) throw new Error(name + " is not available on " + SYBORG_MACHINE);
         if(options["graphics_adapter"] && options["graphics_adapter"] !== "none" ||
             options["net_device"] && options["net_device"]["type"] !== "none")
@@ -265,86 +262,7 @@ export function check_machine_options(options)
             }
         }
     }
-    if(n97)
-    {
-        if(cpu_type !== "arm32" || options["cpu_cores"] !== undefined && options["cpu_cores"] !== 1 ||
-            options["memory_size"] !== undefined && options["memory_size"] !== N97_RAM_SIZE)
-        {
-            throw new Error("Nokia N97 requires one ARM32 core and 128 MiB RAM");
-        }
-        for(const name of N97_UNAVAILABLE)
-        {
-            if(given(options[name])) throw new Error(name + " is not available on nokia-n97");
-        }
-        if(options["graphics_adapter"] && options["graphics_adapter"] !== "none" ||
-            options["net_device"] && options["net_device"]["type"] !== "none")
-        {
-            throw new Error("nokia-n97 requires graphics and network adapters set to none");
-        }
-        const symbian = options["symbian"];
-        if(symbian !== undefined)
-        {
-            const address = symbian?.["load_address"];
-            const regs = symbian?.["boot_registers"];
-            if(!symbian?.["rom"]) throw new Error("Nokia N97 requires symbian.rom");
-            const nand = symbian["nand"];
-            if(nand !== undefined && (address < N97_RAM_BASE ||
-                !(nand?.["buffer"] instanceof ArrayBuffer || typeof nand?.["url"] === "string" &&
-                  nand["disk_option"] === "read_write" && !/^https?:/i.test(nand["url"]))))
-            {
-                throw new Error("Nokia N97 OneNAND needs a writable local file or an in-memory image and RAM above CS0");
-            }
-            for(const name of ["emmc", "sd"])
-            {
-                const card = symbian[name];
-                if(card !== undefined && (address !== undefined || !(typeof card?.["url"] === "string" &&
-                    card["disk_option"] === "read_write" && !/^https?:/i.test(card["url"])) &&
-                    !(name === "sd" && card?.["buffer"] instanceof ArrayBuffer)))
-                {
-                    throw new Error("Nokia N97 " + name + " requires a local image and the normal board layout");
-                }
-            }
-            for(const name of ["rom_sha256", "boot_media_sha256", "bootrom_sha256"])
-            {
-                const digest = symbian[name];
-                if(digest !== undefined && (typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)))
-                {
-                    throw new Error("Nokia N97: " + name + " must be a lowercase SHA-256 digest");
-                }
-            }
-            if(symbian["bootrom"] && !symbian["boot_media"])
-            {
-                throw new Error("Nokia N97 needs both the retail boot media and the local RAPIDO boot ROM");
-            }
-            const rapido_compat = symbian["rapido_compat_rom"];
-            if(rapido_compat !== undefined && typeof rapido_compat !== "boolean")
-                throw new Error("Nokia N97 requires rapido_compat_rom to be a boolean");
-            if(rapido_compat && (!symbian["boot_media"] || !nand || symbian["bootrom"] || symbian["bootrom_id"] !== undefined ||
-                symbian["bootrom_sha256"] !== undefined || address !== undefined || symbian["application_processor_only"]))
-            {
-                throw new Error("The RAPIDO compatibility ROM requires the retail boot media and OneNAND without a separate boot ROM or diagnostic handoff");
-            }
-            if((address !== undefined || symbian["application_processor_only"]) &&
-                (symbian["boot_media"] || symbian["bootrom"]))
-            {
-                throw new Error("Nokia N97's diagnostic handoff cannot be combined with the full modem boot media");
-            }
-            if(symbian["bootrom_id"] !== undefined && typeof symbian["bootrom_id"] !== "string" ||
-                symbian["application_processor_only"] !== undefined && typeof symbian["application_processor_only"] !== "boolean" ||
-                address !== undefined && symbian["application_processor_only"])
-            {
-                throw new Error("Nokia N97 has invalid diagnostic or ROM identity options");
-            }
-            if((address !== undefined || regs !== undefined) &&
-                (!Number.isInteger(address) || address < 0 || address >= N97_RAM_BASE + N97_RAM_SIZE || address % 4 ||
-                !Array.isArray(regs) || regs.length !== 4 || !Array.from(regs).every(x => Number.isInteger(x) && x >= 0 && x <= 0xFFFFFFFF)))
-            {
-                throw new Error("Nokia N97 requires symbian.rom, an aligned RAM load_address and four unsigned boot_registers");
-            }
-        }
-    }
-    const profile = cpu_profile === undefined ? (apple ? "cortex-a8" : n97 ? "arm1136" :
-        syborg ? SYBORG_PROFILE.cpu : DEFAULT_CPU_PROFILES[cpu_type]) : cpu_profile;
+    const profile = cpu_profile === undefined ? (apple ? "cortex-a8" : syborg ? SYBORG_PROFILE.cpu : DEFAULT_CPU_PROFILES[cpu_type]) : cpu_profile;
     const only = MACHINE_CPU_PROFILES[machine_type] && MACHINE_CPU_PROFILES[machine_type][cpu_type];
     if(only && !only.includes(profile))
     {
@@ -563,7 +481,6 @@ export function check_machine_options(options)
 export function allowed_options(cpu_type, machine_type)
 {
     const virt = ARM_MACHINE_TYPES.includes(machine_type);
-    const n97 = machine_type === "nokia-n97";
     const syborg = machine_type === SYBORG_MACHINE;
     /** @type {!Object<string, string>} */
     const unavailable = {};
@@ -580,9 +497,9 @@ export function allowed_options(cpu_type, machine_type)
         {
             for(const name of APPLE_UNAVAILABLE) unavailable[name] = "the iPhone 4 board has no " + name;
         }
-        if(n97 || syborg)
+        if(syborg)
         {
-            for(const name of N97_UNAVAILABLE) unavailable[name] = "the " + machine_type + " board has no " + name + " option";
+            for(const name of SYBORG_UNAVAILABLE) unavailable[name] = "the " + machine_type + " board has no " + name + " option";
         }
         if(machine_type === "ranchu")
         {

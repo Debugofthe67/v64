@@ -30,7 +30,6 @@ export const A64_PROFILES = {
  * @type {!Object<string, !Array>}
  */
 export const ARM32_PROFILES = {
-    "arm1136": ["arm1136", 1, 22],
     "arm1136-r2": ["arm1136-r2", 1, 54],
     "cortex-a8": ["cortex-a8", 1, 14],
     "cortex-a15": ["v86-arm32-v1", 1, 6],

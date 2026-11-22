@@ -52,7 +52,7 @@ export function choices(config)
         /** the CPU models to offer (cpu.profile), null (automatic) first */
         cpu_profiles: [null, ...allowed.cpu_profiles],
         machine_types: config.ios ? ["s5l8930"] : config.symbian ? [config.machine.type] :
-            allowed.machine_types.filter(machine => !["s5l8930", "nokia-n97", "symbian-syborg"].includes(machine)),
+            allowed.machine_types.filter(machine => !["s5l8930", "symbian-syborg"].includes(machine)),
         graphics_adapters: allowed.graphics_adapters,
         net_devices: allowed.net_device_types,
         sound_devices: ranchu ? RANCHU_SOUND_DEVICES : virt ? VIRT_SOUND_DEVICES : SOUND_DEVICES,

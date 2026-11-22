@@ -1,4 +1,4 @@
-// Nokia BB5 FPSX records used by RM-505 and RM-356. Header layouts are
+// Nokia BB5 FPSX records used by Nokia firmware. Header layouts are
 // cross-checked with EKA2L1's FPSX reader and saur0n/unpacker.
 
 import { c_string, u32be } from "../android/bytes.js";

@@ -11,7 +11,8 @@ import { check_installed_notes } from "../symbian/syborg_sis_checks.js";
 
 const directory = "/build/syborg-s0/reference/";
 const args = new URLSearchParams(location.search);
-const controls_only = args.get("part") === "controls";
+const part = args.get("part");
+const controls_only = part === "controls";
 const prepared = controls_only && args.has("prepared");
 const result = document.querySelector("#result");
 const log = text => document.querySelector("#log").append(text + "\n");
@@ -159,12 +160,12 @@ async function tap(x, y, rest = 550)
     pointer(target, "up", point);
     await sleep(rest);
 }
-async function press(key, rest = 450)
+async function press(key, rest = 450, hold = 140)
 {
     const target = doc().querySelector('[data-key="' + key + '"]');
     check(target && !target.disabled, "active control " + key);
     pointer(target, "down");
-    await sleep(140);
+    await sleep(hold);
     pointer(target, "up");
     await sleep(rest);
 }
@@ -242,6 +243,75 @@ const image_for = media => disk_file(disk_id(media.path));
 
 window.s5 = { doc, tap, press, artifact, vm, load, crop };
 
+async function check_controls()
+{
+    await menu();
+    await tap(295, 505);
+    await wait_screen("applications");
+    await tap(325, 609);
+    await wait_screen("menu");
+    await tap(325, 609);
+    await wait_screen("home");
+    log("Stock home, Menu and touch succeeded with the library console.");
+    const keyguard_icon = [310, 1, 27, 23], keyguard_on = 0x52E26B23, keyguard_off = 0xAB945F27;
+    // Welcome can come to the foreground even after Menu and touch work.
+    // Dismiss it before checking which screen owns the lock switch.
+    const keyguard = expected => async () => {
+        if(matches("welcome") || matches("settings_wizard")) await tap(325, 609, 1800);
+        return matches("home") && crop(keyguard_icon) === expected;
+    };
+    for(let attempt = 0; attempt < 3 && crop(keyguard_icon) !== keyguard_on; attempt++)
+    {
+        await until("unlocked home", keyguard(keyguard_off));
+        await press("lock", 800);
+        try { await until("native lock indicator", keyguard(keyguard_on), 14500); }
+        catch(error) { if(attempt === 2) throw error; }
+    }
+    await artifact("locked");
+    await press("menu", 3200);
+    check(matches("home") && crop(keyguard_icon) === keyguard_on, "guest keyguard blocks the Menu button");
+    await artifact("locked-menu");
+    await press("lock", 800);
+    await until("native lock indicator cleared", () => matches("home") && crop(keyguard_icon) === keyguard_off);
+    await artifact("unlocked");
+    await menu();
+    await artifact("unlocked-menu");
+    await tap(325, 609);
+    await wait_screen("home");
+    log("The stock lock blocked Menu and the second lock press restored it.");
+    for(let attempt = 0; attempt < 3 && !matches("media"); attempt++) await press("media", 1800, 240);
+    await wait_screen("media");
+    for(let attempt = 0; attempt < 3 && matches("media"); attempt++) await press("media", 1800, 240);
+    await until("closed Media bar", () => matches("home") && !matches("media"));
+    log("The physical Media button opened and closed the original Media bar.");
+    const calls = [];
+    const emulator = vm();
+    const key = emulator.symbian_send_key, touch = emulator.symbian_set_touch;
+    emulator.symbian_send_key = function(code, down) {
+        calls.push([code, down]);
+        key.call(this, code, down);
+    };
+    emulator.symbian_set_touch = function(x, y, down) {
+        calls.push([x, y, down]);
+        touch.call(this, x, y, down);
+    };
+    const volume = doc().querySelector('[data-key="volup"]');
+    pointer(volume, "down");
+    check(volume.hasAttribute("data-down"), "physical key enters held state");
+    frame.contentWindow.dispatchEvent(new frame.contentWindow.Event("blur"));
+    check(!volume.hasAttribute("data-down"), "focus loss releases a held key");
+    pointer(screen(), "down", screen_point(170, 434));
+    frame.contentWindow.dispatchEvent(new frame.contentWindow.Event("blur"));
+    pointer(screen(), "down", screen_point(170, 434));
+    pointer(screen(), "cancel");
+    check(JSON.stringify(calls) === JSON.stringify([
+        [0xA2, true], [0xA2, false], [170, 434, true], [170, 434, false], [170, 434, true], [170, 434, false],
+    ]), "focus loss and pointer cancellation send actual release events");
+    emulator.symbian_send_key = key;
+    emulator.symbian_set_touch = touch;
+    log("App focus loss and pointer cancellation released the mapped key and touch.");
+}
+
 async function run()
 {
     await load("/index.html");
@@ -287,67 +357,7 @@ async function run()
         await open_console(doc().querySelector(".console-notice a").href);
     }
     await wait_screen("home", 165000);
-    await menu();
-    await tap(295, 505);
-    await wait_screen("applications");
-    await tap(325, 609);
-    await wait_screen("menu");
-    await tap(325, 609);
-    await wait_screen("home");
-    log("Stock home, Menu and touch succeeded with the library console.");
-    const keyguard_icon = [310, 1, 27, 23], keyguard_on = 0x52E26B23, keyguard_off = 0xAB945F27;
-    await until("unlocked home", () => crop(keyguard_icon) === keyguard_off);
-    // The original startup views can retain the foreground briefly after
-    // Home is drawn. Retry if the first pulse arrived before keyguard did.
-    for(let attempt = 0; attempt < 3 && crop(keyguard_icon) !== keyguard_on; attempt++)
-    {
-        await press("lock", 800);
-        try { await until("native lock indicator", () => crop(keyguard_icon) === keyguard_on, 14500); }
-        catch(error) { if(attempt === 2) throw error; }
-    }
-    await artifact("locked");
-    await press("menu", 3200);
-    check(matches("home") && crop(keyguard_icon) === keyguard_on, "guest keyguard blocks the Menu button");
-    await artifact("locked-menu");
-    await press("lock", 800);
-    await until("native lock indicator cleared", () => matches("home") && crop(keyguard_icon) === keyguard_off);
-    await artifact("unlocked");
-    await menu();
-    await artifact("unlocked-menu");
-    await tap(325, 609);
-    await wait_screen("home");
-    log("The stock lock blocked Menu and the second lock press restored it.");
-    await press("media", 1800);
-    await wait_screen("media");
-    await press("media", 1800);
-    await until("closed Media bar", () => matches("home") && !matches("media"));
-    log("The physical Media button opened and closed the original Media bar.");
-    const calls = [];
-    const emulator = vm();
-    const key = emulator.symbian_send_key, touch = emulator.symbian_set_touch;
-    emulator.symbian_send_key = function(code, down) {
-        calls.push([code, down]);
-        key.call(this, code, down);
-    };
-    emulator.symbian_set_touch = function(x, y, down) {
-        calls.push([x, y, down]);
-        touch.call(this, x, y, down);
-    };
-    const volume = doc().querySelector('[data-key="volup"]');
-    pointer(volume, "down");
-    check(volume.hasAttribute("data-down"), "physical key enters held state");
-    frame.contentWindow.dispatchEvent(new frame.contentWindow.Event("blur"));
-    check(!volume.hasAttribute("data-down"), "focus loss releases a held key");
-    pointer(screen(), "down", screen_point(170, 434));
-    frame.contentWindow.dispatchEvent(new frame.contentWindow.Event("blur"));
-    pointer(screen(), "down", screen_point(170, 434));
-    pointer(screen(), "cancel");
-    check(JSON.stringify(calls) === JSON.stringify([
-        [0xA2, true], [0xA2, false], [170, 434, true], [170, 434, false], [170, 434, true], [170, 434, false],
-    ]), "focus loss and pointer cancellation send actual release events");
-    emulator.symbian_send_key = key;
-    emulator.symbian_set_touch = touch;
-    log("App focus loss and pointer cancellation released the mapped key and touch.");
+    if(part !== "notes") await check_controls();
     if(controls_only)
     {
         await power_off();
@@ -409,7 +419,7 @@ async function run()
     await power_off();
     await check_installed_notes(await image_for(saved.symbian.media.phone), 1);
     log("Cold readback, snapshot resume and two-VM isolation verified.");
-    result.textContent = "PASS Nokia 5800 production app import, native Notes persistence, controls, and resume";
+    result.textContent = "PASS Nokia 5800 production app import, native Notes persistence and resume";
 }
 try { await run(); }
 catch(error)

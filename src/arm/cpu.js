@@ -33,21 +33,6 @@ import { GoldfishFb, GoldfishEvents, GoldfishBattery, GoldfishAudio, GoldfishPip
 import { BackdoorA32, BACKDOOR_NOT_HANDLED } from "./backdoor_a32.js";
 import { IOSInstallService } from "../ios/install_service.js";
 import { IOSNetwork } from "../ios/network.js";
-import { create_n97_boot_timer, create_n97_sram, load_n97_rom, n97_boot_files, N97_BOOT_TOC, N97_DEVICE_MEMORY, N97_LAYOUT_VERSION, N97_RAM_BASE } from "../symbian/n97_board.js";
-import { create_n97_rapido_compat } from "../symbian/n97_rapido_compat.js";
-import { create_n97_board_config, create_n97_boot_source, create_n97_clocks, create_n97_gpio_input, create_n97_interrupts, create_n97_l2, create_n97_nand_bus, create_n97_os_timer,
-    create_n97_rapido_id, create_n97_xti } from "../symbian/n97_devices.js";
-import { create_n97_onenand } from "../symbian/n97_onenand.js";
-import { create_n97_mmc } from "../symbian/n97_mmc.js";
-import { create_n97_keyboard, N97_KEYBOARD_ADDRESS } from "../symbian/n97_keyboard.js";
-import { create_n97_i2c } from "../symbian/n97_i2c.js";
-import { create_n97_dma } from "../symbian/n97_dma.js";
-import { create_n97_touch, N97_TOUCH_ADDRESS } from "../symbian/n97_touch.js";
-import { n97_control } from "../symbian/n97_keymap.js";
-import { create_n97_cbus } from "../symbian/n97_cbus.js";
-import { create_n97_dispc } from "../symbian/n97_dispc.js";
-import { create_n97_panel } from "../symbian/n97_panel.js";
-import { create_n97_lossi } from "../symbian/n97_lossi.js";
 import { create_syborg_board, load_syborg_rom, syborg_boot_files, SYBORG_LAYOUT_VERSION } from "../symbian/syborg_board.js";
 import { SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
 import {
@@ -72,12 +57,11 @@ import { COMMAND_RELOAD, COMMAND_RESET } from "../parallel/control.js";
 
 /** The devices in a snapshot's state[4], in this order */
 const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe",
-    ...N90_DEVICE_ORDER, "ios_network", "n97_boot_timer", "n97_rapido_id", "n97_l2", "n97_xti", "n97_clocks", "n97_sram",
-    "n97_board_config", "n97_interrupts", "n97_os_timer", "n97_onenand", "n97_mmc",
-    "n97_keyboard_gpio", "n97_keyboard", "n97_i2c", "n97_slider_gpio", "n97_dma", "n97_touch_gpio", "n97_touch",
-    "n97_lock_gpio", "n97_dispc", "n97_panel", "n97_lossi", "n97_nand_bus", "n97_power_gpio", "n97_cbus", "n97_sd_detect", "n97_rapido_compat", "n97_boot_source", "syborg"];
+    ...N90_DEVICE_ORDER, "ios_network",
+    // Reserved snapshot slots. Keep the Syborg device at its original index.
+    ...Array(28).fill(null), "syborg"];
 const machine_layout = machine => machine === SYBORG_MACHINE ? SYBORG_LAYOUT_VERSION :
-    machine === "nokia-n97" ? N97_LAYOUT_VERSION : machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
+    machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
 const STATE_MAX_SINGLE_BUFFER = 0x7FFFFFFF;
@@ -263,15 +247,7 @@ A64CPU.prototype.init = function(settings, device_bus)
     /** "virt", or "ranchu": the Android emulator's board (src/virt/ranchu.js) */
     this.machine_type = machine_type;
     const ranchu = machine_type === "ranchu";
-    const n97 = machine_type === "nokia-n97";
     const syborg = machine_type === SYBORG_MACHINE ? syborg_boot_files(settings) : null;
-    const n97_address = n97 ? settings.symbian?.["load_address"] : undefined;
-    const n97_boot = n97 && settings.symbian_rom ? n97_boot_files(settings.symbian_rom, n97_address, settings.symbian["boot_registers"], {
-        media: settings.symbian_boot_media, media_digest: settings.symbian["boot_media_sha256"],
-        bootrom: settings.symbian_bootrom, bootrom_id: settings.symbian["bootrom_id"], bootrom_digest: settings.symbian["bootrom_sha256"],
-        ap_only: settings.symbian["application_processor_only"], nand: !!settings.symbian_nand,
-        rapido_compat: settings.symbian["rapido_compat_rom"],
-    }) : null;
     const { cores, memory_size } = virt_machine(settings);
     this.cores = cores;
     // (cpu_type "arm32": AArch32 throughout, docs/plan/aarch32-plan.md part 2)
@@ -299,9 +275,8 @@ A64CPU.prototype.init = function(settings, device_bus)
     const adapter = this.graphics_adapter_descriptor;
     this.create_memory(memory_size, adapter ? Math.max(DEVICE_MEMORY_SIZE,
         adapter["device_memory_size"]?.({ "test": settings.graphics_adapter_test }) || 0) :
-        syborg ? syborg.profile.rofs_window_size : machine_type === "s5l8930" ? 1 << 20 :
-        n97 ? N97_DEVICE_MEMORY + (n97_boot?.bootrom?.length ?? 0) : 0,
-        syborg ? 0 : n97 ? (n97_address < N97_RAM_BASE ? 0 : N97_RAM_BASE) : VIRT_RAM_BASE);
+        syborg ? syborg.profile.rofs_window_size : machine_type === "s5l8930" ? 1 << 20 : 0,
+        syborg ? 0 : VIRT_RAM_BASE);
     this.configure_extended_memory(settings.extended_memory_size || 0, settings.extended_memory_cache);
     this.device_bus = device_bus;
     if(syborg)
@@ -321,75 +296,6 @@ A64CPU.prototype.init = function(settings, device_bus)
         this.virtio_transport = "none";
         this.boot_files = syborg;
         this.load_boot_files();
-        return;
-    }
-    if(n97)
-    {
-        this.boot_files = n97_boot;
-        this.devices = { "n97_sram": create_n97_sram(this, this.boot_files, settings.symbian?.["rom_sha256"]) };
-        if(settings.symbian_nand)
-        {
-            this.devices.n97_onenand = create_n97_onenand(this.io, settings.symbian_nand, n97_boot.rom_digest,
-                level => this.devices.n97_nand_bus?.set_input(level));
-        }
-        if(n97_boot?.rapido_compat)
-        {
-            this.devices.n97_rapido_compat = create_n97_rapido_compat(this, this.devices.n97_onenand, N97_BOOT_TOC);
-        }
-        if(this.boot_files?.tags)
-        {
-            this.devices.n97_boot_timer = create_n97_boot_timer(this);
-            this.devices.n97_boot_source = create_n97_boot_source(this.io);
-            this.devices.n97_rapido_id = create_n97_rapido_id(this.io);
-            this.devices.n97_l2 = create_n97_l2(this.io);
-            this.devices.n97_xti = create_n97_xti(this.io);
-            this.devices.n97_clocks = create_n97_clocks(this.io);
-            this.devices.n97_board_config = create_n97_board_config(this.io, () => this.devices.n97_mmc);
-            const interrupts = this.devices.n97_interrupts = create_n97_interrupts(this.io,
-                (irq, fiq) => this.wm.exports["a32_set_interrupt_lines"](irq, fiq));
-            this.devices.n97_nand_bus = create_n97_nand_bus(this.io, level => interrupts.set_nand(level));
-            this.devices.display = new DisplayHub(device_bus, settings.screen);
-            const panel = this.devices.n97_panel = create_n97_panel(() => this.devices.n97_dispc?.invalidate());
-            const dispc = this.devices.n97_dispc = create_n97_dispc(this, this.devices.display, level => interrupts.set_dispc(level), panel);
-            this.devices.n97_lossi = create_n97_lossi(this.io, this.clock, panel);
-            this.devices.n97_os_timer = create_n97_os_timer(this.io, this.clock, level => interrupts.set_timer(level));
-            const keypad_irq = this.devices.n97_keyboard_gpio = create_n97_gpio_input(this.io, 0x20031DC0, 0x20031D04, 2, true,
-                level => interrupts.set_keyboard(level));
-            const avilma_irq = this.devices.n97_power_gpio = keypad_irq.connect(10, false, level => interrupts.set_avilma(level));
-            const cbus = this.devices.n97_cbus = create_n97_cbus(this.io, this.clock, level => avilma_irq.set_input(level));
-            const slider = this.devices.n97_slider_gpio = create_n97_gpio_input(this.io, 0x20031D80, 0x20031CF4, 26, false,
-                level => interrupts.set_slider(level));
-            const panel_irq = level => interrupts.set_panel(level);
-            const pen = this.devices.n97_touch_gpio = slider.connect(6, true, panel_irq);
-            const lock = this.devices.n97_lock_gpio = slider.connect(8, true, panel_irq);
-            const sd_detect = this.devices.n97_sd_detect = slider.connect(13, !settings.symbian_sd, panel_irq);
-            this.devices.n97_mmc = create_n97_mmc(this.io, settings.symbian_emmc, settings.symbian_sd,
-                level => interrupts.set_mmc(level), high => sd_detect.set_input(high));
-            const touch = this.devices.n97_touch = create_n97_touch(this.clock, level => pen.set_input(level));
-            const keypad = this.devices.n97_keyboard = create_n97_keyboard(level => keypad_irq.set_input(!level), touch.set_reset);
-            this.devices.n97_i2c = create_n97_i2c(this.io, new Map([[N97_KEYBOARD_ADDRESS, keypad], [N97_TOUCH_ADDRESS, touch]]),
-                level => interrupts.set_i2c(level));
-            this.devices.n97_dma = create_n97_dma(this.io, this, () => this.devices.n97_mmc,
-                (source, level) => interrupts.set_dma(source, level));
-            device_bus.register("symbian-key", ([code, pressed]) => keypad.press(code, pressed));
-            device_bus.register("symbian-slider", open => {
-                if(typeof open !== "boolean") return;
-                slider.set_input(open);
-                dispc.set_slider(open);
-            });
-            device_bus.register("symbian-touch", ([x, y, pressed]) => touch.set_touch(x, y, pressed));
-            device_bus.register("symbian-control", ([control, pressed]) => {
-                if(!n97_control(control, pressed)) return;
-                if(control === "lock") lock.set_input(!pressed);
-                else if(control === "power") cbus.set_power(pressed);
-                else touch.set_key(control, pressed);
-            });
-        }
-        this.virtio_devices = [];
-        this.shared_spi_sources = new Map();
-        this.virtio_transport = "none";
-        this.booted = false;
-        if(this.boot_files) this.load_boot_files();
         return;
     }
     if(machine_type === "s5l8930")
@@ -642,14 +548,6 @@ A64CPU.prototype.load_boot_files = function()
         this.boot_entry = this.boot_x0 = 0;
         this.booted = true;
     }
-    else if(this.machine_type === "nokia-n97")
-    {
-        const { address, registers } = this.boot_files;
-        load_n97_rom(this, this.boot_files);
-        this.boot_entry = address;
-        this.boot_x0 = registers[0];
-        this.booted = true;
-    }
     else if(this.machine_type === "s5l8930")
     {
         const f = this.boot_files;
@@ -863,11 +761,7 @@ A64CPU.prototype.run_machine_core = function()
         // The application core can be in WFI while the ARM7 still handles
         // its flash request. Sleeping for the AP's timer then throttles
         // an independent runnable processor (and every NAND transaction).
-        return iop_busy || iop?.wake_pending() ? 0 :
-            Math.min(next, this.devices.n97_os_timer?.poll(this.clock.now()) ?? Infinity,
-                this.devices.n97_touch?.poll(this.clock.now()) ?? Infinity,
-                this.devices.n97_cbus?.poll(this.clock.now()) ?? Infinity,
-                this.devices.n97_dispc?.poll(this.clock.now()) ?? Infinity);
+        return iop_busy || iop?.wake_pending() ? 0 : next;
     }
     finally
     {
@@ -940,10 +834,6 @@ A64CPU.prototype.state_block_of = function(core)
 A64CPU.prototype.run_hardware_timers = function(acpi, now)
 {
     if(this.devices.syborg) return this.devices.syborg.timer(now);
-    if(this.devices.n97_os_timer)
-        return Math.min(this.devices.n97_os_timer.poll(now), this.devices.n97_dma.poll(), this.devices.n97_touch.poll(now),
-            this.devices.n97_lossi.poll(now), this.devices.n97_panel.poll(now), this.devices.n97_dispc.poll(now),
-            this.devices.n97_cbus.poll(now));
     const display = this.devices.display ? this.devices.display.timer(now) : 100;
     if(this.devices.apple_timer) return Math.min(display, this.devices.apple_timer.timer(), this.devices.apple_gpio.timer(now),
         this.devices.apple_accelerometer?.timer(now) ?? 100, this.devices.apple_gyroscope?.timer(now) ?? 100,
@@ -1028,7 +918,6 @@ A64CPU.prototype.reboot_internal = function(reason)
         this.clear_extended_memory();
     }
     for(const device of Object.values(this.devices)) device.reset?.();
-    this.devices.n97_lock_gpio?.set_input(true);
     for(const { device } of this.virtio_devices) device.reset();
     if(this.boot_files)
     {
@@ -1434,28 +1323,11 @@ A64CPU.prototype.validate_state = function(state)
     // (arm32's and arm64's profiles are of different CPUs)
     const profiles = Object.values(this.cpu_type === "arm32" ? ARM32_PROFILES : A64_PROFILES);
     const layout = machine_layout(this.machine_type);
-    const legacy_n97 = machine === "nokia-n97" && identity[1] === 4;
-    if(identity[1] !== layout && !legacy_n97 || !profiles.some(p => p[0] === identity[2]) ||
-        (machine === "nokia-n97") !== (identity[2] === "arm1136") ||
+    if(identity[1] !== layout || !profiles.some(p => p[0] === identity[2]) ||
         (machine === SYBORG_MACHINE) !== (identity[2] === SYBORG_PROFILE.cpu))
     {
         throw new Error("The snapshot is from " + machine + " layout " + identity[1] + " with CPU profile " + identity[2] +
             "; this machine is layout " + layout + ", " + this.profile);
-    }
-    if(this.devices.n97_sram)
-    {
-        const nand = state[4]?.[DEVICE_ORDER.indexOf("n97_onenand")];
-        if(!!nand !== !!this.devices.n97_onenand) throw new Error("Snapshot and machine must use the same Nokia N97 OneNAND configuration");
-        this.devices.n97_onenand?.check_state(nand);
-        const mmc = state[4]?.[DEVICE_ORDER.indexOf("n97_mmc")];
-        const mmc_device = this.devices.n97_mmc;
-        if(mmc && !mmc_device || !mmc && (mmc_device?.emmc || mmc_device?.sd))
-            throw new Error("Snapshot and machine must use the same Nokia N97 MMC configuration");
-        if(mmc) mmc_device.check_state(mmc);
-        this.devices.n97_sram.check_state(state[4]?.[DEVICE_ORDER.indexOf("n97_sram")], legacy_n97);
-        const rapido_compat = state[4]?.[DEVICE_ORDER.indexOf("n97_rapido_compat")];
-        if(!!rapido_compat !== !!this.devices.n97_rapido_compat) throw new Error("Snapshot RAPIDO compatibility ROM configuration differs");
-        this.devices.n97_rapido_compat?.check_state(rapido_compat);
     }
     this.devices.syborg?.check_state(state[4]?.[DEVICE_ORDER.indexOf("syborg")]);
     if(this.machine_type === "s5l8930" && !!state[4]?.[DEVICE_ORDER.indexOf("apple_nand")] !== !!this.devices.apple_nand)
@@ -1518,22 +1390,7 @@ A64CPU.prototype.set_state = function(state, skip_memory = false)
     device_states.forEach((device_state, i) => { if(device_state && this.devices[DEVICE_ORDER[i]]) this.devices[DEVICE_ORDER[i]].set_state(device_state); });
     // Devices appended since this snapshot start in their reset state,
     // including when restoring over a machine that has already used them.
-    if(!device_states[DEVICE_ORDER.indexOf("n97_slider_gpio")]) this.devices.n97_slider_gpio?.set_input(false);
     for(const name of DEVICE_ORDER.slice(device_states.length)) this.devices[name]?.reset?.();
-    if(this.devices.n97_mmc && !device_states[DEVICE_ORDER.indexOf("n97_mmc")]) this.devices.n97_mmc.reset();
-    if(this.devices.n97_sd_detect && !device_states[DEVICE_ORDER.indexOf("n97_sd_detect")])
-        this.devices.n97_sd_detect.set_input(!this.devices.n97_mmc.sd);
-    if(this.devices.n97_touch && !device_states[DEVICE_ORDER.indexOf("n97_touch")])
-        this.devices.n97_touch.restore_reset(this.devices.n97_keyboard.touch_reset_high());
-    if(this.devices.n97_onenand && !device_states[DEVICE_ORDER.indexOf("n97_nand_bus")])
-        this.devices.n97_nand_bus?.set_input(this.devices.n97_onenand.interrupt_level());
-    // Host fingers and keyboard focus cannot be restored from a VM snapshot.
-    // Release any contacts that were closed in the saved machine.
-    this.devices.n97_keyboard?.release();
-    this.devices.n97_touch?.release();
-    this.devices.n97_lock_gpio?.set_input(true);
-    this.devices.n97_dispc?.set_slider(this.devices.n97_slider_gpio.read_input());
-    this.devices.n97_cbus?.set_power(false);
     if(state[5]) this.machine_state_bytes(0).set(state[5]);
     if(state[6]) { this.machine_state_bytes(1).set(state[6]); this.wm.exports["a64_psci_restored"](); }
     if(state[7]) [this.booted, this.boot_entry, this.boot_x0] = state[7];
@@ -1670,19 +1527,6 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
                 "backlight": this.devices.apple_clcd.backlight,
             }, this.devices.apple_clcd.performance) : null,
         } } : {}),
-        ...(this.devices.n97_xti ? { "symbian": { "xti": this.devices.n97_xti.packets(),
-            "clocks": this.devices.n97_clocks.status(), "l2_enabled": this.devices.n97_l2.enabled(),
-            "keyboard": this.devices.n97_keyboard.status(), "slider_open": this.devices.n97_slider_gpio.read_input(),
-            "touch": this.devices.n97_touch.status(), "lock_pressed": !this.devices.n97_lock_gpio.read_input(),
-            "power_pressed": this.devices.n97_cbus.power_pressed(),
-            "display": this.devices.n97_dispc.status(),
-            "panel": this.devices.n97_panel.status(), "lossi": this.devices.n97_lossi.status(),
-            "dma": this.devices.n97_dma.status(),
-            ...(this.devices.n97_onenand ? { "onenand": this.devices.n97_onenand.status() } : {}),
-            ...(this.devices.n97_mmc ? { "mmc": this.devices.n97_mmc.status() } : {}),
-            ...(this.boot_files.media ? { "rapido_boot": { "media_sha256": this.boot_files.media.digest,
-                "bootrom_sha256": this.boot_files.rapido_compat ? null : this.boot_files.bootrom_digest || null,
-                ...(this.devices.n97_rapido_compat ? { "compatibility_rom": this.devices.n97_rapido_compat.status() } : {}) } } : {}) } } : {}),
         ...(include_steps ? { "steps": this.step_stats(25) } : {}),
         ...(nand ? { "nand": { "bytes_read": nand.bytes_read, "bytes_written": nand.bytes_written } } : {}),
     };

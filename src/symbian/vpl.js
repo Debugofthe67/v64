@@ -1,6 +1,4 @@
-// Nokia Variant Packing Lists. The N97 manifests describe roles with FileSubType
-// and FlashImage/RofsIndex, including separate Ppm files for the ROFS overlays.
-// See Nokia's RM505_0576555_22.0.110_001.vpl and EKA2L1's firmware.cpp.
+// Nokia Variant Packing Lists describe firmware files, roles and integrity metadata.
 
 import { crc32 } from "../android/bytes.js";
 import { SHA256, sha256_hex } from "../image/sha256.js";
@@ -231,7 +229,7 @@ export async function check_vpl(variant, sources)
         let crc = 0;
         try
         {
-            for await(const chunk of matches[0].chunks())
+            for await (const chunk of matches[0].chunks())
             {
                 sha256.update(chunk);
                 crc = crc32(chunk, crc);

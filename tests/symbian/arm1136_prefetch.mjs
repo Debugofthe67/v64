@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { STATE_OFFSETS } from "../../src/arm/state_layout.js";
+import { SYBORG_DIAGNOSTIC, SYBORG_MACHINE } from "../../src/symbian/syborg_profile.js";
 import { V86 } from "../../src/main.js";
 
 const wasm_path = fileURLToPath(new URL("../../build/v86-arm64.wasm", import.meta.url));
@@ -49,10 +50,10 @@ function bare_rom()
 for(const jit of [false, true])
 {
     test(`two ARM1136 fetches retain their opcodes across SCTLR.M (JIT ${jit ? "enabled" : "disabled"})`, async () => {
-        const emulator = new V86({ machine_type: "nokia-n97", graphics_adapter: "none", disable_jit: !jit, autostart: false,
+        const emulator = new V86({ machine_type: SYBORG_MACHINE, graphics_adapter: "none", disable_jit: !jit, autostart: false,
             wasm_path, log_level: 0, ir_sync_publication: true,
             jit_switches: { a64_page: +jit, a64_page_hot: 1, a64_page_aarch32: 1 },
-            symbian: { rom: { buffer: bare_rom() }, load_address: 0, boot_registers: [0x4000, 1, 0, 0] } });
+            symbian: { [SYBORG_DIAGNOSTIC]: true, rom: { buffer: bare_rom() } } });
         try
         {
             await new Promise((resolve, reject) => {
@@ -60,7 +61,9 @@ for(const jit of [false, true])
                 emulator.add_listener("emulator-error", reject);
             });
             const cpu = emulator.v86.cpu;
-            const { a32_set_interrupt_lines, a64_worker_slice: step } = cpu.wm.exports;
+            const { a32_set_interrupt_lines, a64_worker_slice: step, a32_boot_with_registers } = cpu.wm.exports;
+            cpu.write_blob_physical(new Uint8Array(bare_rom()), 0);
+            a32_boot_with_registers(0, 0x4000, 1, 0, 0);
             const state = () => new DataView(cpu.wasm_memory.buffer, cpu.state_base);
             const pending = () => state().getUint32(STATE_OFFSETS.a32_prefetch + 8, true);
             const pc = () => Number(cpu.read_pc());

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Build with symbian-platform plus the Nokia N97 import libraries and SIS tools.
+# Build with symbian-platform plus S60v5 import libraries and SIS tools.
 set -eu
 if [ "$#" -ne 5 ]; then
-    echo 'Usage: sh tools/symbian/notes/build.sh <sdk-directory> <N97-SDK-epoc32> <makesis-command> <signsis-command> <output-directory>' >&2
+    echo 'Usage: sh tools/symbian/notes/build.sh <sdk-directory> <S60v5-SDK-epoc32> <makesis-command> <signsis-command> <output-directory>' >&2
     exit 2
 fi
 sdk=$(cd "$1" && pwd)

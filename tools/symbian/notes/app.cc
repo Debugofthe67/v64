@@ -9,7 +9,7 @@ namespace {
 _LIT(KNote, "note.txt");
 _LIT(KTemporary, "note.tmp");
 constexpr TInt KNoteLength = 96;
-// The N97 SDK exports the non-const Window Server method at ordinal 72.
+// The S60v5 SDK exports the non-const Window Server method at ordinal 72.
 extern "C" void ReadEvent(RWsSession*, TWsEvent&) asm("_ZN10RWsSession8GetEventER8TWsEvent");
 
 TInt Save(RFs& files, const TDesC& text) {

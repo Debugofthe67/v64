@@ -22,7 +22,6 @@ import { disk_error, WRITEBACK_STATE, WRITEBACK_STATE_VERSION, FLUSH_IDLE_MS, FL
 import { dbg_log } from "./log.js";
 import { LOG_DISK } from "./const.js";
 import { open_sparse_nand } from "./ios/sparse_nand.js";
-import { open_n97_emmc } from "./symbian/n97_mmc_media.js";
 
 const SECTOR_SIZE = 512;
 export const OPFS_SCHEME = "opfs:";
@@ -167,9 +166,9 @@ OpfsDisk.prototype.load = async function()
         }
         fail("the browser disk " + this.url + " cannot be opened (" + (e && e.message || e) + ")");
     }
-    if(this.name === "ios_nand" || this.name === "symbian_emmc")
+    if(this.name === "ios_nand")
     {
-        try { this.sparse = this.name === "ios_nand" ? open_sparse_nand(this.access) : open_n97_emmc(this.access); }
+        try { this.sparse = open_sparse_nand(this.access); }
         catch(error) { this.close_now(); fail(error.message); }
     }
     const size = this.sparse?.size ?? this.access["getSize"]();

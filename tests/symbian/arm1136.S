@@ -74,7 +74,7 @@ wait_irq:
     ldr r0, [r0]
     str r0, [r10, #28]
 
-    @ The N97 kernel synchronizes the external cache with SWP Rd,Rd,[Rn].
+    @ Exercise the ARM1136 SWP Rd,Rd,[Rn] sequence used to synchronize an external cache.
     add r6, r10, #112
     ldr r3, =0x11223344
     str r3, [r6]

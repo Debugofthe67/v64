@@ -159,7 +159,8 @@ test("a large, structurally valid unsigned SIS traverses the streaming preflight
         for(const byte of part) crc = ((crc << 8) & 65535) ^ table[(crc >>> 8) ^ byte];
     const pkg = new File([template.subarray(0, 16), tag(12, tag(35, number(crc, 2)), packed(meta), data)], "大文件.sis");
     const packages = await sis_card_files([pkg]);
-    const card = make_sis_card(packages, 0x505);
+    assert.equal(packages[0].path, "E:\\INSTALL\\PKG00001.SIS");
+    const card = make_sis_card(packages, 0x356);
     assert.equal(card.size, 64 * 1024 ** 2);
     const extracted = await read_sis_card(card, 1);
     assert.equal(extracted.length, pkg.size);

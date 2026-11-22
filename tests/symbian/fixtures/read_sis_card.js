@@ -3,12 +3,11 @@ export async function read_sis_card(card, index)
 {
     const bytes = async (at, length) => new Uint8Array(await card.slice(at, at + length).arrayBuffer());
     const view = bytes => new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
-    const sector = 512, mbr = view(await bytes(0, sector));
-    if(mbr.getUint16(510, true) !== 0xAA55 || mbr.getUint8(450) !== 0x0E) throw new Error("Expected a FAT16 MBR partition");
-    const base = mbr.getUint32(454, true) * sector;
-    const boot = view(await bytes(base, sector));
+    const boot = view(await bytes(0, 512));
+    if(boot.getUint16(510, true) !== 0xAA55 || boot.getUint32(28, true) !== 0)
+        throw new Error("Expected a raw FAT16 volume");
     const block = boot.getUint16(11, true), cluster = boot.getUint8(13) * block;
-    const fat = base + boot.getUint16(14, true) * block, fatsz = boot.getUint16(22, true) * block;
+    const fat = boot.getUint16(14, true) * block, fatsz = boot.getUint16(22, true) * block;
     const root = fat + boot.getUint8(16) * fatsz, root_bytes = boot.getUint16(17, true) * 32;
     const first_cluster = root + Math.ceil(root_bytes / block) * block;
     const offset = n => first_cluster + (n - 2) * cluster;

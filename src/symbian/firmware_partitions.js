@@ -1,6 +1,6 @@
 import { c_string, equals, u16, u32 } from "../android/bytes.js";
 
-// The RM-356 and RM-505 SOS+CORE payloads start with 3 KiB of metadata.
+// The RM-356 SOS+CORE payloads start with 3 KiB of metadata.
 // Their SOS+ROFS groups reserve the same prefix before each layer.
 export const SOS_PREFIX_SIZE = 0xC00;
 

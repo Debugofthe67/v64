@@ -57,9 +57,11 @@ function complete(transaction)
  */
 export function config_images(config)
 {
+    // Stored configurations can still refer to disks from retired machine types.
+    const symbian = /** @type {(typeof config.symbian & {bootrom?: Image, emmc?: Image})} */ (config.symbian);
     return [config.machine.bios, config.machine.vga_bios, config.machine.uefi_vars, config.tpm && config.tpm.state,
         ...config.disks.map(d => d.image), ...(config.usb ? config.usb.disks.map(d => d.image) : []),
-        config.cdrom.image, config.ios && config.ios.nand, config.symbian?.bootrom, config.symbian?.emmc, config.symbian?.sd,
+        config.cdrom.image, config.ios && config.ios.nand, symbian?.bootrom, symbian?.emmc, symbian?.sd,
         ...Object.values(config.symbian?.media || {}),
         ...config.floppies.map(f => f.image), config.kernel && config.kernel.bzimage, config.kernel && config.kernel.initrd,
         config.kernel && config.kernel.multiboot, config.initial_state].filter(image => !!image);

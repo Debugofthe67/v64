@@ -26,7 +26,6 @@
 import { is_disk_image_state } from "./image/disk_image.js";
 import { dbg_log } from "./log.js";
 import { LOG_DISK } from "./const.js";
-import { open_n97_emmc } from "./symbian/n97_mmc_media.js";
 
 /** a snapshot's reference of a disk written back */
 export const WRITEBACK_STATE = "v86-writeback";
@@ -246,7 +245,6 @@ export function NodeFileDisk(path, options)
     /** a backend of the contract (src/block_backend.js, src/ide.js: the write cache) */
     this.writeback = true;
     this.fd = -1;
-    this.sparse = null;
     this.closed = false;
     /** @type {!Object} */
     this.identity = {};
@@ -277,21 +275,7 @@ NodeFileDisk.prototype.load = async function()
             "(or with \"read_only\") the guest's changes stay in memory");
     }
     const reference = node_file_reference(this.path);
-    if(this.name === "symbian_emmc")
-    {
-        try
-        {
-            const fd = this.fd;
-            this.sparse = open_n97_emmc({
-                "getSize": () => fs["fstatSync"](fd).size,
-                "truncate": length => fs["ftruncateSync"](fd, length),
-                "read": (bytes, position) => fs["readSync"](fd, bytes, 0, bytes.length, position["at"]),
-                "write": (bytes, position) => fs["writeSync"](fd, bytes, 0, bytes.length, position["at"]),
-            });
-        }
-        catch(error) { this.close_now(); fail(error.message); }
-    }
-    const size = this.sparse?.size ?? reference.size;
+    const size = reference.size;
     if(size % SECTOR_SIZE)
     {
         this.close_now();
@@ -336,7 +320,6 @@ NodeFileDisk.prototype.io_error = function(e, what)
 NodeFileDisk.prototype.read_now = function(start, length)
 {
     if(this.closed) throw disk_error(this.name + ": the disk is closed", "io", false);
-    if(this.sparse) return this.sparse.read(start, length);
     const data = new Uint8Array(length);
     for(let done = 0; done < length;)
     {
@@ -395,8 +378,7 @@ NodeFileDisk.prototype.set = function(start, data, fn)
             // before the data changes
             this.move_generation(marked);
         }
-        if(this.sparse) this.sparse.write(start, data);
-        else for(let done = 0; done < data.length;)
+        for(let done = 0; done < data.length;)
         {
             done += node_fs["writeSync"](this.fd, data, done, data.length - done, start + done);
         }
@@ -605,16 +587,10 @@ export function disk_buffers(cpu)
     if(fdc && fdc.drives) fdc.drives.forEach((drive, i) => add(i ? "fdb" : "fda", drive.buffer));
     // (the UEFI firmware's variable store, src/pflash.js; the TPM's state, src/tpm/store.js)
     if(cpu.devices?.apple_nand) add("ios_nand", cpu.devices.apple_nand.buffer);
-    if(cpu.devices?.n97_onenand) add("symbian_nand", cpu.devices.n97_onenand.buffer);
     if(cpu.devices?.syborg)
     {
         add("symbian_nvmemory", cpu.devices.syborg.nvmemory);
         add("symbian_nvmemory2", cpu.devices.syborg.nvmemory2);
-    }
-    if(cpu.devices?.n97_mmc)
-    {
-        add("symbian_emmc", cpu.devices.n97_mmc.emmc);
-        add("symbian_sd", cpu.devices.n97_mmc.sd);
     }
     const pflash = cpu.firmware && cpu.firmware.pflash;
     if(pflash) add("firmware_vars", pflash.buffer);

@@ -11,11 +11,8 @@ import { ANDROID_DEVICES as ANDROID_DEVICE_MODELS } from "../android/bootloader.
 import { DEFAULT_GLES_VERSION, GLES_VERSIONS } from "../android/devices.js";
 import { N90_RESTORE } from "../ios/catalog.js";
 import { IOS_NETWORK_RELAY } from "../ios/network.js";
-import { N97_DEVICE, N97_MEDIA, N97_REQUIRED_MEDIA, SYBORG_MEDIA, symbian_device } from "../symbian/catalog.js";
+import { SYBORG_DEVICE, SYBORG_MEDIA } from "../symbian/catalog.js";
 import { SYBORG_MACHINE, SYBORG_PROFILE, SYBORG_C_SEEDS, SYBORG_MIB } from "../symbian/syborg_profile.js";
-import { N97_RAPIDO_ROM_ID } from "../symbian/n97_boot_media.js";
-import { N97_FLASH_IMAGE_SIZE } from "../symbian/n97_flash.js";
-import { N97_EMMC_SIZE, n97_sd_capacity } from "../symbian/n97_mmc_media.js";
 import { DISK_OPTIONS, DISK_ERRORS, check_disk_options } from "../disk_options.js";
 import { DEFAULT_FORM, DEFAULT_MEMORY_SIZE, MAX_MEMORY_SIZE, MAX_HEAP_MEMORY_SIZE, MAX_ARRAY_BUFFER_SIZE_MB, DEFAULT_VGA_MEMORY_SIZE,
     DEFAULT_MTU, apply_form, settings_to_options } from "../browser/vm_options.js";
@@ -136,10 +133,8 @@ export const TPM_STATE_SIZE = 512 * 1024;
 
 /**
  * @typedef {{ kind: "browser", path: string, size: number, sha256: string }} SymbianDisk
- * @typedef {{ device: string, model: string, product_code?: string, sw_version: string, variant_version?: string,
- *     description?: string | null, manifest: string, manifest_sha256: string, media: Record<string, SymbianDisk>, webgpu?: boolean,
- *     languages?: {id: number, default: boolean}[], bootrom?: SymbianDisk & {name: string, reported_id?: string},
- *     emmc?: {kind: "browser", path: string, size: number}, sd?: SymbianDisk & {name: string} }} Symbian
+ * @typedef {{ device: string, model: string, sw_version: string, manifest: string, manifest_sha256: string,
+ *     media: Record<string, SymbianDisk>, webgpu?: boolean, sd?: SymbianDisk & {name: string} }} Symbian
  */
 
 /**
@@ -248,14 +243,13 @@ export function new_ios_config(name, nand, gles_proxy)
     return c;
 }
 
-/** @param {string} name @param {string} [notes] @param {string} [machine] */
-export function new_symbian_config(name, notes = "", machine = N97_DEVICE.id)
+/** @param {string} name @param {string} [notes] */
+export function new_symbian_config(name, notes = "")
 {
     const config = new_config({ name, notes, guest: "symbian" });
-    const syborg = machine === SYBORG_MACHINE;
-    Object.assign(config.machine, { type: machine, acpi: false });
-    Object.assign(config.cpu, { type: "arm32", profile: syborg ? SYBORG_PROFILE.cpu : "arm1136", cores: 1, parallel: false, jit: syborg });
-    config.memory.mb = syborg ? SYBORG_PROFILE.ram_size / SYBORG_MIB : 128;
+    Object.assign(config.machine, { type: SYBORG_MACHINE, acpi: false });
+    Object.assign(config.cpu, { type: "arm32", profile: SYBORG_PROFILE.cpu, cores: 1, parallel: false, jit: true });
+    config.memory.mb = SYBORG_PROFILE.ram_size / SYBORG_MIB;
     Object.assign(config.display, { adapter: "none", vram_mb: null, proxy: false });
     config.network = [];
     config.serial = [];
@@ -453,101 +447,47 @@ export function validate_config(config)
     if(typeof config.notes !== "string") problem("notes", "must be text");
 
     const machine = config.machine, cpu = config.cpu;
-    const syborg = machine.type === SYBORG_MACHINE;
-    if(syborg || machine.type === N97_DEVICE.id)
+    if(machine.type === SYBORG_MACHINE)
     {
         const firmware = config.symbian;
         const digest = /^[a-f0-9]{64}$/;
-        const device = symbian_device(machine.type);
-        if(syborg)
-        {
-            if(firmware?.webgpu !== undefined && typeof firmware.webgpu !== "boolean")
-                problem("symbian.webgpu", "Choose whether to use WebGPU");
-            if(!firmware || firmware.device !== device.id || firmware.model !== device.model ||
-                firmware.sw_version !== SYBORG_PROFILE.firmware_version ||
-                typeof firmware.manifest !== "string" || !firmware.manifest ||
-                !digest.test(firmware.manifest_sha256) || firmware.manifest_sha256 !== firmware.media?.manifest?.sha256)
-                problem("symbian", "Choose the Nokia 5800 RM-356 firmware build folder");
-            else
-            {
-                for(const role of Object.keys(SYBORG_MEDIA))
-                {
-                    const disk = firmware.media[role];
-                    check_image(disk, "symbian.media." + role, problems);
-                    if(disk?.kind !== "browser" || disk.path !== "v86/disks/" + config.id + "-symbian-" + role + ".img" ||
-                        !digest.test(disk.sha256))
-                        problem("symbian.media." + role, "Choose the firmware folder again to create this VM's storage");
-                }
-                if(Object.keys(firmware.media).some(role => !Object.hasOwn(SYBORG_MEDIA, role)) ||
-                    !Object.values(SYBORG_C_SEEDS).some(seed => seed.bytes === firmware.media.phone?.size && seed.sha256 === firmware.media.phone?.sha256) ||
-                    firmware.media.devicetree?.sha256 !== SYBORG_PROFILE.devicetree_sha256 || firmware.bootrom || firmware.emmc)
-                    problem("symbian.media", "Incorrect firmware media for this Nokia 5800");
-                const card = firmware.sd;
-                if(card)
-                {
-                    check_image(card, "symbian.sd", problems);
-                    if(card.kind !== "browser" || !/^v86\/disks\/[a-f0-9-]+\.img$/.test(card.path) ||
-                        card.size < 16 * SYBORG_MIB || card.size > 2048 * SYBORG_MIB || card.size % 512 ||
-                        !digest.test(card.sha256) || !card.name)
-                        problem("symbian.sd", "Choose a compatible Nokia 5800 SIS transfer card");
-                }
-            }
-        }
-        else if(!firmware || firmware.device !== N97_DEVICE.id || firmware.model !== N97_DEVICE.model ||
-            !digest.test(firmware.manifest_sha256) ||
-            ![firmware.product_code, firmware.sw_version, firmware.variant_version, firmware.manifest].every(s => typeof s === "string" && !!s))
-        {
-            problem("symbian", "Choose a Nokia N97 RM-505 firmware package");
-        }
+        if(firmware?.webgpu !== undefined && typeof firmware.webgpu !== "boolean")
+            problem("symbian.webgpu", "Choose whether to use WebGPU");
+        if(!firmware || firmware.device !== SYBORG_DEVICE.id || firmware.model !== SYBORG_DEVICE.model ||
+            firmware.sw_version !== SYBORG_PROFILE.firmware_version ||
+            typeof firmware.manifest !== "string" || !firmware.manifest ||
+            !digest.test(firmware.manifest_sha256) || firmware.manifest_sha256 !== firmware.media?.manifest?.sha256)
+            problem("symbian", "Choose the Nokia 5800 RM-356 firmware build folder");
         else
         {
-            if(firmware.languages !== undefined && (!Array.isArray(firmware.languages) || firmware.languages.some(language =>
-                !Number.isInteger(language?.id) || language.id < 0 || language.id > 999 || typeof language.default !== "boolean")))
+            for(const role of Object.keys(SYBORG_MEDIA))
             {
-                problem("symbian.languages", "Invalid language list");
+                const disk = firmware.media[role];
+                check_image(disk, "symbian.media." + role, problems);
+                if(disk?.kind !== "browser" || disk.path !== "v86/disks/" + config.id + "-symbian-" + role + ".img" ||
+                    !digest.test(disk.sha256))
+                    problem("symbian.media." + role, "Choose the firmware folder again to create this VM's storage");
             }
-            const roles = [...N97_REQUIRED_MEDIA, ...["boot_media", "nand"].filter(role => firmware.media?.[role])];
-            for(const role of roles)
+            if(Object.keys(firmware.media).some(role => !Object.hasOwn(SYBORG_MEDIA, role)) ||
+                !Object.values(SYBORG_C_SEEDS).some(seed => seed.bytes === firmware.media.phone?.size && seed.sha256 === firmware.media.phone?.sha256) ||
+                firmware.media.devicetree?.sha256 !== SYBORG_PROFILE.devicetree_sha256)
+                problem("symbian.media", "Incorrect firmware media for this Nokia 5800");
+            const card = firmware.sd;
+            if(card)
             {
-                const image = firmware.media?.[role];
-                check_image(image, "symbian.media." + role, problems);
-                if(image?.kind !== "browser" || image.path !== "v86/disks/" + config.id + "-symbian-" + role + ".img" || !digest.test(image.sha256))
-                {
-                    problem("symbian.media." + role, "Choose the firmware again to create storage for this Nokia N97");
-                }
-            }
-            if(firmware.media?.nand && firmware.media.nand.size !== N97_FLASH_IMAGE_SIZE)
-                problem("symbian.media.nand", "Choose the firmware again to create the required Nokia N97 OneNAND image");
-            if(Object.keys(firmware.media || {}).some(role => !Object.hasOwn(N97_MEDIA, role))) problem("symbian.media", "Unknown firmware image");
-            const { emmc, sd } = firmware;
-            if(emmc && (emmc.kind !== "browser" || emmc.size !== N97_EMMC_SIZE || emmc.path !== "v86/disks/" + config.id + "-symbian-emmc.img"))
-                problem("symbian.emmc", "Choose the firmware again to create this Nokia N97's eMMC");
-            if(sd)
-            {
-                check_image(sd, "symbian.sd", problems);
-                if(sd.kind !== "browser" || !n97_sd_capacity(sd.size) || !digest.test(sd.sha256) || !sd.name ||
-                    Object.values(firmware.media || {}).some(asset => asset.path === sd.path) || emmc?.path === sd.path)
-                    problem("symbian.sd", "Choose a compatible raw Nokia N97 microSD image");
-            }
-            const bootrom = firmware.bootrom;
-            if(bootrom)
-            {
-                check_image(bootrom, "symbian.bootrom", problems);
-                if(!firmware.media?.boot_media || bootrom.kind !== "browser" || !digest.test(bootrom.sha256) ||
-                    !Number.isInteger(bootrom.size) || bootrom.size < 0x2000 || bootrom.size > 0x10000 || bootrom.size % 4096 ||
-                    typeof bootrom.name !== "string" || !bootrom.name ||
-                    bootrom.reported_id && bootrom.reported_id !== N97_RAPIDO_ROM_ID)
-                {
-                    problem("symbian.bootrom", "Choose compatible boot media and a local RM-505 RAPIDO boot ROM");
-                }
+                check_image(card, "symbian.sd", problems);
+                if(card.kind !== "browser" || !/^v86\/disks\/[a-f0-9-]+\.img$/.test(card.path) ||
+                    card.size < 16 * SYBORG_MIB || card.size > 2048 * SYBORG_MIB || card.size % 512 ||
+                    !digest.test(card.sha256) || !card.name)
+                    problem("symbian.sd", "Choose a compatible Nokia 5800 SIS transfer card");
             }
         }
-        const expected_profile = syborg ? SYBORG_PROFILE.cpu : "arm1136";
-        const expected_memory = syborg ? SYBORG_PROFILE.ram_size / SYBORG_MIB : 128;
+        const expected_profile = SYBORG_PROFILE.cpu;
+        const expected_memory = SYBORG_PROFILE.ram_size / SYBORG_MIB;
         if(cpu.type !== "arm32" || cpu.cores !== 1 || cpu.parallel || cpu.profile !== expected_profile ||
-            config.memory.mb !== expected_memory || config.advanced.cpu_worker !== true || cpu.jit !== syborg)
+            config.memory.mb !== expected_memory || config.advanced.cpu_worker !== true || cpu.jit !== true)
         {
-            problem("symbian", device.name + " uses one " + expected_profile + " CPU, " + expected_memory + " MiB of RAM and the CPU Worker");
+            problem("symbian", SYBORG_DEVICE.name + " uses one " + expected_profile + " CPU, " + expected_memory + " MiB of RAM and the CPU Worker");
         }
         if(machine.acpi || machine.hpet || machine.smbus || machine.pcie_root_ports || machine.bios || machine.vga_bios ||
             machine.firmware !== "seabios" || machine.uefi_vars || machine.secure_boot || machine.boot_order || machine.fastboot || machine.bootmenu ||
@@ -556,11 +496,15 @@ export function validate_config(config)
             config.display.adapter !== "none" || config.display.proxy || config.display.vulkan !== "none" || config.display.displays !== 1 ||
             config.virt.input || config.virt.console_ports || config.virt.vsock || config.virt.transport !== "mmio")
         {
-            problem("symbian", device.name + " uses its built-in hardware configuration");
+            problem("symbian", SYBORG_DEVICE.name + " uses its built-in hardware configuration");
         }
         return problems;
     }
-    if(config.symbian) problem("symbian", "Symbian firmware requires a Symbian machine");
+    if(config.symbian)
+    {
+        problem("machine.type", "This Symbian machine is unavailable. Create a Nokia 5800 VM using an RM-356 build folder.");
+        return problems;
+    }
     if(machine.type === "s5l8930")
     {
         const ios = config.ios;
@@ -1041,28 +985,6 @@ export function config_to_options(config, env)
                 nvmemory: { ...image(phone), disk_option: "read_write" },
                 ...(sd ? { nvmemory2: { ...image(sd), disk_option: "read_write" } } : {}) },
             initial_state: image(config.initial_state), autostart: true, disable_mouse: true, disable_keyboard: true, disable_speaker: true,
-        };
-    }
-    if(machine.type === N97_DEVICE.id && config.symbian)
-    {
-        const { rom, boot_media, nand } = config.symbian.media;
-        const { bootrom, emmc, sd } = config.symbian;
-        return {
-            machine_type: N97_DEVICE.id, cpu_type: "arm32", cpu_profile: "arm1136", cpu_cores: 1, memory_size: 128 * MB,
-            cpu_worker: true, disable_jit: true, cpu_worker_url: "build/cpu-worker.js" + env.query_append,
-            wasm_path: "build/" + (env.debug ? "v86-arm64-debug.wasm" : "v86-arm64.wasm") + env.query_append,
-            screen: { container: env.screen_container }, graphics_adapter: "none", net_device: { type: "none" },
-            symbian: { rom: image(rom), rom_sha256: rom.sha256,
-                ...(emmc ? { emmc: { ...image(emmc), disk_option: "read_write" } } : {}),
-                ...(sd ? { sd: { ...image(sd), disk_option: "read_write" } } : {}), ...(nand ? {
-                nand: { ...image(nand), disk_option: "read_write" },
-            } : {}), ...(boot_media ? {
-                boot_media: image(boot_media), boot_media_sha256: boot_media.sha256,
-            } : {}), ...(bootrom ? {
-                bootrom: image(bootrom),
-                bootrom_sha256: bootrom.sha256, bootrom_id: bootrom.reported_id,
-            } : {}) },
-            initial_state: image(config.initial_state), autostart: true, disable_mouse: true, disable_speaker: true,
         };
     }
     if(machine.type === "s5l8930" && config.ios)

@@ -1,9 +1,7 @@
 import { delete_disk, disk_path, finish_disk, make_room } from "./browser_disks.js";
 import { new_symbian_config } from "./vm_config.js";
 import { query_append } from "./emulator_bridge.js";
-import { N97_DEVICE, N97_MEDIA, SYBORG_DEVICE, SYBORG_MEDIA } from "../symbian/catalog.js";
-import { N97_EMMC_SIZE } from "../symbian/n97_mmc_media.js";
-import { N97_EMMC_INITIAL_BYTES } from "../symbian/n97_emmc_format.js";
+import { SYBORG_DEVICE, SYBORG_MEDIA } from "../symbian/catalog.js";
 
 const IMPORT_LOCK = "v86-symbian-firmware-import";
 const IMPORT_DIR = "symbian-imports";
@@ -39,16 +37,6 @@ function worker_request(message, options)
         }
         catch(error) { fail(error); }
     });
-}
-
-export function scan_symbian_packages(files, options = {})
-{
-    return worker_request({ op: "scan", files }, options);
-}
-
-export function check_symbian_package(files, selection, options = {})
-{
-    return worker_request({ op: "check", files, selection }, options);
 }
 
 export function check_syborg_package(files, options = {})
@@ -108,71 +96,45 @@ export async function recover_symbian_imports(store)
         {
             if(handle.kind !== "file" || !VM_ID.test(id)) continue;
             if(!(await store.get(id))?.symbian)
-                await discard_import(media_ids(id, Object.keys({ ...N97_MEDIA, ...SYBORG_MEDIA, emmc: true })));
+                await discard_import(media_ids(id, Object.keys(SYBORG_MEDIA)));
             await directory.removeEntry(id);
         }
     });
 }
 
-export async function import_symbian_package(files, selection, expected, name, notes, options)
-{
-    return import_package(files, selection, expected, name, notes, options);
-}
-
 export async function import_syborg_package(files, expected, name, notes, options)
-{
-    return import_package(files, null, expected, name, notes, options);
-}
-
-async function import_package(files, selection, expected, name, notes, options)
 {
     if(!navigator.storage?.getDirectory || !navigator.locks)
     {
         throw new Error("Importing Symbian firmware needs browser private storage and Web Locks");
     }
     return navigator.locks.request(IMPORT_LOCK, { signal: options.signal }, async () => {
-        const device = selection ? N97_DEVICE : SYBORG_DEVICE;
-        const labels = selection ? N97_MEDIA : SYBORG_MEDIA;
-        const required = Object.values(expected.media).reduce((sum, disk) => sum + disk.size, selection ? N97_EMMC_INITIAL_BYTES : 0);
+        const required = Object.values(expected.media).reduce((sum, disk) => sum + disk.size, 0);
         await make_room(required, options.store);
         options.signal?.throwIfAborted();
-        const config = new_symbian_config(name, notes, device.id);
-        const ids = media_ids(config.id, Object.keys(expected.media).concat(selection ? ["emmc"] : []));
-        const manifest = selection?.manifest ?? expected.manifest;
+        const config = new_symbian_config(name, notes);
+        const ids = media_ids(config.id, Object.keys(expected.media));
+        const manifest = expected.manifest;
         const journal = await import_directory(true);
         await journal.getFileHandle(config.id, { create: true });
         let stored;
         try
         {
-            await worker_request({ op: selection ? "import" : "import-syborg", files, selection, expected, ids }, options);
+            await worker_request({ op: "import-syborg", files, expected, ids }, options);
             const media = {};
             for(const [role, { size, sha256 }] of Object.entries(expected.media))
             {
                 options.signal?.throwIfAborted();
                 const id = ids[role];
-                const disk = await finish_disk(id, name + " · " + labels[role], {
+                const disk = await finish_disk(id, name + " · " + SYBORG_MEDIA[role], {
                     size, sha256, symbian: { owner: config.id, role }, source: manifest,
                 });
-                if(disk.size !== size) throw new Error("Incorrect stored size for " + labels[role]);
+                if(disk.size !== size) throw new Error("Incorrect stored size for " + SYBORG_MEDIA[role]);
                 media[role] = { kind: "browser", path: disk_path(id), size, sha256 };
             }
             options.signal?.throwIfAborted();
-            if(selection)
-            {
-                const emmc = await finish_disk(ids.emmc, name + " · eMMC", {
-                    size: N97_EMMC_SIZE, symbian: { owner: config.id, role: "emmc" },
-                });
-                if(emmc.size !== N97_EMMC_INITIAL_BYTES) throw new Error("Incorrect eMMC index size");
-                const { product_code, sw_version, variant_version, description, manifest_sha256 } = selection;
-                config.symbian = { device: device.id, model: device.model,
-                    product_code, sw_version, variant_version, description, manifest, manifest_sha256, media,
-                    languages: expected.languages, emmc: { kind: "browser", path: emmc.path, size: N97_EMMC_SIZE } };
-            }
-            else
-            {
-                config.symbian = { device: device.id, model: device.model, sw_version: expected.firmware_version,
-                    manifest, manifest_sha256: media.manifest.sha256, media };
-            }
+            config.symbian = { device: SYBORG_DEVICE.id, model: SYBORG_DEVICE.model, sw_version: expected.firmware_version,
+                manifest, manifest_sha256: media.manifest.sha256, media };
             options.signal?.throwIfAborted();
             stored = await options.store.put(config);
         }

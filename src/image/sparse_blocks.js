@@ -1,6 +1,6 @@
 // A fixed-geometry block image with a sector-aligned header and index.
 
-/** Open the packed block map used by the iPhone NAND and N97 eMMC. */
+/** Open the packed block map used by the iPhone NAND. */
 export function open_sparse_blocks(access, { magic, chunk, length, label }, create = false)
 {
     const HEADER = 512;

@@ -1,5 +1,3 @@
-import { N97_MATRIX_CODES, n97_control } from "../symbian/n97_keymap.js";
-import { n97_touch_point } from "../symbian/n97_touch.js";
 import { syborg_key, syborg_touch } from "../symbian/syborg_input.js";
 import { SYBORG_BOOT_FILES, SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
@@ -49,7 +47,6 @@ import { DEFAULT_GLES_VERSION, GLES_VERSIONS, ranchu_gpu_mode } from "../android
 import { PartitionBuffer } from "../android/partition_buffer.js";
 import { read_nand_boot } from "../ios/nand_boot.js";
 import { attach_ios_install_api } from "../ios/install_api.js";
-import { N97_RAM_SIZE } from "../symbian/n97_board.js";
 import { FS } from "../../lib/filesystem.js";
 
 /**
@@ -555,14 +552,6 @@ V86.prototype.continue_init = async function(emulator, options)
             if(media[key]) options["symbian"][key] = Object.assign({}, await opfs_readable("Syborg " + key, media[key]));
         }));
     }
-    else if(options["symbian"]?.["rom"])
-    {
-        options["symbian"] = Object.assign({}, options["symbian"], {
-            "rom": await opfs_readable("Nokia N97 firmware", options["symbian"]["rom"]),
-            "boot_media": await opfs_readable("Nokia N97 modem images", options["symbian"]["boot_media"]),
-            "bootrom": await opfs_readable("Nokia N97 RAPIDO boot ROM", options["symbian"]["bootrom"]),
-        });
-    }
     if(options.virtio_disks)
     {
         options.virtio_disks = await Promise.all(options.virtio_disks.map((disk, i) => opfs_readable("virtio_disk" + i, disk)));
@@ -658,7 +647,7 @@ V86.prototype.continue_init = async function(emulator, options)
     settings["x87_fast_math"] = options["x87_fast_math"];
     settings["x87_jit_cache"] = options["x87_jit_cache"];
     settings.load_devices = true;
-    settings.memory_size = options.memory_size || (this.machine_type === SYBORG_MACHINE ? SYBORG_PROFILE.ram_size : this.machine_type === "nokia-n97" ? N97_RAM_SIZE :
+    settings.memory_size = options.memory_size || (this.machine_type === SYBORG_MACHINE ? SYBORG_PROFILE.ram_size :
         (this.machine_type === "s5l8930" ? 512 : 64) * 1024 * 1024);
     settings.high_memory_size = options.high_memory_size;
     settings.extended_memory_size = options.extended_memory_size;
@@ -1020,24 +1009,6 @@ V86.prototype.continue_init = async function(emulator, options)
             case "ios_bootlogo":
                 settings.ios_bootlogo = buffer.buffer;
                 break;
-            case "symbian_rom":
-                settings.symbian_rom = buffer.buffer;
-                break;
-            case "symbian_boot_media":
-                settings.symbian_boot_media = buffer.buffer;
-                break;
-            case "symbian_bootrom":
-                settings.symbian_bootrom = buffer.buffer;
-                break;
-            case "symbian_nand":
-                settings.symbian_nand = buffer;
-                break;
-            case "symbian_emmc":
-                settings.symbian_emmc = buffer;
-                break;
-            case "symbian_sd":
-                settings.symbian_sd = buffer;
-                break;
             case "kernel":
                 settings.kernel = buffer.buffer;
                 break;
@@ -1204,16 +1175,6 @@ V86.prototype.continue_init = async function(emulator, options)
             throw new Error("iPhone boot requires a prepared NAND image, or ios.kernelcache and ios.devicetree");
         if(options.ios?.nand_boot && (!options.ios.nand || options.ios.kernelcache || options.ios.devicetree))
             throw new Error("ios.nand_boot requires a NAND image and supplies its own kernel and device tree");
-    }
-    if(this.machine_type === "nokia-n97")
-    {
-        if(!options["symbian"]) throw new Error("Nokia N97 boot requires symbian.rom");
-        add_file("symbian_rom", options["symbian"]["rom"]);
-        add_file("symbian_boot_media", options["symbian"]["boot_media"]);
-        add_file("symbian_nand", options["symbian"]["nand"]);
-        add_file("symbian_emmc", options["symbian"]["emmc"]);
-        add_file("symbian_sd", options["symbian"]["sd"]);
-        add_file("symbian_bootrom", options["symbian"]["bootrom"]);
     }
     if(this.machine_type === SYBORG_MACHINE)
     {
@@ -1913,7 +1874,6 @@ V86.prototype.destroy = async function()
     if(this.worker_controller) await this.worker_controller.destroy();
     else await this.stop();
     if(this.device_state_operation) await this.device_state_operation;
-    if(this.symbian_sd_opening) await this.symbian_sd_opening.catch(() => {});
     // (the disks written back: flushed, their files closed)
     if(!this.worker_controller) await this.flush_writeback_disks(true);
 
@@ -2822,15 +2782,13 @@ V86.prototype.ios_send_button = function(button, pressed)
 V86.prototype["ios_send_button"] = V86.prototype.ios_send_button;
 
 /**
- * Send an N97 keypad matrix code or a Syborg guest scan code.
+ * Send a Syborg guest scan code.
  * @param {number} code
  * @param {boolean} pressed
  */
 V86.prototype.symbian_send_key = function(code, pressed)
 {
-    const valid = this.machine_type === SYBORG_MACHINE ? syborg_key(code, pressed) :
-        this.machine_type === "nokia-n97" && N97_MATRIX_CODES.has(code) && typeof pressed === "boolean";
-    if(!valid)
+    if(this.machine_type !== SYBORG_MACHINE || !syborg_key(code, pressed))
     {
         throw new Error("symbian_send_key: expected a keyboard code for this Symbian machine and a boolean state");
     }
@@ -2838,18 +2796,6 @@ V86.prototype.symbian_send_key = function(code, pressed)
 };
 // eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
 V86.prototype["symbian_send_key"] = V86.prototype.symbian_send_key;
-
-/** @param {boolean} open */
-V86.prototype.symbian_set_slider = function(open)
-{
-    if(this.machine_type !== "nokia-n97" || typeof open !== "boolean")
-    {
-        throw new Error("symbian_set_slider: expected a Nokia N97 slider state");
-    }
-    this.bus.send("symbian-slider", open);
-};
-// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
-V86.prototype["symbian_set_slider"] = V86.prototype.symbian_set_slider;
 
 /**
  * Set the Symbian touch contact in screen coordinates.
@@ -2859,9 +2805,7 @@ V86.prototype["symbian_set_slider"] = V86.prototype.symbian_set_slider;
  */
 V86.prototype.symbian_set_touch = function(x, y, pressed)
 {
-    const valid = this.machine_type === SYBORG_MACHINE ? syborg_touch(x, y, pressed) :
-        this.machine_type === "nokia-n97" && n97_touch_point(x, y, pressed);
-    if(!valid)
+    if(this.machine_type !== SYBORG_MACHINE || !syborg_touch(x, y, pressed))
     {
         throw new Error("symbian_set_touch: expected screen coordinates for this Symbian machine and a boolean state");
     }
@@ -2869,69 +2813,6 @@ V86.prototype.symbian_set_touch = function(x, y, pressed)
 };
 // eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
 V86.prototype["symbian_set_touch"] = V86.prototype.symbian_set_touch;
-
-/**
- * Move a Nokia N97 call touch key, side lock switch, or physical power button.
- * @param {string} control "send", "end", "lock", or "power"
- * @param {boolean} pressed
- */
-V86.prototype.symbian_send_control = function(control, pressed)
-{
-    if(this.machine_type !== "nokia-n97" || !n97_control(control, pressed))
-    {
-        throw new Error("symbian_send_control: expected a Nokia N97 control and a boolean state");
-    }
-    this.bus.send("symbian-control", [control, pressed]);
-};
-// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
-V86.prototype["symbian_send_control"] = V86.prototype.symbian_send_control;
-
-/** Insert a local raw microSD into an empty Nokia N97 slot. Opens the image
- * for exclusive writeback and signals card detect after it is ready.
- * @param {{url: string, size: (number|undefined)}} file
- * @return {!Promise<void>}
- */
-V86.prototype.symbian_insert_sd = async function(file)
-{
-    if(this.machine_type !== "nokia-n97" || this.destroyed) throw new Error("Nokia N97 microSD insertion requires an open N97");
-    const url = file?.url;
-    if(typeof url !== "string" || !url || !is_opfs_url(url) && (!in_node() || is_service_url(url)))
-        throw new Error("Nokia N97 live insertion requires a local raw microSD image");
-    if(this.worker_controller) return this.worker_controller.rpc("symbian_insert_sd", [{ "url": url, "size": file.size }]);
-    const mmc = this.v86?.cpu.devices.n97_mmc;
-    if(!mmc) throw new Error("The Nokia N97 microSD controller is unavailable");
-    if(mmc.sd || this.symbian_sd_opening) throw new Error("The Nokia N97 microSD slot is occupied or opening");
-    const name = "symbian_sd";
-    const opening = this.symbian_sd_opening = (async () => {
-        const buffer = await this.load_attached_disk(name, { url, size: file.size, disk_option: "read_write", disk_error: "report" },
-            false, "symbian_insert_sd");
-        try
-        {
-            // Direct ARM snapshots use the core transaction even without
-            // host plugins. Wait for it without stopping a running guest.
-            let core_state, host_state;
-            do
-            {
-                core_state = this.v86.state_operation;
-                host_state = this.device_state_operation;
-                await Promise.all([core_state, host_state]);
-            }
-            while(core_state !== this.v86.state_operation || host_state !== this.device_state_operation);
-            if(this.destroyed) throw new Error("The Nokia N97 has been closed");
-            mmc.insert_sd(buffer);
-        }
-        catch(error)
-        {
-            buffer.close_now();
-            this.disk_descriptors = this.disk_descriptors.filter(([disk_name]) => disk_name !== name);
-            throw error;
-        }
-    })();
-    try { await opening; }
-    finally { this.symbian_sd_opening = null; }
-};
-// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
-V86.prototype["symbian_insert_sd"] = V86.prototype.symbian_insert_sd;
 
 /**
  * Rotate the simulated N90's gravity vector, in clockwise degrees from portrait.

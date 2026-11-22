@@ -17,13 +17,10 @@ import { android_panel } from "./panels/android.js";
 import { ANDROID_DEFAULTS } from "../vm_config.js";
 import { RANCHU_DEVICES } from "../../android/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
-import { check_n97_bootrom, N97_RAPIDO_ROM_ID } from "../../symbian/n97_boot_media.js";
-import { n97_sd_capacity } from "../../symbian/n97_mmc_media.js";
-import { symbian_device, SYBORG_DEVICE } from "../../symbian/catalog.js";
+import { SYBORG_DEVICE } from "../../symbian/catalog.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Problem} Problem */
-/** @typedef {{file: File, sha256: string, reported_id?: string}} PendingBootRom */
 
 /**
  * @typedef {Object} PanelContext
@@ -34,10 +31,8 @@ import { symbian_device, SYBORG_DEVICE } from "../../symbian/catalog.js";
  * @property {{put_handle: (handle: any) => Promise<string>}} store where picked files' handles go
  * @property {import("../disk_service_client.js").Service | null} service the disk service, if there is one
  * @property {((progress: (text: string) => void) => Promise<void>) | null} erase_ios
- * @property {PendingBootRom | null} pending_bootrom
- * @property {(value: PendingBootRom) => void} stage_bootrom
- * @property {File | null | undefined} pending_sd
- * @property {(value: File | null) => void} stage_sd
+ * @property {boolean} eject_card
+ * @property {() => void} stage_card_ejection
  */
 
 /**
@@ -58,7 +53,7 @@ export function hardware_items(c)
 {
     if(c.symbian) return [
         { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
-        { id: "symbian", label: "Symbian firmware", summary: symbian_device(c.machine.type).name + " · " + c.symbian.sw_version, panel: symbian_panel, remove: null },
+        { id: "symbian", label: "Symbian firmware", summary: SYBORG_DEVICE.name + " · " + c.symbian.sw_version, panel: symbian_panel, remove: null },
     ];
     if(c.ios) return [
         { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
@@ -117,89 +112,18 @@ export function hardware_items(c)
 function symbian_panel(ctx)
 {
     const firmware = ctx.config.symbian;
-    if(ctx.config.machine.type === SYBORG_DEVICE.id)
-    {
-        const rows = [...hardware_rows(ctx.config), ["Build manifest", firmware.manifest], ["Manifest SHA-256", firmware.manifest_sha256]];
-        const webgpu = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: firmware.webgpu === true,
-            disabled: !!ctx.config.suspended }));
-        webgpu.onchange = () => ctx.set("symbian.webgpu", webgpu.checked);
-        return [
-            h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
-                h("tr", null, h("th", null, label), h("td", null, value))))),
-            h("label.field", null, h("span", null, "WebGPU acceleration"), webgpu),
-            firmware.sd && !ctx.config.suspended && (ctx.pending_sd === null ?
-                h("p.note", null, "The transfer card will be ejected when you save. Its image stays in Browser disks.") :
-                h("button", { type: "button", onclick: () => ctx.stage_sd(null) }, "Eject transfer card")),
-        ];
-    }
-    const rows = [...hardware_rows(ctx.config), ["VPL", firmware.manifest], ["VPL SHA-256", firmware.manifest_sha256]];
-    rows.push(["OneNAND", firmware.media?.nand ? "256 MiB · writable by this VM" : "Legacy import · no OneNAND image"]);
-    rows.push(["Internal eMMC", firmware.emmc ? "32 GB · uses storage as the VM writes" : "Legacy import · no eMMC image"]);
-    const hardware = h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
-        h("tr", null, h("th", null, label), h("td", null, value)))));
-    const bootrom = firmware.bootrom;
-    const heading = h("h4", null, "RAPIDO boot ROM");
-    const legacy = !firmware.media?.nand ? h("p.note", null,
-        "This legacy firmware import uses the XIP ROM and a separate phone data image.") : null;
-    const card = h("div", null, h("h4", null, "microSD"),
-        h("p", null, ctx.pending_sd === null ? "Ready to eject" : ctx.pending_sd ? ctx.pending_sd.name + " · ready to insert" :
-            firmware.sd?.name || "Empty slot"));
-    if(!ctx.config.suspended)
-    {
-        const input = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: ".img,.bin,.raw,application/octet-stream" }));
-        const status = h("p.note", { role: "status" });
-        input.onchange = () => {
-            const file = input.files?.[0];
-            if(!file) return;
-            if(n97_sd_capacity(file.size)) ctx.stage_sd(file);
-            else status.textContent = "Choose a raw SD or SDHC image with a supported capacity, up to 16 GiB.";
-        };
-        card.append(h("label.field", null, h("span", null, "Insert a microSD image"), input), status);
-        if(ctx.pending_sd || firmware.sd && ctx.pending_sd === undefined)
-            card.append(h("button", { type: "button", onclick: () => ctx.stage_sd(null) }, "Eject microSD"));
-    }
-    if(!firmware.media?.boot_media)
-    {
-        return [hardware, legacy, card, heading, h("p.note", null,
-            "Attaching a RAPIDO boot ROM requires the original DSP0 and ISASW images in this VM.")];
-    }
-    if(ctx.config.suspended)
-    {
-        return [hardware, legacy, card, heading, h("p.note", null,
-            "The suspended state requires its original ROM. Resume the VM and shut it down or discard the suspended state before changing the chip ROM.")];
-    }
-    const file = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: ".bin,.rom,.img,application/octet-stream" }));
-    const id = /** @type {HTMLInputElement} */ (h("input", { type: "text", placeholder: "Optional", spellcheck: false }));
-    const sha = /** @type {HTMLInputElement} */ (h("input", { type: "text", placeholder: "Optional", spellcheck: false }));
-    const status = h("p.note", { role: "status" });
-    const select = /** @type {HTMLButtonElement} */ (h("button", { type: "button", disabled: true }, "Use this dump"));
-    file.onchange = () => { select.disabled = !file.files?.length; status.textContent = ""; };
-    select.onclick = async () =>
-    {
-        const chosen = file.files?.[0];
-        if(!chosen) return;
-        select.disabled = true;
-        try
-        {
-            if(chosen.size > 0x10000) throw new Error("The raw RAPIDO boot ROM must fit in 64 KiB.");
-            if(sha.value.trim() && !/^[0-9a-f]{64}$/i.test(sha.value.trim())) throw new Error("Enter a 64-digit SHA-256 digest.");
-            const verified = check_n97_bootrom(new Uint8Array(await chosen.arrayBuffer()), id.value, sha.value);
-            if(!select.isConnected) return;
-            ctx.stage_bootrom({ file: chosen, sha256: verified.sha256, reported_id: verified.id || undefined });
-        }
-        catch(error) { status.textContent = String(error.message || error); }
-        finally { select.disabled = false; }
-    };
-    return [hardware, legacy, card, heading,
-        h("p.note", null, "The RM-505 firmware package contains DSP0 and ISASW. The boot ROM is built into the RAPIDO chip and comes from a separate local dump."),
-        h("p.note", null, "RM-505 service report ROM ID " + N97_RAPIDO_ROM_ID),
-        h("p", null, ctx.pending_bootrom ? ctx.pending_bootrom.file.name + " · ready to save" : bootrom ?
-            bootrom.name + (bootrom.reported_id ? " · service report ID matches" : " · dump structure checked") : "Chip ROM missing"),
-        bootrom ? h("p.note", null, "Stored SHA-256 " + bootrom.sha256) : null,
-        h("label.field", null, h("span", null, "Local RAPIDO dump"), file),
-        h("label.field", null, h("span", null, "ROM ID from service report"), id),
-        h("label.field", null, h("span", null, "Expected SHA-256"), sha), select, status,
-        h("p.note", null, "The selected dump applies at the next cold start. A suspended state requires its original boot images.")];
+    const rows = [...hardware_rows(ctx.config), ["Build manifest", firmware.manifest], ["Manifest SHA-256", firmware.manifest_sha256]];
+    const webgpu = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: firmware.webgpu === true,
+        disabled: !!ctx.config.suspended }));
+    webgpu.onchange = () => ctx.set("symbian.webgpu", webgpu.checked);
+    return [
+        h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
+            h("tr", null, h("th", null, label), h("td", null, value))))),
+        h("label.field", null, h("span", null, "WebGPU acceleration"), webgpu),
+        firmware.sd && !ctx.config.suspended && (ctx.eject_card ?
+            h("p.note", null, "The transfer card will be ejected when you save. Its image stays in Browser disks.") :
+            h("button", { type: "button", onclick: ctx.stage_card_ejection }, "Eject transfer card")),
+    ];
 }
 
 /** @param {PanelContext} ctx */
@@ -356,7 +280,7 @@ function additions(c)
  * @param {VMConfig} config
  * @param {{store: PanelContext["store"], service?: PanelContext["service"], title?: string, save_label?: string, item?: string,
  *     erase_ios?: PanelContext["erase_ios"],
- *     persist?: (config: VMConfig, bootrom: PendingBootRom | null, pending_sd?: File | null) => Promise<VMConfig>}} options
+ *     persist?: (config: VMConfig, eject_card: boolean) => Promise<VMConfig>}} options
  * @return {Promise<VMConfig | null>}
  */
 export function open_settings(config, options)
@@ -367,17 +291,14 @@ export function open_settings(config, options)
         let notes = fitted(config).notes;
         let selected = options.item || "general";
         let erasing = false;
-        let saving_bootrom = false;
-        /** @type {PendingBootRom | null} */
-        let pending_bootrom = null;
-        /** @type {File | null | undefined} */
-        let pending_sd;
+        let saving = false;
+        let eject_card = false;
         /** @type {Problem[]} */
         let problems = [];
         const element = /** @type {HTMLDialogElement} */ (h("dialog.settings-dialog", { "aria-label": options.title || "Settings" }));
         const close = value =>
         {
-            if(erasing || saving_bootrom) return;
+            if(erasing || saving) return;
             element.close();
             element.remove();
             resolve(value);
@@ -388,10 +309,8 @@ export function open_settings(config, options)
         const ctx = {
             get config() { return working; },
             get choices() { return choices(working); },
-            get pending_bootrom() { return pending_bootrom; },
-            stage_bootrom(value) { pending_bootrom = value; render(); },
-            get pending_sd() { return pending_sd; },
-            stage_sd(value) { pending_sd = value; render(); },
+            get eject_card() { return eject_card; },
+            stage_card_ejection() { eject_card = true; render(); },
             set(path, value)
             {
                 const result = change(working, path, value);
@@ -422,7 +341,7 @@ export function open_settings(config, options)
 
         const save = async () =>
         {
-            if(erasing || saving_bootrom) return;
+            if(erasing || saving) return;
             problems = check_config(working);
             if(problems.length)
             {
@@ -435,17 +354,17 @@ export function open_settings(config, options)
                 close(working);
                 return;
             }
-            saving_bootrom = true;
+            saving = true;
             render();
             let saved;
-            try { saved = await options.persist(working, pending_bootrom, pending_sd); }
+            try { saved = await options.persist(working, eject_card); }
             catch(error)
             {
-                if(pending_bootrom || pending_sd !== undefined) selected = "symbian";
-                problems = [{ path: pending_sd !== undefined ? "symbian.sd" : pending_bootrom ? "symbian.bootrom" : selected,
+                if(eject_card) selected = "symbian";
+                problems = [{ path: eject_card ? "symbian.sd" : selected,
                     message: String(error.message || error) }];
             }
-            finally { saving_bootrom = false; }
+            finally { saving = false; }
             if(saved) close(saved);
             else render();
         };
@@ -488,9 +407,9 @@ export function open_settings(config, options)
                     h("footer.settings-footer", null,
                         h("div.settings-notes", { role: "status" }, notes.length ? "Also changed: " + notes.join("; ") : problems.length ?
                             problems.length + (problems.length === 1 ? " problem" : " problems") + " to fix before saving" : ""),
-                        h("button", { type: "button", disabled: saving_bootrom, onclick: () => close(null) }, "Cancel"),
-                        h("button.primary", { type: "button", disabled: saving_bootrom, onclick: save },
-                            saving_bootrom ? "Saving…" : options.save_label || "Save"))));
+                        h("button", { type: "button", disabled: saving, onclick: () => close(null) }, "Cancel"),
+                        h("button.primary", { type: "button", disabled: saving, onclick: save },
+                            saving ? "Saving…" : options.save_label || "Save"))));
         }
 
         document.body.append(element);

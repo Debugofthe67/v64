@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit the function ordinals from an original N97 SDK import library."""
+"""Emit the function ordinals from an S60v5 SDK import library."""
 from pathlib import Path
 from struct import unpack_from
 import re

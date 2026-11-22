@@ -1010,20 +1010,11 @@ export interface V86Options {
      * "none"), a GICv2 with "arm32"; no PCIe.
      * @default "i440fx" ("virt" with cpu_type "arm64" or "arm32")
      */
-    machine_type?: "i440fx" | "q35" | "virt" | "ranchu" | "s5l8930" | "nokia-n97" | "symbian-syborg";
+    machine_type?: "i440fx" | "q35" | "virt" | "ranchu" | "s5l8930" | "symbian-syborg";
     apple_model?: "iPhone3,1";
     ios?: { kernelcache?: V86Image; devicetree?: V86Image; ramdisk?: V86Image; nand?: V86HardDiskImage; bootlogo?: V86Image; boot_args?: string; nand_boot?: boolean };
-    /** Nokia 5800 Syborg boot media or RM-505 XIP boot. */
-    symbian?: V86SyborgMedia | ({ rom: V86Image; rom_sha256?: string; boot_media?: V86Image; boot_media_sha256?: string;
-        /** RM-505 OneNAND image from tools/symbian/vpl.mjs, in memory or in a writable local/OPFS file. */
-        nand?: V86BufferImage | { url: string; disk_option: "read_write"; size?: number };
-        /** Sparse 32 GB internal disk in the N97 format, in a writable local or OPFS file. */
-        emmc?: { url: string; disk_option: "read_write"; size?: number };
-        /** User's removable raw SD or SDHC image. */
-        sd?: V86BufferImage | { url: string; disk_option: "read_write"; size?: number };
-        bootrom?: V86Image; bootrom_id?: string; bootrom_sha256?: string; rapido_compat_rom?: boolean; application_processor_only?: boolean } &
-        ({ load_address?: undefined; boot_registers?: undefined } |
-        { load_address: number; boot_registers: [number, number, number, number] }));
+    /** Nokia 5800 Syborg boot media. */
+    symbian?: V86SyborgMedia;
 
     /**
      * machine_type "ranchu" only: the display (the framebuffer's size in
@@ -1163,7 +1154,7 @@ export interface V86Options {
      * @default the cpu_type's generic model ("cortex-a15" for "arm32")
      */
     cpu_profile?: "generic-x86" | "generic-x86-64" | "generic-arm64" | "generic-arm64-compat32" | "generic-arm64-v1" | "generic-arm64-v1.1" |
-        "cortex-a8" | "cortex-a15" | "arm1136" | "arm1136-r2";
+        "cortex-a8" | "cortex-a15" | "arm1136-r2";
 
     /**
      * With cpu_type "x86_64", "x86-64-v1" selects the psABI baseline,
@@ -1785,16 +1776,10 @@ export class V86 {
 
     /** Press or release one of the simulated iPhone's physical buttons. */
     ios_send_button(button: "home" | "power" | "volume-up" | "volume-down" | "mute", pressed: boolean): void;
-    /** Send a Nokia N97 LM8323 matrix code or an 8-bit Syborg guest scan code. */
+    /** Send an 8-bit Syborg guest scan code. */
     symbian_send_key(code: number, pressed: boolean): void;
-    /** Set the Nokia N97 Hall sensor to its slider-open or slider-closed state. */
-    symbian_set_slider(open: boolean): void;
-    /** Set the touch contact in the 640×360 N97 or 360×640 Syborg screen plane. */
+    /** Set the touch contact in the 360×640 Syborg screen plane. */
     symbian_set_touch(x: number, y: number, pressed: boolean): void;
-    /** Press or release a Nokia N97 call touch key, side lock switch, or physical power button. */
-    symbian_send_control(control: "send" | "end" | "lock" | "power", pressed: boolean): void;
-    /** Insert a local raw image into an empty N97 microSD slot with exclusive writeback (OPFS in a CPU Worker, or a local path in Node). */
-    symbian_insert_sd(file: { url: string; size?: number }): Promise<void>;
 
     /** Install an unencrypted ARMv7 IPA using the native iOS 6 helper. */
     ios_install_status(): Promise<IOSInstallStatus>;

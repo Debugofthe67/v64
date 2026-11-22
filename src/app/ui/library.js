@@ -15,8 +15,9 @@ import { preset } from "../guest_presets.js";
 import { probe, LOCAL_SERVICE } from "../disk_service_client.js";
 import { delete_state, hold_machine, running_machines, storage_space } from "../vm_state.js";
 import { reset_ios_data } from "../ios_import.js";
+import { MACHINE_TYPES } from "../../machine_options.js";
 import { recover_symbian_imports } from "../symbian_import.js";
-import { symbian_device, SYBORG_DEVICE } from "../../symbian/catalog.js";
+import { SYBORG_DEVICE } from "../../symbian/catalog.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Image} Image */
@@ -190,51 +191,22 @@ export async function open_library(root)
             }
             finally { lock.release(); }
         } : null;
-        const edited = await open_settings(config, { store, service, erase_ios, persist: async (draft, bootrom, pending_sd) => {
+        const edited = await open_settings(config, { store, service, erase_ios, persist: async (draft, eject_card) => {
             if(!draft.symbian) return store.put(draft);
             const lock = await hold_machine(draft.id);
-            if(!lock) throw new Error("Power off the " + symbian_device(draft.machine.type).name + " before changing these settings");
-            const created = [];
-            const ensure_current = current => {
-                if(!current?.symbian || current.modified !== config.modified || current.symbian.sd?.path !== config.symbian.sd?.path)
-                    throw new Error("The virtual machine changed in another tab. Reopen its settings.");
-            };
+            if(!lock) throw new Error("Power off the " + SYBORG_DEVICE.name + " before changing these settings");
             try
             {
-                const current = await store.get(draft.id);
-                ensure_current(current);
-                if(current.suspended || draft.suspended)
-                {
-                    if(bootrom || pending_sd !== undefined)
+                return await store.update(draft.id, current => {
+                    if(!current.symbian || current.modified !== config.modified || current.symbian.sd?.path !== config.symbian.sd?.path)
+                        throw new Error("The virtual machine changed in another tab. Reopen its settings.");
+                    if(!eject_card) return draft;
+                    if(current.suspended || draft.suspended)
                         throw new Error("Reopen the settings after the VM has shut down and any suspended state is cleared");
-                }
-                const next = { ...draft.symbian };
-                if(bootrom)
-                {
-                    const { file, sha256, reported_id } = bootrom;
-                    const disk = await import_disk(file, draft.name + " · RAPIDO boot ROM",
-                        { prefs: store, symbian: { owner: draft.id, role: "bootrom" } });
-                    created.push(disk.id);
-                    if(disk.sha256 !== sha256) throw new Error("The ROM changed during import. Choose the dump again.");
-                    next.bootrom = { kind: "browser", path: disk.path, size: disk.size, sha256, name: file.name, reported_id };
-                }
-                if(pending_sd)
-                {
-                    const disk = await import_disk(pending_sd, draft.name + " · " + pending_sd.name,
-                        { prefs: store, symbian: { owner: draft.id, role: "sd" } });
-                    created.push(disk.id);
-                    next.sd = { kind: "browser", path: disk.path, size: disk.size, sha256: disk.sha256, name: pending_sd.name };
-                }
-                if(pending_sd === null) delete next.sd;
-                return await store.update(draft.id, latest => {
-                    ensure_current(latest);
+                    const next = { ...draft.symbian };
+                    delete next.sd;
                     return { ...draft, symbian: next };
                 });
-            }
-            catch(error)
-            {
-                await Promise.allSettled(created.map(delete_disk));
-                throw error;
             }
             finally { lock.release(); }
         } });
@@ -275,7 +247,7 @@ export async function open_library(root)
             onkeydown: e => { if(e.key === "Enter" || e.key === " ") { selected = c.id; render(); } },
         }, h("span.vm-name", null, c.name), c.ios ? h("span.vm-state", null, "iPhone 4 · iOS 6.1.3") :
             c.symbian ? h("span.vm-state", null, c.machine.type === SYBORG_DEVICE.id ?
-                SYBORG_DEVICE.name + " (" + SYBORG_DEVICE.model + ") · " + c.symbian.sw_version : "Nokia N97 · Experimental boot") : null,
+                SYBORG_DEVICE.name + " (" + SYBORG_DEVICE.model + ") · " + c.symbian.sw_version : "Unavailable Symbian machine") : null,
         h("span.vm-state", null, running.has(c.id) ? "Running in another tab" :
             c.suspended ? "Suspended" : "Powered off"))));
         const sidebar = h("aside.library-list", null,
@@ -328,7 +300,7 @@ export async function open_library(root)
             const lock = config.symbian ? await hold_machine(config.id) : null;
             if(config.symbian && !lock)
             {
-                await inform("Not deleted", "Power off the " + symbian_device(config.machine.type).name + " before deleting it.");
+                await inform("Not deleted", "Power off the " + config.name + " before deleting it.");
                 return;
             }
             try
@@ -354,7 +326,7 @@ export async function open_library(root)
             const lock = config.symbian ? await hold_machine(config.id) : null;
             if(config.symbian && !lock)
             {
-                await inform("Suspend state kept", "Power off the " + symbian_device(config.machine.type).name + " before discarding its suspended state.");
+                await inform("Suspend state kept", "Power off the " + config.name + " before discarding its suspended state.");
                 return;
             }
             try
@@ -366,6 +338,7 @@ export async function open_library(root)
             await reload(config.id);
         };
         const p = config.template ? preset(config.template) : undefined;
+        const unavailable = !MACHINE_TYPES.includes(config.machine.type);
         return h("div.summary", null,
             h("h1", null, config.name),
             config.notes ? h("p.notes", null, config.notes) : null,
@@ -373,11 +346,12 @@ export async function open_library(root)
             config.suspended ? h("p.note#suspended_note", null, "Suspended " + new Date(config.suspended.time).toLocaleString() + " (" +
                 format_size(config.suspended.size) + " in this browser's storage)") : null,
             running.has(config.id) ? h("p.note", null, "Running in another tab.") : null,
+            unavailable ? h("p.note", null, "This machine type is unavailable in this version. You can still export its settings and browser disks.") : null,
             h("div.summary-actions", null,
-                h("button.primary#power_on", { onclick: power_on }, config.suspended ? "Resume" : "Power on"),
-                config.suspended ? h("button#discard_state", { onclick: discard }, "Discard the suspended state…") : null,
-                h("button#edit_vm", { onclick: () => edit(config) }, "Edit settings…"),
-                h("button#rename_vm", { onclick: rename }, "Rename…"),
+                h("button.primary#power_on", { onclick: power_on, disabled: unavailable }, config.suspended ? "Resume" : "Power on"),
+                config.suspended && !unavailable ? h("button#discard_state", { onclick: discard }, "Discard the suspended state…") : null,
+                h("button#edit_vm", { onclick: () => edit(config), disabled: unavailable }, "Edit settings…"),
+                h("button#rename_vm", { onclick: rename, disabled: unavailable }, "Rename…"),
                 h("button#export_vm", { onclick: () => download([export_config(config)], export_file_name(config), "application/json") }, "Export"),
                 h("button.danger#delete_vm", { onclick: remove }, "Delete…")),
             h("table.hardware", null, h("tbody", null, hardware_rows(config).map(([name, value]) => h("tr", null, h("th", null, name), h("td", null, value))))),
