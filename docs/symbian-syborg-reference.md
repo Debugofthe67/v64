@@ -5,7 +5,7 @@ v86 runs the Nokia 5800 XpressMusic (RM-356) S60v5 firmware version 31.0.101 on 
 ## Start the phone
 
 1. Download **RM-356 v.31.01 5800.rar**. A ZIP or 7z archive containing the same firmware files also works. [5800 firmware archive](https://firmware.center/firmware/Nokia/5800%20%28RM-356%2C%20RM-428%29/Flash%20Files/)
-2. In v86, choose **New virtual machine → Symbian → S60v5 → Nokia 5800 (RM-356)**. Click **Choose firmware archive…** and select the archive. The browser extracts and checks the files and prepares the phone's system images locally. When **Verified firmware 31.0.101** appears, click **Next**, name the VM, and finish creating it.
+2. In v86, choose **New virtual machine → Symbian → S60v5 → Nokia 5800 (RM-356)**. Click **Choose File** and select the archive. The browser extracts and checks the files and prepares the phone's system images locally. When **Verified firmware 31.0.101** appears, click **Next**, name the VM, and finish creating it.
 3. Select the VM and click **Power on**. Set the time and date if prompted. On the home screen, tap the display or press **Menu** beneath it to find your apps. **Lock** toggles the guest's screen lock. **Media** opens the original media shortcuts.
 4. Use **Power → Save and power off** to keep the VM's disk changes and start it fresh next time. Use **Power → Suspend** to resume the same screen later.
 

@@ -66,7 +66,9 @@ function emit(element, type, args = {})
 }
 function files(input, picked)
 {
-    Object.defineProperty(input, "files", { value: picked });
+    const transfer = new frame.contentWindow.DataTransfer();
+    for(const file of picked) transfer.items.add(file);
+    input.files = transfer.files;
     emit(input, "change");
 }
 async function fetch_file(url, name)
@@ -85,20 +87,19 @@ async function create(name, archive, exercise_retry = false)
     selector.value = "symbian-syborg";
     emit(selector, "change");
     const pick = () => dialog.querySelector('input[type="file"]');
-    check(pick().hidden && !pick().multiple && !pick().webkitdirectory && pick().accept === ".zip,.rar,.7z" &&
+    check(pick().getClientRects().length > 0 && !pick().multiple && !pick().webkitdirectory && pick().accept === ".zip,.rar,.7z" &&
         dialog.querySelectorAll('input[type="file"]').length === 1, "one native archive selector");
     if(exercise_retry)
     {
-        let opened = false;
-        pick().addEventListener("click", event => { opened = true; event.preventDefault(); }, { once: true });
-        button(dialog, "Choose firmware archive…").click();
-        check(opened, "the archive button opens the native picker");
         files(pick(), [await fetch_file(missing_url, "missing.zip")]);
         await until("missing ROM error", () => dialog.textContent.includes("The firmware archive is missing ROM.img"));
+        check(!pick().files.length, "clear the failed selection so the user can retry");
         check(!button(dialog, "Next"), "a missing file blocks creation");
     }
     files(pick(), [archive]);
-    (await until("verified archive", () => button(dialog, "Next"), 90000)).click();
+    const next = await until("verified archive", () => button(dialog, "Next"), 90000);
+    check(pick().files[0]?.name === archive.name, "the picker keeps the selected file after verification");
+    next.click();
     const name_input = dialog.querySelector('input[aria-label="Name"]');
     name_input.value = name;
     emit(name_input, "input");

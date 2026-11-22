@@ -160,7 +160,6 @@ label.check { display: flex; gap: 4px; align-items: baseline; }
 .badge { font-size: 0.78em; color: #ffcc80; border: 1px solid #6b5a36; border-radius: 3px; padding: 0 4px; white-space: nowrap; }
 .preset-detail h4 { margin: 10px 0 4px; }
 .indent { margin-left: 22px; display: flex; flex-direction: column; gap: 8px; }
-.symbian-archive-button { align-self: flex-start; }
 details.checklist { margin: 10px 0; }
 
 /* the console */

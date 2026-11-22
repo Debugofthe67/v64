@@ -84,6 +84,12 @@ export function open_wizard(options)
             importing: null,
         };
         const element = /** @type {HTMLDialogElement} */ (h("dialog.wizard-dialog", { "aria-label": "New virtual machine" }));
+        const symbian_archive = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: ".zip,.rar,.7z",
+            "aria-label": "Symbian firmware archive", "data-symbian-focus": "archive" }));
+        symbian_archive.onchange = () => {
+            const file = symbian_archive.files?.[0];
+            if(file) void check_symbian_archive(file);
+        };
         const close = value => {
             state.ios.checking?.abort();
             state.symbian.checking?.abort();
@@ -368,7 +374,11 @@ export function open_wizard(options)
             }
             catch(error)
             {
-                if(s.checking === checking) state.error = error.message;
+                if(s.checking === checking)
+                {
+                    s.file = null;
+                    state.error = error.message;
+                }
             }
             finally
             {
@@ -395,15 +405,10 @@ export function open_wizard(options)
                 render();
             } }, h("option", { value: "", selected: !s.device }, "Choose a device…"),
             SYMBIAN_DEVICES.map(device => h("option", { value: device.id, selected: s.device === device.id }, device.family + " → " + device.name + " (" + device.model + ")")));
+            if(!s.file) symbian_archive.value = "";
             if(!s.device) return h("div.indent", null, device);
-            const archive = h("input", { type: "file", accept: ".zip,.rar,.7z", hidden: true, onchange: e => {
-                const file = e.currentTarget.files?.[0];
-                if(file) void check_symbian_archive(file);
-            } });
-            return h("div.indent", null, device, archive,
-                h("button.primary.symbian-archive-button", { type: "button", "data-symbian-focus": "archive", onclick: () => archive.click() },
-                    s.file ? "Change firmware archive…" : "Choose firmware archive…"),
-                s.report ? h("p.note", null, "Verified firmware " + s.report.firmware_version + " · " + s.report.manifest) :
+            return h("div.indent", null, device, symbian_archive,
+                s.report ? h("p.note", null, "Verified firmware " + s.report.firmware_version) :
                     h("p.note", null, "Choose the Nokia 5800 RM-356 " + SYBORG_PROFILE.firmware_version +
                         " ZIP, RAR or 7z. v86 extracts and prepares it in this browser."));
         }
