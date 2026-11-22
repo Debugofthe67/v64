@@ -13,7 +13,7 @@ Each VM has its own writable phone memory (`C:`). The browser stores it for this
 
 ## Connect to the Internet
 
-1. With the VM powered off, go to **Library → Edit settings → Symbian firmware**. Enable **Internet via virtual SIM**, enter a **Wisp relay URL** or keep the prefilled one, and save. Use a `wisps://` relay when v86 is served over HTTPS.
+1. New 5800 VMs start with **Internet via virtual SIM** enabled and a prefilled Wisp relay. To change the relay or turn off networking, power off the VM and open **Library → Edit settings → Symbian firmware**. Use a `wisps://` relay when v86 is served over HTTPS.
 2. Power on. If the phone asks whether to continue in offline mode, choose **No**. The phone should show **3G**.
 3. In the phone, open **Menu → Settings → Connectivity → Destinations → Access point**. Choose **No** when asked to check for available access points. Choose **Packet data**, enter `internet` as the access point name, then select the **Internet** destination. The phone saves this setup for future boots.
 4. Open **Menu → Internet → Web** and select **Internet → internet** when the phone asks how to connect. Try an HTTP page first. The original browser may fail on sites that require newer HTTPS support.

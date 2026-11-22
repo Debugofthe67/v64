@@ -5,7 +5,7 @@
 <pre id="log"></pre>
 <script type="module">
 import { VMStore, config_images } from "../../src/app/vm_store.js";
-import { config_to_options } from "../../src/app/vm_config.js";
+import { SYMBIAN_NETWORK_RELAY, config_to_options } from "../../src/app/vm_config.js";
 import { disk_file, disk_id, list_disks, reset_disk } from "../../src/app/browser_disks.js";
 import { read_fat16_file } from "../lib/fat32_reader.mjs";
 import { check_installed_notes } from "../symbian/syborg_sis_checks.js";
@@ -118,6 +118,7 @@ async function create(name, archive, exercise_retry = false)
     check(config?.machine.type === "symbian-syborg" && config.symbian.sw_version === "31.0.101" && config_images(config).length === 5,
         "the saved VM uses Syborg and five checked artifacts");
     check(config.symbian.webgpu === true, "new Nokia 5800 VMs enable WebGPU");
+    check(config.symbian.network === true, "new Nokia 5800 VMs enable the virtual SIM");
     return config;
 }
 async function open_machine(config, profile)
@@ -354,12 +355,9 @@ async function profile_boot(input)
 {
     const config = await create("5800 cold boot profile", input);
     const relay = args.get("relay");
-    if(relay)
-    {
-        config.symbian.network = true;
-        config.symbian.network_relay = relay;
-        await store.put(config);
-    }
+    config.symbian.network = !!relay;
+    if(relay) config.symbian.network_relay = relay;
+    await store.put(config);
     const disk = disk_id(config.symbian.media.phone.path);
     const seed = args.get("seed") || "/build/browser-test-output/syborg-s4-stock-notes-v1-C.img";
     const reports = [];
@@ -426,7 +424,12 @@ async function run()
         const network = () => dialog.querySelector('[name="symbian-network"]');
         const relay = () => dialog.querySelector('[name="symbian-network-relay"]');
         const set_relay = value => { relay().value = value; emit(relay(), "change"); };
-        check(!network().checked && relay().disabled, "new 5800 VMs start offline");
+        const defaults = config_to_options(config, option_env);
+        check(network().checked && !relay().disabled && relay().value === SYMBIAN_NETWORK_RELAY &&
+            defaults.symbian.network && defaults.network_relay_url === SYMBIAN_NETWORK_RELAY,
+            "new 5800 VMs start with the virtual SIM and the default Wisp relay");
+        network().click();
+        check(!network().checked && relay().disabled, "disabling the virtual SIM makes the relay read-only");
         network().click();
         check(network().checked && !relay().disabled, "enabling the virtual SIM makes the relay editable");
         set_relay("wisps://:");
@@ -471,6 +474,8 @@ async function run()
         await reset_disk(disk_id(first.symbian.media.phone.path), "/build/browser-test-output/syborg-s4-stock-notes-v1-C.img");
         log("Using the S4 C: copy in this independent controls run.");
     }
+    first.symbian.network = false;
+    await store.put(first);
     await open_machine(first);
     await until("running 5800", () => status("Running"), 90000);
     const toolbar = doc().querySelector(".console-toolbar");
