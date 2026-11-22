@@ -69,6 +69,7 @@ jobs:
         run: |
           make pages
           test -s build/pages/build/ios-guest/libv86gles.dylib
+          cmp bios/symbian-syborg/syborg-5800-components.bin build/pages/build/syborg-5800-components.bin
 
       # (a pull request from a fork has no secrets: built, not deployed)
       - name: Deploy to Cloudflare Pages

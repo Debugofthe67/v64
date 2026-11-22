@@ -80,7 +80,7 @@ This section is for maintainers preparing the assembly components and developers
    node tools/symbian/syborg.mjs components "$firmware" "$artifacts"
    ```
 
-The components command writes `build/syborg-5800-components.bin`. The site build includes it when present. This file carries the Syborg boot code and layout data. Each original firmware import restores the Nokia user-side ROM and ROFS from the user's archive and starts with a blank C: drive. Archive extraction uses the packaged 7-Zip WebAssembly module. [Decoder source](https://github.com/arktronic/sevenzip-wasm)
+The components command writes `build/syborg-5800-components.bin` for local development. The Pages build verifies the [checked-in assembly components](../bios/symbian-syborg/README.md) and packages them at the same path on the site. This file carries the Syborg boot code and layout data. Each original firmware import restores the Nokia user-side ROM and ROFS from the user's archive and starts with a blank C: drive. Archive extraction uses the packaged 7-Zip WebAssembly module. [Decoder source](https://github.com/arktronic/sevenzip-wasm)
 
 To import a prepared build, ZIP `manifest.json` and its referenced files together and select that ZIP in the same wizard. A prepared build can use the optional factory seed. Build `C-factory-seed.img` from `RM356_31.0.008_020_xxx_U01.uda.fpsx` with qembian's `drive-image` command and add `--factory-seed` to v86's `manifest` command.
 

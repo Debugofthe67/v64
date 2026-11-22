@@ -587,7 +587,7 @@ PAGES_BUILD=build/v86_app.js build/android-import-worker.js build/ios-import-wor
 	build/v86.wasm build/v86-fallback.wasm build/v86-parallel.wasm \
 	build/v86-arm64.wasm build/v86-arm64-fallback.wasm build/v86-arm64-parallel.wasm $(DEVICE_PLUGINS)
 .PHONY: pages
-pages: $(PAGES_BUILD) glbridge ios-install-assets ios-graphics-assets
+pages: bios/symbian-syborg/syborg-5800-components.bin $(PAGES_BUILD) glbridge ios-install-assets ios-graphics-assets
 	node tools/pages_dist.mjs
 
 update_version:
