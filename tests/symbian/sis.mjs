@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { inspect_sis } from "../../src/symbian/sis.js";
-import { make_transfer_card, transfer_card_files, transfer_card_videos } from "../../src/symbian/transfer_card.js";
+import { make_transfer_card, transfer_card_files } from "../../src/symbian/transfer_card.js";
 import { inspect_syborg_xip } from "../../src/symbian/syborg_xip.js";
 import { list_fat16_directory, read_fat16_file } from "../lib/fat32_reader.mjs";
 
@@ -190,30 +190,4 @@ test("a mixed transfer card keeps original names, extensions and contents", asyn
     await assert.rejects(transfer_card_files([new File(["ordinary file"], "bad.sisx")]), /bad.sisx/);
     await assert.rejects(transfer_card_files([new File([], "same.txt"), new File([], "Same.TXT")]), /same name/);
     await assert.rejects(transfer_card_files([new File([], "bad:name")]), /cannot be stored/);
-});
-
-test("the video picker follows fragmented FAT16 chains and rejects loops", async () => {
-    const payload = Buffer.concat([Buffer.alloc(2048, 0xA1), Buffer.alloc(1600, 0xB2)]);
-    const file = new File([payload], "渡口 🎬 录像.MP4");
-    const selected = await transfer_card_files([file, new File(["text"], "readme.txt")]);
-    const card = make_transfer_card(selected, 0x356);
-    const [direct] = await transfer_card_videos(card);
-    assert.equal(direct.name, file.name);
-    assert.equal(direct.open().type, "video/mp4");
-
-    const image = Buffer.from(await card.arrayBuffer());
-    const data_at = (1 + 2 * image.readUInt16LE(22) + 16) * 512;
-    const cluster_bytes = image[13] * 512;
-    // Transfer is cluster 2, the video starts at 3, and the text uses 5.
-    image.copyWithin(data_at + 4 * cluster_bytes, data_at + 2 * cluster_bytes, data_at + 3 * cluster_bytes);
-    image.fill(0, data_at + 2 * cluster_bytes, data_at + 3 * cluster_bytes);
-    image.writeUInt16LE(6, 512 + 3 * 2);
-    image.writeUInt16LE(0xFFFF, 512 + 6 * 2);
-    const files = await transfer_card_videos(new Blob([image]));
-    assert.deepEqual(files.map(item => item.name), [file.name]);
-    assert.deepEqual(Buffer.from(await files[0].open().arrayBuffer()), payload);
-
-    image.writeUInt16LE(3, 512 + 3 * 2);
-    const [damaged] = await transfer_card_videos(new Blob([image]));
-    assert.throws(() => damaged.open(), /damaged file chain/);
 });

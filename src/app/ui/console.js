@@ -13,7 +13,7 @@ import { h, replace, confirm, inform, dialog, download, pick_file, ask_text, men
 import { VMStore } from "../vm_store.js";
 import { read_state, delete_state, write_state, storage_space, state_estimate, machine_digest, hold_machine } from "../vm_state.js";
 import { config_to_options, android_display, uefi_vars_template, TPM_STATE_SIZE } from "../vm_config.js";
-import { import_disk, create_disk, delete_disk, disk_id, disk_file } from "../browser_disks.js";
+import { import_disk, create_disk, delete_disk } from "../browser_disks.js";
 import { combination_scancodes, COMBINATIONS } from "../keys.js";
 import { DEFAULT_FORM, DEFAULT_GRAPHICS_ADAPTER, settings_to_options } from "../../browser/vm_options.js";
 import { bool_arg, start_settings } from "../../browser/query_compat.js";
@@ -22,7 +22,7 @@ import { NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
 import { IOSInstallController } from "../ios_install.js";
 import { show_ios_install } from "./ios_install.js";
-import { transfer_paths, show_file_transfer, play_transfer_video, SYBORG_TRANSFER_HELP } from "./symbian_transfer.js";
+import { transfer_paths, show_file_transfer, SYBORG_TRANSFER_HELP } from "./symbian_transfer.js";
 import { make_transfer_card } from "../../symbian/transfer_card.js";
 import { syborg_controls } from "./syborg_controls.js";
 import { hardware_rows } from "./describe.js";
@@ -753,14 +753,6 @@ function console_ui(layout, emulator, ctx)
         try { await send_files(); }
         finally { transfer_dialog = false; }
     };
-    const open_video = async () => {
-        const sd = ctx.config?.symbian?.sd;
-        if(sd?.kind !== "browser" || transfer_dialog || powered_off) return;
-        transfer_dialog = true;
-        try { await play_transfer_video(await disk_file(disk_id(sd.path))); }
-        catch(error) { await inform("The video could not be opened", error.message); }
-        finally { transfer_dialog = false; }
-    };
     const shutdown_iphone = async () =>
     {
         ctx.set_status("Opening iPhone shutdown...");
@@ -1438,9 +1430,6 @@ function console_ui(layout, emulator, ctx)
             { label: "Theatre mode", id: "view_theatre", checked: theatre, action: () => set_theatre(!theatre) },
             "-",
             { label: "Screenshot", id: "view_screenshot", action: screenshot },
-            ...(syborg && ctx.config?.symbian?.sd?.kind === "browser" ? [
-                { label: "Play Video from E:…", id: "view_symbian_video", action: open_video },
-            ] : []),
         ],
         input: () => [
             { label: "Mouse", id: "input_mouse", checked: mouse_enabled, action: () => set_mouse(!mouse_enabled) },

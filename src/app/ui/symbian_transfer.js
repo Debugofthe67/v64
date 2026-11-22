@@ -1,6 +1,6 @@
 // @ts-check
-import { dialog, h, inform, replace } from "./dom.js";
-import { transfer_card_files, transfer_card_videos } from "../../symbian/transfer_card.js";
+import { h, replace } from "./dom.js";
+import { transfer_card_files } from "../../symbian/transfer_card.js";
 
 /** @param {Awaited<ReturnType<typeof transfer_card_files>>} files */
 export function transfer_paths(files)
@@ -76,55 +76,4 @@ export function show_file_transfer(attach, device_name)
         element.showModal();
         input.focus();
     });
-}
-
-/** @param {Blob} card */
-export async function play_transfer_video(card)
-{
-    const files = await transfer_card_videos(card);
-    const title = "Play video from E:…";
-    if(!files.length)
-    {
-        await inform(title, "Send a video with Send Files… to play it from E:\\Transfer.");
-        return;
-    }
-    const select = /** @type {HTMLSelectElement} */ (h("select", { "aria-label": "Video file" },
-        files.map((file, index) => h("option", { value: String(index) }, file.name))));
-    const player = /** @type {HTMLVideoElement} */ (h("video.symbian-transfer-video", { controls: true, playsinline: true, preload: "metadata" }));
-    const status = h("p", { role: "status" });
-    let url = "";
-    function load()
-    {
-        if(url) URL.revokeObjectURL(url);
-        url = "";
-        status.textContent = "";
-        try
-        {
-            url = URL.createObjectURL(files[select.selectedIndex].open());
-            player.src = url;
-        }
-        catch(error)
-        {
-            player.removeAttribute("src");
-            player.load();
-            status.textContent = error.message;
-        }
-    }
-    player.onerror = () => {
-        status.textContent = "The browser could not play this file. Check the video format and whether the file is still on the transfer card.";
-    };
-    select.onchange = load;
-    load();
-    try
-    {
-        await dialog({ title, body: [h("p", null, "Plays locally using your browser’s video decoder."), select, player, status],
-            focus: select, buttons: [{ label: "Close", value: null }] });
-    }
-    finally
-    {
-        player.pause();
-        player.removeAttribute("src");
-        player.load();
-        if(url) URL.revokeObjectURL(url);
-    }
 }
