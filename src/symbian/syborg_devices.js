@@ -210,17 +210,34 @@ export function syborg_rtc(cpu)
     };
 }
 
-export function syborg_uart(cpu, bus, port, set_irq)
+export function syborg_uart(cpu, bus, port, set_irq, receive_output = null)
 {
     const fifo = [];
     let enabled = 0, tx_address = 0, rx_address = 0, rx_count = 0;
-    const output = byte => bus.send("serial" + port + "-output-byte", byte);
+    let packet = null, packet_at = 0;
+    const output = byte => {
+        receive_output?.(byte);
+        bus.send("serial" + port + "-output-byte", byte);
+    };
     const update = () => set_irq(!!(enabled & (2 | Number(fifo.length !== 0) | Number(rx_count === 0) << 2)));
     function store(byte)
     {
         if(cpu.ram_offset(rx_address, 1) >= 0) cpu.write_blob_physical(Uint8Array.of(byte), rx_address);
         rx_address = rx_address + 1 >>> 0;
         rx_count--;
+    }
+    // The installer sends one bounded packet. Make its bytes available at the
+    // speed the guest consumes them, through the same FIFO or receive DMA.
+    function fill()
+    {
+        if(!packet) return;
+        while(packet_at < packet.length && (rx_count || fifo.length < 16))
+        {
+            const byte = packet[packet_at++];
+            if(rx_count) store(byte);
+            else fifo.push(byte);
+        }
+        if(packet_at === packet.length) { packet = null; packet_at = 0; }
     }
     bus.register("serial" + port + "-input", byte => {
         if(rx_count) store(byte & 0xFF);
@@ -234,6 +251,7 @@ export function syborg_uart(cpu, bus, port, set_irq)
             case 0: return 0xC51D0001;
             case 1: {
                 const byte = fifo.shift();
+                fill();
                 update();
                 return byte === undefined ? 0xFFFFFFFF : byte;
             }
@@ -265,18 +283,29 @@ export function syborg_uart(cpu, bus, port, set_irq)
             case 7:
                 rx_count = value;
                 while(rx_count && fifo.length) store(fifo.shift());
+                fill();
                 update();
                 break;
         }
     }
     syborg_registers(cpu, "Syborg UART " + port, 0xC0006000 + 0x1000 * port, read, write);
     return {
-        reset() { fifo.length = 0; enabled = tx_address = rx_address = rx_count = 0; update(); },
-        get_state() { return [fifo.slice(), enabled, tx_address, rx_address, rx_count]; },
+        queue_packet(bytes)
+        {
+            if(packet) return false;
+            packet = bytes.slice();
+            packet_at = 0;
+            fill();
+            update();
+            return true;
+        },
+        reset() { fifo.length = 0; enabled = tx_address = rx_address = rx_count = packet_at = 0; packet = null; update(); },
+        get_state() { return [fifo.slice(), enabled, tx_address, rx_address, rx_count, packet?.slice(packet_at) ?? null]; },
         set_state(state)
         {
             const [saved] = state;
-            [, enabled, tx_address, rx_address, rx_count] = state;
+            [, enabled, tx_address, rx_address, rx_count, packet = null] = state;
+            packet_at = 0;
             fifo.splice(0, fifo.length, ...saved);
             update();
         },

@@ -1,0 +1,5 @@
+[project]
+name = "v86_install"
+kind = "e32-import"
+architecture = "armv6"
+uid3 = 0xe0860531

@@ -2819,6 +2819,38 @@ V86.prototype.symbian_set_touch = function(x, y, pressed)
 V86.prototype["symbian_set_touch"] = V86.prototype.symbian_set_touch;
 
 /**
+ * Open a package in E:\INSTALL with the original Symbian installer.
+ * @param {string} name
+ * @return {!Promise<number>} Symbian's status for opening the installer
+ */
+V86.prototype.symbian_install_package = async function(name)
+{
+    if(this.machine_type !== SYBORG_MACHINE || typeof name !== "string" || name.length > 245 ||
+        /[\x00-\x1F"*/:<>?\\|]/.test(name) || !/\.sisx?$/i.test(name))
+        throw new Error("Choose a SIS or SISX from E:\\INSTALL. Names can contain up to 245 characters.");
+    const packet = new Uint8Array(512), view = new DataView(packet.buffer);
+    view.setUint16(0, name.length, true);
+    for(let i = 0; i < name.length; i++) view.setUint16(2 + i * 2, name.charCodeAt(i), true);
+    const id = this.symbian_install_id = (this.symbian_install_id || 0) + 1;
+    return new Promise((resolve, reject) => {
+        const on_result = response => {
+            if(response[0] !== id) return;
+            clearTimeout(timeout);
+            this.remove_listener("symbian-install-result", on_result);
+            resolve(response[1]);
+        };
+        const timeout = setTimeout(() => {
+            this.remove_listener("symbian-install-result", on_result);
+            reject(new Error("The phone did not respond to the install request. Check the phone before trying again."));
+        }, 20000);
+        this.add_listener("symbian-install-result", on_result);
+        this.bus.send("symbian-install-package", [id, packet]);
+    });
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_install_package"] = V86.prototype.symbian_install_package;
+
+/**
  * Rotate the simulated N90's gravity vector, in clockwise degrees from portrait.
  * @param {number} angle 0, 90, 180, or 270
  */

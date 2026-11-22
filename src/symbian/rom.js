@@ -243,13 +243,14 @@ export function read_eka2_rom_directory(bytes, header)
     offset(header.rom_root_directory, 12);
     const seen = new Set();
     const files = new Map();
+    const folders = new Map();
     const ranges = [];
     const decoder = new TextDecoder("utf-16le", { fatal: true });
     const root = u32(bytes, root_list + 8);
     const directories = [{ address: root, path: "" }];
     while(directories.length)
     {
-        const { address, path } = directories.pop();
+        const { address, path, entry } = directories.pop();
         if(address % 4 || seen.has(address)) invalid("misaligned or repeated ROM directory");
         seen.add(address);
         const at = offset(address, 4);
@@ -280,7 +281,7 @@ export function read_eka2_rom_directory(bytes, header)
             if(attr & 0x10)
             {
                 subdirectories.add(entry);
-                directories.push({ address: data_address, path: key + "/" });
+                directories.push({ address: data_address, path: key + "/", entry: header.rom_base + pos });
             }
             else
             {
@@ -304,7 +305,8 @@ export function read_eka2_rom_directory(bytes, header)
             if(!expected.delete(index)) invalid("invalid ROM directory index");
         }
         ranges.push({ start: address, end: address + 4 + size + table_size });
+        folders.set(path, { address, entry, size, subdirs: subdirectory_count, files: names.size - subdirectory_count });
     }
     ranges.push({ start: header.rom_root_directory, end: header.rom_root_directory + 12 });
-    return { root, files, ranges };
+    return { root, files, folders, ranges };
 }

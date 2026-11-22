@@ -10,6 +10,8 @@ import { syborg_graphics } from "./syborg_graphics.js";
 import { validate_syborg_artifacts } from "./syborg_import.js";
 import { syborg_keyboard, syborg_pointer } from "./syborg_input.js";
 import { enable_syborg_isc_data } from "./syborg_isc_data.js";
+import { syborg_install_channel } from "./syborg_install_channel.js";
+import { syborg_install_rom } from "./syborg_install_rom.js";
 import { syborg_modem } from "./syborg_modem.js";
 import { blank_syborg_card, syborg_nvmemory } from "./syborg_nvmemory.js";
 import { SYBORG_DIAGNOSTIC, SYBORG_PROFILE, SYBORG_MIB } from "./syborg_profile.js";
@@ -73,9 +75,11 @@ export function syborg_boot_files(settings)
     const platform_dtb = devicetree.slice();
     const boot_dtb = validation ? syborg_boot_dtb(devicetree, profile.ram_size) : platform_dtb;
     const network = settings.symbian["network"] === true;
-    const boot_rom = rom.slice();
+    const install_rom = validation && media["nvmemory2"] && settings.symbian["install_bridge"] === true ?
+        syborg_install_rom(rom, validation.xip, BOOT_DTB_ADDRESS - profile.rom_address) : null;
+    const boot_rom = install_rom || rom.slice();
     if(network && validation) enable_syborg_isc_data(boot_rom, validation.xip);
-    return { profile, rom: boot_rom, rofs, devicetree: platform_dtb, boot_dtb, disks, identity, network };
+    return { profile, rom: boot_rom, rofs, devicetree: platform_dtb, boot_dtb, disks, identity, network, install_bridge: !!install_rom };
 }
 
 export function load_syborg_rom(cpu, boot)
@@ -151,6 +155,9 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
     const timer = syborg_timer(cpu, irq.source(1));
     const audio = syborg_audio(cpu, bus);
     const modem = syborg_modem(cpu, irq, boot.network, bus, audio);
+    const install = syborg_install_channel(bus, bytes => ports[1].queue_packet(bytes), boot.install_bridge);
+    const ports = [0, 1, 2, 3].map(port => syborg_uart(cpu, bus, port, irq.source(5 + port),
+        port === 1 && boot.install_bridge ? install.receive : null));
     const [nvmemory, nvmemory2] = boot.disks;
     const disks = [
         syborg_nvmemory(cpu, 0xC0010000, "NVMemory C:", nvmemory, irq.source(12)),
@@ -160,7 +167,7 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
         irq, timer, syborg_rtc(cpu),
         syborg_keyboard(cpu, bus, irq.source(2)), syborg_pointer(cpu, bus, irq.source(3)),
         syborg_framebuffer(cpu, hub, irq.source(4)),
-        ...[0, 1, 2, 3].map(port => syborg_uart(cpu, bus, port, irq.source(5 + port))), modem, ...disks,
+        ...ports, modem, ...disks,
     ];
     return {
         nvmemory, nvmemory2,
@@ -170,11 +177,11 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
             const next = Math.min(timer.poll(now), hub.timer(now), audio.poll(now), modem.poll(now));
             return !was_asserted && irq.asserted() ? 0 : next;
         },
-        reset() { for(const device of devices) device.reset?.(); gpu?.reset(); audio.reset(); },
+        reset() { for(const device of devices) device.reset?.(); gpu?.reset(); audio.reset(); install.reset(); },
         get_state()
         {
             return [boot.identity, devices.map(device => device.get_state()), gpu?.get_state() ?? null,
-                boot.network, audio.get_state()];
+                boot.network, audio.get_state(), install.get_state()];
         },
         check_state(state)
         {
@@ -192,6 +199,7 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
             devices.forEach((device, index) => device.set_state(state[1][index]));
             gpu?.set_state(state[2]);
             audio.set_state(state[4]);
+            install.set_state(state[5]);
         },
         network_status() { return modem.network_status(); },
         display: hub,

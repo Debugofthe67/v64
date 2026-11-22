@@ -118,7 +118,7 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
             "nand_boot": o.ios.nand_boot, "network": o.ios.network },
         "symbian": o["symbian"] && Object.assign(Object.fromEntries(SYBORG_BOOT_FILES.map(key => [key, file(o["symbian"][key])])),
             { "manifest_sha256": o["symbian"]["manifest_sha256"], "webgpu": o["symbian"]["webgpu"],
-                "network": o["symbian"]["network"] }),
+                "network": o["symbian"]["network"], "install_bridge": o["symbian"]["install_bridge"] }),
         "kernel": file(o.kernel), "dtb": file(o.dtb),
         // (docs/plan/android-images-plan.md I2: the bootloader runs in the worker, beside the disk)
         "android": o.android && { "device": o.android.device, "gpu_mode": o.android.gpu_mode, "selinux": o.android.selinux,

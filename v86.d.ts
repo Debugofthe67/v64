@@ -213,6 +213,8 @@ export interface V86SyborgMedia {
     nvmemory: V86SyborgDisk;
     /** E: card. Omit it for a blank 1 GiB card whose writes stay in memory. */
     nvmemory2?: V86SyborgDisk;
+    /** Start the interactive installer bridge for an attached transfer card. Defaults to false. */
+    install_bridge?: boolean;
 }
 
 /** Constructor option contract for the Syborg board. */
@@ -1782,6 +1784,8 @@ export class V86 {
     symbian_send_key(code: number, pressed: boolean): void;
     /** Set the touch contact in the 360×640 Syborg screen plane. */
     symbian_set_touch(x: number, y: number, pressed: boolean): void;
+    /** Open a package by filename in E:\INSTALL. Resolves with its Symbian launch status. */
+    symbian_install_package(name: string): Promise<number>;
 
     /** Install an unencrypted ARMv7 IPA using the native iOS 6 helper. */
     ios_install_status(): Promise<IOSInstallStatus>;
