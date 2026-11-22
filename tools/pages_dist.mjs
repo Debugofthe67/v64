@@ -25,6 +25,11 @@ import { SYBORG_COMPONENTS_FILE } from "../src/symbian/syborg_compose.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const output = process.argv[2] || join(root, "build/pages");
+const syborg_asset = "bios/symbian-syborg/" + SYBORG_COMPONENTS_FILE;
+const syborg_components = await read_file(join(root, syborg_asset));
+if(create_hash("sha256").update(syborg_components).digest("hex") !== "f9e50b411fe546e48107cdea387cca4bb7e6d8f9060d408bc1fcd14e8b478ebf")
+    throw new Error(syborg_asset + " does not match the verified Nokia 5800 release asset");
+
 const graphics = JSON.parse(await read_file(join(root, "build/glbridge/manifest.json"), "utf8"));
 const ios_graphics = read_graphics_asset(root);
 
@@ -35,6 +40,7 @@ const FILES = [
     "build/ios-import-worker.js", "build/ios-import-worker.js.map", "build/ios-install-worker.js", "build/ios-install-worker.js.map", "build/libv86.mjs", "build/cpu-worker.js", "build/vcpu-worker.js", "build/xterm.js",
     "build/symbian-import-worker.js", "build/symbian-import-worker.js.map",
     "build/symbian-archive.js", "build/symbian-archive.wasm", "build/symbian-archive-LICENSE.txt",
+    "bios/symbian-syborg/README.md", "bios/symbian-syborg/QEMBIAN-LICENSE.txt",
     ...["v86-app-agent","libv86appbootstrap.dylib","libv86install.dylib"].map(n=>"build/ios-install-fixtures/"+n),
     "bios/ios-guest/README.md", "bios/ios-guest/manifest.json",
     "build/v86.wasm", "build/v86-fallback.wasm", "build/v86-parallel.wasm",
@@ -61,15 +67,7 @@ for(const name of FILES)
     }
 }
 
-const symbian_components = "build/" + SYBORG_COMPONENTS_FILE;
-try
-{
-    files.set(symbian_components, await read_file(join(root, symbian_components)));
-}
-catch(error)
-{
-    if(error.code !== "ENOENT") throw error;
-}
+files.set("build/" + SYBORG_COMPONENTS_FILE, syborg_components);
 
 // Always publish the verified release adapter, even for a direct dist call
 // or when a different development adapter remains in the local build tree.
