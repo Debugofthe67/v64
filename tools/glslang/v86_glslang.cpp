@@ -206,6 +206,47 @@ std::unique_ptr<glslang::TShader> check_shader(const Source& source, bool& ok)
     return shader;
 }
 
+using UniformPrecisions = std::map<std::string, glslang::TPrecisionQualifier>;
+
+bool check_uniform_precision(const glslang::TType& type, const std::string& path,
+    UniformPrecisions& precisions, std::string& log)
+{
+    if(type.isStruct())
+    {
+        for(const auto& field : *type.getStruct())
+        {
+            if(!check_uniform_precision(*field.type, path + "." + field.type->getFieldName().c_str(), precisions, log)) return false;
+        }
+        return true;
+    }
+    const auto precision = type.getQualifier().precision;
+    if(precision == glslang::EpqNone) return true;
+    const auto entry = precisions.emplace(path, precision);
+    if(entry.first->second == precision) return true;
+    log += "ERROR: Linking: precision of uniform " + path + " differs between shaders\n";
+    return false;
+}
+
+// The front end has already expanded macros and resolved default precisions.
+// Check struct members as well, which glslang's cross-stage link leaves out.
+bool check_uniform_precisions(const std::vector<std::unique_ptr<glslang::TShader>>& shaders, std::string& log)
+{
+    UniformPrecisions precisions;
+    for(const auto& shader : shaders)
+    {
+        const auto* objects = shader->getIntermediate()->findLinkerObjects();
+        if(!objects) continue;
+        for(auto* node : objects->getSequence())
+        {
+            const auto* symbol = node->getAsSymbolNode();
+            if(!symbol || symbol->getQualifier().storage != glslang::EvqUniform ||
+                symbol->getType().getBasicType() == glslang::EbtBlock) continue;
+            if(!check_uniform_precision(symbol->getType(), symbol->getName().c_str(), precisions, log)) return false;
+        }
+    }
+    return true;
+}
+
 /** A shader of the code pass: Vulkan's relaxed rules, SPIR-V 1.0 */
 std::unique_ptr<glslang::TShader> code_shader(const Source& source, bool& ok)
 {
@@ -332,6 +373,7 @@ int v86_glslang_link(const uint8_t* packed, uint32_t length, uint32_t flags)
         program.addShader(shaders.back().get());
     }
     (void)flags;
+    if(ok && !check_uniform_precisions(shaders, log)) ok = false;
     if(ok && !program.link(EShMsgDefault)) ok = false;
     log += program.getInfoLog();
     output = "{\"ok\":";

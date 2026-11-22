@@ -15,6 +15,9 @@ import { preset } from "../guest_presets.js";
 import { probe, LOCAL_SERVICE } from "../disk_service_client.js";
 import { delete_state, hold_machine, running_machines, storage_space } from "../vm_state.js";
 import { reset_ios_data } from "../ios_import.js";
+import { MACHINE_TYPES } from "../../machine_options.js";
+import { recover_symbian_imports } from "../symbian_import.js";
+import { SYBORG_DEVICE } from "../../symbian/catalog.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Image} Image */
@@ -147,6 +150,7 @@ export async function open_library(root)
 {
     document.title = "Virtual machines - v86";
     const store = await VMStore.open();
+    await recover_symbian_imports(store).catch(error => console.warn("Firmware import cleanup will retry next time", error));
     let configs = await store.list();
     let service = await current_service(store);
     /** @type {Set<string>} the machines running in a tab now */
@@ -168,7 +172,7 @@ export async function open_library(root)
     {
         const config = await open_wizard({ store, service, names: configs.map(c => c.name) });
         if(!config) return;
-        await reload((await store.put(config)).id);
+        await reload(config.symbian ? config.id : (await store.put(config)).id);
     };
 
     const edit = async config =>
@@ -187,9 +191,27 @@ export async function open_library(root)
             }
             finally { lock.release(); }
         } : null;
-        const edited = await open_settings(config, { store, service, erase_ios });
+        const edited = await open_settings(config, { store, service, erase_ios, persist: async (draft, eject_card) => {
+            if(!draft.symbian) return store.put(draft);
+            const lock = await hold_machine(draft.id);
+            if(!lock) throw new Error("Power off the " + SYBORG_DEVICE.name + " before changing these settings");
+            try
+            {
+                return await store.update(draft.id, current => {
+                    if(!current.symbian || current.modified !== config.modified || current.symbian.sd?.path !== config.symbian.sd?.path)
+                        throw new Error("The virtual machine changed in another tab. Reopen its settings.");
+                    if(!eject_card) return draft;
+                    if(current.suspended || draft.suspended)
+                        throw new Error("Reopen the settings after the VM has shut down and any suspended state is cleared");
+                    const next = { ...draft.symbian };
+                    delete next.sd;
+                    return { ...draft, symbian: next };
+                });
+            }
+            finally { lock.release(); }
+        } });
         if(!edited) return;
-        await reload((await store.put(edited)).id);
+        await reload(edited.id);
     };
 
     const import_file = async () =>
@@ -223,7 +245,9 @@ export async function open_library(root)
             tabindex: "0",
             onclick: () => { selected = c.id; render(); },
             onkeydown: e => { if(e.key === "Enter" || e.key === " ") { selected = c.id; render(); } },
-        }, h("span.vm-name", null, c.name), c.ios ? h("span.vm-state", null, "iPhone 4 · iOS 6.1.3") : null,
+        }, h("span.vm-name", null, c.name), c.ios ? h("span.vm-state", null, "iPhone 4 · iOS 6.1.3") :
+            c.symbian ? h("span.vm-state", null, c.machine.type === SYBORG_DEVICE.id ?
+                SYBORG_DEVICE.name + " (" + SYBORG_DEVICE.model + ") · " + c.symbian.sw_version : "Unavailable Symbian machine") : null,
         h("span.vm-state", null, running.has(c.id) ? "Running in another tab" :
             c.suspended ? "Suspended" : "Powered off"))));
         const sidebar = h("aside.library-list", null,
@@ -258,7 +282,7 @@ export async function open_library(root)
         {
             const name = await ask_text("Rename", "Name", config.name);
             if(name === undefined || !name.trim() || name === config.name) return;
-            await store.put(Object.assign({}, config, { name: name.trim() }));
+            await store.update(config.id, current => ({ ...current, name: name.trim() }));
             await reload(config.id);
         };
         const remove = async () =>
@@ -273,28 +297,48 @@ export async function open_library(root)
             if(!await confirm("Delete " + config.name + "?", "Its settings" + (config.suspended ? ", its suspended state" : "") +
                 (own.length ? " and its browser disk" + (own.length > 1 ? "s" : "") : "") + " are deleted from this browser. " +
                 "Images on web sites, on your computer or on a disk service stay where they are.", "Delete", true)) return;
+            const lock = config.symbian ? await hold_machine(config.id) : null;
+            if(config.symbian && !lock)
+            {
+                await inform("Not deleted", "Power off the " + config.name + " before deleting it.");
+                return;
+            }
             try
             {
+                if(config.symbian && (await store.get(config.id))?.modified !== config.modified)
+                    throw new Error("The virtual machine changed. Open its library entry and confirm deletion again.");
                 for(const path of own) await delete_disk(disk_id(path));
+                await delete_state(config.id);
+                await store.delete(config.id);
             }
             catch(e)
             {
                 await inform("Not deleted", e.message);
                 return;
             }
-            await delete_state(config.id);
-            await store.delete(config.id);
+            finally { lock?.release(); }
             await reload(undefined);
         };
         const discard = async () =>
         {
             if(!await confirm("Discard the suspended state?", "The next power on starts " + config.name + " afresh: what it had in its memory is lost.",
                 "Discard", true)) return;
-            await delete_state(config.id);
-            await store.put(Object.assign({}, config, { suspended: null }));
+            const lock = config.symbian ? await hold_machine(config.id) : null;
+            if(config.symbian && !lock)
+            {
+                await inform("Suspend state kept", "Power off the " + config.name + " before discarding its suspended state.");
+                return;
+            }
+            try
+            {
+                await delete_state(config.id);
+                await store.update(config.id, current => ({ ...current, suspended: null }));
+            }
+            finally { lock?.release(); }
             await reload(config.id);
         };
         const p = config.template ? preset(config.template) : undefined;
+        const unavailable = !MACHINE_TYPES.includes(config.machine.type);
         return h("div.summary", null,
             h("h1", null, config.name),
             config.notes ? h("p.notes", null, config.notes) : null,
@@ -302,11 +346,12 @@ export async function open_library(root)
             config.suspended ? h("p.note#suspended_note", null, "Suspended " + new Date(config.suspended.time).toLocaleString() + " (" +
                 format_size(config.suspended.size) + " in this browser's storage)") : null,
             running.has(config.id) ? h("p.note", null, "Running in another tab.") : null,
+            unavailable ? h("p.note", null, "This machine type is unavailable in this version. You can still export its settings and browser disks.") : null,
             h("div.summary-actions", null,
-                h("button.primary#power_on", { onclick: power_on }, config.suspended ? "Resume" : "Power on"),
-                config.suspended ? h("button#discard_state", { onclick: discard }, "Discard the suspended state…") : null,
-                h("button#edit_vm", { onclick: () => edit(config) }, "Edit settings…"),
-                h("button#rename_vm", { onclick: rename }, "Rename…"),
+                h("button.primary#power_on", { onclick: power_on, disabled: unavailable }, config.suspended ? "Resume" : "Power on"),
+                config.suspended && !unavailable ? h("button#discard_state", { onclick: discard }, "Discard the suspended state…") : null,
+                h("button#edit_vm", { onclick: () => edit(config), disabled: unavailable }, "Edit settings…"),
+                h("button#rename_vm", { onclick: rename, disabled: unavailable }, "Rename…"),
                 h("button#export_vm", { onclick: () => download([export_config(config)], export_file_name(config), "application/json") }, "Export"),
                 h("button.danger#delete_vm", { onclick: remove }, "Delete…")),
             h("table.hardware", null, h("tbody", null, hardware_rows(config).map(([name, value]) => h("tr", null, h("th", null, name), h("td", null, value))))),

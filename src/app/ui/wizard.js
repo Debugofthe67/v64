@@ -22,6 +22,9 @@ import { inspect_android_package, import_android_package, import_android_package
 import { ANDROID_CATALOG } from "../android_catalog.js";
 import { N90_RESTORE, import_ios_package, inspect_ios_package, verify_ios_keys } from "../ios_import.js";
 import { new_ios_config } from "../vm_config.js";
+import { check_syborg_package, import_syborg_package } from "../symbian_import.js";
+import { SYBORG_DEVICE, SYMBIAN_DEVICES } from "../../symbian/catalog.js";
+import { SYBORG_PROFILE } from "../../symbian/syborg_profile.js";
 import { MAX_ARRAY_BUFFER_SIZE_MB } from "../../browser/vm_options.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
@@ -36,12 +39,14 @@ const SOURCES = [
     ["direct", "A kernel and initrd (and the system's CD as a read-only disk)"],
     ["android", "An Android image package (.zip)"],
     ["ios", "iOS (.ipsw)"],
+    ["symbian", "Symbian"],
     ["later", "Install the system later"],
 ];
 
 /**
  * The wizard; resolves with the new configuration (stored by the caller) or null when cancelled
- * @param {{store: {put_handle: (handle: any) => Promise<string>, get_pref?: any, put_pref?: any}, service: Service | null, names: string[]}} options
+ * @param {{store: {put_handle: (handle: any) => Promise<string>, get_pref?: any, put_pref?: any, put?: (config: VMConfig) => Promise<VMConfig>},
+ *     service: Service | null, names: string[]}} options
  *     names: the library's
  * @return {Promise<VMConfig | null>}
  */
@@ -72,18 +77,28 @@ export function open_wizard(options)
             ios: { name: unique(IOS_NAME), file: /** @type {File | null} */ (null), library: /** @type {File | null} */ (null),
                 checked: false, keys: "", key_file: "", keys_ok: false, acceleration: true, network: true, checking: /** @type {AbortController | null} */ (null),
                 results: /** @type {Array<[string, boolean, string]>} */ ([]) },
+            symbian: { device: "", name: unique(SYBORG_DEVICE.name), file: /** @type {File | null} */ (null),
+                report: /** @type {any} */ (null), checking: /** @type {AbortController | null} */ (null) },
             progress: "",
             /** @type {AbortController | null} the import going on (its Cancel) */
             importing: null,
         };
         const element = /** @type {HTMLDialogElement} */ (h("dialog.wizard-dialog", { "aria-label": "New virtual machine" }));
+        const symbian_archive = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: ".zip,.rar,.7z",
+            "aria-label": "Symbian firmware archive", "data-symbian-focus": "archive" }));
+        symbian_archive.onchange = () => {
+            const file = symbian_archive.files?.[0];
+            if(file) void check_symbian_archive(file);
+        };
         const close = value => {
             state.ios.checking?.abort();
+            state.symbian.checking?.abort();
             state.ios.keys = "";
             element.close(); element.remove(); resolve(value);
         };
         element.addEventListener("cancel", e => { e.preventDefault(); if(state.importing) state.importing.abort(); else close(null); });
-        const step_titles = () => state.source === "ios" ? ["Source", "Keys", "Name", "NAND", "Summary"] : ["Source", "System", "Name", "Hard disk", "Summary"];
+        const step_titles = () => state.source === "symbian" ? ["Source", "Name", "Summary"] :
+            state.source === "ios" ? ["Source", "Keys", "Name", "NAND", "Summary"] : ["Source", "System", "Name", "Hard disk", "Summary"];
 
         function unique(name)
         {
@@ -156,6 +171,28 @@ export function open_wizard(options)
         {
             state.error = "";
             let url;
+            if(state.source === "symbian")
+            {
+                const s = state.symbian;
+                if(!s.report?.media) return;
+                const abort = state.importing = new AbortController();
+                state.progress = "Preparing " + SYBORG_DEVICE.name + " firmware…";
+                render();
+                try
+                {
+                    const config = await import_syborg_package(s.file, s.report, s.name.trim(), state.notes,
+                        { store: options.store, signal: abort.signal, progress: symbian_progress });
+                    close(config);
+                }
+                catch(error)
+                {
+                    state.error = abort.signal.aborted ? "The import was cancelled" : error.message;
+                    state.progress = "";
+                    state.importing = null;
+                    render();
+                }
+                return;
+            }
             const new_disk = !["disk", "android", "ios"].includes(state.source) && state.disk === "new";
             if(state.source === "ios")
             {
@@ -261,19 +298,26 @@ export function open_wizard(options)
 
         const source_step = () =>
         {
-            const radios = SOURCES.map(([value, text]) => h("label.check", null,
+            const radios = SOURCES.map(([value, text]) => [h("label.check", null,
                 h("input", { type: "radio", name: "source", value, checked: state.source === value, onchange: () => {
                     if(state.source === "ios")
                     {
                         state.ios.checking?.abort();
                         state.ios.checking = null;
                     }
+                    if(state.source === "symbian")
+                    {
+                        state.symbian.checking?.abort();
+                        state.symbian.checking = null;
+                        state.symbian.report = null;
+                    }
                     state.source = value; state.image = null; state.error = ""; state.progress = "";
-                    if(value !== "ios") choose_preset(state.preset);
+                    if(value !== "ios" && value !== "symbian") choose_preset(state.preset);
+                    if(value === "symbian" && state.symbian.file) void check_symbian_archive(state.symbian.file);
                     render();
                     /** @type {HTMLInputElement | null} */ (element.querySelector("input[name=source]:checked"))?.focus();
                 } }),
-                " " + text));
+                " " + text), value === "symbian" && state.source === value ? symbian_picker() : null]);
             const pickers = [];
             if(state.source === "cdrom" || state.source === "floppy" || state.source === "disk")
             {
@@ -302,8 +346,72 @@ export function open_wizard(options)
                     image_picker({ label: "The system's CD (optional)", role: "cdrom", optional: true, image: state.image, store: options.store,
                         on_change: image => { state.image = image; render(); } }));
             }
-            return [h("fieldset", null, h("legend", null, "Where does the system come from?"), radios), pickers];
+            return [h(state.source === "symbian" ? "fieldset.symbian-source" : "fieldset", null,
+                h("legend", null, "Where does the system come from?"), radios), pickers];
         };
+
+        function symbian_progress(text)
+        {
+            state.progress = text;
+            const status = element.querySelector(".wizard-status");
+            if(status) status.textContent = text;
+        }
+
+        async function check_symbian_archive(file)
+        {
+            const s = state.symbian;
+            s.checking?.abort();
+            const checking = s.checking = new AbortController();
+            s.file = file;
+            s.report = null;
+            state.error = "";
+            state.progress = "Checking the firmware archive…";
+            render();
+            try
+            {
+                const report = await check_syborg_package(file, { signal: checking.signal, progress: symbian_progress });
+                if(s.checking === checking) s.report = report;
+            }
+            catch(error)
+            {
+                if(s.checking === checking)
+                {
+                    s.file = null;
+                    state.error = error.message;
+                }
+            }
+            finally
+            {
+                if(s.checking === checking)
+                {
+                    s.checking = null;
+                    state.progress = "";
+                    render();
+                }
+            }
+        }
+
+        function symbian_picker()
+        {
+            const s = state.symbian;
+            const device = h("select", { "aria-label": "Symbian device", "data-symbian-focus": "device", onchange: e => {
+                s.checking?.abort();
+                s.checking = null;
+                s.device = e.currentTarget.value;
+                s.file = null;
+                s.report = null;
+                state.error = "";
+                state.progress = "";
+                render();
+            } }, h("option", { value: "", selected: !s.device }, "Choose a device…"),
+            SYMBIAN_DEVICES.map(device => h("option", { value: device.id, selected: s.device === device.id }, device.family + " → " + device.name + " (" + device.model + ")")));
+            if(!s.file) symbian_archive.value = "";
+            if(!s.device) return h("div.indent", null, device);
+            return h("div.indent", null, device, symbian_archive,
+                s.report ? h("p.note", null, "Verified firmware " + s.report.firmware_version) :
+                    h("p.note", null, "Choose the Nokia 5800 RM-356 " + SYBORG_PROFILE.firmware_version +
+                        " ZIP, RAR or 7z. v86 extracts and prepares it in this browser."));
+        }
 
         function ios_progress(stage, percent)
         {
@@ -560,9 +668,16 @@ export function open_wizard(options)
 
         const name_step = () =>
         {
-            const machine = state.source === "ios" ? state.ios : state;
-            const name = /** @type {HTMLInputElement} */ (h("input", { type: "text", value: machine.name, size: 40, "aria-label": "Name" }));
-            name.addEventListener("input", () => { machine.name = name.value; });
+            const machine = state.source === "ios" ? state.ios : state.source === "symbian" ? state.symbian : state;
+            const name = /** @type {HTMLInputElement} */ (h("input", { type: "text", value: machine.name, size: 40, maxlength: 200, "aria-label": "Name" }));
+            name.addEventListener("input", () => {
+                machine.name = name.value;
+                if(state.source === "symbian")
+                {
+                    const button = /** @type {HTMLButtonElement} */ (element.querySelector(".wizard-footer button.primary"));
+                    button.disabled = !machine.name.trim();
+                }
+            });
             const notes = /** @type {HTMLTextAreaElement} */ (h("textarea", { rows: 4, cols: 40, "aria-label": "Notes" }));
             notes.value = state.notes;
             notes.addEventListener("input", () => { state.notes = notes.value; });
@@ -679,6 +794,20 @@ export function open_wizard(options)
 
         const summary_step = () =>
         {
+            if(state.source === "symbian")
+            {
+                const s = state.symbian, media = s.report.media;
+                const required = /** @type {Array<{size: number}>} */ (Object.values(media)).reduce((sum, disk) => sum + disk.size, 0);
+                const rows = [
+                    ["Device", SYBORG_DEVICE.family + " · " + SYBORG_DEVICE.name + " (" + SYBORG_DEVICE.model + ")"],
+                    ["Firmware", s.report.firmware_version],
+                    ["Phone memory (C:)", format_size(media.phone.size) + (s.report.seed === "factory" ? " · Factory seed" : " · Blank seed")],
+                    ["Transfer card (E:)", "Add a SIS/SISX transfer card from the console"],
+                    ["Browser storage", format_size(required)],
+                ];
+                return [h("h3", null, s.name.trim()), h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
+                    h("tr", null, h("th", null, label), h("td", null, value)))))];
+            }
             const config = build();
             if(state.source === "ios") return [
                 h("h3", null, config.name),
@@ -699,6 +828,13 @@ export function open_wizard(options)
         {
             if(state.step === 0)
             {
+                if(state.source === "symbian")
+                {
+                    const s = state.symbian;
+                    if(!s.device) return "Choose a Symbian device";
+                    if(s.checking) return "Checking the firmware…";
+                    return s.report?.media ? "" : "Choose the Nokia 5800 firmware archive";
+                }
                 if(state.source === "ios") return state.ios.checked ? "" : state.ios.checking ? "Checking the IPSW…" : "Choose the supported IPSW";
                 if(state.source === "direct") return state.direct.bzimage ? "" : "Choose the kernel";
                 if(state.source === "android")
@@ -719,6 +855,7 @@ export function open_wizard(options)
                 if(state.source !== "later" && !state.image) return "Choose the image";
                 if(state.image && state.image.kind === "url" && !state.image.url) return "Give the image's URL";
             }
+            if(state.source === "symbian") return state.step === 1 && !state.symbian.name.trim() ? "Give the machine a name" : "";
             if(state.step === 1 && state.source === "ios" && !state.ios.keys_ok)
                 return state.ios.keys ? "Verify the firmware keys" : "Choose the keys JSON file";
             if(state.step === 2 && !(state.source === "ios" ? state.ios.name : state.name).trim()) return "Give the machine a name";
@@ -728,8 +865,10 @@ export function open_wizard(options)
 
         function render()
         {
+            const symbian_focus = element.querySelector("[data-symbian-focus]:focus")?.getAttribute("data-symbian-focus");
             const steps = step_titles();
-            const body = [source_step, system_step, name_step, disk_step, summary_step][state.step]();
+            const body = (state.source === "symbian" ? [source_step, name_step, summary_step] :
+                [source_step, system_step, name_step, disk_step, summary_step])[state.step]();
             const blocked = ready();
             const last = state.step === steps.length - 1;
             replace(element, h("div.wizard", null,
@@ -742,9 +881,11 @@ export function open_wizard(options)
                     state.importing ? h("button", { type: "button", onclick: () => state.importing && state.importing.abort() }, "Cancel import") : [
                         h("button", { type: "button", onclick: () => close(null) }, "Cancel"),
                         h("button", { type: "button", disabled: state.step === 0, onclick: () => { state.step--; render(); } }, "Back"),
-                        last ? [state.source === "ios" ? null : h("button", { type: "button", onclick: () => finish(true) }, "Customize hardware…"),
+                        last ? [["ios", "symbian"].includes(state.source) ? null : h("button", { type: "button", onclick: () => finish(true) }, "Customize hardware…"),
                             h("button.primary", { type: "button", onclick: () => finish(false) }, "Finish")] :
                             h("button.primary", { type: "button", disabled: !!blocked, onclick: () => { state.step++; render(); } }, "Next")])));
+            if(symbian_focus)
+                /** @type {HTMLElement | null} */ (element.querySelector(`[data-symbian-focus="${symbian_focus}"]`))?.focus({ preventScroll: true });
         }
 
         document.body.append(element);

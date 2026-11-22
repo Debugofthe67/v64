@@ -96,6 +96,7 @@ struct Region {
 }
 
 pub struct AddressSpace {
+    ram_base: u64,
     ram_size: u64,
     /// the non-RAM regions, sorted by base, not overlapping
     regions: Vec<Region>,
@@ -103,6 +104,7 @@ pub struct AddressSpace {
 }
 
 static mut BUS: AddressSpace = AddressSpace {
+    ram_base: RAM_BASE,
     ram_size: 0,
     regions: Vec::new(),
     generation: 0,
@@ -174,6 +176,8 @@ fn bus_mut() -> &'static mut AddressSpace { unsafe { &mut *(&raw mut BUS) } }
 
 impl AddressSpace {
     #[inline(always)]
+    pub fn ram_base(&self) -> u64 { self.ram_base }
+    #[inline(always)]
     pub fn ram_size(&self) -> u64 { self.ram_size }
     #[inline(always)]
     pub fn generation(&self) -> u32 { self.generation }
@@ -181,7 +185,7 @@ impl AddressSpace {
     /// What `pa` is
     #[inline]
     pub fn lookup(&self, pa: u64) -> Lookup {
-        let offset = pa.wrapping_sub(RAM_BASE);
+        let offset = pa.wrapping_sub(self.ram_base);
         if offset < self.ram_size {
             return Lookup::Ram {
                 backing: offset as u32,
@@ -300,7 +304,7 @@ impl AddressSpace {
             return false;
         }
         // (not over RAM or another region)
-        if base < RAM_BASE + self.ram_size && end > RAM_BASE {
+        if base < self.ram_base + self.ram_size && end > self.ram_base {
             return false;
         }
         let i = self.regions.partition_point(|r| r.base < base);
@@ -521,7 +525,7 @@ pub unsafe fn a64_set_cores(cores: u32) -> bool {
         b.unmap(crate::aarch64::gic::GICD_BASE);
         b.unmap(crate::aarch64::gic::GICR_BASE);
         b.unmap(crate::aarch64::gic::GICC_BASE);
-        if crate::aarch64::cpu::cortex_a8() {
+        if crate::aarch64::cpu::a32_direct_interrupts() {
             return true;
         }
         b.map(
@@ -675,16 +679,23 @@ pub unsafe fn a64_allocate_memory(size: u32) -> u32 {
 
 /// RAM of `size` bytes at 0x4000_0000, backed by the start of guest memory
 #[no_mangle]
-pub unsafe fn a64_bus_set_ram(size: u32) -> bool {
+pub unsafe fn a64_bus_set_ram(size: u32) -> bool { a64_bus_set_ram_at(size, RAM_BASE as u32) }
+
+/// The board's contiguous main RAM, backed by the start of guest memory.
+#[no_mangle]
+pub unsafe fn a64_bus_set_ram_at(size: u32, base: u32) -> bool {
+    let base = base as u64;
     if size > MEM8_SIZE
+        || base & 0xFFF != 0
         || bus()
             .regions
             .iter()
-            .any(|r| r.base < RAM_BASE + size as u64 && r.base + r.size > RAM_BASE)
+            .any(|r| r.base < base + size as u64 && r.base + r.size > base)
     {
         return false;
     }
     mutate(|b| {
+        b.ram_base = base;
         b.ram_size = size as u64;
         b.changed();
     });

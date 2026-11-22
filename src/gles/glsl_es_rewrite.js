@@ -45,11 +45,12 @@ const TEXTURE_FUNCTIONS = new Map([
     ["texture3D", "texture"], ["texture3DProj", "textureProj"], ["texture3DLod", "textureLod"], ["texture3DProjLod", "textureProjLod"],
 ]);
 
-/** Names 3.00 has and 1.00 does not: in a 1.00 shader they are the user's (1.00's in, out and inout qualify parameters) */
+// Names 3.00 has and 1.00 leaves to the user. In 1.00, in/out/inout
+// qualify parameters and GL_OES_texture_3D already enables sampler3D.
 const ES300_NAMES = new Set((
     "flat smooth centroid layout uint uvec2 uvec3 uvec4 switch case default " +
     "mat2x2 mat2x3 mat2x4 mat3x2 mat3x3 mat3x4 mat4x2 mat4x3 mat4x4 " +
-    "sampler3D samplerCubeShadow sampler2DArray sampler2DArrayShadow isampler2D isampler3D isamplerCube " +
+    "samplerCubeShadow sampler2DArray sampler2DArrayShadow isampler2D isampler3D isamplerCube " +
     "isampler2DArray usampler2D usampler3D usamplerCube usampler2DArray " +
     "sinh cosh tanh asinh acosh atanh trunc round roundEven isnan isinf floatBitsToInt floatBitsToUint " +
     "intBitsToFloat uintBitsToFloat packSnorm2x16 unpackSnorm2x16 packUnorm2x16 unpackUnorm2x16 " +
@@ -499,6 +500,13 @@ export function glsl_version(source)
 {
     const m = /^\s*(?:(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/)\s*)*#\s*version\s+(\d+)/.exec(source);
     return m ? +m[1] : 100;
+}
+
+/** Accept the trailing semicolon that legacy GLSL ES 1.00 drivers allow on #endif. */
+export function glslang_source(source, version = glsl_version(source))
+{
+    if(version !== 100) return source;
+    return source.replace(/^([ \t]*#[ \t]*endif[ \t]*);(?=[ \t]*(?:\/\/[^\r\n]*)?\r?$)/gm, "$1");
 }
 
 /**

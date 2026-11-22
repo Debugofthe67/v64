@@ -38,6 +38,10 @@ for(const cases of (process.env.A64_AARCH32_CASES || "q1,q3,qinterwork,q4,qmul,q
         // Each case repeats a valid memory return 127 times before trying a fault or condition.
         assert.ok(t.retries < 100, cases + ": valid ARM/Thumb returns should stay in compiled code");
     }
+    if(cases === "qspcopy" && +(process.env.A64_AARCH32_PAGE || 1) === 1)
+    {
+        assert.ok(t.helpers < 128 && t.retries < 128, "APCS stack frames should stay in compiled code");
+    }
     console.log(`PASS: ${cases}: the same (page tier: ${t.compiled} compiles, ${t.helpers} helper calls, ${t.steps} steps)`);
 }
 process.exit(failures ? 1 : 0);

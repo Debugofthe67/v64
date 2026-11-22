@@ -184,8 +184,10 @@ CORE_FILES=cjs.js const.js io.js machine_clock.js machine_options.js main.js lib
 	   parallel/relocate.js parallel/control.js parallel/machine.js \
 	   ios/crypto.js ios/lzss.js ios/nand_boot.js ios/sparse_nand.js ios/guest_load.js ios/install_trust.js ios/install_protocol.js ios/install_service.js ios/network.js ios/runtime_trust.js ios/install_api.js apple/amc.js apple/amc_codec.js apple/audio_decode.js apple/audio.js apple/boot.js apple/n90_compat.js apple/bootlogo.js apple/cdma.js apple/uid.js apple/clcd.js apple/dart.js apple/devicetree.js apple/h2fmi.js apple/i2c.js apple/iop.js apple/macho.js apple/multitouch.js apple/nand.js apple/nand_geometry.js apple/s5l8930.js apple/sensors.js apple/spi.js apple/timer.js apple/uart.js apple/vic.js \
 	   arm/state_layout.js arm/cpu.js arm/backdoor_a32.js virt/platform.js virt/io.js virt/pl011.js virt/pl031.js virt/inflate.js virt/dtb.js virt/ranchu.js virt/goldfish.js virt/loader.js \
+	   symbian/syborg_board.js symbian/syborg_accelerometer.js symbian/syborg_devices.js symbian/syborg_audio.js symbian/syborg_framebuffer.js symbian/syborg_graphics.js symbian/syborg_input.js symbian/syborg_modem.js symbian/syborg_nvmemory.js \
+	   symbian/syborg_profile.js symbian/syborg_import.js symbian/syborg_packet_data.js symbian/syborg_isc_data.js symbian/syborg_install_channel.js symbian/syborg_install_rom.js symbian/syborg_install_binary.js symbian/syborg_xip.js symbian/firmware_partitions.js symbian/fpsx.js symbian/rom.js \
 	   android/bytes.js android/gpt.js android/avb.js android/bootimg.js android/bootconfig.js android/devices.js android/boot.js android/bootloader.js android/partition_buffer.js android/cpio.js android/ramdisk_overlay.js \
-	   image/sha256.js image/source.js image/overlay.js image/disk_image.js image/qcow2.js image/vhd.js image/vdi.js image/vmdk.js image/vhdx.js image/ova.js image/factory.js image/export.js image/qcow2_export.js
+	   image/sha256.js image/sparse_blocks.js image/source.js image/overlay.js image/disk_image.js image/qcow2.js image/vhd.js image/vdi.js image/vmdk.js image/vhdx.js image/ova.js image/factory.js image/export.js image/qcow2_export.js
 LIB_FILES=9p.js filesystem.js marshall.js
 BROWSER_FILES=screen.js keyboard.js mouse.js speaker.js serial.js \
 	      network.js starter.js wasm_paths.js worker_bus.js state_stream_transport.js cpu_worker.js dummy_screen.js ansi_screen.js \
@@ -581,7 +583,7 @@ run: browser glbridge build/v86.wasm
 
 # The VM manager as a static site in build/pages (tools/pages_dist.mjs, for
 # Cloudflare Pages: .github/workflows/pages.yml, docs/vm-manager.md)
-PAGES_BUILD=build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js build/xterm.js \
+PAGES_BUILD=build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/symbian-import-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js build/xterm.js \
 	build/v86.wasm build/v86-fallback.wasm build/v86-parallel.wasm \
 	build/v86-arm64.wasm build/v86-arm64-fallback.wasm build/v86-arm64-parallel.wasm $(DEVICE_PLUGINS)
 .PHONY: pages
@@ -974,13 +976,13 @@ disk-image-browser-tests: build/libv86.mjs build/cpu-worker.js build/v86.wasm $(
 # stays its own file: index.html's import map names it "v86"), checked by tsc
 # against v86.d.ts. The tools are package.json's devDependencies (npm ci).
 APP_FILES=$(shell find src/app -name '*.js') $(wildcard src/android/*.js src/ios/*.js) src/browser/vm_options.js src/browser/query_compat.js \
-	src/machine_options.js src/disk_options.js
+	src/machine_options.js $(wildcard src/symbian/*.js) src/disk_options.js
 node_modules/.bin/esbuild node_modules/.bin/tsc: package.json package-lock.json
 	npm ci
 	touch node_modules/.bin/esbuild node_modules/.bin/tsc
 
 .PHONY: app app-check
-app: build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js ios-install-assets
+app: build/v86_app.js build/android-import-worker.js build/ios-import-worker.js build/ios-install-worker.js build/symbian-import-worker.js build/libv86.mjs build/cpu-worker.js build/vcpu-worker.js ios-install-assets
 
 build/v86_app.js: $(APP_FILES) node_modules/.bin/esbuild
 	mkdir -p build
@@ -1003,6 +1005,24 @@ build/ios-install-worker.js: src/app/ios_install_worker.js $(wildcard src/ios/*.
 	mkdir -p build
 	node_modules/.bin/esbuild src/app/ios_install_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
 		--outfile=build/ios-install-worker.js --log-level=warning
+
+build/symbian-import-worker.js: src/app/symbian_import_worker.js src/app/symbian_archive.js $(wildcard src/symbian/*.js) src/android/bytes.js src/image/sha256.js src/virt/inflate.js node_modules/.bin/esbuild | build/symbian-archive.js build/symbian-archive.wasm build/symbian-archive-LICENSE.txt
+	mkdir -p build
+	node_modules/.bin/esbuild src/app/symbian_import_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
+		--outfile=build/symbian-import-worker.js --log-level=warning
+
+build/symbian-archive.js: package-lock.json node_modules/.bin/esbuild
+	mkdir -p build
+	printf 'export { default } from "sevenzip-wasm";\n' | node_modules/.bin/esbuild --bundle --format=esm --target=es2022 \
+		--external:node:* --outfile=$@ --log-level=warning
+
+build/symbian-archive.wasm: package-lock.json | node_modules/.bin/esbuild
+	mkdir -p build
+	cp node_modules/sevenzip-wasm/sevenzip-wasm.wasm $@
+
+build/symbian-archive-LICENSE.txt: package-lock.json | node_modules/.bin/esbuild
+	mkdir -p build
+	cp node_modules/sevenzip-wasm/LICENSE $@
 
 # Locally built v86 graphics adapter, using exports from the owner's 10B329 cache.
 .PHONY: ios-guest
@@ -1208,7 +1228,8 @@ display-browser-tests: build/cpu-worker.js build/libv86.mjs build/libv86.js buil
 	node tests/glbridge/gl_multipass_browser_runner.js vx_transfer_browser_test.html
 
 # A browser/library rebuild must ship the matching wire-protocol implementation.
-build/libv86.js build/libv86.mjs build/libv86-debug.js build/libv86-debug.mjs: | build/cpu-worker.js
+build/libv86.js build/libv86.mjs build/libv86-debug.js build/libv86-debug.mjs: $(wildcard src/symbian/*.js) | build/cpu-worker.js
+build/cpu-worker.js: $(wildcard src/symbian/*.js)
 
 # Keep the terminal available even when building the page bundle directly.
 build/v86_app.js: | build/xterm.js
@@ -1587,6 +1608,8 @@ a32-system-tests: build/v86-arm64.wasm
 	node tests/a32/cps_mask.mjs
 	node tests/a32/cps_enable.mjs
 	node tests/a32/status_mask.mjs
+	node tests/a32/swp.mjs
+	node tests/a32/thumb-sp.mjs
 	node tests/a32/ranchu_devices.mjs
 	for cores in 1 2 4; do A32_JIT=1 A32_CORES=$$cores node tests/a32/linux_boot.mjs || exit 1; done
 	A32_STAGE=lifecycle A32_JIT=1 A32_CORES=2 node tests/a32/linux_boot.mjs
@@ -2155,6 +2178,7 @@ ios-tests:
 	node --test tests/ios/install-components.mjs
 	node --test tests/ios/install-trust.mjs tests/ios/runtime-trust.mjs tests/ios/install-service.mjs tests/ios/install-api.mjs
 	node tests/ios/boot-tree.mjs
+	node tests/ios/n90-ethernet.mjs
 	node tests/ios/spi-dma.mjs
 	node tests/ios/multitouch-device.mjs
 	node tests/ios/sensors.mjs
@@ -2199,3 +2223,4 @@ gles-tests: build/v86-gles.js build/glslang.wasm
 	node tests/gles/batch.mjs
 	node tests/gles/snapshot.mjs
 	node tests/gles/shader_corpus.mjs
+	node tests/symbian/syborg_graphics.mjs

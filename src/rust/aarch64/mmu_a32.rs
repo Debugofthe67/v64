@@ -162,6 +162,12 @@ fn simple_permissions(ap: u32) -> (u16, u16) {
 fn cacheability(c: u32) -> u8 { [0x4, 0xF, 0xA, 0xE][c as usize & 3] }
 
 fn walk_short(va: u32) -> Result<Leaf, u32> {
+    let va = if cpu::arm1136() && va < 0x0200_0000 {
+        va | (unsafe { *contextidr_el1 } >> 32) as u32
+    }
+    else {
+        va
+    };
     let ttbcr = unsafe { *a32_ttbcr };
     let n = ttbcr & 7;
     let table = unsafe {

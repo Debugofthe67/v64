@@ -99,6 +99,33 @@ try
     data()[0] ^= 0xff000000;
     oldCore.render(1410);
     assert.equal(oldCore.performance.frames, oldFrames, "an old all-bits Wasm comparison uses the RGB-aware JS fallback");
+    const overlay = base + bytes + 4096;
+    const layer = new Uint32Array(cpu.mem8.buffer, cpu.mem8.byteOffset + cpu.ram_offset(overlay, 3 * 64), 3 * 16);
+    data().fill(0x00204060);
+    layer[17] = 0x80401000;
+    layer[18] = 0;
+    layer[33] = 0xFF019ACD;
+    layer[34] = 0x80004000;
+    const coord = (x, y) => x << 16 | y;
+    both(p => {
+        p.performance.frames = 0;
+        p.regs[0x4044 >>> 2] = base;
+        for(const [offset, value] of [
+            [0x1038, 0x300], [0x5040, 1], [0x5044, overlay], [0x5048, 64 | 2],
+            [0x5050, coord(1, 1)], [0x5060, coord(3, 3)],
+            [0x5054, coord(4, 7)], [0x5064, coord(6, 9)],
+        ]) p.regs[offset >>> 2] = value;
+    });
+    render(1420, "the second UI window is blended after honoring source, destination and stride");
+    const at = (x, y) => [...fast.rgba.subarray((y * N90_VIDEO.width + x) * 4, (y * N90_VIDEO.width + x) * 4 + 4)];
+    assert.deepEqual(at(4, 7), [80, 48, 48, 255], "premultiplied overlay blends with the underlying color");
+    assert.deepEqual(at(5, 7), [32, 64, 96, 255], "a transparent overlay leaves the backdrop intact");
+    assert.deepEqual(at(4, 8), [1, 154, 205, 255], "an opaque pixel replaces the backdrop");
+    assert.deepEqual(at(5, 8), [16, 96, 48, 255], "the overlay's next row uses its programmed stride");
+    render(1430, "unchanged composed frame");
+    both(p => p.regs[0x1038 >>> 2] = 0x100);
+    render(1440, "disabling the overlay restores the unchanged primary image");
+    assert.deepEqual(at(4, 7), [32, 64, 96, 255]);
     if(process.env.A64_SCANOUT_BENCH)
     {
         data().fill(0x00123456);

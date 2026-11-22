@@ -10,7 +10,7 @@ import { SHA256 } from "../image/sha256.js";
 import { new_id } from "./vm_config.js";
 
 /** @typedef {{id: string, path: string, size: number, label: string, created: string, generation: number,
- *     ios?: {model: string, build: string}}} BrowserDisk */
+ *     ios?: {model: string, build: string}, symbian?: {owner: string, role: string}}} BrowserDisk */
 
 const DISKS = ["v86", "disks"];
 /** The prefix of a browser disk's path (an image's `path`) */
@@ -89,8 +89,10 @@ export async function list_disks()
         if(!match || handle.kind !== "file") continue;
         const file = await handle.getFile();
         const record = await read_record(dir, match[1]);
+        if(/-symbian-(?:manifest|rom|rofs[123]?|devicetree|phone|boot_media|nand|emmc)$/.test(match[1]) && !record.symbian) continue;
         disks.push({ id: match[1], path: disk_path(match[1]), size: file.size, label: record.label || match[1],
-            created: record.created || new Date(file.lastModified).toISOString(), generation: record.generation || 1, ios: record.ios });
+            created: record.created || new Date(file.lastModified).toISOString(), generation: record.generation || 1,
+            ios: record.ios, symbian: record.symbian });
     }
     return disks.sort((a, b) => a.label.localeCompare(b.label));
 }
@@ -142,7 +144,8 @@ export async function create_disk(size, label, prefs)
  * (SHA-256) on the way, the copy read back and hashed again
  * @param {File | string} source a file of the user's, or a URL
  * @param {string} label
- * @param {{prefs?: Parameters<typeof make_room>[1], progress?: (done: number, total: number) => void}} [options]
+ * @param {{prefs?: Parameters<typeof make_room>[1], progress?: (done: number, total: number) => void,
+ *     symbian?: BrowserDisk["symbian"]}} [options]
  * @return {Promise<BrowserDisk & {sha256: string}>}
  */
 export async function import_disk(source, label, options = {})
@@ -164,11 +167,12 @@ export async function import_disk(source, label, options = {})
     const dir = await disks_directory();
     const id = new_id();
     const handle = await dir.getFileHandle(id + ".img", { create: true });
-    const writable = await handle.createWritable();
+    let writable;
     const hash = new SHA256();
     let done = 0;
     try
     {
+        writable = await handle.createWritable();
         const reader = stream.getReader();
         for(;;)
         {
@@ -185,29 +189,34 @@ export async function import_disk(source, label, options = {})
     }
     catch(e)
     {
-        await writable.abort().catch(() => {});
+        await writable?.abort().catch(() => {});
         await dir.removeEntry(id + ".img").catch(() => {});
         throw e;
     }
     const sha256 = hash.hex();
     // (the copy read back: the same bytes)
-    const check = new SHA256();
-    const copy = await handle.getFile();
-    const reader = copy.stream().getReader();
-    for(;;)
+    const created = new Date().toISOString();
+    try
     {
-        const { done: end, value } = await reader.read();
-        if(end) break;
-        check.update(value);
+        const check = new SHA256();
+        const copy = await handle.getFile();
+        const reader = copy.stream().getReader();
+        for(;;)
+        {
+            const { done: end, value } = await reader.read();
+            if(end) break;
+            check.update(value);
+        }
+        if(copy.size !== done || check.hex() !== sha256) throw new Error("The copy differs from the image (SHA-256)");
+        await write_record(dir, id, { uuid: new_id(), generation: 1, size: done, label, created, sha256, symbian: options.symbian,
+            source: typeof source === "string" ? source : source.name });
     }
-    if(copy.size !== done || check.hex() !== sha256)
+    catch(error)
     {
         await dir.removeEntry(id + ".img").catch(() => {});
-        throw new Error("The copy differs from the image (SHA-256)");
+        await dir.removeEntry(id + ".json").catch(() => {});
+        throw error;
     }
-    const created = new Date().toISOString();
-    await write_record(dir, id, { uuid: new_id(), generation: 1, size: done, label, created, sha256,
-        source: typeof source === "string" ? source : source.name });
     return { id, path: disk_path(id), size: done, label, created, generation: 1, sha256 };
 }
 
@@ -340,9 +349,11 @@ export async function delete_disk(id)
     }
     catch(e)
     {
-        if(e.name === "NotFoundError") return;
-        if(e.name === "NoModificationAllowedError" || e.name === "InvalidModificationError") throw new Error("The disk is in use: power its machine off first");
-        throw e;
+        if(e.name !== "NotFoundError")
+        {
+            if(e.name === "NoModificationAllowedError" || e.name === "InvalidModificationError") throw new Error("The disk is in use: power its machine off first");
+            throw e;
+        }
     }
     await dir.removeEntry(id + ".json").catch(() => {});
     await dir.removeEntry(id + ".ios-system").catch(() => {});

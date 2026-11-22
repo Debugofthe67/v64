@@ -275,15 +275,16 @@ NodeFileDisk.prototype.load = async function()
             "(or with \"read_only\") the guest's changes stay in memory");
     }
     const reference = node_file_reference(this.path);
-    if(reference.size % SECTOR_SIZE)
+    const size = reference.size;
+    if(size % SECTOR_SIZE)
     {
         this.close_now();
         fail(this.path + " has " + reference.size + " bytes, not a whole number of " + SECTOR_SIZE + "-byte sectors");
     }
-    if(this.expected_size !== undefined && this.expected_size !== reference.size)
+    if(this.expected_size !== undefined && this.expected_size !== size)
     {
         this.close_now();
-        fail(this.path + " has " + reference.size + " bytes, the descriptor's size says " + this.expected_size);
+        fail(this.path + " has " + size + " bytes, the descriptor's size says " + this.expected_size);
     }
     const key = reference.identity["dev"] + ":" + reference.identity["ino"];
     if(open_files.has(key))
@@ -294,7 +295,7 @@ NodeFileDisk.prototype.load = async function()
     open_files.add(key);
     this.key = key;
     this.identity = reference.identity;
-    this.byteLength = reference.size;
+    this.byteLength = size;
     this.onload && this.onload(Object.create(null));
 };
 
@@ -586,6 +587,11 @@ export function disk_buffers(cpu)
     if(fdc && fdc.drives) fdc.drives.forEach((drive, i) => add(i ? "fdb" : "fda", drive.buffer));
     // (the UEFI firmware's variable store, src/pflash.js; the TPM's state, src/tpm/store.js)
     if(cpu.devices?.apple_nand) add("ios_nand", cpu.devices.apple_nand.buffer);
+    if(cpu.devices?.syborg)
+    {
+        add("symbian_nvmemory", cpu.devices.syborg.nvmemory);
+        add("symbian_nvmemory2", cpu.devices.syborg.nvmemory2);
+    }
     const pflash = cpu.firmware && cpu.firmware.pflash;
     if(pflash) add("firmware_vars", pflash.buffer);
     if(cpu.devices && cpu.devices.tpm) add("tpm_state", cpu.tpm_store);

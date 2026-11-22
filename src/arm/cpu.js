@@ -7,7 +7,7 @@
 
 import { dbg_assert, dbg_log } from "../log.js";
 import { LOG_CPU, WASM_TABLE_OFFSET } from "../const.js";
-import { set_jit_switches } from "../jit_switches.js";
+import { parse_jit_switches, set_jit_switches } from "../jit_switches.js";
 import { relaxed_fma_fused } from "../cpu.js";
 import { view, Bitmap } from "../lib.js";
 import { v86 } from "../main.js";
@@ -33,6 +33,8 @@ import { GoldfishFb, GoldfishEvents, GoldfishBattery, GoldfishAudio, GoldfishPip
 import { BackdoorA32, BACKDOOR_NOT_HANDLED } from "./backdoor_a32.js";
 import { IOSInstallService } from "../ios/install_service.js";
 import { IOSNetwork } from "../ios/network.js";
+import { create_syborg_board, load_syborg_rom, SYBORG_LAYOUT_VERSION } from "../symbian/syborg_board.js";
+import { SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
     RANCHU_LAYOUT_VERSION, RANCHU_RTC, RANCHU_SPI, ranchu_framebuffer,
@@ -54,7 +56,12 @@ import { ParallelMachine } from "../parallel/machine.js";
 import { COMMAND_RELOAD, COMMAND_RESET } from "../parallel/control.js";
 
 /** The devices in a snapshot's state[4], in this order */
-const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe", ...N90_DEVICE_ORDER, "ios_network"];
+const DEVICE_ORDER = ["pl011", "pl031", "goldfish_fb", "goldfish_events", "goldfish_battery", "goldfish_audio", "goldfish_pipe",
+    ...N90_DEVICE_ORDER, "ios_network",
+    // Reserved snapshot slots. Keep the Syborg device at its original index.
+    ...Array(28).fill(null), "syborg"];
+const machine_layout = machine => machine === SYBORG_MACHINE ? SYBORG_LAYOUT_VERSION :
+    machine === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
 
 /** (src/state.js: one buffer holds at most 2 GiB) */
 const STATE_MAX_SINGLE_BUFFER = 0x7FFFFFFF;
@@ -82,6 +89,7 @@ export function A64CPU(bus, wm, stop_idling)
     this.bus = bus;
     this.clock = new MachineClock({ now: v86.microtick });
     this.in_cpu = false;
+    this.syborg_cpu_slice_ms = 0;
     this.cpu_type = "arm64";
     this.machine_type = "virt";
 
@@ -101,6 +109,7 @@ export function A64CPU(bus, wm, stop_idling)
 
     // (src/state.js reads memory_size[0])
     this.memory_size = new Uint32Array(1);
+    this.ram_base = VIRT_RAM_BASE;
     this.mem8 = new Uint8Array(0);
     this.cores = 1;
 
@@ -230,18 +239,19 @@ A64CPU.prototype.translate_user = function(address, write)
 
 A64CPU.prototype.init = function(settings, device_bus)
 {
-    const { machine_type, cpu_profile } = check_machine_options(settings);
-    if(machine_type !== "virt" && machine_type !== "ranchu" && machine_type !== "s5l8930")
+    const { machine_type, cpu_profile, cpu_type } = check_machine_options(settings);
+    if(cpu_type !== "arm32" && cpu_type !== "arm64")
     {
         throw new Error("The ARM CPU runs machine_type \"virt\" or \"ranchu\"");
     }
     /** "virt", or "ranchu": the Android emulator's board (src/virt/ranchu.js) */
     this.machine_type = machine_type;
     const ranchu = machine_type === "ranchu";
+    const syborg = settings.syborg_boot;
     const { cores, memory_size } = virt_machine(settings);
     this.cores = cores;
     // (cpu_type "arm32": AArch32 throughout, docs/plan/aarch32-plan.md part 2)
-    this.cpu_type = settings["cpu_type"] === "arm32" ? "arm32" : "arm64";
+    this.cpu_type = cpu_type;
     // the CPU model's profile (cpu_profile; docs/plan/arm64-virt-android16-plan.md,
     // "CPU profile"): generic-arm64 is v2 (v1.1 and FEAT_PAN, the default
     // since 2026-10-20), -v1.1 the 4, 16 and 64 KiB granules (P8.6), -v1
@@ -249,7 +259,12 @@ A64CPU.prototype.init = function(settings, device_bus)
     this.set_profile((this.cpu_type === "arm32" ? ARM32_PROFILES : A64_PROFILES)[cpu_profile][0]);
     // the A64 page tier (J2): synchronous publication (tests), the JIT switches by name
     this.ir_sync_publication = settings["ir_sync_publication"] === true;
-    set_jit_switches(this.wm.exports, this.wasm_memory, settings["jit_switches"]);
+    // S60 visits many short-lived code paths during boot. Wait for more
+    // executions before compiling a page, while still compiling hot loops.
+    const jit = syborg ? Object.assign({ "a64_page": true, "a64_page_hot": 16384 },
+        parse_jit_switches(settings["jit_switches"])) : settings["jit_switches"];
+    if(syborg && settings.disable_jit) jit["a64_page"] = false;
+    set_jit_switches(this.wm.exports, this.wasm_memory, jit);
     // (the GIC's distributor and redistributors: decoded in the core, P4.2;
     // ranchu's with a 32-bit kernel a GICv2's distributor and CPU interface)
     /** whether the GIC is a GICv2 (ranchu with a 32-bit kernel) */
@@ -262,9 +277,30 @@ A64CPU.prototype.init = function(settings, device_bus)
     this.graphics_adapter_descriptor = settings.graphics_adapter;
     const adapter = this.graphics_adapter_descriptor;
     this.create_memory(memory_size, adapter ? Math.max(DEVICE_MEMORY_SIZE,
-        adapter["device_memory_size"]?.({ "test": settings.graphics_adapter_test }) || 0) : machine_type === "s5l8930" ? 1 << 20 : 0);
+        adapter["device_memory_size"]?.({ "test": settings.graphics_adapter_test }) || 0) :
+        syborg ? syborg.profile.rofs_window_size : machine_type === "s5l8930" ? 1 << 20 : 0,
+        syborg ? 0 : VIRT_RAM_BASE);
     this.configure_extended_memory(settings.extended_memory_size || 0, settings.extended_memory_cache);
     this.device_bus = device_bus;
+    if(syborg)
+    {
+        const gles = settings.gles_plugin && new PluginDevice(/** @type {?} */ (this), GLES_PLUGINS, settings.gles_plugin, -1, {}, {
+            "display": { "width": syborg.profile.screen.width, "height": syborg.profile.screen.height, "dpi": 213 },
+            "prepared": settings.gles_prepared || null,
+            "renderer": settings.graphics_adapter_renderer,
+            "syborg": true,
+        });
+        const board = create_syborg_board(this, syborg, device_bus, settings.screen, gles ? gles.device["syborg"] : null,
+            () => (view(Uint32Array, this.wasm_memory, this.state_base + STATE_OFFSETS.pstate, 1)[0] & 0x1F) !== 0x10);
+        this.devices = { syborg: board, display: board.display };
+        if(gles) this.devices.gles = gles;
+        this.virtio_devices = [];
+        this.shared_spi_sources = new Map();
+        this.virtio_transport = "none";
+        this.boot_files = syborg;
+        this.load_boot_files();
+        return;
+    }
     if(machine_type === "s5l8930")
     {
         this.devices = create_n90_devices(this, device_bus, settings.screen, settings.ios_nand);
@@ -491,6 +527,7 @@ A64CPU.prototype.init_gles_backdoor = function(settings, display, present)
             "present": present,
             "prepared": settings.gles_prepared || null,
             "max_version": settings.ranchu_gles_version || "2.0",
+            "native_buffers": this.machine_type === "s5l8930",
         });
         gles = this.devices.gles;
     }
@@ -508,7 +545,13 @@ A64CPU.prototype.init_gles_backdoor = function(settings, display, present)
 A64CPU.prototype.load_boot_files = function()
 {
     if(!this.boot_files) return;
-    if(this.machine_type === "s5l8930")
+    if(this.machine_type === SYBORG_MACHINE)
+    {
+        load_syborg_rom(this, this.boot_files);
+        this.boot_entry = this.boot_x0 = 0;
+        this.booted = true;
+    }
+    else if(this.machine_type === "s5l8930")
     {
         const f = this.boot_files;
         const handoff = load_n90_kernel(this.mem8, new Uint8Array(f.kernel), new Uint8Array(f.dtb),
@@ -556,12 +599,13 @@ A64CPU.prototype.boot = function(entry, x0)
 };
 
 /**
- * Guest RAM of `size` bytes at 0x4000_0000, and after it in guest memory
+ * Guest RAM of `size` bytes at `ram_base`, and after it in guest memory
  * `device_size` bytes of device memory (mmio_ram_allocate)
  * @param {number} size
  * @param {number=} device_size
+ * @param {number=} ram_base
  */
-A64CPU.prototype.create_memory = function(size, device_size = 0)
+A64CPU.prototype.create_memory = function(size, device_size = 0, ram_base = VIRT_RAM_BASE)
 {
     const exports = this.wm.exports;
     // (one allocation in the 32-bit Wasm memory: below 2 GiB; more RAM is
@@ -572,7 +616,9 @@ A64CPU.prototype.create_memory = function(size, device_size = 0)
             (device_size ? ", and " + device_size + " bytes of the display adapter's device memory" : "") + ")");
     }
     const pointer = exports["a64_allocate_memory"](size + device_size) >>> 0;
-    if(!exports["a64_bus_set_ram"](size)) throw new Error("create_memory: RAM of " + size + " bytes does not fit");
+    const mapped = ram_base === VIRT_RAM_BASE ? exports["a64_bus_set_ram"](size) : exports["a64_bus_set_ram_at"](size, ram_base);
+    if(!mapped) throw new Error("create_memory: RAM of " + size + " bytes does not fit");
+    this.ram_base = ram_base;
     this.mem8 = view(Uint8Array, this.wasm_memory, pointer, size);
     this.memory_size[0] = size;
     /** device memory: [start, end) in guest memory's backing, and its regions */
@@ -707,9 +753,14 @@ A64CPU.prototype.run_machine_core = function()
         this.devices.apple_i2s1?.poll();
         this.devices.apple_i2s2?.poll();
         const devices = this.run_hardware_timers(null, this.clock.now());
-        const next = Math.min(run(this.clock.now()), devices);
+        const now = this.clock.now();
+        const measure = this.devices.syborg && this.devices.gles;
+        const started = measure ? performance.now() : 0;
+        const next = Math.min(run(now), devices);
+        if(measure) this.syborg_cpu_slice_ms += performance.now() - started;
         // (PSCI SYSTEM_RESET: the machine resets and boots again, P4.8)
         if(this.wm.exports["a64_take_reset_request"]()) this.reboot_internal("restart");
+        if(this.devices.syborg) return Math.min(next, this.devices.syborg.timer(this.clock.now()));
         // The application core can be in WFI while the ARM7 still handles
         // its flash request. Sleeping for the AP's timer then throttles
         // an independent runnable processor (and every NAND transaction).
@@ -785,6 +836,7 @@ A64CPU.prototype.state_block_of = function(core)
 /** (env.run_hardware_timers) the virt machine's device timers (the PL031's alarm, the display's); the cores' timers are their own */
 A64CPU.prototype.run_hardware_timers = function(acpi, now)
 {
+    if(this.devices.syborg) return this.devices.syborg.timer(now);
     const display = this.devices.display ? this.devices.display.timer(now) : 100;
     if(this.devices.apple_timer) return Math.min(display, this.devices.apple_timer.timer(), this.devices.apple_gpio.timer(now),
         this.devices.apple_accelerometer?.timer(now) ?? 100, this.devices.apple_gyroscope?.timer(now) ?? 100,
@@ -862,8 +914,10 @@ A64CPU.prototype.reboot_internal = function(reason)
         // (after PSCI SYSTEM_OFF, P8.1: RAM and device memory do not keep their contents)
         this.mem8.fill(0);
         this.wm.exports["a64_bus_written"](0, this.memory_size[0]);
-        new Uint8Array(this.wasm_memory.buffer, this.mem8.byteOffset + this.device_memory.start,
-            this.device_memory.end - this.device_memory.start).fill(0);
+        // Syborg device backing holds the immutable ROFS window.
+        if(!this.devices.syborg)
+            new Uint8Array(this.wasm_memory.buffer, this.mem8.byteOffset + this.device_memory.start,
+                this.device_memory.end - this.device_memory.start).fill(0);
         this.clear_extended_memory();
     }
     for(const device of Object.values(this.devices)) device.reset?.();
@@ -906,7 +960,7 @@ A64CPU.prototype.zero_memory = function(offset, length)
  */
 A64CPU.prototype.ram_offset = function(address, length)
 {
-    const offset = address - VIRT_RAM_BASE;
+    const offset = address - this.ram_base;
     return offset >= 0 && offset + length <= this.memory_size[0] ? offset : -1;
 };
 
@@ -1148,7 +1202,10 @@ A64CPU.prototype.load_core_state = function(saved, core = 0)
     let at = 0;
     for(const [a, b] of CORE_STATE_RANGES)
     {
-        block.set(saved.subarray(at, at + b - a), a);
+        const bytes = saved.subarray(at, at + b - a);
+        block.set(bytes, a);
+        // Older snapshots may end before the added AArch32 registers.
+        if(bytes.length < b - a) block.fill(0, a + bytes.length, b);
         at += b - a;
     }
 };
@@ -1238,7 +1295,7 @@ A64CPU.prototype.get_state = function(skip_memory = false)
         state[78] = new Uint8Array(bitmap.get_buffer());
     }
     state[99] = null;
-    state[103] = [this.machine_type, this.machine_type === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION, this.profile];
+    state[103] = [this.machine_type, machine_layout(this.machine_type), this.profile];
     return state;
 };
 
@@ -1268,12 +1325,14 @@ A64CPU.prototype.validate_state = function(state)
     // (a snapshot of another profile restores as that profile, set_state)
     // (arm32's and arm64's profiles are of different CPUs)
     const profiles = Object.values(this.cpu_type === "arm32" ? ARM32_PROFILES : A64_PROFILES);
-    const layout = this.machine_type === "ranchu" ? RANCHU_LAYOUT_VERSION : VIRT_LAYOUT_VERSION;
-    if(identity[1] !== layout || !profiles.some(p => p[0] === identity[2]))
+    const layout = machine_layout(this.machine_type);
+    if(identity[1] !== layout || !profiles.some(p => p[0] === identity[2]) ||
+        (machine === SYBORG_MACHINE) !== (identity[2] === SYBORG_PROFILE.cpu))
     {
         throw new Error("The snapshot is from " + machine + " layout " + identity[1] + " with CPU profile " + identity[2] +
             "; this machine is layout " + layout + ", " + this.profile);
     }
+    this.devices.syborg?.check_state(state[4]?.[DEVICE_ORDER.indexOf("syborg")]);
     if(this.machine_type === "s5l8930" && !!state[4]?.[DEVICE_ORDER.indexOf("apple_nand")] !== !!this.devices.apple_nand)
     {
         throw new Error("snapshot and machine must use the same N90 NAND configuration");
@@ -1426,6 +1485,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
 {
     const exports = this.wm.exports;
     const nand = this.devices?.apple_nand;
+    const syborg_graphics = this.devices.syborg && this.devices.gles?.device["syborg"]?.["summary"]();
     const power = ["on", "off", "on-pending"];
     const psci = this.machine_state_bytes(1);
     const cores = this.each_core(core => {
@@ -1452,6 +1512,8 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
             "now_ms": this.clock.now(), "paused": this.clock.paused }, this.clock.get_diagnostics()),
         "cpu_type": this.cpu_type,
         "machine_type": this.machine_type,
+        "syborg_graphics": syborg_graphics ? Object.assign(syborg_graphics, { "cpu_slice_ms": this.syborg_cpu_slice_ms }) : null,
+        "syborg_network": this.devices.syborg?.network_status() || null,
         "active_core": exports["a64_current_core"](),
         "parallel": this.parallel ? Object.assign(this.parallel.status(), { "machine_core": {
             "tlbi_posted": exports["a64_tlb_ring_stat"](0), "dsb_waits": exports["a64_tlb_ring_stat"](1),

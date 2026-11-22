@@ -9,11 +9,12 @@
 //! The decoders (A32 here, T32 in t32.rs) call the operations below, which
 //! take their operands already read (the PC as the instruction set reads it).
 
+use crate::aarch64::bus;
 use crate::aarch64::cpu::*;
 use crate::aarch64::decode::Inst;
 use crate::aarch64::execute::{self, Flow};
 use crate::aarch64::memory::{self, Syndrome};
-use crate::aarch64::state::{event_register, excl_valid, tpidr_el0, tpidrro_el0};
+use crate::aarch64::state::{a32_prefetch, event_register, excl_valid, tpidr_el0, tpidrro_el0};
 
 /// The length of the instruction being executed (2 for a 16-bit T32 one):
 /// its exception's return address and ESR.IL
@@ -1179,7 +1180,8 @@ fn as_cp_trap(e: Exception, trap: Exception) -> Exception {
 }
 
 /// MRC, MCR of CP15 at EL0 (`value` what MCR writes): the thread ID
-/// registers, the generic timer's, CP15's barriers; the rest UNDEFINED
+/// registers, the generic timer's, CP15's barriers and ARM1136 prefetch
+/// controls; the rest UNDEFINED
 pub fn cp15(
     read: bool,
     opc1: u32,
@@ -1190,7 +1192,9 @@ pub fn cp15(
     value: u32,
     cond: u32,
 ) -> Result<Flow, Exception> {
-    if crate::aarch64::a32_system::privileged() {
+    if crate::aarch64::a32_system::privileged()
+        || arm1136() && matches!((opc1, crn, crm, opc2), (0, 7, 5, 4) | (0, 7, 12, 4 | 5))
+    {
         return crate::aarch64::a32_system::cp15(read, opc1, crn, crm, opc2, rt, value);
     }
     let trap = cp_trap(0x03, cond, opc1, crn, crm, opc2, rt, 0, read);
@@ -1303,6 +1307,56 @@ fn fetch(address: u64, thumb: bool) -> Result<(u32, u32), Exception> {
     }
 }
 
+const PREFETCH_THUMB: u32 = 1 << 8;
+
+#[inline(always)]
+pub fn prefetch_pending() -> bool { unsafe { *a32_prefetch.add(2) != 0 } }
+
+pub fn clear_prefetch() {
+    unsafe {
+        *a32_prefetch.add(2) = 0;
+        *a32_prefetch.add(5) = 0;
+    }
+}
+
+/// Retain up to two sequential instructions from the ARM1136 fetch stream when
+/// SCTLR.M changes (DDI 0211I §§1.5–1.6, 5.1, 6.7.6). Speculative faults do not
+/// retire here. A branch or prefetch flush starts a fresh fetch stream.
+pub fn prefetch_before_mmu_switch() {
+    clear_prefetch();
+    let mut address = (get_pc() as u32).wrapping_add(instruction_length());
+    let thumb = thumb();
+    for index in [0, 3] {
+        let Ok((word, length)) = fetch(address as u64, thumb)
+        else {
+            break;
+        };
+        unsafe {
+            *a32_prefetch.add(index) = address;
+            *a32_prefetch.add(index + 1) = word;
+            *a32_prefetch.add(index + 2) = length | if thumb { PREFETCH_THUMB } else { 0 };
+        }
+        address = address.wrapping_add(length);
+    }
+}
+
+fn take_prefetch(address: u64, thumb: bool) -> Option<(u32, u32)> {
+    unsafe {
+        let info = *a32_prefetch.add(2);
+        if info == 0 {
+            return None;
+        }
+        if address == *a32_prefetch as u64 && thumb == (info & PREFETCH_THUMB != 0) {
+            let word = *a32_prefetch.add(1);
+            core::ptr::copy_nonoverlapping(a32_prefetch.add(3), a32_prefetch, 3);
+            *a32_prefetch.add(5) = 0;
+            return Some((word, info & !PREFETCH_THUMB));
+        }
+        clear_prefetch();
+    }
+    None
+}
+
 // ---- one instruction
 
 /// (diagnostics: crate::aarch64::jit::pages' step and helper counts) an
@@ -1340,7 +1394,8 @@ pub fn interpret_one(address: u64) -> Flow {
     let thumb = thumb();
     unsafe { INSTRUCTION_LENGTH = if thumb { 2 } else { 4 } };
     let mut fetched = 0;
-    let result = fetch(address, thumb).and_then(|(word, length)| {
+    let opcode = take_prefetch(address, thumb).map_or_else(|| fetch(address, thumb), Ok);
+    let result = opcode.and_then(|(word, length)| {
         fetched = word;
         unsafe { INSTRUCTION_LENGTH = length };
         if unsafe { crate::aarch64::jit::pages::A32_TRACE } && crate::aarch64::cpu::el() == 0 {
@@ -1365,8 +1420,16 @@ pub fn interpret_one(address: u64) -> Flow {
                 Flow::Next | Flow::Yield | Flow::Wait(_) | Flow::Off => {
                     set_pc((address as u32).wrapping_add(length) as u64)
                 },
-                Flow::Jump(target) => set_pc(target),
-                Flow::Set | Flow::Retry => {},
+                Flow::Jump(target) => {
+                    if prefetch_pending() {
+                        clear_prefetch();
+                    }
+                    set_pc(target);
+                },
+                Flow::Set => clear_prefetch(),
+                // A barrier retries only while another core acknowledges TLB
+                // maintenance. The ARM1136 machine that queues fetches is single-core.
+                Flow::Retry => {},
             }
             // (the IT block goes on: T32's instructions, executed or not)
             if thumb && !matches!(flow, Flow::Set | Flow::Retry) {
@@ -1575,9 +1638,49 @@ fn a32_multiply(word: u32) -> Result<Flow, Exception> {
     }
 }
 
-/// The synchronization primitives (bits 27:23 00011, 7:4 1001): the
-/// exclusives and load-acquire/store-release
+/// SWP/SWPB on ARM1136 and Cortex-A8. On these single-core machines
+/// neither another guest core nor guest interrupts or DMA run between
+/// the two bus accesses. A fault leaves the destination register untouched.
+fn a32_swap(word: u32, arm1136: bool) -> Result<Flow, Exception> {
+    let rn = word >> 16 & 15;
+    let rd = word >> 12 & 15;
+    let rm = word & 15;
+    if rn == 15 || rd == 15 || rm == 15 || rn == rd || rn == rm {
+        return Err(Exception::Undefined);
+    }
+    let size = if word & (1 << 22) != 0 { 1 } else { 4 };
+    let address = reg(rn);
+    let low = address & (size - 1);
+    // Cortex-A8 requires word alignment. ARM1136 permits a rotated word
+    // read and an aligned store when both SCTLR.A and SCTLR.U are clear.
+    if low != 0 && (!arm1136 || sctlr() & (SCTLR_A | (1 << 22)) != 0) {
+        return Err(execute::alignment(address as u64, false, Syndrome::NONE));
+    }
+    let aligned = address - low;
+    let previous = load(aligned, size, false)?;
+    let value = reg(rm);
+    // The memory helpers take little-endian values.
+    let big_endian = !arm1136 && size == 4 && get_pstate() & PSTATE_E != 0;
+    let (previous, value) = if big_endian {
+        (previous.swap_bytes(), value.swap_bytes())
+    }
+    else {
+        (previous.rotate_right(8 * low), value)
+    };
+    memory::write(aligned as u64, size, value as u64, false, syndrome(size))?;
+    set_reg(rd, previous);
+    Ok(Flow::Next)
+}
+
+/// A32 synchronization primitives: swap, exclusives and acquire/release.
 fn a32_synchronization(word: u32, pc: u32) -> Result<Flow, Exception> {
+    if word & 0x0FB0_0FF0 == 0x0100_0090 {
+        let legacy = arm1136();
+        // Cortex-A8 has no SCTLR.SW enable bit (DDI 0344K, table 3-46).
+        if legacy || (cortex_a8() && !bus::iop_active()) {
+            return a32_swap(word, legacy);
+        }
+    }
     let size = [2, 3, 0, 1][(word >> 21 & 3) as usize];
     let load = word & 1 << 20 != 0;
     let rn = word >> 16 & 15;

@@ -8,15 +8,15 @@
 
 import { h, replace, confirm } from "./dom.js";
 import { choices, change, fitted } from "../vm_model.js";
-import { check_config } from "../vm_config.js";
-import { describe_image } from "./describe.js";
+import { ANDROID_DEFAULTS, SYMBIAN_NETWORK_RELAY, check_config } from "../vm_config.js";
+import { describe_image, hardware_rows } from "./describe.js";
 import { general_panel, memory_panel, processor_panel, machine_panel, advanced_panel, CPU_LABELS, MACHINE_LABELS } from "./panels/system.js";
 import { disk_panel, usb_disk_panel, cdrom_panel, floppy_panel, direct_boot_panel } from "./panels/storage.js";
 import { network_panel, sound_panel, usb_panel, tpm_panel, display_panel, serial_panel, shared_folder_panel, virt_panel, NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 import { android_panel } from "./panels/android.js";
-import { ANDROID_DEFAULTS } from "../vm_config.js";
 import { RANCHU_DEVICES } from "../../android/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
+import { SYBORG_DEVICE } from "../../symbian/catalog.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Problem} Problem */
@@ -30,6 +30,8 @@ import { USB_PORTS } from "../../machine_options.js";
  * @property {{put_handle: (handle: any) => Promise<string>}} store where picked files' handles go
  * @property {import("../disk_service_client.js").Service | null} service the disk service, if there is one
  * @property {((progress: (text: string) => void) => Promise<void>) | null} erase_ios
+ * @property {boolean} eject_card
+ * @property {() => void} stage_card_ejection
  */
 
 /**
@@ -48,6 +50,10 @@ import { USB_PORTS } from "../../machine_options.js";
  */
 export function hardware_items(c)
 {
+    if(c.symbian) return [
+        { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
+        { id: "symbian", label: "Symbian firmware", summary: SYBORG_DEVICE.name + " · " + c.symbian.sw_version, panel: symbian_panel, remove: null },
+    ];
     if(c.ios) return [
         { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
         { id: "ios", label: "iPhone", summary: "iPhone 4 · iOS 6.1.3", panel: ios_panel, remove: null },
@@ -99,6 +105,35 @@ export function hardware_items(c)
     if(virt) items.push({ id: "virt", label: "virt devices", summary: c.virt.transport + (c.virt.vsock ? ", vsock" : ""), panel: virt_panel, remove: null });
     items.push({ id: "advanced", label: "Advanced", summary: c.advanced.cpu_worker ? "CPU in a Worker" : "CPU in the page", panel: advanced_panel, remove: null });
     return items;
+}
+
+/** @param {PanelContext} ctx */
+function symbian_panel(ctx)
+{
+    const firmware = ctx.config.symbian;
+    const rows = [...hardware_rows(ctx.config), ["Firmware source", firmware.manifest], ["Manifest SHA-256", firmware.manifest_sha256]];
+    const suspended = !!ctx.config.suspended;
+    const webgpu = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: firmware.webgpu === true,
+        disabled: suspended }));
+    webgpu.onchange = () => ctx.set("symbian.webgpu", webgpu.checked);
+    const network = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", name: "symbian-network",
+        checked: firmware.network === true, disabled: suspended }));
+    network.onchange = () => ctx.set("symbian.network", network.checked);
+    const relay = /** @type {HTMLInputElement} */ (h("input", { type: "text", name: "symbian-network-relay",
+        value: firmware.network_relay ?? SYMBIAN_NETWORK_RELAY, disabled: suspended || !firmware.network,
+        spellcheck: "false", autocapitalize: "off" }));
+    relay.onchange = () => ctx.set("symbian.network_relay", relay.value.trim());
+    return [
+        h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
+            h("tr", null, h("th", null, label), h("td", null, value))))),
+        h("label.check", null, h("span", null, "WebGPU acceleration"), webgpu),
+        h("label.check", null, h("span", null, "Internet via virtual SIM"), network),
+        h("label.field", null, h("span", null, "Wisp relay URL"), relay),
+        firmware.network && h("p.note", null, "Set up a packet data access point in the phone's Internet destination the first time you connect."),
+        firmware.sd && !suspended && (ctx.eject_card ?
+            h("p.note", null, "The transfer card will be ejected when you save. Its image stays in Browser disks.") :
+            h("button", { type: "button", onclick: ctx.stage_card_ejection }, "Eject transfer card")),
+    ];
 }
 
 /** @param {PanelContext} ctx */
@@ -180,6 +215,7 @@ function ios_sound_panel(ctx)
 export function item_of(path)
 {
     const [head, index] = path.split(".");
+    if(head === "symbian") return "symbian";
     if(head === "ios") return index === "nand" ? "ios-nand" : "ios";
     // (a USB disk's: usb.disks.<i>)
     if(head === "usb" && index === "disks" && /^\d+$/.test(path.split(".")[2] || "")) return "usb-disk-" + path.split(".")[2];
@@ -204,7 +240,7 @@ export function item_of(path)
  */
 function additions(c)
 {
-    if(c.ios) return [];
+    if(c.ios || c.symbian) return [];
     const virt = c.machine.type === "virt", arm = virt || c.machine.type === "ranchu";
     /** @type {Array<[string, (next: VMConfig) => void]>} */
     const list = [];
@@ -253,7 +289,8 @@ function additions(c)
  * (checked) or null when cancelled
  * @param {VMConfig} config
  * @param {{store: PanelContext["store"], service?: PanelContext["service"], title?: string, save_label?: string, item?: string,
- *     erase_ios?: PanelContext["erase_ios"]}} options
+ *     erase_ios?: PanelContext["erase_ios"],
+ *     persist?: (config: VMConfig, eject_card: boolean) => Promise<VMConfig>}} options
  * @return {Promise<VMConfig | null>}
  */
 export function open_settings(config, options)
@@ -264,12 +301,14 @@ export function open_settings(config, options)
         let notes = fitted(config).notes;
         let selected = options.item || "general";
         let erasing = false;
+        let saving = false;
+        let eject_card = false;
         /** @type {Problem[]} */
         let problems = [];
         const element = /** @type {HTMLDialogElement} */ (h("dialog.settings-dialog", { "aria-label": options.title || "Settings" }));
         const close = value =>
         {
-            if(erasing) return;
+            if(erasing || saving) return;
             element.close();
             element.remove();
             resolve(value);
@@ -280,6 +319,8 @@ export function open_settings(config, options)
         const ctx = {
             get config() { return working; },
             get choices() { return choices(working); },
+            get eject_card() { return eject_card; },
+            stage_card_ejection() { eject_card = true; render(); },
             set(path, value)
             {
                 const result = change(working, path, value);
@@ -308,9 +349,9 @@ export function open_settings(config, options)
             }),
         };
 
-        const save = () =>
+        const save = async () =>
         {
-            if(erasing) return;
+            if(erasing || saving) return;
             problems = check_config(working);
             if(problems.length)
             {
@@ -318,7 +359,24 @@ export function open_settings(config, options)
                 render();
                 return;
             }
-            close(working);
+            if(!options.persist)
+            {
+                close(working);
+                return;
+            }
+            saving = true;
+            render();
+            let saved;
+            try { saved = await options.persist(working, eject_card); }
+            catch(error)
+            {
+                if(eject_card) selected = "symbian";
+                problems = [{ path: eject_card ? "symbian.sd" : selected,
+                    message: String(error.message || error) }];
+            }
+            finally { saving = false; }
+            if(saved) close(saved);
+            else render();
         };
 
         function render()
@@ -352,15 +410,16 @@ export function open_settings(config, options)
             replace(element,
                 h("div.settings", null,
                     h("header.settings-header", null, h("h2", null, options.title || "Settings: " + working.name)),
-                    h("aside.settings-list", null, list, working.ios ? null : h("div.settings-list-actions", null, add, remove)),
+                    h("aside.settings-list", null, list, working.ios || working.symbian ? null : h("div.settings-list-actions", null, add, remove)),
                     h("section.settings-panel", { "aria-label": item.label }, h("h3", null, item.label),
                         own_problems.length ? h("ul.problems", { role: "alert" }, own_problems.map(p => h("li", null, p.message))) : null,
                         item.panel(ctx)),
                     h("footer.settings-footer", null,
                         h("div.settings-notes", { role: "status" }, notes.length ? "Also changed: " + notes.join("; ") : problems.length ?
                             problems.length + (problems.length === 1 ? " problem" : " problems") + " to fix before saving" : ""),
-                        h("button", { type: "button", onclick: () => close(null) }, "Cancel"),
-                        h("button.primary", { type: "button", onclick: save }, options.save_label || "Save"))));
+                        h("button", { type: "button", disabled: saving, onclick: () => close(null) }, "Cancel"),
+                        h("button.primary", { type: "button", disabled: saving, onclick: save },
+                            saving ? "Saving…" : options.save_label || "Save"))));
         }
 
         document.body.append(element);

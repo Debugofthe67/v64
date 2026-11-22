@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.28)
+project(v86_gles LANGUAGES CXX ASM)
+include(SymbianApp)
+symbian_add_executable(v86_gles SOURCES app.cc egl_window.cc STARTUP start.S
+    LINKER_SCRIPT "${SYMBIAN_SDK_PREFIX}/cmake/freestanding_import_image.ld")
+target_link_libraries(v86_gles PRIVATE Symbian::EUser Symbian::WindowServer Symbian::Gdi)
+target_compile_features(v86_gles PRIVATE cxx_std_17)
+target_compile_options(v86_gles PRIVATE -fno-exceptions -fno-rtti -fno-unwind-tables -fno-asynchronous-unwind-tables)
+target_compile_definitions(v86_gles PRIVATE RunNotesThread=RunGlesThread)
+symbian_publish_executable(v86_gles UID3 0xE0860506)

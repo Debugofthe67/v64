@@ -1,3 +1,8 @@
+import { syborg_key, syborg_touch } from "../symbian/syborg_input.js";
+import { syborg_orientation } from "../symbian/syborg_accelerometer.js";
+import { syborg_boot_files } from "../symbian/syborg_board.js";
+import { SYBORG_BOOT_FILES, SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
+import { SYBORG_WISP_OPTIONS } from "../symbian/syborg_packet_data.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
 import { instantiate_v86, memory_import } from "../parallel/relocate.js";
 import { default_worker_url, parallel_unsupported_reason } from "../parallel/machine.js";
@@ -33,7 +38,7 @@ import { Modem } from "./modem.js";
 import { MemoryFileStorage, ServerFileStorageWrapper } from "./filestorage.js";
 import { SyncBuffer, buffer_from_object } from "../buffer.js";
 import { check_image_options, create_disk_image, import_ova, set_buffer_sector_size } from "../image/factory.js";
-import { check_disk_options, check_disk_policy, check_disk_bindings, set_disk_policy, disk_kind, is_service_url } from "../disk_options.js";
+import { check_disk_options, check_disk_policy, check_disk_bindings, set_disk_policy, disk_kind, in_node, is_service_url } from "../disk_options.js";
 import { NodeFileDisk, check_loaded_disks, disk_buffers } from "../disk_writeback.js";
 import { floppy_format_size } from "../floppy.js";
 import { DiskServiceDisk } from "../disk_service.js";
@@ -134,9 +139,11 @@ V86.prototype.create_adapter_renderer = async function(options, host)
     // compositor of its own takes over the screen canvas, as the proxy's
     // does, so that a posted frame is a layer over the screen and is not read
     // back, docs/plan/gles-proxy-plan.md E5; the 2D canvas again if it cannot start)
-    if(!compositor && this.gles_host && this.machine_type !== "s5l8930") compositor = await this.gles_screen_compositor();
+    if(!compositor && this.gles_host && this.machine_type !== "s5l8930" && this.machine_type !== SYBORG_MACHINE)
+        compositor = await this.gles_screen_compositor();
     const layer = compositor ? compositor["createLayer"]("display adapter") : null;
-    const renderer_options = layer ? { "canvas": layer["canvas"], "executorOptions": { "host": layer["host"] }, "scanoutLayer": layer } : {};
+    const renderer_options = layer ? { "canvas": layer["canvas"], "executorOptions": { "host": layer["host"] }, "scanoutLayer": layer } :
+        this.machine_type === SYBORG_MACHINE ? { "ownGlesDevice": true } : {};
     if(host)
     {
         this.adapter_renderer = create(host, renderer_options);
@@ -253,11 +260,14 @@ export function V86(options)
     const machine = check_machine_options(options);
     this.cpu_type = machine.cpu_type;
     this.machine_type = machine.machine_type;
+    if(this.machine_type === SYBORG_MACHINE && options["symbian"] === undefined)
+        throw new Error("Syborg requires symbian.manifest");
     // the ranchu machine's GLES host (ranchu_gpu "host", or an emulator
     // image's GPU mode "host"): it needs the page's renderer, as a 3D
     // display adapter does (docs/plan/gles-proxy-plan.md)
     const android_device = options.android && ANDROID_DEVICES[options.android.device || "cf_arm64_only_phone"];
-    this.gles_host = options.ranchu_gpu === "host" || !!options.gles_backdoor || !!(android_device && android_device.machine === "ranchu" &&
+    this.gles_host = this.machine_type === SYBORG_MACHINE && options["symbian"]?.["webgpu"] === true ||
+        options.ranchu_gpu === "host" || !!options.gles_backdoor || !!(android_device && android_device.machine === "ranchu" &&
         ranchu_gpu_mode(android_device, options.android.gpu_mode).ranchu_gpu === "host");
     // each disk's disk_option and disk_error (docs/plan/disk-persistence-plan.md
     // "启动校验"); the disks, to find an image bound twice (attach_sata_drive)
@@ -537,6 +547,14 @@ V86.prototype.continue_init = async function(emulator, options)
     {
         options[name] = await opfs_readable(name, options[name]);
     }
+    if(this.machine_type === SYBORG_MACHINE)
+    {
+        const media = options["symbian"];
+        options["symbian"] = Object.assign({}, media);
+        await Promise.all(SYBORG_BOOT_FILES.map(async key => {
+            if(media[key]) options["symbian"][key] = Object.assign({}, await opfs_readable("Syborg " + key, media[key]));
+        }));
+    }
     if(options.virtio_disks)
     {
         options.virtio_disks = await Promise.all(options.virtio_disks.map((disk, i) => opfs_readable("virtio_disk" + i, disk)));
@@ -632,7 +650,8 @@ V86.prototype.continue_init = async function(emulator, options)
     settings["x87_fast_math"] = options["x87_fast_math"];
     settings["x87_jit_cache"] = options["x87_jit_cache"];
     settings.load_devices = true;
-    settings.memory_size = options.memory_size || (this.machine_type === "s5l8930" ? 512 : 64) * 1024 * 1024;
+    settings.memory_size = options.memory_size || (this.machine_type === SYBORG_MACHINE ? SYBORG_PROFILE.ram_size :
+        (this.machine_type === "s5l8930" ? 512 : 64) * 1024 * 1024);
     settings.high_memory_size = options.high_memory_size;
     settings.extended_memory_size = options.extended_memory_size;
     settings.extended_memory_cache = options.extended_memory_cache;
@@ -650,13 +669,17 @@ V86.prototype.continue_init = async function(emulator, options)
     settings.parallel1 = options.parallel1;
     settings.cmdline = options.ios ? options.ios.boot_args : options.cmdline;
     settings.ios_network = !!options.ios?.network;
+    settings.symbian = options["symbian"];
+    settings.syborg_media = {};
     settings.preserve_mac_from_state_image = options.preserve_mac_from_state_image;
     settings.mac_address_translation = options.mac_address_translation;
     settings.cpuid_level = options.cpuid_level;
     settings.virtio_balloon = options.virtio_balloon;
     settings.virtio_console = !!options.virtio_console;
 
-    const relay_url = options.network_relay_url || options.net_device && options.net_device.relay_url;
+    const syborg_network = this.machine_type === SYBORG_MACHINE;
+    const relay_url = syborg_network && options["symbian"]["network"] !== true ? undefined :
+        options.network_relay_url || options.net_device && options.net_device.relay_url;
     if(relay_url)
     {
         // TODO: remove bus, use direct calls instead
@@ -671,7 +694,8 @@ V86.prototype.continue_init = async function(emulator, options)
         }
         else if(relay_url.startsWith("wisp://") || relay_url.startsWith("wisps://"))
         {
-            this.network_adapter = new WispNetworkAdapter(relay_url, this.bus, options.net_device);
+            const network = syborg_network ? Object.assign({}, options.net_device, SYBORG_WISP_OPTIONS) : options.net_device;
+            this.network_adapter = new WispNetworkAdapter(relay_url, this.bus, network);
         }
         else
         {
@@ -951,6 +975,19 @@ V86.prototype.continue_init = async function(emulator, options)
             settings.usb_disks[i] = { id: disks[i].id, buffer, read_only: !!disks[i].read_only };
             return;
         }
+        if(this.machine_type === SYBORG_MACHINE && name.startsWith("symbian_"))
+        {
+            const key = name.slice("symbian_".length);
+            if(key === "nvmemory" || key === "nvmemory2") settings.syborg_media[key] = buffer;
+            else
+            {
+                const source = options["symbian"][key];
+                // Keep caller-owned bytes stable throughout asynchronous verification.
+                settings.syborg_media[key] = source.buffer || source.get ?
+                    new Uint8Array(buffer.buffer).slice().buffer : buffer.buffer;
+            }
+            return;
+        }
         switch(name)
         {
             case "hda":
@@ -1077,7 +1114,8 @@ V86.prototype.continue_init = async function(emulator, options)
 
         if(name === "bios" || name === "vga_bios" || name === "firmware_code" || name === "firmware_vars" || name === "tpm_wasm" || name === "tpm_state" ||
             name === "initial_state" || name === "multiboot" ||
-            name === "bzimage" || name === "initrd" || name === "kernel" || name === "ios_bootlogo" || name === "dtb" || name === "android_vendor_ramdisk")
+            name === "bzimage" || name === "initrd" || name === "kernel" || name === "ios_bootlogo" ||
+            name.startsWith("symbian_") || name === "dtb" || name === "android_vendor_ramdisk")
         {
             // Ignore async for these because they must be available before boot.
             // This should make result.buffer available after the object is loaded
@@ -1150,6 +1188,10 @@ V86.prototype.continue_init = async function(emulator, options)
             throw new Error("iPhone boot requires a prepared NAND image, or ios.kernelcache and ios.devicetree");
         if(options.ios?.nand_boot && (!options.ios.nand || options.ios.kernelcache || options.ios.devicetree))
             throw new Error("ios.nand_boot requires a NAND image and supplies its own kernel and device tree");
+    }
+    if(this.machine_type === SYBORG_MACHINE)
+    {
+        for(const key of SYBORG_BOOT_FILES) add_file("symbian_" + key, options["symbian"][key]);
     }
     add_file("initrd", options.ios ? options.ios.ramdisk : options.initrd);
     add_file("kernel", options.ios ? options.ios.kernelcache : options.kernel);
@@ -1441,7 +1483,8 @@ V86.prototype.continue_init = async function(emulator, options)
 
         // the GLES host's plugin (ranchu_gpu "host", gles_backdoor; docs/plan/gles-proxy-plan.md):
         // the machine's GPU mode is known only now, after Android's bootloader
-        if(settings.ranchu_gpu === "host" || settings.gles_backdoor)
+        const syborg_gpu = settings.machine_type === SYBORG_MACHINE && settings.symbian?.["webgpu"] === true;
+        if(settings.ranchu_gpu === "host" || settings.gles_backdoor || syborg_gpu && settings.graphics_adapter_renderer)
         {
             settings.gles_plugin = await load_device_plugin(GLES_PLUGINS, "gles", options.ranchu_gpu_path, "ranchu_gpu_path");
             // (its GLSL ES compiler, glslang: GLSL ES 3.x's shaders; docs/plan/gles3-plan.md)
@@ -1473,6 +1516,11 @@ V86.prototype.continue_init = async function(emulator, options)
         }
 
         if(this.destroyed) return;
+        if(this.machine_type === SYBORG_MACHINE)
+        {
+            settings.syborg_boot = await syborg_boot_files(settings);
+            if(this.destroyed) return;
+        }
         this.v86.init(settings);
 
         const parallel_bytes = this.parallel_requested && this.wasm_source && new Uint8Array(this.wasm_source);
@@ -2523,8 +2571,11 @@ V86.prototype.load_attached_disk = async function(name, file, cdrom, caller)
     {
         // (written back: src/disk_writeback.js, src/disk_service.js)
         image = writeback_backend(name, /** @type {!Object} */ (file));
-        await image.load();
-        try { await check_loaded_disks([[name, image, file]].concat(this.disk_buffers())); }
+        try
+        {
+            await image.load();
+            await check_loaded_disks([[name, image, file]].concat(this.disk_buffers()));
+        }
         catch(error) { image.close_now(); throw error; }
     }
     else if(disk_image)
@@ -2747,6 +2798,84 @@ V86.prototype.ios_send_button = function(button, pressed)
 };
 // eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
 V86.prototype["ios_send_button"] = V86.prototype.ios_send_button;
+
+/**
+ * Send a Syborg guest scan code.
+ * @param {number} code
+ * @param {boolean} pressed
+ */
+V86.prototype.symbian_send_key = function(code, pressed)
+{
+    if(this.machine_type !== SYBORG_MACHINE || !syborg_key(code, pressed))
+    {
+        throw new Error("symbian_send_key: expected a keyboard code for this Symbian machine and a boolean state");
+    }
+    this.bus.send("symbian-key", [code, pressed]);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_send_key"] = V86.prototype.symbian_send_key;
+
+/**
+ * Set the Symbian touch contact in screen coordinates.
+ * @param {number} x
+ * @param {number} y
+ * @param {boolean} pressed
+ */
+V86.prototype.symbian_set_touch = function(x, y, pressed)
+{
+    if(this.machine_type !== SYBORG_MACHINE || !syborg_touch(x, y, pressed))
+    {
+        throw new Error("symbian_set_touch: expected screen coordinates for this Symbian machine and a boolean state");
+    }
+    this.bus.send("symbian-touch", [x, y, pressed]);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_set_touch"] = V86.prototype.symbian_set_touch;
+
+/**
+ * Set the phone's gravity direction, in clockwise degrees from portrait.
+ * @param {number} angle
+ */
+V86.prototype.symbian_set_orientation = function(angle)
+{
+    if(this.machine_type !== SYBORG_MACHINE || !syborg_orientation(angle))
+        throw new Error("symbian_set_orientation: expected 0 or 90 degrees for a Syborg machine");
+    this.bus.send("symbian-orientation", angle);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_set_orientation"] = V86.prototype.symbian_set_orientation;
+
+/**
+ * Open a package in E:\INSTALL with the original Symbian installer.
+ * @param {string} name
+ * @return {!Promise<number>} Symbian's status for opening the installer
+ */
+V86.prototype.symbian_install_package = async function(name)
+{
+    if(this.machine_type !== SYBORG_MACHINE || typeof name !== "string" || name.length > 245 ||
+        /[\x00-\x1F"*/:<>?\\|]/.test(name) || !/\.sisx?$/i.test(name))
+        throw new Error("Choose a SIS or SISX from E:\\INSTALL. Names can contain up to 245 characters.");
+    const packet = new Uint8Array(512), view = new DataView(packet.buffer);
+    view.setUint16(0, name.length, true);
+    for(let i = 0; i < name.length; i++) view.setUint16(2 + i * 2, name.charCodeAt(i), true);
+    const id = this.symbian_install_id = (this.symbian_install_id || 0) + 1;
+    return new Promise((resolve, reject) => {
+        const on_result = response => {
+            if(response[0] !== id) return;
+            clearTimeout(timeout);
+            this.remove_listener("symbian-install-result", on_result);
+            resolve(response[1]);
+        };
+        const timeout = setTimeout(() => {
+            this.remove_listener("symbian-install-result", on_result);
+            reject(new Error("The phone did not respond to the install request. Check the phone before trying again."));
+        }, 20000);
+        this.add_listener("symbian-install-result", on_result);
+        this.bus.send("symbian-install-package", [id, packet]);
+    });
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_install_package"] = V86.prototype.symbian_install_package;
 
 /**
  * Rotate the simulated N90's gravity vector, in clockwise degrees from portrait.

@@ -3574,7 +3574,11 @@ export const GLES3 = {
             case "glUnmapBufferAEMU":
             {
                 const [target, offset, length, access, data] = args;
-                if(access & GL3.MAP_WRITE_BIT && !(access & GL3.MAP_FLUSH_EXPLICIT_BIT)) this.buffer_written(this.buffer_of3(c, target), offset, length, data);
+                if(access & GL3.MAP_WRITE_BIT && !(access & GL3.MAP_FLUSH_EXPLICIT_BIT))
+                {
+                    if(c.api === 2) this.buffer_data(c, [target, offset, length, data], true);
+                    this.buffer_written(this.buffer_of3(c, target), offset, length, data);
+                }
                 return true;
             }
             case "glFlushMappedBufferRangeAEMU":

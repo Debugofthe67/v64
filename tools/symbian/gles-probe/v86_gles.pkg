@@ -1,0 +1,8 @@
+&EN
+#{"v86 EGL"},(0xE0860506),1,0,0
+%{"v86 project"}
+:"v86 project"
+[0x1028315F],0,0,0,{"Series60ProductID"}
+"v86_gles.exe"-"!:\sys\bin\v86_gles.exe"
+"v86_gles_reg.rsc"-"!:\private\10003a3f\import\apps\v86_gles_reg.rsc"
+"v86_gles_loc.rsc"-"!:\resource\apps\v86_gles_loc.rsc"

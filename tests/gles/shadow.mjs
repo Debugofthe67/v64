@@ -46,6 +46,36 @@ const each = async (list, f) => { const out = []; for(const item of list) out.pu
 /** the GLES commands that reached the page */
 const sent = () => { host.flush(); return renderer.records().filter(r => r.name === "COMMAND").map(r => r.command.name); };
 
+// Native iOS maps whole ES1/ES2 buffer stores into guest memory.
+for(const api of [1, 2])
+{
+    const native = new GLESHost(DISPLAY, fake_renderer(), undefined, { native_buffers: true });
+    const { call: gl } = await client(native).connect();
+    const handle = (await gl("rcCreateContext", 3, 0, api)).ret;
+    await gl("rcMakeCurrent", handle, 0, 0);
+    const target = GL.ARRAY_BUFFER;
+    const mapped_state = async pname => i32s((await gl("gles2:glGetBufferParameteriv", target, pname, 4)).outs[0])[0];
+    const map = async access => i32s((await gl("gles2:glMapBufferRangeAEMU", target, 0, 8, access, 8)).outs[0]);
+    const unmap = async (access, values) => (await gl("gles2:glUnmapBufferAEMU", target, 0, 8, access, ints(values), 1)).outs[0][0];
+    await gl("gles2:glBindBuffer", target, 1);
+    await gl("gles2:glBufferData", target, 8, ints([41, 42]), GL.STATIC_DRAW);
+    assert.deepEqual(await map(3), [41, 42]);
+    assert.equal(await mapped_state(0x88BC), 1);
+    assert.equal(await mapped_state(0x88BB), 0x88BA);
+    await gl("gles2:glBufferSubData", target, 0, 4, ints([10]));
+    assert.equal((await gl("gles2:glGetError")).ret, GL.INVALID_OPERATION, "a mapped store cannot receive glBufferSubData");
+    await gl("gles2:glBindBuffer", target, 0);
+    await gl("gles2:glBindBuffer", target, 1);
+    assert.equal(await unmap(3, [41, 77]), 1);
+    assert.equal(await mapped_state(0x88BC), 0);
+    assert.deepEqual(await map(2), [41, 77], "a partial write preserves the other bytes");
+    await gl("gles2:glBufferData", target, 8, ints([11, 22]), GL.STATIC_DRAW);
+    assert.equal(await mapped_state(0x88BC), 0, "replacing a store implicitly unmaps it");
+    assert.deepEqual(await map(2), [11, 22]);
+    assert.equal(await unmap(2, [11, 22]), 1);
+    assert.equal((await gl("gles2:glGetError")).ret, 0);
+}
+
 // ---- the initial state, glGet's conversions, enables
 
 {

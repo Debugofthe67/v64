@@ -1,0 +1,11 @@
+CHARACTER_SET UTF8
+#include <appinfo.rh>
+
+UID2 KUidAppRegistrationResourceFile
+UID3 0xE0860505
+
+RESOURCE APP_REGISTRATION_INFO
+{
+    app_file = "v86_notes";
+    localisable_resource_file = "\\resource\\apps\\v86_notes_loc";
+}

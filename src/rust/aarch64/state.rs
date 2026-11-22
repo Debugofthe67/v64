@@ -77,4 +77,8 @@ state!(a32_ttbcr: u32 = 1468);
 state!(a32_dacr: u32 = 1472);
 state!(a32_ifsr: u32 = 1476);
 state!(a32_fpexc: u32 = 1480);
+state!(a32_fpinst: u32 = 1484);
+state!(a32_fpinst2: u32 = 1488);
+state!(a32_mem_remap: u32 = 1492);
+state!(a32_prefetch: u32 = 1508);
 // END GENERATED

@@ -1,0 +1,12 @@
+CHARACTER_SET UTF8
+#include <appinfo.rh>
+
+RESOURCE LOCALISABLE_APP_INFO
+{
+    short_caption = "Notes";
+    caption_and_icon = CAPTION_AND_ICON_INFO
+    {
+        caption = "v86 Notes";
+        number_of_icons = 0;
+    };
+}

@@ -150,6 +150,8 @@ label.check { display: flex; gap: 4px; align-items: baseline; }
 .wizard-steps li.done::after { content: " ✓"; }
 .wizard-body { flex: 1; overflow: auto; padding: 8px 18px; display: flex; flex-direction: column; gap: 10px; }
 .wizard-body fieldset { border: 1px solid var(--line); border-radius: 4px; display: flex; flex-direction: column; gap: 6px; }
+.wizard-body .symbian-source { min-inline-size: 0; }
+.symbian-source select { min-inline-size: 0; max-inline-size: 100%; }
 .preset-pane { display: grid; grid-template-columns: 230px 1fr; gap: 16px; min-height: 0; }
 .preset-list { list-style: none; margin: 0; padding: 0; overflow: auto; }
 .preset-list li { padding: 6px 10px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between; gap: 6px; }
@@ -171,6 +173,44 @@ details.checklist { margin: 10px 0; }
 .console-screen { overflow: auto; min-width: 0; }
 .iphone-stage { position: relative; margin-inline: auto; }
 #screen_container.iphone-screen { position: absolute; top: 50%; left: 50%; touch-action: none; }
+.syborg-phone {
+    display: grid;
+    gap: 6px;
+    max-width: 100%;
+    padding: 8px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+}
+.syborg-body { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
+.syborg-front { display: flex; gap: 6px; }
+.syborg-front > button { flex: 1; }
+.syborg-side { display: grid; gap: 6px; }
+.syborg-phone button { min-height: 32px; padding-inline: 7px; }
+.syborg-key { touch-action: none; }
+.syborg-phone button[data-key="call"] { color: #1d9855; }
+.syborg-phone button[data-key="end"] { color: #d55c66; }
+.syborg-key[data-down] { border-color: var(--accent); background: var(--selected); }
+#screen_container.syborg-touch-screen {
+    display: block;
+    width: var(--syborg-screen-width, 360px);
+    min-width: 0;
+    aspect-ratio: 360 / 640;
+    touch-action: none;
+    container-type: size;
+}
+#screen_container.syborg-touch-screen #vga, #screen_container.syborg-touch-screen #screen { position: absolute; inset: 0; }
+/* The touchscreen frame sets the scale. Override the screen adapter's inline canvas dimensions. */
+#screen_container.syborg-touch-screen #vga { height: 100% !important; width: 100% !important; object-fit: contain; }
+#screen_container.syborg-touch-screen[data-landscape] { aspect-ratio: 640 / 360; }
+#screen_container.syborg-touch-screen[data-landscape] #vga {
+    inset: 50% auto auto 50%;
+    width: 100cqh !important;
+    height: 100cqw !important;
+    transform-origin: center;
+    transform: translate(-50%, -50%) rotate(90deg) !important;
+}
+#screen_container.syborg-touch-screen:focus-visible { outline: 2px solid var(--accent); }
 .console-drawer {
     flex: 0 0 360px;
     max-width: 100%;
@@ -186,6 +226,7 @@ details.checklist { margin: 10px 0; }
 }
 .console-drawer header { display: flex; justify-content: space-between; align-items: center; }
 .console-drawer h2 { margin: 0; font-size: 1em; }
+
 .terminal { min-height: 300px; }
 .console-status { color: var(--muted); margin-top: 6px; min-height: 1.45em; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 0.92em; }
 .console-status span:empty { display: none; }
@@ -234,7 +275,7 @@ body.theatre-body footer { display: none; }
 }
 #vga { background-color: #000; touch-action: none; transform-origin: top left; }
 #screen_container:fullscreen { display: flex !important; align-items: center; justify-content: center; }
-#screen_container:fullscreen #vga { width: auto !important; height: 100% !important; }
+#screen_container:fullscreen:not(.syborg-touch-screen) #vga { width: auto !important; height: 100% !important; }
 .phone_keyboard { position: absolute; opacity: 0; width: 0; height: 0; resize: none; left: -9999em; top: 0; z-index: -10; }
 
 footer { color: var(--muted); padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.9em; }

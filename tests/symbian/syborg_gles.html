@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nokia 5800 WebGPU acceptance</title>
+<style>
+    body { font: 15px system-ui, sans-serif; margin: 20px; }
+    main { display: flex; align-items: flex-start; gap: 18px; }
+    canvas { width: 360px; height: 640px; touch-action: none; background: #111; }
+    #log { white-space: pre-wrap; }
+</style>
+<main>
+    <div id="screen"><div></div><canvas></canvas></div>
+    <section>
+        <p id="result">Preparing the phone…</p>
+        <button data-key="180" disabled>Menu</button>
+        <button data-key="171" disabled>Lock</button>
+        <button data-key="3" disabled>Enter</button>
+        <button data-key="4" disabled>Escape</button>
+        <button id="lose" disabled>Lose WebGPU device</button>
+        <pre id="log"></pre>
+    </section>
+</main>
+<script src="/build/glbridge/libv86-webgpu.js"></script>
+<script type="module" src="./syborg_gles_browser.js"></script>

@@ -1,0 +1,645 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>VM manager: Nokia 5800 firmware and native SIS install</title>
+<pre id="result">Starting</pre>
+<pre id="log"></pre>
+<script type="module">
+import { VMStore, config_images } from "../../src/app/vm_store.js";
+import { SYMBIAN_NETWORK_RELAY, config_to_options } from "../../src/app/vm_config.js";
+import { disk_file, disk_id, list_disks, reset_disk } from "../../src/app/browser_disks.js";
+import { read_fat16_file } from "../lib/fat32_reader.mjs";
+import { check_installed_notes } from "../symbian/syborg_sis_checks.js";
+
+const directory = "/build/syborg-s0/reference/";
+const args = new URLSearchParams(location.search);
+const firmware_url = args.get("archive") || directory + "firmware.zip";
+const missing_url = args.get("missing") || directory + "missing.zip";
+const part = args.get("part");
+const controls_only = part === "controls";
+const prepared = (controls_only || part === "notes") && args.has("prepared");
+const result = document.querySelector("#result");
+const log = text => document.querySelector("#log").append(text + "\n");
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const store = await VMStore.open();
+const button = (root, text) => [...root.querySelectorAll("button")].find(el => !el.disabled && el.textContent.trim() === text);
+const frame = document.createElement("iframe");
+frame.style.cssText = "width: 100%; height: 760px; border: 0";
+document.body.append(frame);
+const doc = () => frame.contentDocument;
+const canvas = () => doc().querySelector("#vga");
+const screen = () => doc().querySelector(".syborg-touch-screen");
+let guest_home_ready = false;
+
+function check(condition, message)
+{
+    if(!condition) throw new Error(message);
+}
+async function until(label, probe, timeout = 30000)
+{
+    const end = performance.now() + timeout;
+    while(performance.now() < end)
+    {
+        const error = doc()?.querySelector(".console-notice .error");
+        if(error) throw new Error(error.textContent);
+        const value = await probe();
+        if(value) return value;
+        await sleep(100);
+    }
+    throw new Error("Timed out waiting for " + label);
+}
+async function artifact(name)
+{
+    if(canvas()?.width !== 360) return;
+    const blob = await new Promise(resolve => canvas().toBlob(resolve));
+    await fetch("/__artifact?name=" + name + ".png", { method: "POST", body: blob });
+}
+async function load(url)
+{
+    const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+    frame.src = url;
+    await loaded;
+}
+function emit(element, type, args = {})
+{
+    const win = element.ownerDocument.defaultView;
+    element.dispatchEvent(new win.Event(type, { bubbles: true, ...args }));
+}
+function files(input, picked)
+{
+    const transfer = new frame.contentWindow.DataTransfer();
+    for(const file of picked) transfer.items.add(file);
+    input.files = transfer.files;
+    emit(input, "change");
+}
+async function fetch_file(url, name)
+{
+    const response = await fetch(url);
+    check(response.ok, "Missing test file " + url);
+    return new File([await response.blob()], name);
+}
+async function create(name, archive, exercise_retry = false)
+{
+    doc().querySelector("#new_vm").click();
+    const dialog = doc().querySelector(".wizard-dialog");
+    dialog.querySelector('input[value="symbian"]').click();
+    const selector = dialog.querySelector('select[aria-label="Symbian device"]');
+    check(selector.options.length === 2 && selector.options[1].textContent === "S60v5 → Nokia 5800 (RM-356)", "5800 is the only new Symbian machine");
+    selector.value = "symbian-syborg";
+    emit(selector, "change");
+    const pick = () => dialog.querySelector('input[type="file"]');
+    check(pick().getClientRects().length > 0 && !pick().multiple && !pick().webkitdirectory && pick().accept === ".zip,.rar,.7z" &&
+        dialog.querySelectorAll('input[type="file"]').length === 1, "one native archive selector");
+    if(exercise_retry)
+    {
+        files(pick(), [await fetch_file(missing_url, "missing.zip")]);
+        await until("missing ROM error", () => dialog.textContent.includes("The firmware archive is missing ROM.img"));
+        check(!pick().files.length, "clear the failed selection so the user can retry");
+        check(!button(dialog, "Next"), "a missing file blocks creation");
+    }
+    files(pick(), [archive]);
+    const next = await until("verified archive", () => button(dialog, "Next"), 90000);
+    check(pick().files[0]?.name === archive.name, "the picker keeps the selected file after verification");
+    next.click();
+    const name_input = dialog.querySelector('input[aria-label="Name"]');
+    name_input.value = name;
+    emit(name_input, "input");
+    button(dialog, "Next").click();
+    check(dialog.textContent.includes("31.0.101") && dialog.textContent.includes("Phone memory (C:)"), "summary shows the verified profile");
+    if(exercise_retry)
+    {
+        button(dialog, "Finish").click();
+        (await until("cancel button", () => button(dialog, "Cancel import"))).click();
+        await until("import cancelled", () => dialog.textContent.includes("The import was cancelled"));
+        check(!(await store.list()).length && !(await list_disks()).length, "cancellation leaves neither VM nor disks");
+    }
+    button(dialog, "Finish").click();
+    await until("created library card", () => doc().querySelector(".vm-list")?.textContent.includes(name), 90000);
+    const config = (await store.list()).find(row => row.name === name);
+    check(config?.machine.type === "symbian-syborg" && config.symbian.sw_version === "31.0.101" && config_images(config).length === 5,
+        "the saved VM uses Syborg and five checked artifacts");
+    check(config.symbian.webgpu === true, "new Nokia 5800 VMs enable WebGPU");
+    check(config.symbian.network === true, "new Nokia 5800 VMs enable the virtual SIM");
+    return config;
+}
+async function open_machine(config, profile)
+{
+    let url;
+    doc().querySelector('[data-id="' + config.id + '"]').click();
+    frame.contentWindow.open = selected => { url = selected; };
+    if(profile) profile.start = performance.now();
+    doc().querySelector("#power_on").click();
+    await open_console(await until("library launch", () => url), profile);
+}
+async function open_console(url, profile)
+{
+    await load(url);
+    const emulator = await until("CPU Worker bridge", vm);
+    guest_home_ready = false;
+    if(profile)
+    {
+        const mark = name => { profile.times[name] ??= Math.round(performance.now() - profile.start); };
+        mark("console_ready");
+        emulator.add_listener("emulator-loaded", () => mark("emulator_loaded"));
+        emulator.add_listener("emulator-started", () => mark("guest_running"));
+    }
+    let line = "";
+    emulator.add_listener("serial0-output-byte", byte => {
+        if(byte === 13) return;
+        if(byte === 10)
+        {
+            guest_home_ready ||= line === "SYBPROP: Home screen::Home screen sets 101f8766/43 = 101";
+            if(profile)
+            {
+                const time = Math.round(performance.now() - profile.start);
+                profile.serial_bytes += line.length + 1;
+                if(line.includes("System start ok")) profile.times.system_start ??= time;
+                if(line.startsWith("ISCPEER: install")) profile.times.modem_started ??= time;
+                if(line.startsWith("precache loop,0,")) profile.times.precache_started ??= time;
+                if(guest_home_ready) profile.times.home_service ??= time;
+            }
+            line = "";
+        }
+        else line += String.fromCharCode(byte);
+    });
+}
+function pointer(element, type, coords = {})
+{
+    element.dispatchEvent(new frame.contentWindow.PointerEvent("pointer" + type, {
+        bubbles: true, cancelable: true, pointerId: 1, pointerType: "touch", button: 0, ...coords,
+    }));
+}
+function screen_point(x, y)
+{
+    const rect = screen().getBoundingClientRect();
+    const landscape = screen().hasAttribute("data-landscape");
+    return { clientX: rect.left + (x + 0.5) * rect.width / (landscape ? 640 : 360),
+        clientY: rect.top + (y + 0.5) * rect.height / (landscape ? 360 : 640) };
+}
+async function tap(x, y, rest = 550)
+{
+    const point = screen_point(x, y);
+    const target = doc().elementFromPoint(point.clientX, point.clientY);
+    check(target === canvas(), "the guest pixel is on the visible canvas at " + x + ", " + y);
+    point.pointerType = "mouse";
+    pointer(target, "down", point);
+    await sleep(130);
+    pointer(target, "up", point);
+    await sleep(rest);
+}
+async function press(key, rest = 450, hold = 140)
+{
+    const target = doc().querySelector('[data-key="' + key + '"]');
+    check(target && !target.disabled, "active control " + key);
+    pointer(target, "down");
+    await sleep(hold);
+    pointer(target, "up");
+    await sleep(rest);
+}
+function crop([x, y, w, h])
+{
+    const pixels = canvas().getContext("2d").getImageData(x, y, w, h).data;
+    let hash = 2166136261;
+    for(let i = 0; i < pixels.length; i += 4)
+        for(let channel = 0; channel < 3; channel++) hash = Math.imul(hash ^ pixels[i + channel], 16777619);
+    return hash >>> 0;
+}
+const landmarks = {
+    region: [[17, 224, 245, 27, 0x8FDA0DDD]],
+    date: [[12, 124, 60, 27, 0x3B06B304]],
+    time: [[12, 124, 60, 27, 0x04B8ADB9]],
+    home: [[112, 361, 55, 80, 0xE4C12CB3], [85, 555, 70, 70, 0xA6A38E6C]],
+    menu: [[25, 12, 60, 25, 0x4A509670], [262, 465, 61, 62, 0x604ABE38]],
+    applications: [[25, 12, 137, 25, 0x73E12815], [141, 472, 58, 67, 0xCD339319]],
+    landscape_menu: [[35, 550, 28, 65, 0x60F42C6E], [268, 182, 54, 50, 0xC9E02BEA]],
+    landscape_applications: [[35, 472, 28, 142, 0x3E4810C6]],
+    file_manager: [[25, 12, 145, 23, 0x6C83BDBC]],
+    media: [[280, 25, 46, 55, 0x79F10409]],
+    welcome: [[13, 432, 136, 26, 0x314A6110]],
+    settings_wizard: [[25, 12, 140, 23, 0xB280D8CE]],
+    note: [[10, 14, 175, 85, 0x9C09CF4A]],
+    saved_note: [[10, 14, 175, 85, 0x9C09CF4A], [10, 560, 176, 25, 0xCF4400AB]],
+};
+const matches = name => canvas()?.width === 360 && canvas().height === 640 && landmarks[name].every(c => crop(c) === c[4]);
+async function wait_screen(name, timeout)
+{
+    let previous = false;
+    await until(name, () => {
+        const match = matches(name);
+        const stable = previous && match;
+        previous = match;
+        return stable;
+    }, timeout);
+    await artifact(name);
+}
+async function menu(name = "menu", profile)
+{
+    await until("original home services", () => guest_home_ready, 100000);
+    const deadline = performance.now() + 65000;
+    while(performance.now() < deadline)
+    {
+        if(matches(name))
+        {
+            await wait_screen(name, 9000);
+            return;
+        }
+        if(matches("welcome") || matches("settings_wizard"))
+            await (screen().hasAttribute("data-landscape") ? tap(30, 325, 1800) : tap(325, 609, 1800));
+        else if(matches("home"))
+        {
+            if(profile) profile.menu_presses.push(Math.round(performance.now() - profile.start));
+            await press("menu", 2200);
+        }
+        else await sleep(800);
+    }
+    throw new Error("The stock Menu did not appear");
+}
+async function setup()
+{
+    await wait_screen("region", 165000);
+    const check_screen_size = () => {
+        const box = canvas().getBoundingClientRect(), frame_box = screen().getBoundingClientRect();
+        check(box.left === frame_box.left && box.top === frame_box.top &&
+            box.width === frame_box.width && box.height === frame_box.height &&
+            Math.abs(box.height - box.width * 640 / 360) < 0.1,
+        "the canvas fills the proportional touchscreen");
+    };
+    check_screen_size();
+    doc().querySelector("#menu_view").click();
+    doc().querySelector("#view_scale_50").click();
+    check(screen().getBoundingClientRect().width === 180, "50% scale fits the expected guest width");
+    check_screen_size();
+    await tap(35, 610);
+    await wait_screen("date");
+    doc().querySelector("#menu_view").click();
+    doc().querySelector("#view_zoom_to_fit").click();
+    check_screen_size();
+    await tap(90, 295);
+    await wait_screen("time");
+    await tap(90, 295);
+    await wait_screen("home", 90000);
+}
+const status = wanted => doc().querySelector(".console-status")?.dataset.state === wanted;
+const vm = () => frame.contentWindow.v86_console?.emulator;
+async function power_off()
+{
+    button(doc(), "Power").click();
+    doc().querySelector("#menu_power_off").click();
+    button(doc().querySelector("dialog[open]"), "Power off").click();
+    await until("powered off", () => status("Powered off"));
+}
+const image_for = media => disk_file(disk_id(media.path));
+
+window.s5 = { doc, tap, press, artifact, vm, load, crop };
+
+async function check_controls()
+{
+    await menu();
+    await tap(295, 505);
+    await wait_screen("applications");
+    await tap(325, 609);
+    await wait_screen("menu");
+    await tap(325, 609);
+    await wait_screen("home");
+    log("Stock home, Menu and touch succeeded with the library console.");
+    const keyguard_icon = [310, 1, 27, 23], keyguard_on = 0x52E26B23, keyguard_off = 0xAB945F27;
+    // Welcome can come to the foreground even after Menu and touch work.
+    // Dismiss it before checking which screen owns the lock switch.
+    const keyguard = expected => async () => {
+        if(matches("welcome") || matches("settings_wizard")) await tap(325, 609, 1800);
+        return matches("home") && crop(keyguard_icon) === expected;
+    };
+    for(let attempt = 0; attempt < 3 && crop(keyguard_icon) !== keyguard_on; attempt++)
+    {
+        await until("unlocked home", keyguard(keyguard_off));
+        await press("lock", 800);
+        try { await until("native lock indicator", keyguard(keyguard_on), 14500); }
+        catch(error) { if(attempt === 2) throw error; }
+    }
+    await artifact("locked");
+    await press("menu", 3200);
+    check(matches("home") && crop(keyguard_icon) === keyguard_on, "guest keyguard blocks the Menu button");
+    await artifact("locked-menu");
+    await press("lock", 800);
+    await until("native lock indicator cleared", () => matches("home") && crop(keyguard_icon) === keyguard_off);
+    await artifact("unlocked");
+    await menu();
+    await artifact("unlocked-menu");
+    await tap(325, 609);
+    await wait_screen("home");
+    log("The stock lock blocked Menu and the second lock press restored it.");
+    for(let attempt = 0; attempt < 3 && !matches("media"); attempt++) await press("media", 1800, 240);
+    await wait_screen("media");
+    for(let attempt = 0; attempt < 3 && matches("media"); attempt++) await press("media", 1800, 240);
+    await until("closed Media bar", () => matches("home") && !matches("media"));
+    log("The physical Media button opened and closed the original Media bar.");
+    const calls = [];
+    const emulator = vm();
+    const key = emulator.symbian_send_key, touch = emulator.symbian_set_touch;
+    emulator.symbian_send_key = function(code, down) {
+        calls.push([code, down]);
+        key.call(this, code, down);
+    };
+    emulator.symbian_set_touch = function(x, y, down) {
+        calls.push([x, y, down]);
+        touch.call(this, x, y, down);
+    };
+    const volume = doc().querySelector('[data-key="volup"]');
+    pointer(volume, "down");
+    check(volume.hasAttribute("data-down"), "physical key enters held state");
+    frame.contentWindow.dispatchEvent(new frame.contentWindow.Event("blur"));
+    check(!volume.hasAttribute("data-down"), "focus loss releases a held key");
+    pointer(screen(), "down", screen_point(170, 434));
+    frame.contentWindow.dispatchEvent(new frame.contentWindow.Event("blur"));
+    pointer(screen(), "down", screen_point(170, 434));
+    pointer(screen(), "cancel");
+    check(JSON.stringify(calls) === JSON.stringify([
+        [0xA2, true], [0xA2, false], [170, 434, true], [170, 434, false], [170, 434, true], [170, 434, false],
+    ]), "focus loss and pointer cancellation send actual release events");
+    emulator.symbian_send_key = key;
+    emulator.symbian_set_touch = touch;
+    log("App focus loss and pointer cancellation released the mapped key and touch.");
+}
+
+async function check_rotation(input)
+{
+    const config = await create("5800 rotation", input);
+    config.symbian.network = false;
+    await store.put(config);
+    await reset_disk(disk_id(config.symbian.media.phone.path), "/build/browser-test-output/syborg-s4-stock-uninstalled-C.img");
+    await open_machine(config);
+    await wait_screen("home", 165000);
+    await menu();
+    const rotate = doc().querySelector("#symbian_rotate");
+    check(!rotate.disabled, "Rotate is available during the guest session");
+    doc().querySelector("#menu_view").click();
+    doc().querySelector("#view_scale_50").click();
+
+    async function switch_layout(landscape, name)
+    {
+        rotate.click();
+        const { width, height } = screen().getBoundingClientRect();
+        check(rotate.getAttribute("aria-pressed") === String(landscape) &&
+            width === (landscape ? 320 : 180) && height === (landscape ? 180 : 320), "Rotate preserves the selected zoom");
+        let view, changed = 0;
+        await until(name + " layout to settle", () => {
+            const next = matches(name) ? name : matches("home") ? "home" : null;
+            if(next !== view) { view = next; changed = performance.now(); }
+            return view && performance.now() - changed >= 800;
+        });
+        await menu(name);
+    }
+
+    await switch_layout(true, "landscape_menu");
+    await tap(430, 293);
+    await wait_screen("landscape_applications");
+    await tap(568, 36);
+    await wait_screen("landscape_menu");
+    await switch_layout(false, "menu");
+    await tap(295, 505);
+    await wait_screen("applications");
+    await power_off();
+    result.textContent = "PASS Nokia 5800 native portrait and landscape layout with mouse clicks in both views";
+}
+
+async function profile_boot(input)
+{
+    const config = await create("5800 cold boot profile", input);
+    const relay = args.get("relay");
+    config.symbian.network = !!relay;
+    if(relay) config.symbian.network_relay = relay;
+    await store.put(config);
+    const disk = disk_id(config.symbian.media.phone.path);
+    const seed = args.get("seed") || "/build/browser-test-output/syborg-s4-stock-notes-v1-C.img";
+    const reports = [];
+    const runs = Number(args.get("runs") || 1);
+    check(Number.isInteger(runs) && runs > 0, "runs must be a positive integer");
+    for(let run = 0; run < runs; run++)
+    {
+        await reset_disk(disk, seed);
+        const report = { times: {}, serial_bytes: 0, samples: [], menu_presses: [] };
+        await open_machine(config, report);
+        await until("running CPU", () => vm()?.is_running(), 90000);
+        let done = false;
+        const sample = async () => {
+            while(!done)
+            {
+                const d = await vm().get_diagnostics();
+                const { compiled, compile_ms, live, retired, retries, uncached_accesses,
+                    activations, chained, access_fills, access_refused, asid_tag_switches } = d.page_tier;
+                report.samples.push({ ms: Math.round(performance.now() - report.start),
+                    instructions: d.retired, pc: d.pc, cpu: d.cores[0].state, clock: d.clock.now_ms,
+                    compiled, compile_ms, live, jit_instructions: retired, retries, uncached_accesses,
+                    activations, chained, access_fills, access_refused, asid_tag_switches });
+                await sleep(2000);
+            }
+        };
+        const sampling = sample().then(() => null, error => error);
+        try
+        {
+            await until("visible 5800 desktop", () => matches("home"), 200000);
+            report.times.visible_desktop = Math.round(performance.now() - report.start);
+            await menu("menu", report);
+            report.times.usable_desktop = Math.round(performance.now() - report.start);
+        }
+        finally { done = true; }
+        const sample_error = await sampling;
+        if(sample_error) throw sample_error;
+        reports.push(report);
+        log(JSON.stringify(report.times));
+        await power_off();
+        if(run + 1 < runs) await load("/index.html");
+    }
+    const artifact = await fetch("/__artifact?name=boot-profile.json",
+        { method: "POST", body: JSON.stringify({ network: !!relay, seed, reports }, null, 2) });
+    check(artifact.ok, "Set TEST_ARTIFACT_DIR to save the boot profile");
+    result.textContent = "PASS Nokia 5800 cold boot profile";
+}
+
+async function run()
+{
+    await load("/index.html");
+    await until("library", () => doc().querySelector("#new_vm"));
+    const input = await fetch_file(firmware_url, firmware_url.split("/").at(-1));
+    if(part === "boot-profile") return profile_boot(input);
+    if(part === "rotation") return check_rotation(input);
+    if(part === "network-settings")
+    {
+        const config = await create("5800 network settings", input);
+        const option_env = { debug: false, query_append: "", file: () => { throw new Error("Unexpected picked file"); } };
+        const url = "wisp://127.0.0.1:58991/";
+        const open_settings = () => {
+            doc().querySelector('[data-id="' + config.id + '"]').click();
+            doc().querySelector("#edit_vm").click();
+            const dialog = doc().querySelector("dialog[open]");
+            dialog.querySelector('[data-item="symbian"]').click();
+            return dialog;
+        };
+        let dialog = open_settings();
+        const network = () => dialog.querySelector('[name="symbian-network"]');
+        const relay = () => dialog.querySelector('[name="symbian-network-relay"]');
+        const set_relay = value => { relay().value = value; emit(relay(), "change"); };
+        const defaults = config_to_options(config, option_env);
+        check(network().checked && !relay().disabled && relay().value === SYMBIAN_NETWORK_RELAY &&
+            defaults.symbian.network && defaults.network_relay_url === SYMBIAN_NETWORK_RELAY,
+            "new 5800 VMs start with the virtual SIM and the default Wisp relay");
+        network().click();
+        check(!network().checked && relay().disabled, "disabling the virtual SIM makes the relay read-only");
+        network().click();
+        check(network().checked && !relay().disabled, "enabling the virtual SIM makes the relay editable");
+        set_relay("wisps://:");
+        button(dialog, "Save").click();
+        await until("invalid relay error", () => dialog.textContent.includes("Enter a valid wisp:// or wisps:// relay URL"));
+        set_relay(" " + url + " ");
+        button(dialog, "Save").click();
+        await until("saved network settings", () => !dialog.isConnected);
+        const enabled = config_to_options(await store.get(config.id), option_env);
+        check(enabled.symbian.network && enabled.network_relay_url === url, "Power on uses the saved SIM and Wisp relay");
+
+        dialog = open_settings();
+        check(network().checked && relay().value === url, "settings reopen with the saved address");
+        network().click();
+        button(dialog, "Save").click();
+        await until("disabled network settings", () => !dialog.isConnected);
+        const disabled = await store.get(config.id);
+        const options = config_to_options(disabled, option_env);
+        check(!options.symbian.network && !options.network_relay_url && disabled.symbian.network_relay === url,
+            "disabling the SIM disconnects the relay and preserves its address");
+        result.textContent = "PASS Nokia 5800 virtual SIM and Wisp settings";
+        return;
+    }
+    const first = await create("S5 first Nokia", input, true);
+    const second = await create("S5 second Nokia", input);
+    window.s5.first = first;
+    window.s5.second = second;
+    check(first.symbian.media.phone.path !== second.symbian.media.phone.path, "new VMs have separate persistent C: paths");
+    log("5800 wizard rejected a missing image, cancelled and retried, and imported two independent VMs.");
+    doc().querySelector('[data-id="' + first.id + '"]').click();
+    const summary = doc().querySelector(".summary");
+    check(summary.textContent.includes("Nokia 5800 (RM-356)") && summary.textContent.includes("31.0.101"), "library details identify the selected firmware");
+    doc().querySelector("#edit_vm").click();
+    const settings = doc().querySelector("dialog[open]");
+    settings.querySelector('[data-item="symbian"]').click();
+    check(settings.textContent.includes("RM-356") && settings.textContent.includes("31.0.101"), "firmware settings identify the profile");
+    check(settings.querySelector('input[type="checkbox"]').checked, "WebGPU acceleration is checked by default");
+    button(settings, "Cancel").click();
+
+    if(prepared)
+    {
+        const seed = part === "notes" ? "syborg-s4-stock-uninstalled-C.img" : "syborg-s4-stock-notes-v1-C.img";
+        await reset_disk(disk_id(first.symbian.media.phone.path), "/build/browser-test-output/" + seed);
+        log("Using the S4 C: copy with first-run setup complete.");
+    }
+    first.symbian.network = false;
+    await store.put(first);
+    await open_machine(first);
+    await until("running 5800", () => status("Running"), 90000);
+    const toolbar = doc().querySelector(".console-toolbar");
+    check(doc().title.includes(first.name) && !toolbar.querySelector(".console-name") &&
+        !toolbar.textContent.includes("RM-356"), "the VM name is shown in the tab and firmware details stay out of the toolbar");
+    check(toolbar.querySelector('[data-key="power"]') && toolbar.querySelector('[data-key="media"]') &&
+        !toolbar.querySelector("#drawer_keyboard"), "the 5800 Power and Media keys are in the main toolbar");
+    doc().querySelector("#drawer_details").click();
+    const console_details = doc().querySelector(".console-drawer");
+    check(console_details.textContent.includes("Nokia 5800 (RM-356)") && console_details.textContent.includes("31.0.101"),
+        "console details identify the selected firmware");
+    console_details.querySelector('button[aria-label="Close"]').click();
+    if(!prepared)
+    {
+        await setup();
+        log("Stock first-run prompts completed. Restarting with the same C:.");
+        await power_off();
+        await open_console(doc().querySelector(".console-notice a").href);
+    }
+    await wait_screen("home", 165000);
+    if(part === "boot")
+    {
+        await menu();
+        doc().querySelector("#drawer_terminal").click();
+        await until("Symbian boot output in the serial terminal",
+            () => doc().querySelector(".console-drawer .terminal .xterm-rows")?.textContent.trim());
+        doc().querySelector('.console-drawer button[aria-label="Close"]').click();
+        await power_off();
+        result.textContent = "PASS Nokia 5800 archive import, offline cold boot and stock Menu";
+        return;
+    }
+    if(part !== "notes") await check_controls();
+    if(controls_only)
+    {
+        await power_off();
+        result.textContent = "PASS Nokia 5800 import, production app touch, Menu, lock and Media";
+        return;
+    }
+
+    doc().querySelector("#symbian_send_files").click();
+    const transfer = await until("transfer dialog", () => doc().querySelector(".file-transfer[open]"));
+    const note = await fetch_file("/tests/symbian/fixtures/notes-v1.sisx", "notes-v1.sisx");
+    const sample = new File(["Notes from the host\n"], "传输测试.txt");
+    const ordinary = [sample];
+    if(args.has("video")) ordinary.push(await fetch_file(args.get("video"), "Playback test.mp4"));
+    const picker = transfer.querySelector("input");
+    check(picker.multiple && !picker.accept, "the transfer picker accepts multiple files of any type");
+    files(picker, [note, ...ordinary]);
+    (await until("mixed files on E:", () => transfer.textContent.includes("E:\\INSTALL\\notes-v1.sisx") &&
+        ordinary.every(file => transfer.textContent.includes("E:\\Transfer\\" + file.name)) &&
+        button(transfer, "Save card and power off"))).click();
+    await until("card saved and powered off", () => status("Powered off"), 60000);
+    const saved = await store.get(first.id);
+    const card = await image_for(saved.symbian.sd);
+    const bytes = await read_fat16_file(card, "INSTALL/notes-v1.sisx");
+    const expected = new Uint8Array(await note.arrayBuffer());
+    check(bytes?.length === expected.length && bytes.every((byte, i) => byte === expected[i]), "transfer image preserves signed package bytes");
+    for(const file of ordinary)
+    {
+        const contents = await read_fat16_file(card, "Transfer/" + file.name);
+        const expected = new Uint8Array(await file.arrayBuffer());
+        check(contents?.length === expected.length && contents.every((byte, i) => byte === expected[i]), "transfer image preserves " + file.name);
+    }
+    await open_console(doc().querySelector('.console-notice a').href);
+    await wait_screen("home", 165000);
+    doc().querySelector("#symbian_send_files").click();
+    const packages = await until("packages on E:", () => doc().querySelector('dialog[open] select[aria-label="Package on E:"]'));
+    check(packages.options.length === 1 && packages.value === note.name, "the installer picker reads the signed package from E:");
+    button(doc().querySelector("dialog[open]"), "Open Installer").click();
+    log("Opened notes-v1.sisx directly from E:. Confirm the native installer and choose C: for the app. Open the puzzle-piece Notes in Applications, type 580086, and tap Save.");
+    window.s5.card_ready = true;
+    await wait_screen("saved_note", 600000);
+    await power_off();
+    const phone_disk = await image_for(saved.symbian.media.phone);
+    await check_installed_notes(phone_disk, 1);
+    check(!await read_fat16_file(phone_disk, "data/notes-v1.sisx"), "the native installer did not require a C: copy of the package");
+    check(!(await store.get(second.id)).symbian.sd, "second VM never inherited the transfer card");
+    const untouched = new Uint8Array(await (await image_for(second.symbian.media.phone)).arrayBuffer());
+    check(untouched.every(byte => byte === 0), "second VM's C: seed remained untouched");
+    await load("/index.html");
+    await until("reloaded library", () => doc().querySelector('[data-id="' + first.id + '"]'));
+    await open_machine(first);
+    await wait_screen("home", 165000);
+    await menu();
+    await tap(295, 505);
+    await wait_screen("applications");
+    log("Native registry, signed controller and saved note verified on C:. Start Notes again to verify the cold readback.");
+    window.s5.reopened = true;
+    await wait_screen("note", 180000);
+    await artifact("note-cold");
+    const signature = crop([10, 14, 175, 85]);
+    button(doc(), "Power").click();
+    doc().querySelector("#menu_suspend").click();
+    await until("suspended state", () => status("Suspended"), 75000);
+    check((await store.get(first.id)).suspended?.size > 0, "suspend wrote a library snapshot");
+    await load("/index.html");
+    await until("suspended VM in library", () => doc().querySelector('[data-id="' + first.id + '"]')?.textContent.includes("Suspended"));
+    await open_machine(first);
+    await until("same Notes screen resumed", () => status("Running") && canvas().width === 360 && crop([10, 14, 175, 85]) === signature, 90000);
+    await artifact("note-resumed");
+    await power_off();
+    await check_installed_notes(await image_for(saved.symbian.media.phone), 1);
+    log("Cold readback, snapshot resume and two-VM isolation verified.");
+    result.textContent = "PASS Nokia 5800 production app import, native Notes persistence and resume";
+}
+try { await run(); }
+catch(error)
+{
+    await artifact("failure");
+    result.textContent = "FAIL " + error.stack;
+}
+</script>

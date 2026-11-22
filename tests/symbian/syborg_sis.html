@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nokia 5800 SIS installation check</title>
+<style>
+    body { font: 15px system-ui, sans-serif; margin: 20px; }
+    main { display: flex; gap: 20px; flex-wrap: wrap; }
+    canvas { width: 360px; height: 640px; background: #111; touch-action: none; }
+    button { margin: 3px 2px; padding: 6px 9px; }
+    #log { white-space: pre-wrap; max-width: 660px; }
+</style>
+<h1>Nokia 5800 SIS installation check</h1>
+<p id="result">Preparing the phone…</p>
+<main>
+    <div id="screen"><div></div><canvas></canvas></div>
+    <section aria-label="Phone controls">
+        <div>
+            <button type="button" data-key="0xB4">Menu</button>
+            <button type="button" data-key="0xA4">Left softkey</button>
+            <button type="button" data-key="0xA5">Right softkey</button>
+            <button type="button" data-key="0x10">↑</button>
+            <button type="button" data-key="0x11">↓</button>
+            <button type="button" data-key="0x03">Enter</button>
+            <button type="button" data-key="0x61">Save (F2)</button>
+            <button type="button" data-key="0x04">Escape</button>
+        </div>
+        <button type="button" id="reopen">Cold reopen same C: disk</button>
+        <div>
+            <button type="button" data-version="0">Check Notes is absent</button>
+            <button type="button" data-version="1">Check Notes 1.0 and saved text</button>
+            <button type="button" data-version="2">Check Notes 2.0 and saved text</button>
+        </div>
+        <pre id="log"></pre>
+    </section>
+</main>
+<script type="module" src="./syborg_sis_browser.js"></script>

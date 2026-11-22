@@ -444,7 +444,10 @@ static int present_view(struct context *ctx)
     OSSpinLockUnlock(&lock);
     if(!b) return 0;
     struct native_window *win = b->window;
-    int published = win && publish_bytes(b) && win->post(win, 1) == 1;
+    // Version 3 windows defer a post with flag 1 until the GPU signals
+    // completion. The readback already wrote the pixels, so post as ready.
+    unsigned post_flags = win && win->version < 3 ? 1 : 0;
+    int published = win && publish_bytes(b) && win->post(win, post_flags) == 1;
     if(published)
     {
         void *next = win->surface(win);
@@ -472,6 +475,7 @@ static void object_names(struct context *ctx, unsigned op, unsigned target, int 
                 for(unsigned unit = 0; unit < ctx->texture_limit; unit++)
                     if(ctx->textures[unit] == names[i]) ctx->textures[unit] = 0;
             if(target) replace_binding(ctx->group, target, names[i], 0);
+            if(op == gles2_glDeleteBuffers) release_buffer_mapping(ctx->group, names[i]);
         }
         else if(!SEND(c, op, 1, 4) || !gles_read(c, &names[i], 4)) { ctx->driver.ok = 0; return; }
     }

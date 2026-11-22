@@ -23,6 +23,7 @@
   "type": "module",
   "devDependencies": {
     "esbuild": "0.28.2",
+    "sevenzip-wasm": "26.6.0",
     "typescript": "6.0.3"
   }
 }

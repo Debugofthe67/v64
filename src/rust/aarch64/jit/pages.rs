@@ -22,6 +22,7 @@
 //! Device memory) or SCTLR_EL1.A set, with a breakpoint or watchpoint
 //! enabled, while software step is active, with PSTATE.IL set.
 
+use crate::aarch64::a32;
 use crate::aarch64::bus::{self, Lookup};
 use crate::aarch64::cpu::{self, PSTATE_IL};
 use crate::aarch64::execute::{self, Flow};
@@ -521,11 +522,16 @@ pub struct A64Code {
 }
 #[derive(Default)]
 pub struct A64Page;
+const FUNCTION_CACHE_SIZE: usize = 1024;
+
 pub struct A64Extra {
     /// the page of the last activation's or boundary's PC, for heat
     last_key: u32,
     /// instructions interpreted since the last boundary
     interpreted: u32,
+    /// Recently dispatched functions, indexed by the physical page and code
+    /// mode. Entries are checked against the current function before use.
+    recent_functions: [usize; FUNCTION_CACHE_SIZE],
 }
 impl PageFrontend for A64 {
     type Code = A64Code;
@@ -540,6 +546,7 @@ fn rt() -> &'static mut Runtime {
             Runtime::new(A64Extra {
                 last_key: u32::MAX,
                 interpreted: 0,
+                recent_functions: [usize::MAX; FUNCTION_CACHE_SIZE],
             })
         })
     }
@@ -773,10 +780,12 @@ fn code_page(pc: u64, mode: u32) -> Option<u32> {
 pub fn run(budget: u32) -> Ran {
     // (AArch32's code with a64_page_aarch32, docs/plan/aarch32-plan.md Q6, R5.3; not
     // from inside an IT block: compiled code enters at ITSTATE 0, little-endian)
+    // A pending ARM1136 opcode must be consumed before compiling from the new mapping.
     if !allowed()
         || budget == 0
         || cpu::aarch32()
             && !(unsafe { AARCH32 }
+                && !a32::prefetch_pending()
                 && crate::aarch64::t32::itstate() == 0
                 && cpu::get_pstate() & cpu::PSTATE_E == 0)
     {
@@ -801,11 +810,24 @@ pub fn run(budget: u32) -> Ran {
         }
     }
     r.x.last_key = key;
-    if let Some(&index) = r.by_page.get(&key) {
+    let position = (key ^ (key >> MODE_SHIFT)) as usize & (FUNCTION_CACHE_SIZE - 1);
+    let recent = r.x.recent_functions[position];
+    let index = if r
+        .functions
+        .get(recent)
+        .is_some_and(|f| f.page == key && f.phase == Phase::Ready)
+    {
+        Some(recent)
+    }
+    else {
+        r.by_page.get(&key).copied()
+    };
+    if let Some(index) = index {
         let f = &r.functions[index];
         if f.phase == Phase::Ready {
             if f.serves(0, offset) {
                 let slot = f.slot;
+                r.x.recent_functions[position] = index;
                 r.clock += 1;
                 r.functions[index].last_used = r.clock;
                 let ran = execute(slot, budget, pc);
@@ -1235,19 +1257,20 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
         refused(REFUSED_TRANSLATION);
         return 0;
     };
-    // Device DRAM gets only an aligned, one-shot pointer. MMIO and holes
-    // outside the DRAM aperture cannot use it; reject without a bus search.
+    // Device DRAM gets only an aligned, one-shot pointer. Syborg's RAM
+    // starts at zero, so check the machine's aperture here.
     let cacheable = !device;
+    let bus = bus::bus();
     if device
         && (!size.is_power_of_two()
             || address & (size as u64 - 1) != 0
-            || pa.wrapping_sub(bus::RAM_BASE) >= bus::bus().ram_size())
+            || pa.wrapping_sub(bus.ram_base()) >= bus.ram_size())
     {
         r.stats[ACCESS_REFUSED] += 1;
         refused(REFUSED_TRANSLATION);
         return 0;
     }
-    let host = match bus::bus().lookup(pa) {
+    let host = match bus.lookup(pa) {
         // The ARM7 scheduler reads the PMGR clock extremely often. Supply
         // one scalar read from the same machine clock without leaving the
         // compiled function. Never cache a changing device register, and

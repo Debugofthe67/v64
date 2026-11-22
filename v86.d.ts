@@ -193,6 +193,37 @@ export type V86DiskImageOptions =
  */
 export type V86HardDiskImage = V86Image & V86DiskImageOptions;
 
+/** Raw Syborg NVMemory. Persist guest writes with a writable local/OPFS disk. */
+export type V86SyborgDisk = V86BufferImage |
+    { url: string; size?: number; disk_option: "read_write" };
+
+/** Nokia 5800 Syborg boot media with the version 1 local build manifest. */
+export interface V86SyborgMedia {
+    manifest: V86Image;
+    /** Expected SHA-256 of the imported manifest, when known. */
+    manifest_sha256?: string;
+    rom: V86Image;
+    rofs: V86Image;
+    devicetree: V86Image;
+    /** Enable the Syborg EGL/GLES bridge when the browser has a WebGPU adapter. Defaults to false. */
+    webgpu?: boolean;
+    /** Insert a virtual SIM in the Syborg modem. Defaults to false. */
+    network?: boolean;
+    /** Instance-owned C: disk, initialized from the manifest's seed on first boot. */
+    nvmemory: V86SyborgDisk;
+    /** E: card. Omit it for a blank 1 GiB card whose writes stay in memory. */
+    nvmemory2?: V86SyborgDisk;
+    /** Start the interactive installer bridge for an attached transfer card. Defaults to false. */
+    install_bridge?: boolean;
+}
+
+/** Constructor option contract for the Syborg board. */
+export type V86SyborgOptions = Omit<V86Options, "cpu_type" | "machine_type" | "symbian"> & {
+    cpu_type: "arm32";
+    machine_type: "symbian-syborg";
+    symbian: V86SyborgMedia;
+};
+
 /**
  * Config for virtio/serial console.
  */
@@ -983,9 +1014,11 @@ export interface V86Options {
      * "none"), a GICv2 with "arm32"; no PCIe.
      * @default "i440fx" ("virt" with cpu_type "arm64" or "arm32")
      */
-    machine_type?: "i440fx" | "q35" | "virt" | "ranchu" | "s5l8930";
+    machine_type?: "i440fx" | "q35" | "virt" | "ranchu" | "s5l8930" | "symbian-syborg";
     apple_model?: "iPhone3,1";
     ios?: { kernelcache?: V86Image; devicetree?: V86Image; ramdisk?: V86Image; nand?: V86HardDiskImage; bootlogo?: V86Image; boot_args?: string; nand_boot?: boolean };
+    /** Nokia 5800 Syborg boot media. */
+    symbian?: V86SyborgMedia;
 
     /**
      * machine_type "ranchu" only: the display (the framebuffer's size in
@@ -1125,7 +1158,7 @@ export interface V86Options {
      * @default the cpu_type's generic model ("cortex-a15" for "arm32")
      */
     cpu_profile?: "generic-x86" | "generic-x86-64" | "generic-arm64" | "generic-arm64-compat32" | "generic-arm64-v1" | "generic-arm64-v1.1" |
-        "cortex-a8" | "cortex-a15";
+        "cortex-a8" | "cortex-a15" | "arm1136-r2";
 
     /**
      * With cpu_type "x86_64", "x86-64-v1" selects the psABI baseline,
@@ -1747,6 +1780,14 @@ export class V86 {
 
     /** Press or release one of the simulated iPhone's physical buttons. */
     ios_send_button(button: "home" | "power" | "volume-up" | "volume-down" | "mute", pressed: boolean): void;
+    /** Send an 8-bit Syborg guest scan code. */
+    symbian_send_key(code: number, pressed: boolean): void;
+    /** Set the touch contact in the 360×640 Syborg screen plane. */
+    symbian_set_touch(x: number, y: number, pressed: boolean): void;
+    /** Set the Syborg phone's gravity direction in clockwise degrees from portrait. */
+    symbian_set_orientation(angle: 0 | 90): void;
+    /** Open a package by filename in E:\INSTALL. Resolves with its Symbian launch status. */
+    symbian_install_package(name: string): Promise<number>;
 
     /** Install an unencrypted ARMv7 IPA using the native iOS 6 helper. */
     ios_install_status(): Promise<IOSInstallStatus>;

@@ -5,6 +5,7 @@
 //! 16-bit data processing instructions set the flags outside an IT block.
 
 use crate::aarch64::a32::*;
+use crate::aarch64::bus;
 use crate::aarch64::cpu::*;
 use crate::aarch64::execute::Flow;
 
@@ -747,6 +748,12 @@ fn t32_modified_immediate(hw1: u32, hw2: u32) -> Result<Flow, Exception> {
     let rd = hw2 >> 8 & 15;
     let imm12 = (hw1 >> 10 & 1) << 11 | (hw2 >> 12 & 7) << 8 | hw2 & 0xFF;
     let (operand, c) = expand_imm_c(imm12, carry());
+    // ARMv7 labels this destination UNPREDICTABLE. Legacy iOS ARMv7 binaries
+    // use SUB.W SP, R7, #imm without flags to restore SP from the frame pointer.
+    if hw1 & !(1 << 10) == 0xF1A7 && rd == 13 && cortex_a8() && !bus::iop_active() {
+        set_reg(13, reg(7).wrapping_sub(operand));
+        return Ok(Flow::Next);
+    }
     t32_data(op, s, rd, rn, operand, c)
 }
 

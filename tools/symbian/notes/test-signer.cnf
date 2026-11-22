@@ -1,0 +1,11 @@
+[req]
+distinguished_name = subject
+prompt = no
+string_mask = nombstr
+
+[subject]
+C = FI
+O = v86 Project
+OU = Development
+CN = v86 Notes Test Signer
+emailAddress = test@example.invalid

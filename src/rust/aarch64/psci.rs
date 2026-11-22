@@ -231,6 +231,9 @@ pub fn a64_powered_off() -> bool { request() == 1 }
 /// A board's real power controller (N90's D1815), as distinct from PSCI.
 #[no_mangle]
 pub fn a64_request_power_off() { set_request(1); }
+/// A board's reset controller requests a reset at the next safe point.
+#[no_mangle]
+pub fn a64_request_reset() { set_request(2); }
 /// SYSTEM_RESET was called (and is taken)
 #[no_mangle]
 pub fn a64_take_reset_request() -> bool {

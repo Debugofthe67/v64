@@ -57,9 +57,12 @@ function complete(transaction)
  */
 export function config_images(config)
 {
+    // Stored configurations can still refer to disks from retired machine types.
+    const symbian = /** @type {(typeof config.symbian & {bootrom?: Image, emmc?: Image})} */ (config.symbian);
     return [config.machine.bios, config.machine.vga_bios, config.machine.uefi_vars, config.tpm && config.tpm.state,
         ...config.disks.map(d => d.image), ...(config.usb ? config.usb.disks.map(d => d.image) : []),
-        config.cdrom.image, config.ios && config.ios.nand,
+        config.cdrom.image, config.ios && config.ios.nand, symbian?.bootrom, symbian?.emmc, symbian?.sd,
+        ...Object.values(config.symbian?.media || {}),
         ...config.floppies.map(f => f.image), config.kernel && config.kernel.bzimage, config.kernel && config.kernel.initrd,
         config.kernel && config.kernel.multiboot, config.initial_state].filter(image => !!image);
 }
@@ -74,6 +77,14 @@ function invalid(problems)
     const error = new Error("The virtual machine's settings are not valid:\n" + problems.map(p => p.path + ": " + p.message).join("\n"));
     /** @type {any} */ (error).problems = problems;
     return error;
+}
+
+/** @param {VMConfig} config */
+function checked_update(config)
+{
+    const problems = validate_config(config);
+    if(problems.length) throw invalid(problems);
+    return Object.assign({}, config, { modified: new Date().toISOString() });
 }
 
 export class VMStore
@@ -161,12 +172,27 @@ export class VMStore
      */
     async put(config)
     {
-        const problems = validate_config(config);
-        if(problems.length) throw invalid(problems);
-        const stored = Object.assign({}, config, { modified: new Date().toISOString() });
+        const stored = checked_update(config);
         const transaction = this.db.transaction(VMS, "readwrite");
         transaction.objectStore(VMS).put(stored);
         await complete(transaction);
+        return stored;
+    }
+
+    /** Change the latest configuration under the same IndexedDB write transaction.
+     * @param {string} id @param {(config: VMConfig) => VMConfig} change
+     */
+    async update(id, change)
+    {
+        const transaction = this.db.transaction(VMS, "readwrite");
+        const completion = complete(transaction);
+        completion.catch(() => {});
+        const vms = transaction.objectStore(VMS);
+        const raw = await done(vms.get(id));
+        if(raw === undefined) throw new Error("The virtual machine is no longer in the library");
+        const stored = checked_update(change(migrate(raw)));
+        vms.put(stored);
+        await completion;
         return stored;
     }
 

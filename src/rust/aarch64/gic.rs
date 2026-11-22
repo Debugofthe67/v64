@@ -208,7 +208,7 @@ pub fn signal(core: usize) -> u8 {
 }
 #[no_mangle]
 pub fn a32_set_interrupt_lines(irq: bool, fiq: bool) {
-    if crate::aarch64::cpu::cortex_a8() {
+    if crate::aarch64::cpu::a32_direct_interrupts() {
         set_signal(0, irq as u8 | (fiq as u8) << 1);
     }
 }
@@ -356,7 +356,7 @@ fn group_mask(group: u32) -> u32 {
 
 /// Recompute a core's highest priority pending interrupt and its IRQ/FIQ signal
 fn update(core: usize) {
-    if crate::aarch64::cpu::cortex_a8() {
+    if crate::aarch64::cpu::a32_direct_interrupts() {
         return;
     }
     let g = gic();

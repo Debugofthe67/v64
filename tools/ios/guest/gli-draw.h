@@ -56,6 +56,44 @@ static void shader_source(struct context *ctx, unsigned shader, int count, const
     send_draw_packet(ctx, p, bytes);
 }
 
+static unsigned buffer_name(struct context *ctx, unsigned target)
+{
+    int name = 0;
+    if(target != 0x8892 && target != 0x8893) { draw_error(ctx, 0x500); return 0; }
+    if(!integer_value(ctx, target == 0x8892 ? 0x8894 : 0x8895, &name)) ctx->driver.ok = 0;
+    return name;
+}
+
+static int buffer_parameter(struct context *ctx, unsigned target, unsigned pname, int *out)
+{
+    unsigned conn = ctx->driver.connection;
+    int ok = SEND(conn, gles2_glGetBufferParameteriv, target, pname, 4) && gles_read(conn, out, 4);
+    ctx->driver.ok &= ok;
+    return ok;
+}
+
+static struct buffer_mapping **buffer_mapping_slot(struct group *g, unsigned name)
+{
+    struct buffer_mapping **link = &g->mapped_buffers;
+    while(*link && (*link)->name != name) link = &(*link)->next;
+    return link;
+}
+
+static void free_buffer_mapping(struct buffer_mapping **link)
+{
+    struct buffer_mapping *mapping = *link;
+    if(!mapping) return;
+    *link = mapping->next;
+    free(mapping);
+}
+
+static void release_buffer_mapping(struct group *g, unsigned name)
+{
+    OSSpinLockLock(&lock);
+    free_buffer_mapping(buffer_mapping_slot(g, name));
+    OSSpinLockUnlock(&lock);
+}
+
 static void buffer_data(struct context *ctx, unsigned target, int size, const void *data, unsigned usage)
 {
     if(size < 0) { draw_error(ctx, 0x501); return; }
@@ -66,7 +104,14 @@ static void buffer_data(struct context *ctx, unsigned target, int size, const vo
     p[2] = target; p[3] = size; p[4] = n;
     if(n) memcpy(p + 5, data, n);
     memcpy((char *)(p + 5) + n, &usage, 4);
+    OSSpinLockLock(&lock);
+    struct buffer_mapping **mapping = ctx->group->mapped_buffers ?
+        buffer_mapping_slot(ctx->group, buffer_name(ctx, target)) : 0;
     send_draw_packet(ctx, p, bytes);
+    int mapped = 1;
+    if(mapping && *mapping && buffer_parameter(ctx, target, 0x88bc, &mapped) && !mapped)
+        free_buffer_mapping(mapping);
+    OSSpinLockUnlock(&lock);
 }
 
 static void buffer_subdata(struct context *ctx, unsigned target, int offset, int size, const void *data)
@@ -79,6 +124,96 @@ static void buffer_subdata(struct context *ctx, unsigned target, int offset, int
     p[2] = target; p[3] = offset; p[4] = size; p[5] = size;
     if(size) memcpy(p + 6, data, size);
     send_draw_packet(ctx, p, bytes);
+}
+
+static void *map_buffer(struct context *ctx, unsigned target, unsigned access)
+{
+    if(access != 0x88b9 && access != 0x88ba) { draw_error(ctx, 0x500); return 0; }
+    const unsigned name = buffer_name(ctx, target);
+    if(!name) { invalid_operation(ctx); return 0; }
+    OSSpinLockLock(&lock);
+    struct buffer_mapping **link = buffer_mapping_slot(ctx->group, name);
+    if(*link)
+    {
+        invalid_operation(ctx);
+        OSSpinLockUnlock(&lock);
+        return 0;
+    }
+    int size = 0;
+    if(!buffer_parameter(ctx, target, 0x8764, &size) || size <= 0 || (unsigned)size > N90_MAX_PAYLOAD)
+    {
+        draw_error(ctx, size > 0 ? 0x505 : 0x502);
+        OSSpinLockUnlock(&lock);
+        return 0;
+    }
+    struct buffer_mapping *mapping = malloc(sizeof(*mapping) + size);
+    if(!mapping)
+    {
+        draw_error(ctx, 0x505);
+        OSSpinLockUnlock(&lock);
+        return 0;
+    }
+    // An iOS client may use READ_WRITE along with OES's WRITE_ONLY.
+    const unsigned flags = access == 0x88ba ? 3 : 2;
+    const unsigned conn = ctx->driver.connection;
+    int mapped = 0;
+    if(!SEND(conn, gles2_glMapBufferRangeAEMU, target, 0, size, flags, size) ||
+        !gles_read(conn, mapping->bytes, size) || !buffer_parameter(ctx, target, 0x88bc, &mapped) || !mapped)
+    {
+        ctx->driver.ok = 0;
+        free(mapping);
+        OSSpinLockUnlock(&lock);
+        return 0;
+    }
+    mapping->next = 0;
+    mapping->name = name;
+    mapping->size = size;
+    mapping->access = flags;
+    *link = mapping;
+    OSSpinLockUnlock(&lock);
+    return mapping->bytes;
+}
+
+static unsigned char unmap_buffer(struct context *ctx, unsigned target)
+{
+    const unsigned name = buffer_name(ctx, target);
+    if(!name) return invalid_operation(ctx);
+    OSSpinLockLock(&lock);
+    struct buffer_mapping **link = buffer_mapping_slot(ctx->group, name);
+    const struct buffer_mapping *mapping = *link;
+    unsigned char result = 0;
+    if(mapping)
+    {
+        const unsigned conn = ctx->driver.connection, size = mapping->size, out_size = 1;
+        const unsigned header[] = { gles2_glUnmapBufferAEMU, 32 + size, target, 0, size, mapping->access, size };
+        // One packet, without copying the mapped allocation into a second large buffer.
+        int ok = gles_call(2, header, sizeof(header), conn) == sizeof(header) &&
+            gles_call(2, mapping->bytes, size, conn) == (int)size &&
+            gles_call(2, &out_size, sizeof(out_size), conn) == sizeof(out_size) && gles_read(conn, &result, 1);
+        ctx->driver.ok &= ok;
+        free_buffer_mapping(link);
+    }
+    else invalid_operation(ctx);
+    OSSpinLockUnlock(&lock);
+    return result;
+}
+
+static void get_buffer_pointer(struct context *ctx, unsigned target, unsigned pname, void **out)
+{
+    if(pname != 0x88bd) { draw_error(ctx, 0x500); return; }
+    if(!out) { draw_error(ctx, 0x501); return; }
+    const unsigned name = buffer_name(ctx, target);
+    if(!name) { invalid_operation(ctx); return; }
+    OSSpinLockLock(&lock);
+    const struct buffer_mapping *mapping = *buffer_mapping_slot(ctx->group, name);
+    *out = mapping ? (void *)mapping->bytes : 0;
+    OSSpinLockUnlock(&lock);
+}
+
+static void get_buffer_parameter(struct context *ctx, unsigned target, unsigned pname, int *out)
+{
+    if(!out) { draw_error(ctx, 0x501); return; }
+    buffer_parameter(ctx, target, pname, out);
 }
 
 static int named_location(struct context *ctx, unsigned program, const char *name, unsigned opcode)
@@ -271,6 +406,10 @@ static void install_draw_functions(driver_word *table)
     table[N90_glShaderSource - 5] = (driver_word)shader_source;
     table[N90_glBufferData - 5] = (driver_word)buffer_data;
     table[N90_glBufferSubData - 5] = (driver_word)buffer_subdata;
+    table[N90_glMapBufferOES - 5] = (driver_word)map_buffer;
+    table[N90_glUnmapBufferOES - 5] = (driver_word)unmap_buffer;
+    table[N90_glGetBufferPointervOES - 5] = (driver_word)get_buffer_pointer;
+    table[N90_glGetBufferParameteriv - 5] = (driver_word)get_buffer_parameter;
     table[N90_glGetAttribLocation - 5] = (driver_word)attrib_location;
     table[N90_glVertexAttribPointer - 5] = (driver_word)attrib_pointer;
     table[N90_glEnableVertexAttribArray - 5] = (driver_word)enable_attrib;

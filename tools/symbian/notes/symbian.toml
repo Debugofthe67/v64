@@ -1,0 +1,16 @@
+[project]
+name = "v86_notes"
+kind = "e32-import"
+architecture = "armv6"
+uid3 = 0xe0860505
+
+[package]
+uid = 0xe0860505
+name = "v86 Notes"
+vendor = "v86 project"
+executable_name = "v86_notes.exe"
+version = [1, 0, 0]
+
+[application]
+caption = "v86 Notes"
+short_caption = "Notes"
