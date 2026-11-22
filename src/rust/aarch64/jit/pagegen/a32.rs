@@ -126,8 +126,8 @@ pub enum Kind {
         writeback: bool,
         cond: u8,
     },
-    /// LDM, STM, PUSH, POP of R0-R14 (not of the base for LDM, nor with
-    /// it and a writeback for STM): `increment`, `before` the addressing mode
+    /// LDM, STM, PUSH, POP. The base may be in the list without writeback.
+    /// `increment` and `before` select the addressing mode.
     Multiple {
         load: bool,
         rn: u8,
@@ -1063,7 +1063,7 @@ fn control(i: &Inst32, offset: u16) -> Option<(Vec<u64>, bool)> {
         Kind::Interwork { .. } => Some((vec![offset as u64 + i.length as u64], false)),
         Kind::CompareBranch { target, .. } => Some((vec![target], true)),
         // (a return: LDM, POP, LDR of the PC)
-        Kind::Multiple { list, cond, .. } if list & 0x8000 != 0 => Some((vec![], cond != 14)),
+        Kind::Multiple { load: true, list, cond, .. } if list & 0x8000 != 0 => Some((vec![], cond != 14)),
         Kind::Mem {
             load: true,
             rt: 15,
@@ -1472,13 +1472,7 @@ fn t32(word: u32, length: u8, offset: u16) -> Option<Kind> {
 // ---- Q6.2: the native forms' decoding (of instructions the classification
 // above runs by helper calls: the PC is never their destination)
 
-/// A32's register list without the PC (else None)
-fn list_without_pc(list: u32) -> Option<u16> {
-    (list & 0x8000 == 0 && list != 0).then_some(list as u16)
-}
-
-/// LDM and STM's native form: not of the base for LDM, nor with it and a
-/// writeback for STM (UNKNOWN values)
+/// LDM and STM's native form: refuse writeback with the base in the list.
 fn multiple(
     load: bool,
     rn: u8,
@@ -1491,7 +1485,7 @@ fn multiple(
     let based = list & 1 << rn != 0;
     // A32 permits SP in the list. Apple's memcpy uses it as another
     // payload register; T32's decoder rejects its restricted SP lists.
-    if load && based || !load && based && writeback || rn == 15 {
+    if based && writeback || rn == 15 {
         return None;
     }
     Some(Kind::Multiple {
@@ -1767,10 +1761,11 @@ fn a32_native(word: u32) -> Option<Kind> {
             })
         },
         0b100 => {
-            if word & 1 << 22 != 0 {
+            let list = word as u16;
+            if word & 1 << 22 != 0 || list == 0 || l && list & 0x8000 != 0 {
                 return None;
             }
-            multiple(l, rn, list_without_pc(word & 0xFFFF)?, u, p, w, cond)
+            multiple(l, rn, list, u, p, w, cond)
         },
         _ => None,
     }
@@ -2395,9 +2390,8 @@ fn t32_native32(hw1: u32, hw2: u32, rn: u8, rd: u8, rt: u8, rm: u8, s: bool) -> 
     None
 }
 
-/// A32's returns: LDM of the PC (not the user registers', not of the base
-/// nor SP), LDR of the PC (not unprivileged); the target's instruction set
-/// checked at run time (another one: the interpreter's)
+/// A32's returns: LDM of the PC (current bank), LDR of the PC (privileged
+/// access form). The target selects the instruction set at run time.
 fn a32_return(word: u32) -> Option<Kind> {
     let cond = (word >> 28) as u8;
     if cond == 15 {
@@ -2412,19 +2406,7 @@ fn a32_return(word: u32) -> Option<Kind> {
     );
     match word >> 25 & 7 {
         0b100 if l && word & 1 << 22 == 0 && word & 0x8000 != 0 => {
-            let list = word as u16;
-            if rn == 15 || list & 1 << rn != 0 || list & 0x2000 != 0 {
-                return None;
-            }
-            Some(Kind::Multiple {
-                load: true,
-                rn,
-                list,
-                increment: u,
-                before: p,
-                writeback: w,
-                cond,
-            })
+            multiple(true, rn, word as u16, u, p, w, cond)
         },
         0b010 if l && word & 1 << 22 == 0 && word >> 12 & 15 == 15 => {
             if !p && w || (!p || w) && rn == 15 {
@@ -3435,7 +3417,8 @@ impl Emitter<'_> {
             self.load_target(offset);
         }
         let mut at = 0;
-        for r in (0..15u8).filter(|r| list & 1 << r != 0) {
+        let data = if load { list & 0x7FFF } else { list };
+        for r in (0..16u8).filter(|r| data & 1 << r != 0) {
             if load {
                 if !self.a32_gpr_locals {
                     self.c32(super::x_address(r as usize) as i32);
@@ -3459,7 +3442,7 @@ impl Emitter<'_> {
                     self.c32(at);
                     self.b.add_i32();
                 }
-                self.r32(r);
+                self.operand(r, offset);
                 self.b.extend_unsigned_i32_to_i64();
                 self.store_value(2);
             }

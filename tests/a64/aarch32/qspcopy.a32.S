@@ -3,7 +3,7 @@
     .syntax unified
     .arm
 base:
-    .word 10
+    .word 11
     .word ia - base, 0, 3
     .word ib - base, 0, 3
     .word da - base, 0, 3
@@ -14,6 +14,7 @@ base:
     .word dbw - base, 0, 3
     .word one - base, 0, 3
     .word skipped - base, 0, 3
+    .word apcs_frame - base, 0, 3
     .macro copy name, mode, delta, wb=
 \name:
     sub r0, sp, #256
@@ -60,3 +61,19 @@ skipped:
     subs r12, r12, #1
     bne 1b
     svc #0
+
+// The APCS frame used by EKA2 has both PC as data and SP in a return list.
+apcs_frame:
+    mov r10, sp
+    movw r9, #128
+1:  mov r12, sp
+    adr lr, 3f
+    adr r8, 2f+8
+2:  stmdb sp!, {r11, r12, lr, pc}
+    ldr r6, [sp, #12]
+    cmp r6, r8
+    bne 4f
+    ldmia sp, {r11, sp, pc}
+3:  subs r9, r9, #1
+    bne 1b
+4:  svc #0

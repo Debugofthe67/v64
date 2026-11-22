@@ -119,25 +119,42 @@ async function create(name, archive, exercise_retry = false)
     check(config.symbian.webgpu === true, "new Nokia 5800 VMs enable WebGPU");
     return config;
 }
-async function open_machine(config)
+async function open_machine(config, profile)
 {
     let url;
     doc().querySelector('[data-id="' + config.id + '"]').click();
     frame.contentWindow.open = selected => { url = selected; };
+    if(profile) profile.start = performance.now();
     doc().querySelector("#power_on").click();
-    await open_console(await until("library launch", () => url));
+    await open_console(await until("library launch", () => url), profile);
 }
-async function open_console(url)
+async function open_console(url, profile)
 {
     await load(url);
     const emulator = await until("CPU Worker bridge", vm);
     guest_home_ready = false;
+    if(profile)
+    {
+        const mark = name => { profile.times[name] ??= Math.round(performance.now() - profile.start); };
+        mark("console_ready");
+        emulator.add_listener("emulator-loaded", () => mark("emulator_loaded"));
+        emulator.add_listener("emulator-started", () => mark("guest_running"));
+    }
     let line = "";
     emulator.add_listener("serial0-output-byte", byte => {
         if(byte === 13) return;
         if(byte === 10)
         {
             guest_home_ready ||= line === "SYBPROP: Home screen::Home screen sets 101f8766/43 = 101";
+            if(profile)
+            {
+                const time = Math.round(performance.now() - profile.start);
+                profile.serial_bytes += line.length + 1;
+                if(line.includes("System start ok")) profile.times.system_start ??= time;
+                if(line.startsWith("ISCPEER: install")) profile.times.modem_started ??= time;
+                if(line.startsWith("precache loop,0,")) profile.times.precache_started ??= time;
+                if(guest_home_ready) profile.times.home_service ??= time;
+            }
             line = "";
         }
         else line += String.fromCharCode(byte);
@@ -332,11 +349,66 @@ async function check_controls()
     log("App focus loss and pointer cancellation released the mapped key and touch.");
 }
 
+async function profile_boot(input)
+{
+    const config = await create("5800 cold boot profile", input);
+    const relay = args.get("relay");
+    if(relay)
+    {
+        config.symbian.network = true;
+        config.symbian.network_relay = relay;
+        await store.put(config);
+    }
+    const disk = disk_id(config.symbian.media.phone.path);
+    const seed = args.get("seed") || "/build/browser-test-output/syborg-s4-stock-notes-v1-C.img";
+    const reports = [];
+    const runs = Number(args.get("runs") || 1);
+    check(Number.isInteger(runs) && runs > 0, "runs must be a positive integer");
+    for(let run = 0; run < runs; run++)
+    {
+        await reset_disk(disk, seed);
+        const report = { times: {}, serial_bytes: 0, samples: [] };
+        await open_machine(config, report);
+        let done = false;
+        const sample = async () => {
+            while(!done)
+            {
+                const d = await vm().get_diagnostics();
+                const { compiled, compile_ms, live, retired, retries, uncached_accesses } = d.page_tier;
+                report.samples.push({ ms: Math.round(performance.now() - report.start),
+                    instructions: d.retired, pc: d.pc, cpu: d.cores[0].state, clock: d.clock.now_ms,
+                    compiled, compile_ms, live, jit_instructions: retired, retries, uncached_accesses });
+                await sleep(2000);
+            }
+        };
+        const sampling = sample().then(() => null, error => error);
+        try
+        {
+            await until("visible 5800 desktop", () => matches("home"), 200000);
+            report.times.visible_desktop = Math.round(performance.now() - report.start);
+            await menu();
+            report.times.usable_desktop = Math.round(performance.now() - report.start);
+        }
+        finally { done = true; }
+        const sample_error = await sampling;
+        if(sample_error) throw sample_error;
+        reports.push(report);
+        log(JSON.stringify(report.times));
+        await power_off();
+        if(run + 1 < runs) await load("/index.html");
+    }
+    const artifact = await fetch("/__artifact?name=boot-profile.json",
+        { method: "POST", body: JSON.stringify({ network: !!relay, seed, reports }, null, 2) });
+    check(artifact.ok, "Set TEST_ARTIFACT_DIR to save the boot profile");
+    result.textContent = "PASS Nokia 5800 cold boot profile";
+}
+
 async function run()
 {
     await load("/index.html");
     await until("library", () => doc().querySelector("#new_vm"));
     const input = await fetch_file(firmware_url, firmware_url.split("/").at(-1));
+    if(part === "boot-profile") return profile_boot(input);
     if(part === "network-settings")
     {
         const config = await create("5800 network settings", input);
