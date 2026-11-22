@@ -77,7 +77,7 @@ export function open_wizard(options)
             ios: { name: unique(IOS_NAME), file: /** @type {File | null} */ (null), library: /** @type {File | null} */ (null),
                 checked: false, keys: "", key_file: "", keys_ok: false, acceleration: true, network: true, checking: /** @type {AbortController | null} */ (null),
                 results: /** @type {Array<[string, boolean, string]>} */ ([]) },
-            symbian: { device: "", name: unique(SYBORG_DEVICE.name), files: /** @type {File[]} */ ([]),
+            symbian: { device: "", name: unique(SYBORG_DEVICE.name), file: /** @type {File | null} */ (null),
                 report: /** @type {any} */ (null), checking: /** @type {AbortController | null} */ (null) },
             progress: "",
             /** @type {AbortController | null} the import going on (its Cancel) */
@@ -174,7 +174,7 @@ export function open_wizard(options)
                 render();
                 try
                 {
-                    const config = await import_syborg_package(s.files, s.report, s.name.trim(), state.notes,
+                    const config = await import_syborg_package(s.file, s.report, s.name.trim(), state.notes,
                         { store: options.store, signal: abort.signal, progress: symbian_progress });
                     close(config);
                 }
@@ -307,7 +307,7 @@ export function open_wizard(options)
                     }
                     state.source = value; state.image = null; state.error = ""; state.progress = "";
                     if(value !== "ios" && value !== "symbian") choose_preset(state.preset);
-                    if(value === "symbian" && state.symbian.files.length) void check_symbian_folder(state.symbian.files);
+                    if(value === "symbian" && state.symbian.file) void check_symbian_archive(state.symbian.file);
                     render();
                     /** @type {HTMLInputElement | null} */ (element.querySelector("input[name=source]:checked"))?.focus();
                 } }),
@@ -351,19 +351,19 @@ export function open_wizard(options)
             if(status) status.textContent = text;
         }
 
-        async function check_symbian_folder(files)
+        async function check_symbian_archive(file)
         {
             const s = state.symbian;
             s.checking?.abort();
             const checking = s.checking = new AbortController();
-            s.files = files;
+            s.file = file;
             s.report = null;
             state.error = "";
-            state.progress = "Checking the firmware build…";
+            state.progress = "Checking the firmware archive…";
             render();
             try
             {
-                const report = await check_syborg_package(files, { signal: checking.signal, progress: symbian_progress });
+                const report = await check_syborg_package(file, { signal: checking.signal, progress: symbian_progress });
                 if(s.checking === checking) s.report = report;
             }
             catch(error)
@@ -388,7 +388,7 @@ export function open_wizard(options)
                 s.checking?.abort();
                 s.checking = null;
                 s.device = e.currentTarget.value;
-                s.files = [];
+                s.file = null;
                 s.report = null;
                 state.error = "";
                 state.progress = "";
@@ -396,15 +396,16 @@ export function open_wizard(options)
             } }, h("option", { value: "", selected: !s.device }, "Choose a device…"),
             SYMBIAN_DEVICES.map(device => h("option", { value: device.id, selected: s.device === device.id }, device.family + " → " + device.name + " (" + device.model + ")")));
             if(!s.device) return h("div.indent", null, device);
-            const folder = h("input", { type: "file", multiple: true, hidden: true, webkitdirectory: "", onchange: e => {
-                const files = Array.from(/** @type {FileList} */ (e.currentTarget.files));
-                if(files.length) void check_symbian_folder(files);
+            const archive = h("input", { type: "file", accept: ".zip,.rar,.7z", hidden: true, onchange: e => {
+                const file = e.currentTarget.files?.[0];
+                if(file) void check_symbian_archive(file);
             } });
-            return h("div.indent", null, device, folder,
-                h("button.primary.symbian-folder-button", { type: "button", "data-symbian-focus": "folder", onclick: () => folder.click() },
-                    s.files.length ? "Change firmware folder…" : "Choose firmware folder…"),
+            return h("div.indent", null, device, archive,
+                h("button.primary.symbian-archive-button", { type: "button", "data-symbian-focus": "archive", onclick: () => archive.click() },
+                    s.file ? "Change firmware archive…" : "Choose firmware archive…"),
                 s.report ? h("p.note", null, "Verified firmware " + s.report.firmware_version + " · " + s.report.manifest) :
-                    h("p.note", null, "Choose the locally built " + SYBORG_PROFILE.firmware_version + " folder containing manifest.json and its companion images."));
+                    h("p.note", null, "Choose the Nokia 5800 RM-356 " + SYBORG_PROFILE.firmware_version +
+                        " ZIP, RAR or 7z. v86 extracts and prepares it in this browser."));
         }
 
         function ios_progress(stage, percent)
@@ -827,7 +828,7 @@ export function open_wizard(options)
                     const s = state.symbian;
                     if(!s.device) return "Choose a Symbian device";
                     if(s.checking) return "Checking the firmware…";
-                    return s.report?.media ? "" : "Choose the Nokia 5800 firmware build folder";
+                    return s.report?.media ? "" : "Choose the Nokia 5800 firmware archive";
                 }
                 if(state.source === "ios") return state.ios.checked ? "" : state.ios.checking ? "Checking the IPSW…" : "Choose the supported IPSW";
                 if(state.source === "direct") return state.direct.bzimage ? "" : "Choose the kernel";

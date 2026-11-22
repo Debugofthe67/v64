@@ -32,16 +32,15 @@ function worker_request(message, options)
         worker.onmessageerror = () => fail(new Error("The Symbian firmware worker returned unreadable data"));
         try
         {
-            const files = message.files.map(file => ({ name: file.name, size: file.size, path: file.webkitRelativePath || file.name, file }));
-            worker.postMessage({ ...message, files });
+            worker.postMessage(message);
         }
         catch(error) { fail(error); }
     });
 }
 
-export function check_syborg_package(files, options = {})
+export function check_syborg_package(file, options = {})
 {
-    return worker_request({ op: "check-syborg", files }, options);
+    return worker_request({ op: "check-syborg", file }, options);
 }
 
 async function import_directory(create)
@@ -102,7 +101,7 @@ export async function recover_symbian_imports(store)
     });
 }
 
-export async function import_syborg_package(files, expected, name, notes, options)
+export async function import_syborg_package(file, expected, name, notes, options)
 {
     if(!navigator.storage?.getDirectory || !navigator.locks)
     {
@@ -120,7 +119,7 @@ export async function import_syborg_package(files, expected, name, notes, option
         let stored;
         try
         {
-            await worker_request({ op: "import-syborg", files, expected, ids }, options);
+            await worker_request({ op: "import-syborg", file, expected, ids }, options);
             const media = {};
             for(const [role, { size, sha256 }] of Object.entries(expected.media))
             {

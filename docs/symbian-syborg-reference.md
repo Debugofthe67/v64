@@ -4,8 +4,8 @@ v86 runs the Nokia 5800 XpressMusic (RM-356) S60v5 firmware version 31.0.101 on 
 
 ## Start the phone
 
-1. Get a prepared Nokia 5800 Syborg build folder. If you have the original Nokia firmware files, follow [Build the firmware folder](#build-the-firmware-folder).
-2. In v86, choose **New virtual machine → Symbian → S60v5 → Nokia 5800 (RM-356)**. Use **Choose firmware folder…** to select the folder that contains `manifest.json`. Give the VM a name and create it.
+1. Download **RM-356 v.31.01 5800.rar**. A ZIP or 7z archive containing the same firmware files also works. [5800 firmware archive](https://firmware.center/firmware/Nokia/5800%20%28RM-356%2C%20RM-428%29/Flash%20Files/)
+2. In v86, choose **New virtual machine → Symbian → S60v5 → Nokia 5800 (RM-356)**. Click **Choose firmware archive…** and select the archive. The browser extracts and checks the files and prepares the phone's system images locally. When **Verified firmware 31.0.101** appears, click **Next**, name the VM, and finish creating it.
 3. Select the VM and click **Power on**. Set the time and date if prompted. On the home screen, tap the display or press **Menu** beneath it to find your apps. **Lock** toggles the guest's screen lock. **Media** opens the original media shortcuts.
 4. Use **Power → Save and power off** to keep the VM's disk changes and start it fresh next time. Use **Power → Suspend** to resume the same screen later.
 
@@ -33,7 +33,7 @@ Both samples ran through the original installer and Applications menu. On Chrome
 
 ## Build the firmware folder
 
-This section is for building from the original Nokia files. v86 ships the emulator and local verification tools. The Nokia system files are supplied by the user.
+This section is for maintainers preparing the assembly components and developers reproducing the reference build. The original Nokia firmware is supplied by the user.
 
 1. Obtain the three matching RM-356 31.0.101 files below. Verify them with `node tools/symbian/syborg.mjs firmware /path/to/original-firmware` from the v86 checkout. [5800 firmware archive](https://firmware.center/firmware/Nokia/5800%20%28RM-356%2C%20RM-428%29/Flash%20Files/) · [Known file hashes](plan/n97-plan.md#选型和对照环境)
 
@@ -51,16 +51,19 @@ This section is for building from the original Nokia files. v86 ships the emulat
    python3 -I tools/device.py paths "$device" manifest
    ```
 
-3. Put `ROM.img`, `ROM.img.rofs` (rename it to `ROM.rofs`), the device tree as `syborg.dtb`, the qembian composition list as `hybrid-manifest.txt`, and `C-blank-seed.img` in one folder. In the v86 checkout, create and verify the import manifest. Then select that folder in the v86 wizard.
+3. Put `ROM.img`, `ROM.img.rofs` (rename it to `ROM.rofs`), the device tree as `syborg.dtb`, the qembian composition list as `hybrid-manifest.txt`, and `C-blank-seed.img` in one folder. In the v86 checkout, create and verify the import manifest, then prepare the reusable assembly components.
 
    ```sh
    firmware=/path/to/original-firmware
    artifacts=/path/to/syborg-build-folder
    node tools/symbian/syborg.mjs manifest "$firmware" "$artifacts"
    node tools/symbian/syborg.mjs verify "$artifacts" "$firmware"
+   node tools/symbian/syborg.mjs components "$firmware" "$artifacts"
    ```
 
-The optional factory seed uses `RM356_31.0.008_020_xxx_U01.uda.fpsx` from the same firmware set. Build `C-factory-seed.img` with qembian's `drive-image` command and add `--factory-seed` to v86's `manifest` command.
+The components command writes `build/syborg-5800-components.bin`. The site build includes it when present. This file carries the Syborg boot code and layout data. Each original firmware import restores the Nokia user-side ROM and ROFS from the user's archive and starts with a blank C: drive. Archive extraction uses the packaged 7-Zip WebAssembly module. [Decoder source](https://github.com/arktronic/sevenzip-wasm)
+
+To import a prepared build, ZIP `manifest.json` and its referenced files together and select that ZIP in the same wizard. A prepared build can use the optional factory seed. Build `C-factory-seed.img` from `RM356_31.0.008_020_xxx_U01.uda.fpsx` with qembian's `drive-image` command and add `--factory-seed` to v86's `manifest` command.
 
 ## Developer reference
 

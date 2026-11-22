@@ -457,7 +457,7 @@ export function validate_config(config)
             firmware.sw_version !== SYBORG_PROFILE.firmware_version ||
             typeof firmware.manifest !== "string" || !firmware.manifest ||
             !digest.test(firmware.manifest_sha256) || firmware.manifest_sha256 !== firmware.media?.manifest?.sha256)
-            problem("symbian", "Choose the Nokia 5800 RM-356 firmware build folder");
+            problem("symbian", "Choose the Nokia 5800 RM-356 firmware archive");
         else
         {
             for(const role of Object.keys(SYBORG_MEDIA))
@@ -466,7 +466,7 @@ export function validate_config(config)
                 check_image(disk, "symbian.media." + role, problems);
                 if(disk?.kind !== "browser" || disk.path !== "v86/disks/" + config.id + "-symbian-" + role + ".img" ||
                     !digest.test(disk.sha256))
-                    problem("symbian.media." + role, "Choose the firmware folder again to create this VM's storage");
+                    problem("symbian.media." + role, "Choose the firmware archive again to create this VM's storage");
             }
             if(Object.keys(firmware.media).some(role => !Object.hasOwn(SYBORG_MEDIA, role)) ||
                 !Object.values(SYBORG_C_SEEDS).some(seed => seed.bytes === firmware.media.phone?.size && seed.sha256 === firmware.media.phone?.sha256) ||
@@ -502,7 +502,7 @@ export function validate_config(config)
     }
     if(config.symbian)
     {
-        problem("machine.type", "This Symbian machine is unavailable. Create a Nokia 5800 VM using an RM-356 build folder.");
+        problem("machine.type", "This Symbian machine is unavailable. Create a Nokia 5800 VM using an RM-356 firmware archive.");
         return problems;
     }
     if(machine.type === "s5l8930")

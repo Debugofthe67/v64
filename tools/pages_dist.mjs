@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { createHash as create_hash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { read_graphics_asset } from "./ios/graphics-assets.mjs";
+import { SYBORG_COMPONENTS_FILE } from "../src/symbian/syborg_compose.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const output = process.argv[2] || join(root, "build/pages");
@@ -33,6 +34,7 @@ const FILES = [
     "build/v86_app.js", "build/v86_app.js.map", "build/android-import-worker.js", "build/android-import-worker.js.map",
     "build/ios-import-worker.js", "build/ios-import-worker.js.map", "build/ios-install-worker.js", "build/ios-install-worker.js.map", "build/libv86.mjs", "build/cpu-worker.js", "build/vcpu-worker.js", "build/xterm.js",
     "build/symbian-import-worker.js", "build/symbian-import-worker.js.map",
+    "build/symbian-archive.js", "build/symbian-archive.wasm", "build/symbian-archive-LICENSE.txt",
     ...["v86-app-agent","libv86appbootstrap.dylib","libv86install.dylib"].map(n=>"build/ios-install-fixtures/"+n),
     "bios/ios-guest/README.md", "bios/ios-guest/manifest.json",
     "build/v86.wasm", "build/v86-fallback.wasm", "build/v86-parallel.wasm",
@@ -57,6 +59,16 @@ for(const name of FILES)
     {
         throw new Error(name + " is missing (make pages builds it): " + error.message);
     }
+}
+
+const symbian_components = "build/" + SYBORG_COMPONENTS_FILE;
+try
+{
+    files.set(symbian_components, await read_file(join(root, symbian_components)));
+}
+catch(error)
+{
+    if(error.code !== "ENOENT") throw error;
 }
 
 // Always publish the verified release adapter, even for a direct dist call

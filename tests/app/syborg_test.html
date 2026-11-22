@@ -11,6 +11,8 @@ import { check_installed_notes } from "../symbian/syborg_sis_checks.js";
 
 const directory = "/build/syborg-s0/reference/";
 const args = new URLSearchParams(location.search);
+const firmware_url = args.get("archive") || directory + "firmware.zip";
+const missing_url = args.get("missing") || directory + "missing.zip";
 const part = args.get("part");
 const controls_only = part === "controls";
 const prepared = controls_only && args.has("prepared");
@@ -70,11 +72,9 @@ async function fetch_file(url, name)
 {
     const response = await fetch(url);
     check(response.ok, "Missing test file " + url);
-    const file = new File([await response.blob()], name);
-    Object.defineProperty(file, "webkitRelativePath", { value: "reference/" + name });
-    return file;
+    return new File([await response.blob()], name);
 }
-async function create(name, selected, exercise_retry = false)
+async function create(name, archive, exercise_retry = false)
 {
     doc().querySelector("#new_vm").click();
     const dialog = doc().querySelector(".wizard-dialog");
@@ -83,20 +83,21 @@ async function create(name, selected, exercise_retry = false)
     check(selector.options.length === 2 && selector.options[1].textContent === "S60v5 → Nokia 5800 (RM-356)", "5800 is the only new Symbian machine");
     selector.value = "symbian-syborg";
     emit(selector, "change");
-    const pick = () => dialog.querySelector("input[webkitdirectory]");
-    check(pick().hidden && dialog.querySelectorAll('input[type="file"]').length === 1, "one native folder selector");
+    const pick = () => dialog.querySelector('input[type="file"]');
+    check(pick().hidden && !pick().multiple && !pick().webkitdirectory && pick().accept === ".zip,.rar,.7z" &&
+        dialog.querySelectorAll('input[type="file"]').length === 1, "one native archive selector");
     if(exercise_retry)
     {
         let opened = false;
         pick().addEventListener("click", event => { opened = true; event.preventDefault(); }, { once: true });
-        button(dialog, "Choose firmware folder…").click();
-        check(opened, "the folder control opens the native picker");
-        files(pick(), selected.slice(0, 1));
-        await until("missing ROM error", () => dialog.textContent.includes("Expected ROM.img next to manifest.json"));
+        button(dialog, "Choose firmware archive…").click();
+        check(opened, "the archive button opens the native picker");
+        files(pick(), [await fetch_file(missing_url, "missing.zip")]);
+        await until("missing ROM error", () => dialog.textContent.includes("The firmware archive is missing ROM.img"));
         check(!button(dialog, "Next"), "a missing file blocks creation");
     }
-    files(pick(), selected);
-    (await until("verified folder", () => button(dialog, "Next"), 60000)).click();
+    files(pick(), [archive]);
+    (await until("verified archive", () => button(dialog, "Next"), 90000)).click();
     const name_input = dialog.querySelector('input[aria-label="Name"]');
     name_input.value = name;
     emit(name_input, "input");
@@ -316,10 +317,7 @@ async function run()
 {
     await load("/index.html");
     await until("library", () => doc().querySelector("#new_vm"));
-    const manifest_file = await fetch_file(directory + "manifest.json", "manifest.json");
-    const manifest = JSON.parse(await manifest_file.text());
-    const input = [manifest_file, ...await Promise.all([...Object.values(manifest.files), manifest.build.composition]
-        .map(record => fetch_file(directory + record.name, record.name)))];
+    const input = await fetch_file(firmware_url, firmware_url.split("/").at(-1));
     const first = await create("S5 first Nokia", input, true);
     const second = await create("S5 second Nokia", input);
     window.s5.first = first;
@@ -357,6 +355,13 @@ async function run()
         await open_console(doc().querySelector(".console-notice a").href);
     }
     await wait_screen("home", 165000);
+    if(part === "boot")
+    {
+        await menu();
+        await power_off();
+        result.textContent = "PASS Nokia 5800 archive import, offline cold boot and stock Menu";
+        return;
+    }
     if(part !== "notes") await check_controls();
     if(controls_only)
     {

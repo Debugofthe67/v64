@@ -257,7 +257,7 @@ export async function open_console(root, target)
             set_title(config.name);
             if(config.symbian && config.machine.type !== SYBORG_DEVICE.id)
             {
-                fail("This Symbian machine is unavailable. Create a Nokia 5800 VM using an RM-356 build folder.");
+                fail("This Symbian machine is unavailable. Create a Nokia 5800 VM using an RM-356 firmware archive.");
                 return;
             }
             // (one tab at a time: its lock, held until it powers off or the tab closes)

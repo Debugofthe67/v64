@@ -1,59 +1,90 @@
 // Verify build artifacts and write them to OPFS without blocking the page.
 import { SHA256, sha256_hex } from "../image/sha256.js";
+import { open_symbian_archive, symbian_worker_asset } from "./symbian_archive.js";
+import { compose_syborg_artifacts, SYBORG_COMPONENTS_FILE, SYBORG_COMPONENTS_LIMIT } from "../symbian/syborg_compose.js";
+import { verify_syborg_firmware } from "../symbian/syborg_firmware.js";
 import {
     parse_syborg_manifest, validate_syborg_artifacts, SYBORG_MANIFEST_MAX_BYTES, SYBORG_MANIFEST_NAME,
 } from "../symbian/syborg_import.js";
+import { SYBORG_FIRMWARE_FILES } from "../symbian/syborg_profile.js";
 
 const CHUNK = 1024 * 1024;
-
-function path(file)
-{
-    return file.path;
-}
-
-function manifest_directory(file)
-{
-    const name = path(file);
-    return name.slice(0, name.lastIndexOf("/") + 1);
-}
 
 function progress(text)
 {
     globalThis.postMessage({ progress: text });
 }
 
-async function read_syborg_package(files)
+function find_entry(entries, name, optional = false)
 {
-    const manifests = files.filter(file => file.name === SYBORG_MANIFEST_NAME);
-    if(manifests.length !== 1) throw new Error("Choose a build folder containing one manifest.json");
-    const manifest_file = manifests[0];
-    if(manifest_file.size > SYBORG_MANIFEST_MAX_BYTES) throw new Error("manifest.json exceeds the size limit");
-    const manifest_bytes = new Uint8Array(await manifest_file.file.arrayBuffer());
-    const manifest = parse_syborg_manifest(manifest_bytes);
-    const siblings = files.filter(file => manifest_directory(file) === manifest_directory(manifest_file));
-    const records = { ...manifest.files, composition: manifest.build.composition };
-    const inputs = {};
-    for(const role of ["rom", "rofs", "devicetree", "c_seed", "composition"])
-    {
+    const matches = entries.filter(entry => entry.name === name);
+    if(matches.length > 1) throw new Error("The firmware archive contains more than one " + name);
+    if(!optional && !matches.length) throw new Error("The firmware archive is missing " + name);
+    return matches[0];
+}
+
+function read_build(archive, manifest_entry)
+{
+    if(manifest_entry.size > SYBORG_MANIFEST_MAX_BYTES) throw new Error("manifest.json exceeds the size limit");
+    const [manifest] = archive.extract([manifest_entry]);
+    const info = parse_syborg_manifest(manifest);
+    const siblings = archive.entries.filter(entry => entry.directory === manifest_entry.directory);
+    const records = { ...info.files, composition: info.build.composition };
+    const roles = ["rom", "rofs", "devicetree", "c_seed", "composition"];
+    const entries = roles.map(role => {
         const record = records[role];
-        const matches = siblings.filter(file => file.name === record.name);
-        if(matches.length !== 1) throw new Error("Expected " + record.name + " next to manifest.json");
-        if(matches[0].size !== record.bytes) throw new Error("Wrong size for " + record.name);
-        progress("Reading " + record.name + "…");
-        inputs[role] = new Uint8Array(await matches[0].file.arrayBuffer());
-    }
-    progress("Verifying firmware structure and SHA-256…");
-    validate_syborg_artifacts(manifest_bytes, inputs);
-    const images = {
-        manifest: { name: manifest_file.name, size: manifest_bytes.length, sha256: sha256_hex(manifest_bytes), bytes: manifest_bytes },
-    };
-    for(const [role, src] of Object.entries({ rom: "rom", rofs: "rofs", devicetree: "devicetree", phone: "c_seed" }))
+        const entry = find_entry(siblings, record.name);
+        if(entry.size !== record.bytes) throw new Error("Wrong size for " + entry.name);
+        return entry;
+    });
+    const files = archive.extract(entries);
+    const inputs = Object.fromEntries(roles.map((role, index) => [role, files[index]]));
+    progress("Verifying the firmware build…");
+    validate_syborg_artifacts(manifest, inputs);
+    return { ...inputs, manifest };
+}
+
+async function read_original_firmware(archive)
+{
+    const roles = [];
+    const entries = [];
+    for(const [role, file] of Object.entries(SYBORG_FIRMWARE_FILES))
     {
-        const { name, bytes: size, sha256 } = records[src];
-        images[role] = { name, size, sha256, bytes: inputs[src] };
+        const entry = find_entry(archive.entries, file.name, role === "uda");
+        if(!entry) continue;
+        if(entry.size !== file.bytes) throw new Error("Wrong size for " + entry.name);
+        entries.push(entry);
+        roles.push(role);
+    }
+    progress("Extracting Nokia 5800 firmware…");
+    const files = archive.extract(entries);
+    const inputs = Object.fromEntries(roles.map((role, index) => [role, { name: entries[index].name, bytes: files[index] }]));
+    progress("Verifying the original firmware…");
+    const firmware = verify_syborg_firmware(inputs);
+    progress("Preparing the Nokia 5800 system images…");
+    const response = await fetch(symbian_worker_asset(SYBORG_COMPONENTS_FILE));
+    if(!response.ok) throw new Error("This v86 installation is missing the Nokia 5800 assembly components");
+    if(Number(response.headers.get("Content-Length")) > SYBORG_COMPONENTS_LIMIT)
+        throw new Error("The Nokia 5800 assembly components are too large");
+    return compose_syborg_artifacts(new Uint8Array(await response.arrayBuffer()), firmware);
+}
+
+async function read_syborg_package(file)
+{
+    progress("Opening the firmware archive…");
+    const archive = await open_symbian_archive(file);
+    const manifest_entry = find_entry(archive.entries, SYBORG_MANIFEST_NAME, true);
+    const { manifest, rom, rofs, devicetree, c_seed } = manifest_entry ?
+        read_build(archive, manifest_entry) : await read_original_firmware(archive);
+    const info = parse_syborg_manifest(manifest);
+    const images = { manifest: { name: SYBORG_MANIFEST_NAME, size: manifest.length, sha256: sha256_hex(manifest), bytes: manifest } };
+    for(const [role, bytes] of Object.entries({ rom, rofs, devicetree, phone: c_seed }))
+    {
+        const record = info.files[role === "phone" ? "c_seed" : role];
+        images[role] = { name: record.name, size: record.bytes, sha256: record.sha256, bytes };
     }
     const media = Object.fromEntries(Object.entries(images).map(([role, { size, sha256 }]) => [role, { size, sha256 }]));
-    return { images, result: { media, manifest: manifest_file.path, firmware_version: manifest.firmware_version, seed: manifest.c_seed } };
+    return { images, result: { media, manifest: file.name, firmware_version: info.firmware_version, seed: info.c_seed } };
 }
 
 async function write_images(images, ids)
@@ -105,7 +136,7 @@ globalThis.onmessage = async ({ data }) =>
     try
     {
         if(data.op !== "check-syborg" && data.op !== "import-syborg") throw new Error("Unknown firmware import operation");
-        const { images, result } = await read_syborg_package(data.files);
+        const { images, result } = await read_syborg_package(data.file);
         if(data.op === "import-syborg")
         {
             for(const [role, { size, sha256 }] of Object.entries(result.media))

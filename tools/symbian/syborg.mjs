@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import { mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { verify_syborg_firmware } from "../../src/symbian/syborg_firmware.js";
+import { pack_syborg_components, SYBORG_COMPONENTS_FILE } from "../../src/symbian/syborg_compose.js";
 import {
     make_syborg_manifest, parse_syborg_manifest, validate_syborg_artifacts, SYBORG_COMPOSITION_NAME,
     SYBORG_MANIFEST_MAX_BYTES, SYBORG_MANIFEST_NAME, SYBORG_READ_ONLY_FILES,
@@ -13,7 +14,8 @@ import { audit_syborg_xip } from "../../src/symbian/syborg_xip.js";
 const usage = `Usage:
   node tools/symbian/syborg.mjs firmware FIRMWARE_DIR
   node tools/symbian/syborg.mjs manifest FIRMWARE_DIR ARTIFACT_DIR [--factory-seed]
-  node tools/symbian/syborg.mjs verify ARTIFACT_DIR [FIRMWARE_DIR]`;
+  node tools/symbian/syborg.mjs verify ARTIFACT_DIR [FIRMWARE_DIR]
+  node tools/symbian/syborg.mjs components FIRMWARE_DIR ARTIFACT_DIR [OUTPUT_FILE]`;
 
 const firmware_roles = {
     core: /^rm-?356_.*\.core\.c00$/i,
@@ -65,13 +67,14 @@ async function read_artifacts(directory, seed, manifest)
     ])));
 }
 
-async function write_manifest(directory, bytes)
+async function write_artifact(destination, bytes)
 {
-    const destination = join(directory, SYBORG_MANIFEST_NAME);
-    const temp_dir = await mkdtemp(join(directory, ".syborg-manifest-"));
+    const directory = dirname(destination);
+    await mkdir(directory, { recursive: true });
+    const temp_dir = await mkdtemp(join(directory, ".syborg-"));
     try
     {
-        const temporary = join(temp_dir, SYBORG_MANIFEST_NAME);
+        const temporary = join(temp_dir, "output");
         await writeFile(temporary, bytes);
         await rename(temporary, destination);
     }
@@ -114,7 +117,7 @@ async function main([command, first, second, flag, ...rest])
         const manifest_bytes = make_syborg_manifest(artifacts, seed, !!firmware.uda);
         const info = validate_syborg_artifacts(manifest_bytes, artifacts);
         const audit = audit_syborg_xip(artifacts.rom, info.xip, firmware.core, artifacts.composition);
-        await write_manifest(second, manifest_bytes);
+        await write_artifact(join(second, SYBORG_MANIFEST_NAME), manifest_bytes);
         print_artifacts(info, audit);
         console.log("Wrote " + join(second, SYBORG_MANIFEST_NAME));
         return;
@@ -132,6 +135,18 @@ async function main([command, first, second, flag, ...rest])
         }
         const audit = firmware ? audit_syborg_xip(artifacts.rom, info.xip, firmware.core, artifacts.composition) : undefined;
         print_artifacts(info, audit);
+        return;
+    }
+    if(command === "components" && second)
+    {
+        const { core } = await read_firmware(first);
+        const artifacts = await read_artifacts(second, "blank");
+        const manifest = make_syborg_manifest(artifacts, "blank", false);
+        const { xip } = validate_syborg_artifacts(manifest, artifacts);
+        audit_syborg_xip(artifacts.rom, xip, core, artifacts.composition);
+        const output = flag || join("build", SYBORG_COMPONENTS_FILE);
+        await write_artifact(output, pack_syborg_components(artifacts, core));
+        console.log("Wrote Nokia 5800 assembly components to " + output);
         return;
     }
     throw new Error(usage);

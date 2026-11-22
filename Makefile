@@ -1006,10 +1006,23 @@ build/ios-install-worker.js: src/app/ios_install_worker.js $(wildcard src/ios/*.
 	node_modules/.bin/esbuild src/app/ios_install_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
 		--outfile=build/ios-install-worker.js --log-level=warning
 
-build/symbian-import-worker.js: src/app/symbian_import_worker.js $(wildcard src/symbian/*.js) src/android/bytes.js src/image/sparse_blocks.js src/image/sha256.js src/virt/inflate.js node_modules/.bin/esbuild
+build/symbian-import-worker.js: src/app/symbian_import_worker.js src/app/symbian_archive.js $(wildcard src/symbian/*.js) src/android/bytes.js src/image/sha256.js src/virt/inflate.js node_modules/.bin/esbuild | build/symbian-archive.js build/symbian-archive.wasm build/symbian-archive-LICENSE.txt
 	mkdir -p build
 	node_modules/.bin/esbuild src/app/symbian_import_worker.js --bundle --format=esm --target=es2022 --minify --sourcemap \
 		--outfile=build/symbian-import-worker.js --log-level=warning
+
+build/symbian-archive.js: package-lock.json node_modules/.bin/esbuild
+	mkdir -p build
+	printf 'export { default } from "sevenzip-wasm";\n' | node_modules/.bin/esbuild --bundle --format=esm --target=es2022 \
+		--external:node:* --outfile=$@ --log-level=warning
+
+build/symbian-archive.wasm: package-lock.json | node_modules/.bin/esbuild
+	mkdir -p build
+	cp node_modules/sevenzip-wasm/sevenzip-wasm.wasm $@
+
+build/symbian-archive-LICENSE.txt: package-lock.json | node_modules/.bin/esbuild
+	mkdir -p build
+	cp node_modules/sevenzip-wasm/LICENSE $@
 
 # Locally built v86 graphics adapter, using exports from the owner's 10B329 cache.
 .PHONY: ios-guest

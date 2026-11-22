@@ -112,7 +112,7 @@ export function hardware_items(c)
 function symbian_panel(ctx)
 {
     const firmware = ctx.config.symbian;
-    const rows = [...hardware_rows(ctx.config), ["Build manifest", firmware.manifest], ["Manifest SHA-256", firmware.manifest_sha256]];
+    const rows = [...hardware_rows(ctx.config), ["Firmware source", firmware.manifest], ["Manifest SHA-256", firmware.manifest_sha256]];
     const webgpu = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: firmware.webgpu === true,
         disabled: !!ctx.config.suspended }));
     webgpu.onchange = () => ctx.set("symbian.webgpu", webgpu.checked);
