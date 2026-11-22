@@ -22,10 +22,13 @@ import { NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
 import { IOSInstallController } from "../ios_install.js";
 import { show_ios_install } from "./ios_install.js";
-import { package_paths, show_sis_transfer } from "./symbian_packages.js";
+import { package_paths, show_sis_transfer, SYBORG_INSTALL_HELP } from "./symbian_packages.js";
 import { make_sis_card } from "../../symbian/sis_card.js";
 import { n97_keyboard_panel } from "./n97_keyboard.js";
 import { n97_touch_surface } from "./n97_touch.js";
+import { syborg_controls } from "./syborg_controls.js";
+import { hardware_rows } from "./describe.js";
+import { symbian_device, SYBORG_DEVICE } from "../../symbian/catalog.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Image} Image */
@@ -501,22 +504,24 @@ function console_ui(layout, emulator, ctx)
     const tag = ctx.profile?.id || (ctx.config ? ctx.config.name.replace(/[^\w.-]+/g, "_") : "v86");
     const ios = ctx.config?.ios;
     const symbian = ctx.config?.symbian;
+    const syborg = options.machine_type === SYBORG_DEVICE.id;
+    const phone = symbian_device(options.machine_type);
     const iphone = options.machine_type === "s5l8930";
     const virt = options.cpu_type === "arm64";
     let written_back = [options.hda, options.hdb, options.fda, options.fdb, options.ios?.nand,
-        options.symbian?.nand, options.symbian?.emmc, options.symbian?.sd,
+        options.symbian?.nand, options.symbian?.emmc, options.symbian?.sd, options.symbian?.nvmemory, options.symbian?.nvmemory2,
         ...(options.virtio_disks || [])].some(d => d && d.disk_option === "read_write");
     let powered_off = false;
     let running = false;
     let iphone_asleep = false;
-    let n97_operation = false;
+    let symbian_operation = false;
     /** @param {() => any} action */
-    const n97_exclusive = action => async () => {
+    const symbian_exclusive = action => async () => {
         if(!symbian) return action();
-        if(n97_operation || powered_off) return;
-        n97_operation = true;
+        if(symbian_operation || powered_off) return;
+        symbian_operation = true;
         try { return await action(); }
-        finally { n97_operation = false; }
+        finally { symbian_operation = false; }
     };
 
     // ---- the status bar
@@ -659,10 +664,14 @@ function console_ui(layout, emulator, ctx)
 
     const ipa_installer = ios ? new IOSInstallController(emulator, { graphics: !!options.gles_backdoor,
         storage_key: ctx.config?.id || location.href }) : null;
-    const n97_touch = symbian ? n97_touch_surface(layout.screen_container, (x, y, down) => emulator.symbian_set_touch(x, y, down),
-        () => running && !powered_off) : null;
+    const phone_ready = () => running && !powered_off;
+    const phone_touch = (x, y, down) => emulator.symbian_set_touch(x, y, down);
+    const phone_key = (code, down) => emulator.symbian_send_key(code, down);
+    const n97_touch = symbian && !syborg ? n97_touch_surface(layout.screen_container, phone_touch, phone_ready) : null;
+    const syborg_input = syborg ? syborg_controls(layout.screen_container, phone_key, phone_touch, () => phone_ready() && !symbian_operation) : null;
+    const phone_screen = syborg_input || n97_touch;
     let slider_changes = 0;
-    const n97_keyboard = symbian ? n97_keyboard_panel((code, pressed) => emulator.symbian_send_key(code, pressed),
+    const n97_keyboard = n97_touch ? n97_keyboard_panel(phone_key,
         (control, pressed) => { if(!pressed || running && !powered_off) emulator.symbian_send_control(control, pressed); },
         open => {
             slider_changes++;
@@ -689,11 +698,12 @@ function console_ui(layout, emulator, ctx)
         emulator.add_listener("emulator-loaded", sync_slider);
         // A library resume restores the saved Hall level after emulator-loaded.
         emulator.add_listener("emulator-started", sync_slider);
-        emulator.add_listener("emulator-stopped", () => {
-            n97_touch.release();
-            n97_keyboard.release();
-        });
     }
+    const release_phone = () => {
+        n97_keyboard?.release();
+        phone_screen?.release();
+    };
+    if(symbian) emulator.add_listener("emulator-stopped", release_phone);
 
     // ---- power
     const power_off = async (ask = true) =>
@@ -701,8 +711,12 @@ function console_ui(layout, emulator, ctx)
         if(ask && !await confirm("Power off?", "The virtual machine stops as if its power were cut. What is only in its memory is lost." +
             (written_back ? " Its disks written back keep what they completed." : ""), "Power off", true)) return;
         powered_off = true;
-        n97_keyboard?.release();
-        n97_touch?.release();
+        release_phone();
+        if(syborg_input)
+        {
+            syborg_input.dispose();
+            window.removeEventListener("resize", fit);
+        }
         ipa_installer?.dispose();
         clearInterval(interval);
         await emulator.destroy();
@@ -721,8 +735,11 @@ function console_ui(layout, emulator, ctx)
         /** @param {VMConfig | undefined} current */
         function card_slot(current)
         {
-            if(!current?.symbian || current.suspended) throw new Error("Finish starting or resuming the Nokia N97 before sending packages.");
-            if(current.symbian.sd) throw new Error("A microSD is already inserted. Power off and eject it in Library → Settings → Symbian firmware. Its image stays in Browser disks.");
+            if(!current?.symbian || current.suspended)
+                throw new Error("Finish starting or resuming the " + phone.name + " before sending packages.");
+            if(current.symbian.sd)
+                throw new Error((syborg ? "A transfer card is already attached." : "A microSD is already inserted.") +
+                    " Power off and eject it in Library → Settings → Symbian firmware. Its image stays in Browser disks.");
             return current;
         }
         try { card_slot(await store.get(config.id)); }
@@ -730,7 +747,7 @@ function console_ui(layout, emulator, ctx)
         /** @param {Parameters<typeof package_paths>[0]} packages */
         const insert_sis = async packages => {
             card_slot(await store.get(config.id));
-            const image = make_sis_card(packages, crypto.getRandomValues(new Uint32Array(1))[0]);
+            const image = make_sis_card(packages, crypto.getRandomValues(new Uint32Array(1))[0], syborg);
             const disk = await import_disk(image, ctx.name + " · SIS transfer card",
                 { prefs: store, symbian: { owner: config.id, role: "sd" } });
             const sd = /** @type {const} */ ({ kind: "browser", path: disk.path, size: disk.size, sha256: disk.sha256, name: "SIS transfer card" });
@@ -744,7 +761,7 @@ function console_ui(layout, emulator, ctx)
                     return { ...current, symbian: { ...current.symbian, sd } };
                 });
                 registered = true;
-                await emulator.symbian_insert_sd({ url: "opfs:" + disk.path, size: disk.size });
+                if(!syborg) await emulator.symbian_insert_sd({ url: "opfs:" + disk.path, size: disk.size });
             }
             catch(error)
             {
@@ -779,17 +796,23 @@ function console_ui(layout, emulator, ctx)
             }
             config.symbian.sd = sd;
             written_back = true;
+            if(syborg)
+            {
+                await power_off(false);
+                layout.notice.append(h("p", { role: "status" }, "Transfer card saved. Power on again to use it."), package_paths(packages));
+                return;
+            }
             replace(layout.notice, h("p", { role: "status" }, "Transfer card inserted. Open F:\\INSTALL in the phone's file manager."),
                 package_paths(packages));
         };
         await show_sis_transfer(packages => {
-            if(n97_operation || powered_off) throw new Error("The Nokia N97 is busy. Wait for the current operation and try again.");
-            return n97_exclusive(() => insert_sis(packages))();
-        });
+            if(symbian_operation || powered_off) throw new Error("The " + phone.name + " is busy. Wait for the current operation and try again.");
+            return symbian_exclusive(() => insert_sis(packages))();
+        }, { name: phone.name, firmware: symbian.sw_version, syborg });
     };
     let sis_dialog = false;
     const open_sis = async () => {
-        if(sis_dialog || n97_operation || powered_off) return;
+        if(sis_dialog || symbian_operation || powered_off) return;
         sis_dialog = true;
         try { await send_sis(); }
         finally { sis_dialog = false; }
@@ -806,6 +829,7 @@ function console_ui(layout, emulator, ctx)
     {
         try
         {
+            release_phone();
             const parts = [];
             await emulator.save_state_stream(chunk => { parts.push(chunk.slice()); });
             download(parts, tag + "-state.bin");
@@ -839,6 +863,7 @@ function console_ui(layout, emulator, ctx)
         ctx.set_status("Suspending ...");
         try
         {
+            release_phone();
             const size = await write_state(config.id, write => emulator.save_state_stream(write));
             const suspended = { size, time: new Date().toISOString(), digest: await machine_digest(config) };
             if(symbian) await store.update(config.id, latest => ({ ...latest, suspended }));
@@ -858,7 +883,11 @@ function console_ui(layout, emulator, ctx)
     const save_state = async () =>
     {
         ctx.set_status("Saving the state ...");
-        try { await save_state_to_file(emulator, options, tag + "-state.bin"); }
+        try
+        {
+            release_phone();
+            await save_state_to_file(emulator, options, tag + "-state.bin");
+        }
         catch(error) { await inform("The state was not saved", error.message); }
         ctx.set_status(running ? "Running" : "Paused");
     };
@@ -875,8 +904,7 @@ function console_ui(layout, emulator, ctx)
             const stream = header.byteLength === 8 && header.getUint32(0, true) === 0x86768676 && header.getUint32(4, true) % 2 === 1;
             const was_running = emulator.is_running();
             if(was_running) await emulator.stop();
-            n97_keyboard?.release();
-            n97_touch?.release();
+            release_phone();
             if(stream) await emulator.restore_state_stream(file);
             else await emulator.restore_state(await file.arrayBuffer());
             await refresh_slider().catch(() => {});
@@ -1020,14 +1048,14 @@ function console_ui(layout, emulator, ctx)
     }
     const fit = () =>
     {
-        if(n97_touch)
+        if(phone_screen)
         {
             const main = layout.drawer.parentElement;
             const main_style = window.getComputedStyle(main);
             const drawer_width = !layout.drawer.hidden && main_style.flexDirection === "row" ?
                 layout.drawer.offsetWidth + (parseFloat(main_style.columnGap) || 0) : 0;
             const available_height = window.innerHeight - main.getBoundingClientRect().top - layout.status.offsetHeight - 8;
-            n97_touch.set_fit(theatre ? window.innerWidth : main.clientWidth - drawer_width,
+            phone_screen.set_fit(theatre ? window.innerWidth : main.clientWidth - drawer_width,
                 theatre ? window.innerHeight : available_height);
             return;
         }
@@ -1050,7 +1078,7 @@ function console_ui(layout, emulator, ctx)
         else
         {
             window.removeEventListener("resize", fit);
-            if(n97_touch) n97_touch.set_scale(scale);
+            if(phone_screen) phone_screen.set_scale(scale);
             else emulator.screen_set_scale(scale, scale);
         }
     };
@@ -1058,7 +1086,7 @@ function console_ui(layout, emulator, ctx)
     {
         scale = n;
         if(zoom_to_fit) set_zoom_to_fit(false);
-        if(n97_touch) n97_touch.set_scale(n);
+        if(phone_screen) phone_screen.set_scale(n);
         else emulator.screen_set_scale(n, n);
     };
     const show_ui = h("button.theatre-show-ui", { type: "button", hidden: true, onclick: () => set_theatre(false) }, "Leave theatre mode");
@@ -1219,6 +1247,7 @@ function console_ui(layout, emulator, ctx)
         const storage = h("span", null, iphone ? nand_usage : format_size(stats.disk_read) + " read, " +
             format_size(stats.disk_written) + " written" + (stats.disk_busy ? ", busy" : ""));
         const rows = [
+            ...(syborg ? hardware_rows(ctx.config) : []),
             ["Machine", (options.machine_type || "i440fx") + ", " + options.cpu_type + ", " + options.cpu_cores + (options.cpu_cores === 1 ? " core" : " cores")],
             ["Memory", format_size((options.memory_size || 0) + (options.extended_memory_size || 0))],
             ["Running", stats.running_ms ? format_time(stats.running_ms / 1000 | 0) : "-"],
@@ -1299,7 +1328,7 @@ function console_ui(layout, emulator, ctx)
         layout.drawer.hidden = !drawer;
         layout.drawer.classList.toggle("n97-keyboard-drawer", drawer === "keyboard");
         layout.root.classList.toggle("with-drawer", !!drawer);
-        if(n97_touch && zoom_to_fit) fit();
+        if(phone_screen && zoom_to_fit) fit();
         if(!drawer) { update_toolbar(); return; }
         const title = { terminal: "Serial terminal", kernel: "Kernel console", files: "Shared folder", details: "Details", keyboard: "Nokia N97 keyboard" }[drawer];
         replace(layout.drawer, h("header", null, h("h2", null, title), h("button", { type: "button", "aria-label": "Close", onclick: () => open_drawer("") }, "×")),
@@ -1418,23 +1447,25 @@ function console_ui(layout, emulator, ctx)
     /** @type {Object<string, () => Array<import("./dom.js").MenuItem | "-">>} */
     const items = {
         power: () => [
-            { label: running ? "Pause" : "Run", id: "menu_run", disabled: n97_operation || ipa_installer?.active(),
-                action: n97_exclusive(() => running ? emulator.stop() : emulator.run()) },
-            { label: "Reset", id: "menu_reset", disabled: n97_operation || !!options.initial_state || ipa_installer?.active(),
-                title: options.initial_state ? "Started from a saved state" : "", action: n97_exclusive(() => {
-                n97_keyboard?.release();
-                n97_touch?.release();
+            { label: running ? "Pause" : "Run", id: "menu_run", disabled: symbian_operation || ipa_installer?.active(),
+                action: symbian_exclusive(() => {
+                    release_phone();
+                    return running ? emulator.stop() : emulator.run();
+                }) },
+            { label: "Reset", id: "menu_reset", disabled: symbian_operation || !!options.initial_state || ipa_installer?.active(),
+                title: options.initial_state ? "Started from a saved state" : "", action: symbian_exclusive(() => {
+                release_phone();
                 return emulator.restart();
             }) },
             ...(iphone ? [{ label: "Shut down iPhone…", id: "menu_iphone_shutdown", disabled: !running || ipa_installer?.active(), action: shutdown_iphone }] : []),
-            { label: iphone ? "Force power off…" : "Power off…", id: "menu_power_off", disabled: n97_operation || ipa_installer?.active(),
-                action: n97_exclusive(() => power_off()) },
-            ...(ctx.config ? [{ label: "Suspend", id: "menu_suspend", disabled: n97_operation || ipa_installer?.active(), action: n97_exclusive(suspend) }] : []),
-            ...(written_back ? [{ label: "Save and power off", id: "menu_save_and_power_off", disabled: n97_operation || ipa_installer?.active(),
-                action: n97_exclusive(save_and_power_off) }] : []),
+            { label: iphone ? "Force power off…" : "Power off…", id: "menu_power_off", disabled: symbian_operation || ipa_installer?.active(),
+                action: symbian_exclusive(() => power_off()) },
+            ...(ctx.config ? [{ label: "Suspend", id: "menu_suspend", disabled: symbian_operation || ipa_installer?.active(), action: symbian_exclusive(suspend) }] : []),
+            ...(written_back ? [{ label: "Save and power off", id: "menu_save_and_power_off", disabled: symbian_operation || ipa_installer?.active(),
+                action: symbian_exclusive(save_and_power_off) }] : []),
             "-",
-            { label: "Save the state to a file", id: "menu_save_state", disabled: n97_operation || ipa_installer?.active(), action: n97_exclusive(save_state) },
-            { label: "Load a state from a file…", id: "menu_load_state", disabled: n97_operation || ipa_installer?.active(), action: n97_exclusive(load_state) },
+            { label: "Save the state to a file", id: "menu_save_state", disabled: symbian_operation || ipa_installer?.active(), action: symbian_exclusive(save_state) },
+            { label: "Load a state from a file…", id: "menu_load_state", disabled: symbian_operation || ipa_installer?.active(), action: symbian_exclusive(load_state) },
         ],
         keys: () => [
             ...COMBINATIONS.map(c => ({ label: c, id: "keys_" + c.replace(/\W+/g, "_"), action: () => send_keys(c) })),
@@ -1486,12 +1517,14 @@ function console_ui(layout, emulator, ctx)
         replace(layout.toolbar,
             h("a.button", { href: location.pathname }, "Library"),
             menu_button("Power", items.power, "menu_power"),
-            ios ? iphone_controls : symbian ? h("span.note", null, "Nokia N97 · Experimental boot",
+            ios ? iphone_controls : syborg ? h("span.note", null, phone.name + " (" + phone.model + ") · " + symbian.sw_version) :
+                symbian ? h("span.note", null, "Nokia N97 · Experimental boot",
                 ctx.config.symbian.media.boot_media && !ctx.config.symbian.bootrom ?
                     " · RAPIDO ROM missing. Add a local chip dump in Library → Settings → Symbian firmware." :
-                    !ctx.config.symbian.media.boot_media ? " · Legacy XIP. Reimport the RM-505 package to add its original modem images." : "") :
+                    !ctx.config.symbian.media.boot_media ? " · Legacy XIP boot with no modem images." : "") :
                 [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
             symbian ? h("button#symbian_send_sis", { type: "button", onclick: open_sis }, "Send SIS/SISX…") : null,
+            syborg && symbian.sd ? syborg_input.select : null,
             menu_button("View", items.view, "menu_view"),
             ios || symbian ? null : menu_button("Input", items.input, "menu_input"),
             symbian ? null : mute,
@@ -1505,5 +1538,10 @@ function console_ui(layout, emulator, ctx)
             h("span.console-name", null, ctx.name));
     };
     update_toolbar();
+    if(syborg)
+    {
+        set_zoom_to_fit(true);
+        if(symbian.sd) layout.notice.append(h("p.note", null, SYBORG_INSTALL_HELP));
+    }
     ctx.set_status("Starting ...");
 }

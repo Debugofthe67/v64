@@ -16,6 +16,7 @@ import { probe, LOCAL_SERVICE } from "../disk_service_client.js";
 import { delete_state, hold_machine, running_machines, storage_space } from "../vm_state.js";
 import { reset_ios_data } from "../ios_import.js";
 import { recover_symbian_imports } from "../symbian_import.js";
+import { symbian_device, SYBORG_DEVICE } from "../../symbian/catalog.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Image} Image */
@@ -192,7 +193,7 @@ export async function open_library(root)
         const edited = await open_settings(config, { store, service, erase_ios, persist: async (draft, bootrom, pending_sd) => {
             if(!draft.symbian) return store.put(draft);
             const lock = await hold_machine(draft.id);
-            if(!lock) throw new Error("Power off the Nokia N97 before changing these settings");
+            if(!lock) throw new Error("Power off the " + symbian_device(draft.machine.type).name + " before changing these settings");
             const created = [];
             const ensure_current = current => {
                 if(!current?.symbian || current.modified !== config.modified || current.symbian.sd?.path !== config.symbian.sd?.path)
@@ -273,7 +274,8 @@ export async function open_library(root)
             onclick: () => { selected = c.id; render(); },
             onkeydown: e => { if(e.key === "Enter" || e.key === " ") { selected = c.id; render(); } },
         }, h("span.vm-name", null, c.name), c.ios ? h("span.vm-state", null, "iPhone 4 · iOS 6.1.3") :
-            c.symbian ? h("span.vm-state", null, "Nokia N97 · Experimental boot") : null,
+            c.symbian ? h("span.vm-state", null, c.machine.type === SYBORG_DEVICE.id ?
+                SYBORG_DEVICE.name + " (" + SYBORG_DEVICE.model + ") · " + c.symbian.sw_version : "Nokia N97 · Experimental boot") : null,
         h("span.vm-state", null, running.has(c.id) ? "Running in another tab" :
             c.suspended ? "Suspended" : "Powered off"))));
         const sidebar = h("aside.library-list", null,
@@ -326,7 +328,7 @@ export async function open_library(root)
             const lock = config.symbian ? await hold_machine(config.id) : null;
             if(config.symbian && !lock)
             {
-                await inform("Not deleted", "Power off the Nokia N97 before deleting it.");
+                await inform("Not deleted", "Power off the " + symbian_device(config.machine.type).name + " before deleting it.");
                 return;
             }
             try
@@ -352,7 +354,7 @@ export async function open_library(root)
             const lock = config.symbian ? await hold_machine(config.id) : null;
             if(config.symbian && !lock)
             {
-                await inform("Suspend state kept", "Power off the Nokia N97 before discarding its suspended state.");
+                await inform("Suspend state kept", "Power off the " + symbian_device(config.machine.type).name + " before discarding its suspended state.");
                 return;
             }
             try

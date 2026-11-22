@@ -257,3 +257,22 @@ macOS 上可用 `/sbin/newfs_msdos -F 32 -S 512 -s 131072 -v V86S4 "$card"` 代�
 4. 从 **Applications** 中启动带拼图图标的 **Notes**，输入 `580086`，用页面的 **Save (F2)** 保存，随后按 **Escape** 退出。用 **Check Notes 1.0 and saved text** 核对正式登记、E32 文件和应用私有数据。用 **Cold reopen same C: disk** 创建新 Worker，从手机菜单重新启动应用并核对读回。
 5. 在当前开机期间用同一方法把 `V2.SIS` 复制到手机内存并打开。确认原厂升级提示，再启动 v86 Notes。检查它显示 2.0 和原标记，随后用 **Check Notes 2.0 and saved text** 核对盘上记录。
 6. 从 **Menu → Settings → Application mgr. → Installed apps.** 选 v86 Notes 并执行 **Options → Uninstall → Yes**。卸载结束后，用 **Check Notes is absent** 核对磁盘，再从 **Menu** 启动 **Calendar**，退出并返回主屏。
+
+## S5 浏览器中的 Nokia 5800
+
+在 Chrome 158.0.8127.36 发布构建中，从 **New virtual machine → Symbian → S60v5 → Nokia 5800 (RM-356)** 选择 S0 产物目录。Worker 校验 manifest、混合 ROM、ROFS、设备树、C: 种子和构建清单。浏览器保存四个只读启动文件和这台虚拟机的独立 C:。实测选取缺件目录会报出缺少的文件，取消创建后可以用同一文件夹重试。机器库、设置、控制台和递送窗口显示固件版本 `31.0.101`。
+
+原厂 Menu、触摸和首次开机向导在正式应用中运行。失焦和指针取消释放已按下的键和触摸。接听、菜单、挂断、音量和相机键使用 RM-356 的 `keypad_exp.dll` 矩阵。锁开关使用 `switch.dll` 的 `EStdKeyDeviceF`（`0xB3`），控制台的短按会发送至少 220 毫秒的锁开关脉冲。原厂钥匙图标亮起时，Menu 不能打开应用菜单，再拨一次恢复。两次操作均等待原厂钥匙图标确认。Media 使用 `exyin.dll` 触键区的 `EStdKeyDevice27`（`0xF0`），打开原厂 Media bar。拍摄半按为 `0xE2`，全按为 `0xAB`。电源键发送 `EStdKeyDevice2`，控制台的 **Power → Power off** 提供实测的关机路径。[S60 按键常量](https://katastrophos.net/symbian-dev/GUID-C6E5F800-0637-419E-8FE5-1EBB40E725AA/GUID-2DD6456C-7BE2-3A55-8DAF-CE413CC28A8A.html)
+
+1. 用 `make app build/v86-arm64.wasm` 构建，在本机打开 `index.html`。选择 `build/syborg-s0/reference/`，创建并启动 5800，完成首次开机向导。
+2. 在控制台选 **Send SIS/SISX**，添加 `tests/symbian/fixtures/notes-v1.sisx`。保存客体中的工作到 C:，选择 **Save card and power off**，再开机。临时 E: 由该虚拟机独享的持久 FAT16 递送卡接替。
+3. 退出首次启动的 **Welcome** 和设置向导。在 **Menu → Applications → File mgr.** 中将 `E:\INSTALL\PKG00001.SIS` 通过 **Options → Organise → Copy to folder → C: Phone mem. → Root folder → Copy** 复制。选中 C: 上的副本，点控制台 **Open selected file**，在原厂安装器确认签名测试包并选择 C:。
+4. 启动 **Applications** 中拼图图标的 **Notes**。聚焦手机屏幕，输入 `580086`，触摸 **Save**。关机，刷新机器库并启动同一虚拟机，再次打开 Notes 核对原文。保持 Notes 开着，从 **Power → Suspend** 挂起，并从机器库恢复，核对同一个 Notes 界面及标记。
+
+本地 Chrome 验收确认卡中的包与签名夹具逐字节一致，原厂安装登记与 C: 上的文件一致。冷启和挂起恢复均显示 `580086`。第二台同固件 VM 的 C: 保持其初始内容，原 VM 的递送卡未出现在第二台。屏幕截图位于 `build/syborg-s0/s5-app/`（递送、安装、保存和恢复）与 `build/syborg-s0/s5-controls-observe/`（锁开关和 Media bar）。
+
+[应用验收页面](../tests/app/syborg_test.html) 自动检查缺件、取消重试、两台机器、触控、按键和挂起，原厂复制、安装与 Notes 操作由操作者完成。空白 C: 已通过完整验收，重复首次启动时曾在主屏出现后等待 Menu 超时。单独复测按键时使用 S4 导出的 `build/browser-test-output/syborg-s4-stock-notes-v1-C.img`。测试把这份盘的副本写到刚创建的虚拟机，并用原厂锁图标和菜单画面验证按键响应。
+
+```sh
+BROWSER_FOCUS=1 node tests/app/browser_runner.mjs tests/app/syborg_test.html part=controls prepared=1
+```

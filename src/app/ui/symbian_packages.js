@@ -8,8 +8,13 @@ export function package_paths(packages)
     return h("ul", null, packages.map(({ file, path }) => h("li", null, file.name, " → ", h("code", null, path))));
 }
 
-/** @param {(packages: Awaited<ReturnType<typeof sis_card_files>>) => Promise<void>} attach */
-export function show_sis_transfer(attach)
+export const SYBORG_INSTALL_HELP = "In Symbian File manager, copy the package from E:\\INSTALL to the Phone memory root folder. Select the copied file and use Open selected file.";
+
+/**
+ * @param {(packages: Awaited<ReturnType<typeof sis_card_files>>) => Promise<void>} attach
+ * @param {{name: string, firmware: string, syborg: boolean}} device
+ */
+export function show_sis_transfer(attach, device)
 {
     return new Promise(resolve => {
         const element = /** @type {HTMLDialogElement} */ (h("dialog.dialog.sis-transfer", { "aria-labelledby": "sis-transfer-title" }));
@@ -23,7 +28,7 @@ export function show_sis_transfer(attach)
         const use = /** @type {HTMLButtonElement} */ (h("button.primary", { type: "button", disabled: true, onclick: async () => {
             if(busy || !packages.length) return;
             busy = input.disabled = cancel.disabled = use.disabled = true;
-            status.textContent = "Writing the new microSD…";
+            status.textContent = "Writing the transfer card…";
             try
             {
                 await attach(packages);
@@ -35,7 +40,7 @@ export function show_sis_transfer(attach)
                 busy = input.disabled = cancel.disabled = false;
                 use.disabled = false;
             }
-        } }, "Insert transfer card"));
+        } }, device.syborg ? "Save card and power off" : "Insert transfer card"));
         input.onchange = async () => {
             controller.abort();
             const { signal } = controller = new AbortController();
@@ -47,7 +52,7 @@ export function show_sis_transfer(attach)
             if(!files.length) return;
             try
             {
-                const result = await sis_card_files(files, signal);
+                const result = await sis_card_files(files, signal, device.syborg ? "E" : "F");
                 if(signal.aborted) return;
                 packages = result;
                 replace(paths, package_paths(packages));
@@ -60,9 +65,13 @@ export function show_sis_transfer(attach)
             }
         };
         element.append(h("form", { method: "dialog", onsubmit: event => event.preventDefault() },
-            h("h2#sis-transfer-title", null, "Send SIS/SISX to Nokia N97"),
+            h("h2#sis-transfer-title", null, "Send SIS/SISX to " + device.name),
             h("div.dialog-body", null,
-                h("p", null, "A new microSD will be inserted without restarting the VM. Open the packages from F:\\INSTALL in the phone's file manager."),
+                device.syborg ? [
+                    h("p.note", null, "Firmware " + device.firmware),
+                    h("p", null, "Save any open work to C: first. Saving this card replaces the temporary E: drive and powers off the VM. Start it again to use the card."),
+                    h("p", null, SYBORG_INSTALL_HELP),
+                ] : h("p", null, "A new microSD will be inserted without restarting the VM. Open the packages from F:\\INSTALL in the phone's file manager."),
                 h("p.note", null, "Symbian handles installation and decides whether to accept each package."),
                 h("label.field", null, h("span", null, "Local SIS/SISX packages"), input), paths, status),
             h("div.dialog-buttons", null, cancel, use)));

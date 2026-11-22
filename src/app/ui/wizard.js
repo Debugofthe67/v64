@@ -22,9 +22,9 @@ import { inspect_android_package, import_android_package, import_android_package
 import { ANDROID_CATALOG } from "../android_catalog.js";
 import { N90_RESTORE, import_ios_package, inspect_ios_package, verify_ios_keys } from "../ios_import.js";
 import { new_ios_config } from "../vm_config.js";
-import { check_symbian_package, import_symbian_package, scan_symbian_packages } from "../symbian_import.js";
-import { firmware_languages, N97_DEVICE, SYMBIAN_DEVICES } from "../../symbian/catalog.js";
-import { N97_EMMC_INITIAL_BYTES } from "../../symbian/n97_emmc_format.js";
+import { check_syborg_package, import_syborg_package } from "../symbian_import.js";
+import { SYBORG_DEVICE, SYMBIAN_DEVICES } from "../../symbian/catalog.js";
+import { SYBORG_PROFILE } from "../../symbian/syborg_profile.js";
 import { MAX_ARRAY_BUFFER_SIZE_MB } from "../../browser/vm_options.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
@@ -77,8 +77,7 @@ export function open_wizard(options)
             ios: { name: unique(IOS_NAME), file: /** @type {File | null} */ (null), library: /** @type {File | null} */ (null),
                 checked: false, keys: "", key_file: "", keys_ok: false, acceleration: true, network: true, checking: /** @type {AbortController | null} */ (null),
                 results: /** @type {Array<[string, boolean, string]>} */ ([]) },
-            symbian: { device: "", name: unique(N97_DEVICE.name), files: /** @type {File[]} */ ([]),
-                variants: /** @type {any[]} */ ([]), selected: -1, messages: /** @type {string[]} */ ([]),
+            symbian: { device: "", name: unique(SYBORG_DEVICE.name), files: /** @type {File[]} */ ([]),
                 report: /** @type {any} */ (null), checking: /** @type {AbortController | null} */ (null) },
             progress: "",
             /** @type {AbortController | null} the import going on (its Cancel) */
@@ -171,11 +170,11 @@ export function open_wizard(options)
                 const s = state.symbian;
                 if(!s.report?.media) return;
                 const abort = state.importing = new AbortController();
-                state.progress = "Preparing Nokia N97 firmware…";
+                state.progress = "Preparing " + SYBORG_DEVICE.name + " firmware…";
                 render();
                 try
                 {
-                    const config = await import_symbian_package(s.files, s.variants[s.selected], s.report, s.name.trim(), state.notes,
+                    const config = await import_syborg_package(s.files, s.report, s.name.trim(), state.notes,
                         { store: options.store, signal: abort.signal, progress: symbian_progress });
                     close(config);
                 }
@@ -308,7 +307,7 @@ export function open_wizard(options)
                     }
                     state.source = value; state.image = null; state.error = ""; state.progress = "";
                     if(value !== "ios" && value !== "symbian") choose_preset(state.preset);
-                    if(value === "symbian" && state.symbian.files.length) void scan_symbian_files(state.symbian.files);
+                    if(value === "symbian" && state.symbian.files.length) void check_symbian_folder(state.symbian.files);
                     render();
                     /** @type {HTMLInputElement | null} */ (element.querySelector("input[name=source]:checked"))?.focus();
                 } }),
@@ -352,69 +351,19 @@ export function open_wizard(options)
             if(status) status.textContent = text;
         }
 
-        async function scan_symbian_files(files)
+        async function check_symbian_folder(files)
         {
             const s = state.symbian;
             s.checking?.abort();
             const checking = s.checking = new AbortController();
             s.files = files;
-            s.variants = [];
-            s.selected = -1;
             s.report = null;
-            s.messages = [];
             state.error = "";
-            state.progress = "Reading VPL manifests…";
+            state.progress = "Checking the firmware build…";
             render();
             try
             {
-                const found = await scan_symbian_packages(files, { signal: checking.signal });
-                if(s.checking !== checking) return;
-                s.messages = found.errors;
-                s.variants = found.variants.filter(variant => variant.type_designator === N97_DEVICE.model);
-                for(const variant of found.variants)
-                {
-                    if(variant.type_designator !== N97_DEVICE.model)
-                        s.messages.push(variant.manifest + " is for " + variant.type_designator + ". Choose an RM-505 package.");
-                }
-                if(!s.variants.length && !s.messages.length) s.messages = ["Choose a folder containing an RM-505 VPL and its companion files."];
-            }
-            catch(error)
-            {
-                if(s.checking === checking) state.error = error.message;
-            }
-            finally
-            {
-                if(s.checking === checking)
-                {
-                    s.checking = null;
-                    state.progress = "";
-                    if(s.variants.length === 1) void select_symbian_variant(0);
-                    else render();
-                }
-            }
-        }
-
-        async function select_symbian_variant(index)
-        {
-            const s = state.symbian;
-            s.checking?.abort();
-            s.selected = index;
-            s.report = null;
-            state.error = "";
-            state.progress = "";
-            if(index < 0)
-            {
-                s.checking = null;
-                render();
-                return;
-            }
-            const checking = s.checking = new AbortController();
-            state.progress = "Checking the firmware package…";
-            render();
-            try
-            {
-                const report = await check_symbian_package(s.files, s.variants[index], { signal: checking.signal,
-                    progress: symbian_progress });
+                const report = await check_syborg_package(files, { signal: checking.signal, progress: symbian_progress });
                 if(s.checking === checking) s.report = report;
             }
             catch(error)
@@ -440,42 +389,22 @@ export function open_wizard(options)
                 s.checking = null;
                 s.device = e.currentTarget.value;
                 s.files = [];
-                s.variants = [];
-                s.selected = -1;
                 s.report = null;
-                s.messages = [];
                 state.error = "";
                 state.progress = "";
                 render();
             } }, h("option", { value: "", selected: !s.device }, "Choose a device…"),
-            SYMBIAN_DEVICES.map(device => h("option", { value: device.id, selected: s.device === device.id }, device.family + " · " + device.name)));
+            SYMBIAN_DEVICES.map(device => h("option", { value: device.id, selected: s.device === device.id }, device.family + " → " + device.name + " (" + device.model + ")")));
             if(!s.device) return h("div.indent", null, device);
             const folder = h("input", { type: "file", multiple: true, hidden: true, webkitdirectory: "", onchange: e => {
                 const files = Array.from(/** @type {FileList} */ (e.currentTarget.files));
-                if(files.length) void scan_symbian_files(files);
+                if(files.length) void check_symbian_folder(files);
             } });
-            const report = s.report;
-            const missing = report?.check.files.some(file => file.status === "missing");
-            const languages = firmware_languages(report?.languages);
-            const problems = report ? [...report.check.issues, ...report.check.files
-                .filter(file => !["ok", "optional-missing"].includes(file.status))
-                .map(file => file.name + " — " + (file.status === "mismatch" ?
-                    file.mismatches.map(issue => ({ size: "size mismatch", crc32: "CRC-32 mismatch", flash_version: "firmware version mismatch" })[issue]).join(", ") :
-                    file.error || file.status))] : [];
             return h("div.indent", null, device, folder,
                 h("button.primary.symbian-folder-button", { type: "button", "data-symbian-focus": "folder", onclick: () => folder.click() },
                     s.files.length ? "Change firmware folder…" : "Choose firmware folder…"),
-                s.variants.length ? h("label.field", null, h("span", null, "Firmware variant"),
-                    h("select", { "aria-label": "Firmware variant", "data-symbian-focus": "variant",
-                        onchange: e => void select_symbian_variant(Number(e.currentTarget.value)) },
-                        h("option", { value: "-1", selected: s.selected < 0 }, "Choose a variant…"),
-                        s.variants.map((variant, i) => h("option", { value: String(i), selected: s.selected === i },
-                            [variant.type_designator, variant.sw_version, variant.product_code, variant.variant_version, variant.description, variant.manifest]
-                                .filter(Boolean).join(" · "))))) : null,
-                s.messages.concat(problems).length ? h("ul.error", null, s.messages.concat(problems).map(message => h("li", null, message))) : null,
-                missing ? h("p.note", null, "Put the missing files next to the VPL, then select the folder again.") : null,
-                report?.media ? h("p.note", null, report.check.files.filter(file => file.status === "ok").length + " firmware files verified.") : null,
-                languages ? h("p.note", null, languages) : null);
+                s.report ? h("p.note", null, "Verified firmware " + s.report.firmware_version + " · " + s.report.manifest) :
+                    h("p.note", null, "Choose the locally built " + SYBORG_PROFILE.firmware_version + " folder containing manifest.json and its companion images."));
         }
 
         function ios_progress(stage, percent)
@@ -861,27 +790,17 @@ export function open_wizard(options)
         {
             if(state.source === "symbian")
             {
-                const s = state.symbian, variant = s.variants[s.selected], media = s.report.media;
+                const s = state.symbian, media = s.report.media;
                 const required = /** @type {Array<{size: number}>} */ (Object.values(media)).reduce((sum, disk) => sum + disk.size, 0);
                 const rows = [
-                    ["Device", N97_DEVICE.family + " · " + N97_DEVICE.name],
-                    ["Firmware", [variant.type_designator, variant.sw_version, variant.product_code, variant.variant_version].join(" · ")],
-                    ["System images", format_size(required - media.phone.size - (media.nand?.size || 0))],
-                    ["OneNAND", "256 MiB · writable by this VM"],
-                    ["Internal eMMC", "32 GB · empty FAT32 volume"],
-                    ["microSD", "Empty slot"],
-                    ["Phone memory", s.report.stl?.state === "initialized" ?
-                        format_size(media.phone.size) + " · factory C: prepared" : format_size(media.phone.size) + " · UDA extracted"],
-                    ["Estimated browser storage", format_size(required + N97_EMMC_INITIAL_BYTES)],
+                    ["Device", SYBORG_DEVICE.family + " · " + SYBORG_DEVICE.name + " (" + SYBORG_DEVICE.model + ")"],
+                    ["Firmware", s.report.firmware_version],
+                    ["Phone memory (C:)", format_size(media.phone.size) + (s.report.seed === "factory" ? " · Factory seed" : " · Blank seed")],
+                    ["Transfer card (E:)", "Add a SIS/SISX transfer card from the console"],
+                    ["Browser storage", format_size(required)],
                 ];
-                const languages = firmware_languages(s.report.languages);
-                if(languages) rows.push(["Languages", languages]);
-                return [h("h3", null, s.name.trim()), h("p.note", null, "Experimental boot. This machine runs the original start-up code while board and display support are in development."),
-                    media.boot_media ? h("p.note", null, "The original loader calls the RAPIDO chip ROM at 0xFFFF1208. After import, attach a local chip ROM dump in Settings → Symbian firmware. The firmware package contains the modem images separately.") : null,
-                    s.report.stl?.reason ? h("p.note", null, "OneNAND keeps the source layout. " + s.report.stl.reason) : null,
-                    h("p.note", null, "The eMMC uses storage as the VM writes. Import currently skips the optional factory memory card content."),
-                    h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
-                        h("tr", null, h("th", null, label), h("td", null, value)))))];
+                return [h("h3", null, s.name.trim()), h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
+                    h("tr", null, h("th", null, label), h("td", null, value)))))];
             }
             const config = build();
             if(state.source === "ios") return [
@@ -908,8 +827,7 @@ export function open_wizard(options)
                     const s = state.symbian;
                     if(!s.device) return "Choose a Symbian device";
                     if(s.checking) return "Checking the firmware…";
-                    if(s.selected < 0) return s.variants.length ? "Choose an RM-505 variant" : "Choose the folder containing the VPL and its companion files";
-                    return s.report?.media ? "" : "Complete firmware preflight";
+                    return s.report?.media ? "" : "Choose the Nokia 5800 firmware build folder";
                 }
                 if(state.source === "ios") return state.ios.checked ? "" : state.ios.checking ? "Checking the IPSW…" : "Choose the supported IPSW";
                 if(state.source === "direct") return state.direct.bzimage ? "" : "Choose the kernel";

@@ -55,6 +55,9 @@ export function syborg_boot_files(settings)
     const devicetree = new Uint8Array(media["devicetree"]);
     const manifest_bytes = new Uint8Array(media["manifest"]);
     const diagnostic = settings.symbian[SYBORG_DIAGNOSTIC] === true;
+    const identity = diagnostic ? "diagnostic:" + [rom, rofs, devicetree].map(bytes => sha256_hex(bytes)).join(":") : sha256_hex(manifest_bytes);
+    if(settings.symbian["manifest_sha256"] !== undefined && settings.symbian["manifest_sha256"] !== identity)
+        throw new Error("Syborg manifest differs from the imported firmware");
     const validation = diagnostic ? null : validate_syborg_artifacts(manifest_bytes, { rom, rofs, devicetree });
     const profile = validation?.profile || SYBORG_PROFILE;
     if(rom.length < 4 || rom.length > BOOT_DTB_ADDRESS - profile.rom_address || rofs.length > profile.rofs_window_size ||
@@ -64,7 +67,6 @@ export function syborg_boot_files(settings)
     for(const disk of disks)
         if(disk && (!disk.byteLength || disk.byteLength % 512 || disk.byteLength / 512 > 0xFFFFFFFF))
             throw new Error("Syborg NVMemory image size must be a positive multiple of 512 bytes, within 2 TiB");
-    const identity = diagnostic ? "diagnostic:" + [rom, rofs, devicetree].map(bytes => sha256_hex(bytes)).join(":") : sha256_hex(manifest_bytes);
     const platform_dtb = devicetree.slice();
     const boot_dtb = validation ? syborg_boot_dtb(devicetree, profile.ram_size) : platform_dtb;
     return { profile, rom: rom.slice(), rofs, devicetree: platform_dtb, boot_dtb, disks, identity };

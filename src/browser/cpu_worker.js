@@ -117,7 +117,8 @@ export function encode_worker_options(o, plugins = [], adapter_renderer = false)
             "nand": file(o.ios.nand), "ramdisk": file(o.ios.ramdisk), "bootlogo": file(o.ios.bootlogo), "boot_args": o.ios.boot_args,
             "nand_boot": o.ios.nand_boot, "network": o.ios.network },
         "symbian": o["symbian"] && (machine.machine_type === SYBORG_MACHINE ?
-            Object.fromEntries(SYBORG_BOOT_FILES.map(key => [key, file(o["symbian"][key])])) :
+            Object.assign(Object.fromEntries(SYBORG_BOOT_FILES.map(key => [key, file(o["symbian"][key])])),
+                { "manifest_sha256": o["symbian"]["manifest_sha256"] }) :
             { "rom": file(o["symbian"]["rom"]), "load_address": o["symbian"]["load_address"],
             "boot_registers": o["symbian"]["boot_registers"], "rom_sha256": o["symbian"]["rom_sha256"],
             "boot_media": file(o["symbian"]["boot_media"]), "boot_media_sha256": o["symbian"]["boot_media_sha256"],

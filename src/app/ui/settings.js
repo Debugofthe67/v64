@@ -19,6 +19,7 @@ import { RANCHU_DEVICES } from "../../android/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
 import { check_n97_bootrom, N97_RAPIDO_ROM_ID } from "../../symbian/n97_boot_media.js";
 import { n97_sd_capacity } from "../../symbian/n97_mmc_media.js";
+import { symbian_device, SYBORG_DEVICE } from "../../symbian/catalog.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
 /** @typedef {import("../vm_config.js").Problem} Problem */
@@ -57,7 +58,7 @@ export function hardware_items(c)
 {
     if(c.symbian) return [
         { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
-        { id: "symbian", label: "Symbian firmware", summary: "Nokia N97 · " + c.symbian.sw_version, panel: symbian_panel, remove: null },
+        { id: "symbian", label: "Symbian firmware", summary: symbian_device(c.machine.type).name + " · " + c.symbian.sw_version, panel: symbian_panel, remove: null },
     ];
     if(c.ios) return [
         { id: "general", label: "General", summary: c.name, panel: general_panel, remove: null },
@@ -116,6 +117,17 @@ export function hardware_items(c)
 function symbian_panel(ctx)
 {
     const firmware = ctx.config.symbian;
+    if(ctx.config.machine.type === SYBORG_DEVICE.id)
+    {
+        const rows = [...hardware_rows(ctx.config), ["Build manifest", firmware.manifest], ["Manifest SHA-256", firmware.manifest_sha256]];
+        return [
+            h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
+                h("tr", null, h("th", null, label), h("td", null, value))))),
+            firmware.sd && !ctx.config.suspended && (ctx.pending_sd === null ?
+                h("p.note", null, "The transfer card will be ejected when you save. Its image stays in Browser disks.") :
+                h("button", { type: "button", onclick: () => ctx.stage_sd(null) }, "Eject transfer card")),
+        ];
+    }
     const rows = [...hardware_rows(ctx.config), ["VPL", firmware.manifest], ["VPL SHA-256", firmware.manifest_sha256]];
     rows.push(["OneNAND", firmware.media?.nand ? "256 MiB · writable by this VM" : "Legacy import · no OneNAND image"]);
     rows.push(["Internal eMMC", firmware.emmc ? "32 GB · uses storage as the VM writes" : "Legacy import · no eMMC image"]);
@@ -124,7 +136,7 @@ function symbian_panel(ctx)
     const bootrom = firmware.bootrom;
     const heading = h("h4", null, "RAPIDO boot ROM");
     const legacy = !firmware.media?.nand ? h("p.note", null,
-        "Reimport the RM-505 package in New VM to create a writable OneNAND image. Each VM keeps its own phone data.") : null;
+        "This legacy firmware import uses the XIP ROM and a separate phone data image.") : null;
     const card = h("div", null, h("h4", null, "microSD"),
         h("p", null, ctx.pending_sd === null ? "Ready to eject" : ctx.pending_sd ? ctx.pending_sd.name + " · ready to insert" :
             firmware.sd?.name || "Empty slot"));
@@ -145,7 +157,7 @@ function symbian_panel(ctx)
     if(!firmware.media?.boot_media)
     {
         return [hardware, legacy, card, heading, h("p.note", null,
-            "Reimport the matching RM-505 package in New VM to add the original DSP0 and ISASW images.")];
+            "Attaching a RAPIDO boot ROM requires the original DSP0 and ISASW images in this VM.")];
     }
     if(ctx.config.suspended)
     {

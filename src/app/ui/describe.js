@@ -3,7 +3,8 @@
 // and the hardware table of the library's summary and the settings list.
 
 import { format_size } from "./dom.js";
-import { firmware_languages } from "../../symbian/catalog.js";
+import { firmware_languages, SYBORG_DEVICE } from "../../symbian/catalog.js";
+import { SYBORG_MIB, SYBORG_PROFILE } from "../../symbian/syborg_profile.js";
 import { NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 
 /** @typedef {import("../vm_config.js").VMConfig} VMConfig */
@@ -38,6 +39,14 @@ export function describe_image(image)
  */
 export function hardware_rows(c)
 {
+    if(c.symbian && c.machine.type === SYBORG_DEVICE.id) return [
+        ["Device", SYBORG_DEVICE.family + " · " + SYBORG_DEVICE.name + " (" + SYBORG_DEVICE.model + ")"],
+        ["Firmware", c.symbian.sw_version],
+        ["Processor", SYBORG_PROFILE.cpu],
+        ["Memory", SYBORG_PROFILE.ram_size / SYBORG_MIB + " MiB"],
+        ["Phone memory (C:)", describe_image(c.symbian.media.phone)],
+        ["Transfer card (E:)", c.symbian.sd ? describe_image(c.symbian.sd) : "Temporary blank card"],
+    ];
     if(c.symbian) return [
         ["Device", "S60v5 · Nokia N97 · Experimental boot"],
         ["Firmware", [c.symbian.model, c.symbian.sw_version, c.symbian.product_code, c.symbian.variant_version].join(" · ")],

@@ -200,6 +200,8 @@ export type V86SyborgDisk = V86BufferImage |
 /** Nokia 5800 Syborg boot media with the version 1 local build manifest. */
 export interface V86SyborgMedia {
     manifest: V86Image;
+    /** Expected SHA-256 of the imported manifest, when known. */
+    manifest_sha256?: string;
     rom: V86Image;
     rofs: V86Image;
     devicetree: V86Image;
