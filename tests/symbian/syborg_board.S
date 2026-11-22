@@ -63,7 +63,7 @@ _start:
     ldr sp, =0x1b000
     cps #0x13
 
-    /* Map identity RAM and devices plus an alias of RAM at 0x70000000. */
+    /* Map identity RAM and devices plus Normal and Device aliases of low RAM. */
     ldr r0, =0x4000
     mov r1, #0
     mov r2, #4096
@@ -76,6 +76,7 @@ _start:
     ldr r2, =0x5c00
     str r1, [r2]
     bic r1, r1, #12
+    str r1, [r2, #4]
     ldr r2, =0x5800
     orr r3, r1, #0x60000000
     str r3, [r2]
@@ -102,6 +103,16 @@ _start:
     ldr r1, =0x70016000
     ldr r1, [r1]
     cmp r1, r4
+    bne fail
+    /* Aligned writes to Device mappings of ordinary DRAM can run in JIT code. */
+    ldr r0, =0x70116040
+    mov r2, #65536
+1:  str r2, [r0]
+    subs r2, #1
+    bne 1b
+    ldr r0, =0x16040
+    ldr r1, [r0]
+    cmp r1, #1
     bne fail
     /* Match the patched BSP's unaligned normal-memory access mode. */
     ldr r0, =0x16010

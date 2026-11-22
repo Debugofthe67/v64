@@ -176,6 +176,8 @@ fn bus_mut() -> &'static mut AddressSpace { unsafe { &mut *(&raw mut BUS) } }
 
 impl AddressSpace {
     #[inline(always)]
+    pub fn ram_base(&self) -> u64 { self.ram_base }
+    #[inline(always)]
     pub fn ram_size(&self) -> u64 { self.ram_size }
     #[inline(always)]
     pub fn generation(&self) -> u32 { self.generation }

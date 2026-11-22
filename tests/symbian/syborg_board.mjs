@@ -63,7 +63,7 @@ try
             set_mode() {}, set_size_graphical() {}, continue() {}, pause() {}, destroy() {},
             update_buffer(layers) { frame = layers[0].pixels.data.slice(); },
         };
-        const vm = new V86({ ...options, disable_jit, screen_adapter,
+        const vm = new V86({ ...options, disable_jit, screen_adapter, jit_switches: { a64_page_hot: 1 },
             symbian: {
                 [SYBORG_DIAGNOSTIC]: true, rom: { url: binary },
                 rofs: { buffer: new TextEncoder().encode("ROFS").buffer },
@@ -101,8 +101,9 @@ try
             assert.deepEqual([...frame], [0, 0, 255, 255, 255, 0, 0, 255, 255, 255, 255, 255, 0, 255, 0, 255]);
             await vm.stop();
             assert.equal((await readFile(c_path))[0], 0xAB);
-            const compiled = cpu.page_tier_stats().compiled;
+            const { compiled, uncached_accesses } = cpu.page_tier_stats();
             assert.equal(compiled > 0, !disable_jit, "exercise the selected interpreter or JIT entry");
+            if(!disable_jit) assert.ok(uncached_accesses > 100, "JIT must reach Device-mapped RAM at Syborg's physical base");
             const state = await vm.save_state();
             const saved = cpu.get_state(true);
             saved[4].find(device => typeof device?.[0] === "string" && device[0].startsWith("diagnostic:"))[0] = "different firmware";

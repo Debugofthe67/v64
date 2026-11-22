@@ -63,6 +63,7 @@ vm.add_listener("emulator-loaded", () => vm.run());
 - `cpu_profile: "arm1136-r2"` 选用 Syborg 对照机的 ARM1136 r0p2。省略时，`symbian-syborg` 会自动选择该配置。
 - `manifest` 标识机型、固件版本和产物格式，提供各只读文件的大小和 SHA-256。v86 据此选择 CPU、RAM 和板级配置，并在启动前校验传入的产物。`rom` 是本地组装的混合 XIP，包含开源 EKA2、Syborg BSP 和原厂用户态模块。`rofs` 是按固件顺序合并的只读分区。`devicetree` 提供 Syborg 平台设备树。示例用本地站点的文件 URL，浏览器文件夹导入也可传入 `{ buffer: ArrayBuffer }`。
 - `nvmemory` 是 `C:` 的可写介质。需要 `E:` 时，按同样的磁盘描述提供可选 `nvmemory2`。浏览器新建向导和程序化调用使用同一套构造参数。
+- 联网时在 `symbian` 内设 `network: true`，并在构造参数顶层指定 `network_relay_url`。在原版 S60 内创建一次分组数据接入点。[虚拟 SIM 与 Wisp 设置](../symbian-syborg-reference.md#connect-to-the-internet)
 - qembian 使用 ARM 启动存根，混合 XIP 的物理装载地址为 `0x00010000`，ROFS 只读窗口从 `0x60000000` 开始，设备树由平台设备在 `0xC0012000` 提供。v86 从所选配置取得装载条件。S0 记录首次取指地址、CPU 模式及寄存器交接，S2 对照实现。[qembian Syborg 板级源码](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm/syborg.c#L1-L32)
 - 镜像校验和机器初始化完成后触发 `emulator-loaded`。示例随后调用 `run()` 开始执行。客体继续启动后，S60 主屏经 Syborg framebuffer 输出到 `screen_container`。可按虚拟机启用 `symbian.webgpu: true`。[WebGPU 接入与运行条件](../symbian-syborg-reference.md#play-3d-games)
 
@@ -173,3 +174,17 @@ S0–S7 全部验收通过后，删除 `nokia-n97` 的机型注册、启动和�
 **通过条件**为常规构建和运行时已解除对旧 N97 板型的依赖，Syborg 的离线冷启动、Notes 持久化与 WebGPU 游戏验收仍通过，其他机型的共用代码回归通过。
 
 **实测通过。** 发布构建已移除 N97 板型、RM-505 导入、RAPIDO 兼容路径及专用前端。Chrome 从空白 C: 导入并离线冷启动，完成原厂 Notes 安装、保存 `580086`、刷新后冷启动读回与挂起恢复。第二台 VM 的盘保持独立。同一构建实测 Bantumi GL 棋盘和 ClassiCube 保存地图 `jt7.cw` 的 WebGPU 出图。ARM1136 解释器与 JIT、x86 重启、Android ARM32 板级和共用磁盘写回测试均通过。用 S7 生成的 5800 快照也可在 S8 恢复。旧 N97 配置和盘可导出，运行旧机型或恢复其快照需要历史版本。[使用指南](../symbian-syborg-reference.md)
+
+## 5800 联网和冷启动验收
+
+原版 S60 浏览器通过虚拟 SIM 建立分组数据会话，经本机 Wisp 中继收发 IPv4 并渲染 HTTP 200 测试页。设置页覆盖联网开关、中继地址校验和保存。[联网步骤](../symbian-syborg-reference.md#connect-to-the-internet)
+
+使用发布版 Chrome、CPU Worker、启用虚拟 SIM 的 RM-356 31.0.101 和同一份已完成首次设置的 C: 镜像。每次从库里的 **Power on** 开始计时，分别检查原版桌面的固定像素和 **Menu** 打开后的画面。
+
+| 启动阶段 | 优化前中位数 | 优化后中位数 |
+| --- | ---: | ---: |
+| 串口 `System start ok` | 24.3 秒 | 8.5 秒 |
+| 桌面首次显示 | 63.6 秒 | 39.1 秒 |
+| 原版菜单可打开 | 82.6 秒 | 45.9 秒 |
+
+每个版本测量三次。ARM32 JIT 直接执行 EKA2 常用的 APCS 栈帧指令，设备类型的内存访问按 Syborg 的实际 RAM 地址范围判断。调整后，启动到菜单持续采集的 JIT 重试约为 27–31 万次。测试可用 `tests/app/syborg_test.html` 的 `part=boot-profile` 重复执行，传入 `archive` 和 `seed` 指定本地固件包与 C: 镜像，设 `runs=3`，并用 `TEST_ARTIFACT_DIR` 保存分段计时和指令数据。

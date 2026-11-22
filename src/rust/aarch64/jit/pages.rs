@@ -1238,19 +1238,20 @@ pub fn a64_page_access(address: u64, kind: u32) -> u32 {
         refused(REFUSED_TRANSLATION);
         return 0;
     };
-    // Device DRAM gets only an aligned, one-shot pointer. MMIO and holes
-    // outside the DRAM aperture cannot use it; reject without a bus search.
+    // Device DRAM gets only an aligned, one-shot pointer. Syborg's RAM
+    // starts at zero, so check the machine's aperture here.
     let cacheable = !device;
+    let bus = bus::bus();
     if device
         && (!size.is_power_of_two()
             || address & (size as u64 - 1) != 0
-            || pa.wrapping_sub(bus::RAM_BASE) >= bus::bus().ram_size())
+            || pa.wrapping_sub(bus.ram_base()) >= bus.ram_size())
     {
         r.stats[ACCESS_REFUSED] += 1;
         refused(REFUSED_TRANSLATION);
         return 0;
     }
-    let host = match bus::bus().lookup(pa) {
+    let host = match bus.lookup(pa) {
         // The ARM7 scheduler reads the PMGR clock extremely often. Supply
         // one scalar read from the same machine clock without leaving the
         // compiled function. Never cache a changing device register, and
