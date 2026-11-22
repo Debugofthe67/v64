@@ -23,7 +23,7 @@ function find_entry(entries, name, optional = false)
     return matches[0];
 }
 
-function read_build(archive, manifest_entry)
+async function read_build(archive, manifest_entry)
 {
     if(manifest_entry.size > SYBORG_MANIFEST_MAX_BYTES) throw new Error("manifest.json exceeds the size limit");
     const [manifest] = archive.extract([manifest_entry]);
@@ -40,7 +40,7 @@ function read_build(archive, manifest_entry)
     const files = archive.extract(entries);
     const inputs = Object.fromEntries(roles.map((role, index) => [role, files[index]]));
     progress("Verifying the firmware build…");
-    validate_syborg_artifacts(manifest, inputs);
+    await validate_syborg_artifacts(manifest, inputs);
     return { ...inputs, manifest };
 }
 
@@ -75,7 +75,7 @@ async function read_syborg_package(file)
     const archive = await open_symbian_archive(file);
     const manifest_entry = find_entry(archive.entries, SYBORG_MANIFEST_NAME, true);
     const { manifest, rom, rofs, devicetree, c_seed } = manifest_entry ?
-        read_build(archive, manifest_entry) : await read_original_firmware(archive);
+        await read_build(archive, manifest_entry) : await read_original_firmware(archive);
     const info = parse_syborg_manifest(manifest);
     const images = { manifest: { name: SYBORG_MANIFEST_NAME, size: manifest.length, sha256: sha256_hex(manifest), bytes: manifest } };
     for(const [role, bytes] of Object.entries({ rom, rofs, devicetree, phone: c_seed }))

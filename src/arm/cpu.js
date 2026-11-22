@@ -33,7 +33,7 @@ import { GoldfishFb, GoldfishEvents, GoldfishBattery, GoldfishAudio, GoldfishPip
 import { BackdoorA32, BACKDOOR_NOT_HANDLED } from "./backdoor_a32.js";
 import { IOSInstallService } from "../ios/install_service.js";
 import { IOSNetwork } from "../ios/network.js";
-import { create_syborg_board, load_syborg_rom, syborg_boot_files, SYBORG_LAYOUT_VERSION } from "../symbian/syborg_board.js";
+import { create_syborg_board, load_syborg_rom, SYBORG_LAYOUT_VERSION } from "../symbian/syborg_board.js";
 import { SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
 import {
     RANCHU_DISPLAY, RANCHU_GOLDFISH_AUDIO, RANCHU_GOLDFISH_BATTERY, RANCHU_GOLDFISH_EVENTS, RANCHU_GOLDFISH_FB, RANCHU_GOLDFISH_PIPE,
@@ -247,7 +247,7 @@ A64CPU.prototype.init = function(settings, device_bus)
     /** "virt", or "ranchu": the Android emulator's board (src/virt/ranchu.js) */
     this.machine_type = machine_type;
     const ranchu = machine_type === "ranchu";
-    const syborg = machine_type === SYBORG_MACHINE ? syborg_boot_files(settings) : null;
+    const syborg = settings.syborg_boot;
     const { cores, memory_size } = virt_machine(settings);
     this.cores = cores;
     // (cpu_type "arm32": AArch32 throughout, docs/plan/aarch32-plan.md part 2)

@@ -12,7 +12,7 @@ const manifest_bytes = read("manifest.json");
 const manifest = parse_syborg_manifest(manifest_bytes);
 const payload = { rom: read("ROM.img"), rofs: read("ROM.rofs"), devicetree: read("syborg.dtb") };
 
-const { xip } = validate_syborg_artifacts(manifest_bytes, payload);
+const { xip } = await validate_syborg_artifacts(manifest_bytes, payload);
 assert.equal(xip.header.rom_base, 0x80000000);
 assert.equal(xip.directory.files.size, 2055);
 
@@ -29,17 +29,17 @@ assert.throws(() => parse_syborg_manifest(changed_manifest({
     files: { ...manifest.files, devicetree: { ...manifest.files.devicetree, name: "../syborg.dtb" } },
 })), /file metadata for devicetree/);
 assert.throws(() => parse_syborg_manifest(changed_manifest({ rofs_layers: [...manifest.rofs_layers].reverse() })), /unexpected ROFS layer/);
-assert.throws(() => validate_syborg_artifacts(manifest_bytes, { ...payload, rom: undefined }), /missing ROM.img/);
+await assert.rejects(() => validate_syborg_artifacts(manifest_bytes, { ...payload, rom: undefined }), /missing ROM.img/);
 
 const wrong_dtb = Buffer.from(payload.devicetree);
 wrong_dtb[wrong_dtb.length - 1] ^= 1;
-assert.throws(() => validate_syborg_artifacts(manifest_bytes, { ...payload, devicetree: wrong_dtb }), /SHA-256 mismatch for syborg.dtb/);
+await assert.rejects(() => validate_syborg_artifacts(manifest_bytes, { ...payload, devicetree: wrong_dtb }), /SHA-256 mismatch for syborg.dtb/);
 
 payload.rofs.writeUInt32LE(10, 20);
 const wrong_rofs_order = changed_manifest({
     files: { ...manifest.files, rofs: { ...manifest.files.rofs, sha256: sha256_hex(payload.rofs) } },
 });
-assert.throws(() => validate_syborg_artifacts(wrong_rofs_order, payload), /invalid partition extent or order for rofs1/);
+await assert.rejects(() => validate_syborg_artifacts(wrong_rofs_order, payload), /invalid partition extent or order for rofs1/);
 
 const corrupt = Buffer.from(payload.rom);
 const data = xip.directory.files.get("sys/data/estartcomp.txt");

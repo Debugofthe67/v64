@@ -76,7 +76,7 @@ else if(phase === "image")
     assert.notEqual(realpathSync(input), realpathSync(out), "Choose a separate output directory for the game ROM");
     const input_manifest = readFileSync(join(input, "manifest.json"));
     const rofs = readFileSync(join(input, "ROM.rofs")), devicetree = readFileSync(join(input, "syborg.dtb"));
-    const manifest = validate_syborg_artifacts(input_manifest, { rom, rofs, devicetree }).manifest;
+    const { manifest } = await validate_syborg_artifacts(input_manifest, { rom, rofs, devicetree });
     const shim = readFileSync(join(work, "legacy.bin"));
     assert.ok(shim.length && BLOB + shim.length <= LIMIT, "Legacy graphics shim exceeds the free ROM extent");
     assert.ok(rom.subarray(BLOB - base, LIMIT - base).every(byte => byte === 0), "Legacy graphics ROM extent is occupied");
@@ -104,7 +104,7 @@ else if(phase === "image")
     shim.copy(rom, BLOB - base);
     manifest.files.rom.sha256 = sha256_hex(rom);
     const updated = Buffer.from(JSON.stringify(manifest, null, 2) + "\n");
-    validate_syborg_artifacts(updated, { rom, rofs, devicetree });
+    await validate_syborg_artifacts(updated, { rom, rofs, devicetree });
     mkdirSync(out, { recursive: true });
     for(const name of ["ROM.rofs", "syborg.dtb", "hybrid-manifest.txt", manifest.files.c_seed.name])
         copyFileSync(join(input, name), join(out, name));

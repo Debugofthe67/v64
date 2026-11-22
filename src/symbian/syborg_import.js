@@ -121,14 +121,22 @@ function check_file_record(record, role, name, max)
     }
 }
 
-function check_artifact(bytes, record)
+async function artifact_digest(bytes)
+{
+    const subtle = globalThis.crypto?.subtle;
+    if(!subtle) return sha256_hex(bytes);
+    const digest = new Uint8Array(await subtle.digest("SHA-256", bytes));
+    return Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function check_artifact(bytes, record)
 {
     if(!bytes) invalid("missing " + record["name"]);
     if(bytes.length !== record["bytes"]) invalid("wrong size for " + record["name"]);
-    if(sha256_hex(bytes) !== record["sha256"]) invalid("SHA-256 mismatch for " + record["name"]);
+    if(await artifact_digest(bytes) !== record["sha256"]) invalid("SHA-256 mismatch for " + record["name"]);
 }
 
-function read_syborg_rofs(bytes)
+async function read_syborg_rofs(bytes)
 {
     if(bytes.length <= ROFS_HEADER_SIZE || c_string(bytes, 0, 8) !== "SYBROFS" || bytes[7] ||
         u32(bytes, 8) !== bytes.length - ROFS_HEADER_SIZE || u32(bytes, 12) !== 2 ||
@@ -137,7 +145,9 @@ function read_syborg_rofs(bytes)
         invalid("invalid SYBROFS v2 header");
     }
     let next = ROFS_HEADER_SIZE;
-    const layers = SYBORG_ROFS_LAYERS.map(({ role, sha256 }, index) => {
+    const layers = [];
+    for(const [index, { role, sha256 }] of SYBORG_ROFS_LAYERS.entries())
+    {
         const record = 20 + index * 12;
         const offset = ROFS_HEADER_SIZE + u32(bytes, record + 4);
         const size = u32(bytes, record + 8);
@@ -149,34 +159,34 @@ function read_syborg_rofs(bytes)
         }
         next = Math.ceil(end / ROFS_HEADER_SIZE) * ROFS_HEADER_SIZE;
         const part = read_sos_rofs(bytes.subarray(offset, end), role, 0).bytes;
-        if(part.length !== size || sha256_hex(part) !== sha256 ||
+        if(part.length !== size || await artifact_digest(part) !== sha256 ||
             bytes.subarray(end, next).some(byte => byte !== 0xFF))
         {
             invalid("invalid size, padding or firmware SHA-256 for " + role);
         }
-        return { role, drive, offset, size };
-    });
+        layers.push({ role, drive, offset, size });
+    }
     if(next !== bytes.length) invalid("unexpected data after the ROFS partitions");
     return layers;
 }
 
 /** Verify the boot set plus the immutable source seed and composition file when provided for folder import. */
-export function validate_syborg_artifacts(manifest_bytes, { rom, rofs, devicetree, c_seed, composition })
+export async function validate_syborg_artifacts(manifest_bytes, { rom, rofs, devicetree, c_seed, composition })
 {
     const manifest = parse_syborg_manifest(manifest_bytes);
     const files = manifest["files"];
-    check_artifact(rom, files["rom"]);
-    check_artifact(rofs, files["rofs"]);
-    check_artifact(devicetree, files["devicetree"]);
-    if(c_seed !== undefined) check_artifact(c_seed, files["c_seed"]);
-    if(composition !== undefined) check_artifact(composition, manifest["build"]["composition"]);
+    await check_artifact(rom, files["rom"]);
+    await check_artifact(rofs, files["rofs"]);
+    await check_artifact(devicetree, files["devicetree"]);
+    if(c_seed !== undefined) await check_artifact(c_seed, files["c_seed"]);
+    if(composition !== undefined) await check_artifact(composition, manifest["build"]["composition"]);
     if(files["devicetree"]["sha256"] !== SYBORG_PROFILE.devicetree_sha256 ||
         u32be(devicetree, 0) !== 0xD00DFEED || u32be(devicetree, 4) !== devicetree.length)
     {
         invalid("unexpected Nokia 5800 Syborg device tree");
     }
     const xip = inspect_syborg_xip(rom);
-    const layers = read_syborg_rofs(rofs);
+    const layers = await read_syborg_rofs(rofs);
     return { manifest, profile: SYBORG_PROFILE, xip, layers };
 }
 

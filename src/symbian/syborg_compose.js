@@ -55,7 +55,7 @@ function compose_rofs(layers)
 }
 
 /** Reuse the reference XIP layout and restore its user-side bytes from the verified local CORE. */
-export function compose_syborg_artifacts(components, firmware)
+export async function compose_syborg_artifacts(components, firmware)
 {
     const core = firmware.core;
     if(components.length < HEADER || components.length > SYBORG_COMPONENTS_LIMIT)
@@ -80,7 +80,7 @@ export function compose_syborg_artifacts(components, firmware)
     const c_seed = new Uint8Array(SYBORG_C_SEEDS.blank.bytes);
     const artifacts = { rom, rofs, devicetree, composition, c_seed };
     const manifest = make_syborg_manifest(artifacts, "blank", !!firmware.uda);
-    const { xip } = validate_syborg_artifacts(manifest, artifacts);
+    const { xip } = await validate_syborg_artifacts(manifest, artifacts);
     audit_syborg_xip(rom, xip, core, composition);
     return { ...artifacts, manifest };
 }

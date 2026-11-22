@@ -53,7 +53,7 @@ function syborg_boot_dtb(source, memory_size)
     return tree;
 }
 
-export function syborg_boot_files(settings)
+export async function syborg_boot_files(settings)
 {
     const media = settings.syborg_media;
     const rom = new Uint8Array(media["rom"]);
@@ -64,7 +64,7 @@ export function syborg_boot_files(settings)
     const identity = diagnostic ? "diagnostic:" + [rom, rofs, devicetree].map(bytes => sha256_hex(bytes)).join(":") : sha256_hex(manifest_bytes);
     if(settings.symbian["manifest_sha256"] !== undefined && settings.symbian["manifest_sha256"] !== identity)
         throw new Error("Syborg manifest differs from the imported firmware");
-    const validation = diagnostic ? null : validate_syborg_artifacts(manifest_bytes, { rom, rofs, devicetree });
+    const validation = diagnostic ? null : await validate_syborg_artifacts(manifest_bytes, { rom, rofs, devicetree });
     const profile = validation?.profile || SYBORG_PROFILE;
     if(rom.length < 4 || rom.length > BOOT_DTB_ADDRESS - profile.rom_address || rofs.length > profile.rofs_window_size ||
         devicetree.length > 0x7000)

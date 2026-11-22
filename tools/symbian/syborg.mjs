@@ -115,7 +115,7 @@ async function main([command, first, second, flag, ...rest])
         if(seed === "factory" && !firmware.uda) throw new Error("Factory seed requires the matching UDA input");
         const artifacts = await read_artifacts(second, seed);
         const manifest_bytes = make_syborg_manifest(artifacts, seed, !!firmware.uda);
-        const info = validate_syborg_artifacts(manifest_bytes, artifacts);
+        const info = await validate_syborg_artifacts(manifest_bytes, artifacts);
         const audit = audit_syborg_xip(artifacts.rom, info.xip, firmware.core, artifacts.composition);
         await write_artifact(join(second, SYBORG_MANIFEST_NAME), manifest_bytes);
         print_artifacts(info, audit);
@@ -127,7 +127,7 @@ async function main([command, first, second, flag, ...rest])
         const manifest_bytes = await read_sized(first, SYBORG_MANIFEST_NAME, SYBORG_MANIFEST_MAX_BYTES);
         const manifest = parse_syborg_manifest(manifest_bytes);
         const artifacts = await read_artifacts(first, manifest["c_seed"], manifest);
-        const info = validate_syborg_artifacts(manifest_bytes, artifacts);
+        const info = await validate_syborg_artifacts(manifest_bytes, artifacts);
         const firmware = second ? await read_firmware(second) : undefined;
         if(firmware && manifest["build"]["firmware"]["uda"] && !firmware.uda)
         {
@@ -142,7 +142,7 @@ async function main([command, first, second, flag, ...rest])
         const { core } = await read_firmware(first);
         const artifacts = await read_artifacts(second, "blank");
         const manifest = make_syborg_manifest(artifacts, "blank", false);
-        const { xip } = validate_syborg_artifacts(manifest, artifacts);
+        const { xip } = await validate_syborg_artifacts(manifest, artifacts);
         audit_syborg_xip(artifacts.rom, xip, core, artifacts.composition);
         const output = flag || join("build", SYBORG_COMPONENTS_FILE);
         await write_artifact(output, pack_syborg_components(artifacts, core));

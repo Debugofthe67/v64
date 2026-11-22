@@ -1,5 +1,6 @@
 import { syborg_key, syborg_touch } from "../symbian/syborg_input.js";
 import { syborg_orientation } from "../symbian/syborg_accelerometer.js";
+import { syborg_boot_files } from "../symbian/syborg_board.js";
 import { SYBORG_BOOT_FILES, SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
 import { SYBORG_WISP_OPTIONS } from "../symbian/syborg_packet_data.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
@@ -977,7 +978,14 @@ V86.prototype.continue_init = async function(emulator, options)
         if(this.machine_type === SYBORG_MACHINE && name.startsWith("symbian_"))
         {
             const key = name.slice("symbian_".length);
-            settings.syborg_media[key] = key === "nvmemory" || key === "nvmemory2" ? buffer : buffer.buffer;
+            if(key === "nvmemory" || key === "nvmemory2") settings.syborg_media[key] = buffer;
+            else
+            {
+                const source = options["symbian"][key];
+                // Keep caller-owned bytes stable throughout asynchronous verification.
+                settings.syborg_media[key] = source.buffer || source.get ?
+                    new Uint8Array(buffer.buffer).slice().buffer : buffer.buffer;
+            }
             return;
         }
         switch(name)
@@ -1508,6 +1516,11 @@ V86.prototype.continue_init = async function(emulator, options)
         }
 
         if(this.destroyed) return;
+        if(this.machine_type === SYBORG_MACHINE)
+        {
+            settings.syborg_boot = await syborg_boot_files(settings);
+            if(this.destroyed) return;
+        }
         this.v86.init(settings);
 
         const parallel_bytes = this.parallel_requested && this.wasm_source && new Uint8Array(this.wasm_source);
