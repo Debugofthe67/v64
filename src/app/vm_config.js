@@ -12,7 +12,7 @@ import { DEFAULT_GLES_VERSION, GLES_VERSIONS } from "../android/devices.js";
 import { N90_RESTORE } from "../ios/catalog.js";
 import { IOS_NETWORK_RELAY } from "../ios/network.js";
 import { SYBORG_DEVICE, SYBORG_MEDIA } from "../symbian/catalog.js";
-import { SYBORG_MACHINE, SYBORG_PROFILE, SYBORG_C_SEEDS, SYBORG_MIB } from "../symbian/syborg_profile.js";
+import { SYBORG_MACHINE, SYBORG_PROFILE, SYBORG_C_SEEDS, SYBORG_MIB, syborg_wisp_url } from "../symbian/syborg_profile.js";
 import { DISK_OPTIONS, DISK_ERRORS, check_disk_options } from "../disk_options.js";
 import { DEFAULT_FORM, DEFAULT_MEMORY_SIZE, MAX_MEMORY_SIZE, MAX_HEAP_MEMORY_SIZE, MAX_ARRAY_BUFFER_SIZE_MB, DEFAULT_VGA_MEMORY_SIZE,
     DEFAULT_MTU, apply_form, settings_to_options } from "../browser/vm_options.js";
@@ -134,7 +134,8 @@ export const TPM_STATE_SIZE = 512 * 1024;
 /**
  * @typedef {{ kind: "browser", path: string, size: number, sha256: string }} SymbianDisk
  * @typedef {{ device: string, model: string, sw_version: string, manifest: string, manifest_sha256: string,
- *     media: Record<string, SymbianDisk>, webgpu?: boolean, sd?: SymbianDisk & {name: string} }} Symbian
+ *     media: Record<string, SymbianDisk>, webgpu?: boolean, network?: boolean, network_relay?: string,
+ *     sd?: SymbianDisk & {name: string} }} Symbian
  */
 
 /**
@@ -168,6 +169,7 @@ export const ANDROID_GLES_VERSIONS = Object.keys(GLES_VERSIONS);
 /** @type {IOS} */
 const IOS_DEFAULTS = { model: N90_RESTORE.model, build: N90_RESTORE.build, nand: null,
     boot_args: "", verbose: true, gles_proxy: true, orientation: 0, network: false, network_relay: IOS_NETWORK_RELAY };
+export const SYMBIAN_NETWORK_RELAY = IOS_NETWORK_RELAY;
 /** an android section's defaults
  * @type {Android} */
 export const ANDROID_DEFAULTS = { device: "cf_arm64_only_phone", gpu_mode: "swiftshader", vendor_ramdisk: "release", debug_ramdisk: null, selinux: "enforcing",
@@ -291,6 +293,7 @@ export function with_defaults(config)
     c.kernel = is_object(c.kernel) ? Object.assign({ bzimage: null, initrd: null, cmdline: null, multiboot: null, from_filesystem: false }, c.kernel) : null;
     c.android = is_object(c.android) ? Object.assign({}, ANDROID_DEFAULTS, c.android) : null;
     c.ios = is_object(c.ios) ? Object.assign({}, IOS_DEFAULTS, c.ios) : null;
+    if(is_object(c.symbian)) c.symbian = { network: false, network_relay: SYMBIAN_NETWORK_RELAY, ...c.symbian };
     section("display", { adapter: DEFAULT_FORM.graphics_adapter, vram_mb: DEFAULT_VGA_MEMORY_SIZE, proxy: false, vulkan: "none", displays: 1 });
     c.network = Array.isArray(c.network) ? c.network.map(n => Object.assign(default_network(), n)) : [default_network()];
     section("sound", { device: "sb16", mute: false });
@@ -453,6 +456,11 @@ export function validate_config(config)
         const digest = /^[a-f0-9]{64}$/;
         if(firmware?.webgpu !== undefined && typeof firmware.webgpu !== "boolean")
             problem("symbian.webgpu", "Choose whether to use WebGPU");
+        if(firmware?.network !== undefined && typeof firmware.network !== "boolean")
+            problem("symbian.network", "Choose whether to connect the phone to the Internet");
+        const relay = firmware?.network_relay ?? SYMBIAN_NETWORK_RELAY;
+        if((firmware?.network || relay !== "") && !syborg_wisp_url(relay))
+            problem("symbian.network_relay", "Enter a valid wisp:// or wisps:// relay URL");
         if(!firmware || firmware.device !== SYBORG_DEVICE.id || firmware.model !== SYBORG_DEVICE.model ||
             firmware.sw_version !== SYBORG_PROFILE.firmware_version ||
             typeof firmware.manifest !== "string" || !firmware.manifest ||
@@ -974,13 +982,15 @@ export function config_to_options(config, env)
     if(machine.type === SYBORG_MACHINE && config.symbian)
     {
         const { manifest, rom, rofs, devicetree, phone } = config.symbian.media;
-        const { sd } = config.symbian;
+        const { sd, network, network_relay } = config.symbian;
         return {
             machine_type: SYBORG_MACHINE, cpu_type: "arm32", cpu_profile: SYBORG_PROFILE.cpu, cpu_cores: 1,
             memory_size: SYBORG_PROFILE.ram_size, cpu_worker: true, cpu_worker_url: "build/cpu-worker.js" + env.query_append,
             wasm_path: "build/" + (env.debug ? "v86-arm64-debug.wasm" : "v86-arm64.wasm") + env.query_append,
             screen: { container: env.screen_container }, graphics_adapter: "none", net_device: { type: "none" },
+            network_relay_url: network === true ? network_relay ?? SYMBIAN_NETWORK_RELAY : undefined,
             symbian: { manifest: image(manifest), manifest_sha256: manifest.sha256, webgpu: config.symbian.webgpu === true,
+                network: network === true,
                 rom: image(rom), rofs: image(rofs), devicetree: image(devicetree),
                 nvmemory: { ...image(phone), disk_option: "read_write" },
                 ...(sd ? { nvmemory2: { ...image(sd), disk_option: "read_write" } } : {}) },

@@ -8,13 +8,12 @@
 
 import { h, replace, confirm } from "./dom.js";
 import { choices, change, fitted } from "../vm_model.js";
-import { check_config } from "../vm_config.js";
+import { ANDROID_DEFAULTS, SYMBIAN_NETWORK_RELAY, check_config } from "../vm_config.js";
 import { describe_image, hardware_rows } from "./describe.js";
 import { general_panel, memory_panel, processor_panel, machine_panel, advanced_panel, CPU_LABELS, MACHINE_LABELS } from "./panels/system.js";
 import { disk_panel, usb_disk_panel, cdrom_panel, floppy_panel, direct_boot_panel } from "./panels/storage.js";
 import { network_panel, sound_panel, usb_panel, tpm_panel, display_panel, serial_panel, shared_folder_panel, virt_panel, NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 import { android_panel } from "./panels/android.js";
-import { ANDROID_DEFAULTS } from "../vm_config.js";
 import { RANCHU_DEVICES } from "../../android/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
 import { SYBORG_DEVICE } from "../../symbian/catalog.js";
@@ -113,14 +112,25 @@ function symbian_panel(ctx)
 {
     const firmware = ctx.config.symbian;
     const rows = [...hardware_rows(ctx.config), ["Firmware source", firmware.manifest], ["Manifest SHA-256", firmware.manifest_sha256]];
+    const suspended = !!ctx.config.suspended;
     const webgpu = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: firmware.webgpu === true,
-        disabled: !!ctx.config.suspended }));
+        disabled: suspended }));
     webgpu.onchange = () => ctx.set("symbian.webgpu", webgpu.checked);
+    const network = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", name: "symbian-network",
+        checked: firmware.network === true, disabled: suspended }));
+    network.onchange = () => ctx.set("symbian.network", network.checked);
+    const relay = /** @type {HTMLInputElement} */ (h("input", { type: "text", name: "symbian-network-relay",
+        value: firmware.network_relay ?? SYMBIAN_NETWORK_RELAY, disabled: suspended || !firmware.network,
+        spellcheck: "false", autocapitalize: "off" }));
+    relay.onchange = () => ctx.set("symbian.network_relay", relay.value.trim());
     return [
         h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
             h("tr", null, h("th", null, label), h("td", null, value))))),
         h("label.check", null, h("span", null, "WebGPU acceleration"), webgpu),
-        firmware.sd && !ctx.config.suspended && (ctx.eject_card ?
+        h("label.check", null, h("span", null, "Internet via virtual SIM"), network),
+        h("label.field", null, h("span", null, "Wisp relay URL"), relay),
+        firmware.network && h("p.note", null, "Set up a packet data access point in the phone's Internet destination the first time you connect."),
+        firmware.sd && !suspended && (ctx.eject_card ?
             h("p.note", null, "The transfer card will be ejected when you save. Its image stays in Browser disks.") :
             h("button", { type: "button", onclick: ctx.stage_card_ejection }, "Eject transfer card")),
     ];

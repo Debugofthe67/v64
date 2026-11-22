@@ -5,7 +5,7 @@
 // machine runs the arm64 CPU; an option of the other family is an error,
 // never silently ignored.
 
-import { SYBORG_DIAGNOSTIC, SYBORG_MACHINE, SYBORG_PROFILE } from "./symbian/syborg_profile.js";
+import { SYBORG_DIAGNOSTIC, SYBORG_MACHINE, SYBORG_PROFILE, syborg_wisp_url } from "./symbian/syborg_profile.js";
 
 /** The guest CPUs (`cpu_type`); the first is the default */
 export const CPU_TYPES = ["x86", "x86_64", "arm64", "arm32"];
@@ -251,7 +251,7 @@ export function check_machine_options(options)
             if(media?.["network"] !== undefined && typeof media["network"] !== "boolean")
                 throw new Error("symbian.network must be a boolean");
             const relay = options["network_relay_url"] || options["net_device"]?.["relay_url"];
-            if(media?.["network"] && relay && (typeof relay !== "string" || !/^wisps?:\/\/[^\s]+$/.test(relay)))
+            if(media?.["network"] && relay && !syborg_wisp_url(relay))
                 throw new Error("Syborg requires a wisp:// or wisps:// relay URL");
             for(const key of diagnostic ? ["rom"] : ["manifest", "rom", "rofs", "devicetree", "nvmemory"])
                 if(!media?.[key]) throw new Error("Syborg requires symbian." + key);

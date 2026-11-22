@@ -6,6 +6,19 @@ export const SYBORG_MACHINE = "symbian-syborg";
 export const SYBORG_BOOT_FILES = ["manifest", "rom", "rofs", "devicetree", "nvmemory", "nvmemory2"];
 // Available to source-tree diagnostic tests only, never serialized by the library.
 export const SYBORG_DIAGNOSTIC = Symbol("Syborg diagnostic ROM");
+
+/** @param {*} value */
+export function syborg_wisp_url(value)
+{
+    if(typeof value !== "string" || !/^wisps?:\/\/[^\s/#?]+[^\s#]*$/.test(value)) return false;
+    try
+    {
+        const url = new URL(value.replace(/^wisp/, "ws"));
+        return !!url.hostname && !url.username && !url.password;
+    }
+    catch(error) { return false; }
+}
+
 export const SYBORG_PROFILE = {
     id: "nokia-5800-rm356",
     firmware_version: "31.0.101",

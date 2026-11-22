@@ -5,6 +5,7 @@
 <pre id="log"></pre>
 <script type="module">
 import { VMStore, config_images } from "../../src/app/vm_store.js";
+import { config_to_options } from "../../src/app/vm_config.js";
 import { disk_file, disk_id, list_disks, reset_disk } from "../../src/app/browser_disks.js";
 import { read_fat16_file } from "../lib/fat32_reader.mjs";
 import { check_installed_notes } from "../symbian/syborg_sis_checks.js";
@@ -336,6 +337,46 @@ async function run()
     await load("/index.html");
     await until("library", () => doc().querySelector("#new_vm"));
     const input = await fetch_file(firmware_url, firmware_url.split("/").at(-1));
+    if(part === "network-settings")
+    {
+        const config = await create("5800 network settings", input);
+        const option_env = { debug: false, query_append: "", file: () => { throw new Error("Unexpected picked file"); } };
+        const url = "wisp://127.0.0.1:58991/";
+        const open_settings = () => {
+            doc().querySelector('[data-id="' + config.id + '"]').click();
+            doc().querySelector("#edit_vm").click();
+            const dialog = doc().querySelector("dialog[open]");
+            dialog.querySelector('[data-item="symbian"]').click();
+            return dialog;
+        };
+        let dialog = open_settings();
+        const network = () => dialog.querySelector('[name="symbian-network"]');
+        const relay = () => dialog.querySelector('[name="symbian-network-relay"]');
+        const set_relay = value => { relay().value = value; emit(relay(), "change"); };
+        check(!network().checked && relay().disabled, "new 5800 VMs start offline");
+        network().click();
+        check(network().checked && !relay().disabled, "enabling the virtual SIM makes the relay editable");
+        set_relay("wisps://:");
+        button(dialog, "Save").click();
+        await until("invalid relay error", () => dialog.textContent.includes("Enter a valid wisp:// or wisps:// relay URL"));
+        set_relay(" " + url + " ");
+        button(dialog, "Save").click();
+        await until("saved network settings", () => !dialog.isConnected);
+        const enabled = config_to_options(await store.get(config.id), option_env);
+        check(enabled.symbian.network && enabled.network_relay_url === url, "Power on uses the saved SIM and Wisp relay");
+
+        dialog = open_settings();
+        check(network().checked && relay().value === url, "settings reopen with the saved address");
+        network().click();
+        button(dialog, "Save").click();
+        await until("disabled network settings", () => !dialog.isConnected);
+        const disabled = await store.get(config.id);
+        const options = config_to_options(disabled, option_env);
+        check(!options.symbian.network && !options.network_relay_url && disabled.symbian.network_relay === url,
+            "disabling the SIM disconnects the relay and preserves its address");
+        result.textContent = "PASS Nokia 5800 virtual SIM and Wisp settings";
+        return;
+    }
     const first = await create("S5 first Nokia", input, true);
     const second = await create("S5 second Nokia", input);
     window.s5.first = first;
