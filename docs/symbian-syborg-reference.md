@@ -317,3 +317,86 @@ BROWSER_DEBUG_PORT=23961 BROWSER_FOCUS=1 TIMEOUT_MS=1800000 TEST_ARTIFACT_DIR="$
 Chrome 158.0.8127.36 发布版使用 Apple M1 Pro 的 Metal 适配器。两种场景均绘制 192×144 窗口，绘制四象限最近邻纹理、半透明前景，并由深度测试挡住后方的图元。两者的客体回读与浏览器画布采样均为 `E62814 0AD21E 143CF0 E6D214 7D3282 143CF0`。ES 1.1 首次采样得到 42 次交换、126 次绘制和 48 次 WebGPU 回读。切换到 ES 2.0 后约 6 秒得到该上下文 48 次交换，累计 546 次绘制和两次着色器转换。两次采样中 WebGPU 执行器均无拒绝或错误。窗口被原厂菜单覆盖后，两次间隔 2.1 秒的采样停在同一交换计数 299。连开两个探针时各有自己的 GPU 会话，关掉前台实例后只余一条隐藏会话，新实例仍可持续绘制。
 
 复测用两个各 2.3 秒的独立区间，每个场景新增 19 次交换和 57 次 WebGPU 绘制，六像素全部一致。显式销毁 WebGPU 设备后，主机累计停在 251 次交换和 753 次绘制，活跃会话归零。客体收到十进制 `12302`，即 `EGL_CONTEXT_LOST`。应用退出并返回原厂主屏，物理 Menu 键再次打开完整菜单，触摸进入 Applications。实测日志和截图保存在本机 `build/syborg-s0/s6-probe/`。关闭 WebGPU 时，CPU Worker 冷启动到原厂主屏，用 Menu 键和触摸进入 Applications。请求 WebGPU 但无适配器时，CPU Worker 同样完成主屏和输入验证，并通过原厂签名安装器安装 Notes、运行和保存 `580086`。关机后核对 C: 上的登记、包字节和应用私有数据。
+
+## S7　从原厂菜单验收原生 3D 游戏
+
+### Bantumi GL 2.05 · OpenGL ES 1.1
+
+Bantumi GL 是 Martin Storsjö 发布的 GPL 游戏，支持 Nokia 5800 触摸屏。原包 `bantumigl-2.05.sisx` 的 SHA-256 为 `5b94321c78c60b9c39cc009aa2888f011a41dc0df9c76f2083e7f8f575845592`，`bantumi-2.05.tar.gz` 的 SHA-256 为 `cc3828ae4c7732b51abd8451a8760183728c326fc63fe27fff8041d3888ae838`。[发布页与源码](https://www.martin.st/software/)
+
+原签名有效期为 2007-05-25 到 2017-05-22。原厂安装器在当前 RTC 下报告 `Expired certificate`，通过 Clock 修改界面日期后仍是同一错误。使用普通开发证书重新签名的包经过了原厂安装器的自签名警告、能力授权、C: 目标选择及安装登记。原包与验收包中相同的 E32 文件 SHA-256 为 `bac3b2ace3aba09e599ab3955653f39966988ce6aa77f2de9dbe181e25d4fad6`，UID 和安全标识均为 `0xf0273929`。验收包 SHA-256 为 `72340d5b5eecc4bab64fa3e7a25796bf9a1e1ac532e4adefd486c0432b3a5216`，测试证书有效期从 2026-11-22 04:26:05 UTC 到 2036-11-19 04:26:05 UTC。固件继续执行原厂证书和能力检查。
+
+`build-legacy-rom.sh` 从经过摘要核对的 S0 XIP 另建可选图形镜像。在 `0x80260000` 的空闲 XIP 区域置入 ARM 客体驱动，连接 `libGLES_CM.dll` 的 58 个 EGL/GLES 入口。入口先核对进程的安全标识和 DisplayDriver 的 WebGPU 可用性。其他进程和软件模式继续执行该入口的原指令。输出目录的 `graphics-rom.json` 记录入口序号、替换前后的指令和镜像摘要。GLES 包含客户端顶点、法线、颜色和纹理坐标数组，按实际索引范围复制数据，支持固定点变换、光照、透明纹理和带深度的索引绘制。360×640 交换缓冲通过本地 `RChunk` 分配，适配原应用的 1 MiB 堆上限。客体将 WebGPU 读回的位图画入应用的 `RWindow`，由原厂窗口服务器合成。
+
+```sh
+games=build/syborg-s0/s7-games
+sh tools/symbian/gles-game/build-legacy-rom.sh <symbian-platform-sdk> <S60v5-epoc32> \
+  build/syborg-s0/reference "$games/firmware"
+cp build/browser-test-output/syborg-s4-stock-uninstalled-C.img "$games/C.img"
+
+# 从作者的原包生成原厂安装器可在当前 RTC 下检查的签名副本。
+# 使用有效期包含虚拟机当前日期的普通 RSA 自签名测试证书。
+signsis -u "$games/bantumigl-2.05.sisx" "$games/bantumigl.unsigned.sis"
+signsis -s "$games/bantumigl.unsigned.sis" "$games/bantumigl-current.sisx" test.pem rsa.key
+node --input-type=module - "$games/bantumigl-current.sisx" "$games/E.img" <<'JS'
+import { readFile, writeFile } from 'node:fs/promises';
+import { make_sis_card, sis_card_files } from './src/symbian/sis_card.js';
+const [input, output] = process.argv.slice(2);
+const packages = await sis_card_files([new File([await readFile(input)], 'Bantumi.sisx')], undefined, 'E');
+await writeFile(output, new Uint8Array(await make_sis_card(packages, 0x53701358, true).arrayBuffer()));
+JS
+BROWSER_FOCUS=1 BROWSER_DEBUG_PORT=23971 TIMEOUT_MS=1800000 TEST_ARTIFACT_DIR="$games" \
+  node tests/app/browser_runner.mjs tests/symbian/syborg_gles.html webgpu=1 game=bantumi
+```
+
+1. 从 **Menu → Applications → File mgr. → E: → INSTALL** 选中 `PKG00001.SIS`，经 **Options → Organise → Copy to folder → C: Phone mem. → Root folder → Copy** 复制。返回 File Manager 的盘符页，在同一开机期间进入 C:，选择复制件后按 **Enter**。安装器依次显示 `Bantumi GL`、`2.05(0)`、自签名警告、C: 目标及原应用的连接和网络能力提示。按原厂软键确认后，串口的 InstallServer 记录了 UID `0xf0273929` 和成功状态。
+2. 返回 **Applications**，向下移动焦点直至 **BantumiGL** 图标可见，选中图标并按 **Enter**。在标题界面发出 `EStdKeyDevice3`，扫描码 `0xA7`。画面进入默认棋盘，可见受光的棋碗、被碗壁部分遮挡的棋子、3D 手形和纹理数字。稍候轮到己方，按右方向键切换棋碗，再按 `0xA7` 播种。实测一个蓝色棋碗从 5 变为 0，邻碗从 5、5、4 变为 6、6、5。无额外输入时在控制台运行 `await s6.measure_game("gles1", 8000)`。测试页可用 `await s6.key(167)` 发送上述选择键。
+3. 在棋盘按实体 **Menu** 回到 **Applications**。遮挡后的两次采样相隔 2.9 秒，交换计数均为 3,366，仍有一条会话。再从同一图标进入，棋盘保留当前棋子分布，交换计数增至 3,427。右软键 `0xA5` 回到游戏标题，在标题按两次向下、一次向右和 `0xA7` 选择 **Exit**。应用退出后回到 **Applications**，图形会话归零。再次从图标启动后重现标题和默认棋盘。第二次正常退出后按原厂软键返回主屏。
+
+Chrome 158.0.8127.36 在 Apple M1 Pro Metal 适配器上用 CPU Worker 实测。默认棋盘在 8.003 秒内完成 103 次交换及 2,080 次 WebGPU 绘制。交换间隔中位数 77.05 ms，P95 为 83.50 ms。交换回读往返中位数 4.30 ms，P95 为 5.80 ms，总回读量 94,924,800 字节。客体执行片段耗时 6,170.70 ms，退休约 5.46 亿条 ARM 指令。GPU 路径发生 104 次队列提交，主线程在提交调用中耗时 2.40 ms。104 次缓冲映射的等待时间累计 260.00 ms。这些时间取自主机时钟。采样没有失败的交换、执行器拒绝或 WebGPU 错误。
+
+重开后的第二次采样持续 8.004 秒，完成 105 次交换及 2,100 次绘制。交换间隔中位数 76.00 ms，P95 为 80.50 ms。交换回读往返中位数 4.20 ms，P95 为 5.30 ms，总回读量 96,768,000 字节。客体执行片段耗时 6,097.80 ms，退休约 5.54 亿条 ARM 指令。105 次 WebGPU 队列提交耗时 2.00 ms，缓冲映射等待累计 258.90 ms。
+
+该样本使用窗口表面，扩展字符串为空。样本范围包括固定点变换、客户端索引数组、Alpha 字形纹理和深度遮挡。Pixmap、Pbuffer、多 EGL 上下文及联机玩法未验收。游戏启动时读取受保护属性触发两条 `ReadDeviceData` 日志，原厂权限检查后仍进入棋盘。视频画面、原厂安装器截图、原始测量和复测步骤留在被忽略的 `build/syborg-s0/s7-games/`。
+
+### ClassiCube · OpenGL ES 2.0 构建的装载诊断
+
+基于 ClassiCube 的 S60v5 源码和项目自带的 GLES 2.0 渲染器构建，复用官方发布包的应用资源、图标及纹理包。原厂安装器安装了验收包，原厂 Applications 菜单显示游戏图标。早期构建的进程创建返回 `KErrNotSupported`（-5）。独立签名的诊断包用 `RProcess::Create` 检查 36 个场景，成功创建的子进程在恢复运行前关闭。只导入无版本后缀的 `drtaeabi.dll` 或 `eikcore.dll` 的样本各自返回 -5，其余单库样本及大代码段无导入对照均通过。`drtaeabi` 的 ELF 导入项含高位地址修正量，版本兼容性检查使用了整个导入字。`eikcore` 的四个实际导出后一槽为空，版本兼容性检查和最终 ELF 重定位采用不同的导出表下标。
+
+为 21 个依赖库填入与 RM-356 固件匹配的模块版本和标识后，原厂菜单启动构建 `1.3(14)`，串口确认 `C:\sys\bin\ClassiCube.exe` 的代码、数据及入口已装载。该构建随后在启动阶段触发 `KERN-EXEC 3`。崩溃指令位于 `drtaeabi.dll` 的 `__cxa_allocate_exception`，访问尚未初始化的线程 C++ 异常全局状态。原厂 SDK 的 `CallThrdProcEntry` 在进入应用前构造 `TCppRTExceptionsGlobals`。此处记录的是补上线程初始化前的复测结果，只验证了安装和装载。诊断输出及崩溃寄存器保存在 `build/syborg-s0/s7-review/`。[ClassiCube 源码](https://github.com/shinovon/ClassiCube/tree/548296423b9c716c0a6ee3530dd1dabd9b17340b) · [qembian 的原生启动对照](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/tools/probes/cf/cfprobe.cpp)
+
+补齐线程初始化后的 `1.3(16)` 由原厂安装器安装并打开。首次启动完成字体缓存，选择 **No** 跳过联网资源，然后选择 **Classic** 和 **Singleplayer**。测试使用作者的 [提交源码归档](https://codeload.github.com/shinovon/ClassiCube/tar.gz/548296423b9c716c0a6ee3530dd1dabd9b17340b) 和 [S60v5 安装包](https://nnproject.cc/cc/)。构建脚本校验两者的摘要，从原包读取注册资源、图标和纹理。脚本为生成的测试包使用普通测试签名。
+
+```sh
+games=build/syborg-s0/s7-games/classicube
+sh tools/symbian/gles-game/classicube/build.sh <native-sdk> <S60v5-epoc32> \
+  <ClassiCube-source.tar.gz> <author.sis> <makesis> <signsis> "$games"
+cp build/browser-test-output/syborg-s4-stock-uninstalled-C.img "$games/C.img"
+node --input-type=module - "$games/ClassiCube.sisx" "$games/E.img" <<'JS'
+import { readFile, writeFile } from 'node:fs/promises';
+import { make_sis_card, sis_card_files } from './src/symbian/sis_card.js';
+const [input, output] = process.argv.slice(2);
+const packages = await sis_card_files([new File([await readFile(input)], 'ClassiCube.sisx')], undefined, 'E');
+await writeFile(output, new Uint8Array(await make_sis_card(packages, 0x58000710, true).arrayBuffer()));
+JS
+BROWSER_FOCUS=1 BROWSER_DEBUG_PORT=23969 TIMEOUT_MS=1800000 TEST_ARTIFACT_DIR="$games" \
+  node tests/app/browser_runner.mjs tests/symbian/syborg_gles.html webgpu=1 game=classicube
+```
+
+`1.3(17)` 用同一 EGL 上下文重建同尺寸窗口表面。ClassiCube 的界面和地形资源耗尽了最初的 32 个纹理名称，复测记录了 `glGenTextures` 被拒绝。将每会话的纹理对象限制提高到 128 后，发布版的离线单人场景显示完整的树叶、泥土、岩石、水面和界面纹理，近处方块正确遮挡远处场景。
+
+在 Apple M1 Pro 上以 Chrome CPU Worker 路径测量，湖边初始视角在 8.005 秒内完成 119 帧和 21,301 次 WebGPU 绘制。帧间隔中位数为 63.40 ms，P95 为 79.40 ms。交换回读的中位数为 4.30 ms，P95 为 7.30 ms，读回约 109.67 MB。客体 CPU 执行耗时 6,346.90 ms，退休约 4.87 亿条 ARM 指令。119 次队列提交的调用开销合计 2.30 ms，GPU 读回映射的等待累计 267.30 ms。该区间没有失败的交换或 WebGPU 错误。
+
+实体右方向键和数字 **2** 改变了视角和位置。游戏内 **Game menu** 暂停后，以右软键恢复到原位置。切到原厂 **Applications** 后，约 3.5 秒内仅交换 3 帧。用实体 **Menu** 长按唤出的任务切换器返回游戏，画面保持原位置并恢复正常更新。测试场景通过游戏的 **Save level** 保存，可以从 **Load level** 重新打开。
+
+原厂任务切换器的 **Exit ClassiCube?** 确认后，WebGPU 会话归零，总计 3,229 次交换且没有失败。再次从 **Applications** 启动，进入 **Singleplayer → Game menu → Load level**，选中保存的 `jt7.cw`，读回相同的湖边地形并继续用新会话绘制。复测 8.006 秒，完成 122 帧。帧间隔中位数为 62.10 ms，P95 为 76.20 ms。最终构建也复测了 Bantumi GL 的启动和棋盘纹理。
+
+### 用户提供的安装包兼容性检查
+
+| 安装包 | SHA-256 | 只读检查结果 |
+| --- | --- | --- |
+| Assassin's Creed HD 1.00(9) | `53111a6c922e95a0dff814927273034ed6fada941c129d4affdf3ebfdcab6408` | SIS 控制器 CRC 一致，数据区 CRC 声明为 `0xfdb2`，复算为 `0xeb8c`。随包的 Gameloft Ovi 叶证书于 2016-12-31 到期。未确认可执行文件的图形 API。 |
+| Asphalt 4 1.0(2) | `f497bae3e27e8ef31160de8d6741018f244008bd9cda8d77dfad28c7ea573890` | 旧版 EPOC SIS，声明依赖 Nokia 6630 及旧版 Series 60 产品 UID。安装目标为 EKA1 ARMv4 `.app`。导入表与代码字符串未发现 EGL 或 GLES。 |
+| Prince of Persia HD 1.0(5) | `73b0f30baf185a2756e780df208c0dafdfa68f4ecb41b1eb83706c4a9c767e20` | 包内 79 个文件通过摘要检查，控制器签名可用随包叶证书公钥验证。唯一声明设备为 Sony Ericsson Idou（Satio，`0x2001f0a1`），叶证书于 2019-07-24 到期。EKA2 ARM EABI 可执行文件导入原厂位图及窗口库，导入表与解压后的代码字符串未发现 EGL 或 GLES。 |
+
+《波斯王子》额外通过 5800 原厂安装器试装，安装器报失败并返回文件管理器。其余两份只做静态检查。这三份样本均未计入 S7 的 GPU 验收。试装沿用原厂安装策略和原始安装包。

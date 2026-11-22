@@ -70,6 +70,7 @@ struct Scene {
     TInt Pick(TInt first, TInt second) const { return mode == 1 ? first : second; }
 
     TInt Start(TUint version, RWindow& window) {
+        egl.eglDestroyContext();
         egl.eglDestroySurface();
         mode = version;
         frames = 0;
@@ -159,7 +160,10 @@ struct Scene {
             ++frames;
             result = read_result;
         }
-        if (result && result != 2003) egl.eglDestroySurface();
+        if (result && result != 2003) {
+            egl.eglDestroyContext();
+            egl.eglDestroySurface();
+        }
     }
 };
 

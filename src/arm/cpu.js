@@ -105,6 +105,7 @@ export function A64CPU(bus, wm, stop_idling)
     this.bus = bus;
     this.clock = new MachineClock({ now: v86.microtick });
     this.in_cpu = false;
+    this.syborg_cpu_slice_ms = 0;
     this.cpu_type = "arm64";
     this.machine_type = "virt";
 
@@ -851,7 +852,11 @@ A64CPU.prototype.run_machine_core = function()
         this.devices.apple_i2s1?.poll();
         this.devices.apple_i2s2?.poll();
         const devices = this.run_hardware_timers(null, this.clock.now());
-        const next = Math.min(run(this.clock.now()), devices);
+        const now = this.clock.now();
+        const measure = this.devices.syborg && this.devices.gles;
+        const started = measure ? performance.now() : 0;
+        const next = Math.min(run(now), devices);
+        if(measure) this.syborg_cpu_slice_ms += performance.now() - started;
         // (PSCI SYSTEM_RESET: the machine resets and boots again, P4.8)
         if(this.wm.exports["a64_take_reset_request"]()) this.reboot_internal("restart");
         if(this.devices.syborg) return Math.min(next, this.devices.syborg.timer(this.clock.now()));
@@ -1620,6 +1625,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
 {
     const exports = this.wm.exports;
     const nand = this.devices?.apple_nand;
+    const syborg_graphics = this.devices.syborg && this.devices.gles?.device["syborg"]?.["summary"]();
     const power = ["on", "off", "on-pending"];
     const psci = this.machine_state_bytes(1);
     const cores = this.each_core(core => {
@@ -1646,7 +1652,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
             "now_ms": this.clock.now(), "paused": this.clock.paused }, this.clock.get_diagnostics()),
         "cpu_type": this.cpu_type,
         "machine_type": this.machine_type,
-        "syborg_graphics": this.devices.syborg && this.devices.gles?.device["syborg"]?.["summary"]() || null,
+        "syborg_graphics": syborg_graphics ? Object.assign(syborg_graphics, { "cpu_slice_ms": this.syborg_cpu_slice_ms }) : null,
         "active_core": exports["a64_current_core"](),
         "parallel": this.parallel ? Object.assign(this.parallel.status(), { "machine_core": {
             "tlbi_posted": exports["a64_tlb_ring_stat"](0), "dsb_waits": exports["a64_tlb_ring_stat"](1),

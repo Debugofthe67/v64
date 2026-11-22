@@ -15,9 +15,11 @@ enum {
     EGL_BAD_PARAMETER = 0x300C, EGL_BAD_SURFACE = 0x300D, EGL_CONTEXT_LOST = 0x300E,
     EGL_BUFFER_SIZE = 0x3020, EGL_ALPHA_SIZE = 0x3021, EGL_BLUE_SIZE = 0x3022,
     EGL_GREEN_SIZE = 0x3023, EGL_RED_SIZE = 0x3024, EGL_DEPTH_SIZE = 0x3025, EGL_STENCIL_SIZE = 0x3026,
-    EGL_CONFIG_ID = 0x3028, EGL_SAMPLES = 0x3031, EGL_SURFACE_TYPE = 0x3033, EGL_NONE = 0x3038,
+    EGL_CONFIG_ID = 0x3028, EGL_NATIVE_VISUAL_ID = 0x302E, EGL_SAMPLES = 0x3031,
+    EGL_SURFACE_TYPE = 0x3033, EGL_NONE = 0x3038, EGL_RGB_BUFFER = 0x308E,
     EGL_HEIGHT = 0x3056, EGL_WIDTH = 0x3057, EGL_RENDERABLE_TYPE = 0x3040,
-    EGL_CONTEXT_CLIENT_VERSION = 0x3098, EGL_WINDOW_BIT = 4, EGL_OPENGL_ES_BIT = 1, EGL_OPENGL_ES2_BIT = 4,
+    EGL_COLOR_BUFFER_TYPE = 0x303F, EGL_CONTEXT_CLIENT_VERSION = 0x3098,
+    EGL_WINDOW_BIT = 4, EGL_OPENGL_ES_BIT = 1, EGL_OPENGL_ES2_BIT = 4,
 };
 enum {
     GL_COLOR_BUFFER_BIT = 0x4000, GL_DEPTH_BUFFER_BIT = 0x0100, GL_TRIANGLE_STRIP = 5, GL_LESS = 0x0201,
@@ -46,7 +48,8 @@ public:
     bool eglQuerySurface(TInt key, TInt& value);
     bool eglCreateContext(TInt config, const TInt* attributes);
     bool eglMakeCurrent(bool bind);
-    bool eglSwapBuffers();
+    bool eglSwapBuffers(CWindowGc* gc = nullptr);
+    bool eglFlush() { return Call(0); }
     void eglDestroyContext();
     void eglDestroySurface();
     TInt eglGetError();
@@ -66,16 +69,18 @@ public:
     }
 
 private:
-    static constexpr TUint KQueueBytes = 16 * 1024;
+    static constexpr TUint KInitialQueueBytes = 16 * 1024, KMaxQueueBytes = 1 << 20;
     RGraphics iDriver;
     TUint8* iQueue = nullptr;
+    TUint iCapacity = KInitialQueueBytes;
     TUint iUsed = 16;
     TUint iCalls = 0;
     TUint iSession = 0;
     RWindow* iWindow = nullptr;
     CFbsBitmap iBitmap;
-    TUint8* iPixels = nullptr;
+    RChunk iPixels;
     TSize iSize;
+    TSize iSessionSize;
     TInt iVersion = 0;
     TInt iError = EGL_SUCCESS;
     bool iInitialized = false;

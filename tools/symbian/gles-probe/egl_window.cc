@@ -50,7 +50,7 @@ bool EglWindow::eglInitialize() {
         iDriver.Close();
         return Error(EGL_NOT_INITIALIZED);
     }
-    iQueue = static_cast<TUint8*>(User::Alloc(KQueueBytes));
+    iQueue = static_cast<TUint8*>(User::Alloc(iCapacity));
     if (!iQueue) { iDriver.Close(); return Error(EGL_BAD_ALLOC); }
     iInitialized = true;
     return true;
@@ -64,9 +64,10 @@ bool EglWindow::eglGetConfigAttrib(TInt config, TInt key, TInt& value) {
         case EGL_RED_SIZE: case EGL_GREEN_SIZE: case EGL_BLUE_SIZE: case EGL_ALPHA_SIZE: value = 8; break;
         case EGL_DEPTH_SIZE: value = 24; break;
         case EGL_BUFFER_SIZE: value = 32; break;
-        case EGL_STENCIL_SIZE: case EGL_SAMPLES: value = 0; break;
+        case EGL_STENCIL_SIZE: case EGL_SAMPLES: case EGL_NATIVE_VISUAL_ID: value = 0; break;
         case EGL_SURFACE_TYPE: value = EGL_WINDOW_BIT; break;
         case EGL_RENDERABLE_TYPE: value = EGL_OPENGL_ES_BIT | EGL_OPENGL_ES2_BIT; break;
+        case EGL_COLOR_BUFFER_TYPE: value = EGL_RGB_BUFFER; break;
         default: return Error(EGL_BAD_ATTRIBUTE);
     }
     return true;
@@ -81,7 +82,8 @@ bool EglWindow::eglChooseConfig(const TInt* attributes, TInt& config, TInt& coun
         const TInt requested = p[1];
         if (requested == -1) continue;
         const bool matches = p[0] == EGL_SURFACE_TYPE || p[0] == EGL_RENDERABLE_TYPE ?
-            (supported & requested) == requested : p[0] == EGL_CONFIG_ID ? supported == requested : supported >= requested;
+            (supported & requested) == requested : p[0] == EGL_CONFIG_ID || p[0] == EGL_COLOR_BUFFER_TYPE ?
+            supported == requested : supported >= requested;
         if (!matches) return true;
     }
     config = KConfig;
@@ -96,10 +98,10 @@ bool EglWindow::eglCreateWindowSurface(TInt config, RWindow& window) {
     const TSize size = window.Size();
     if (size.iWidth <= 0 || size.iHeight <= 0 || size.iWidth > 640 || size.iHeight > 640 ||
         size.iWidth * size.iHeight * 4 > 1 << 20) return Error(EGL_BAD_NATIVE_WINDOW);
-    iPixels = static_cast<TUint8*>(User::Alloc(size.iWidth * size.iHeight * 4));
-    if (!iPixels || iBitmap.Create(size, EColor16MU) != KErrNone) {
-        User::Free(iPixels);
-        iPixels = nullptr;
+    // A full 360x640 swap nearly fills the default 1 MiB application heap.
+    const TInt bytes = size.iWidth * size.iHeight * 4;
+    if (iPixels.CreateLocal(bytes, bytes, EOwnerThread) != KErrNone || iBitmap.Create(size, EColor16MU) != KErrNone) {
+        iPixels.Close();
         return Error(EGL_BAD_ALLOC);
     }
     iWindow = &window;
@@ -137,10 +139,12 @@ bool EglWindow::eglMakeCurrent(bool bind) {
     }
     if (!iVersion || !iWindow) return Error(EGL_BAD_MATCH);
     if (iWindow->Size() != iSize) return Error(EGL_BAD_SURFACE);
+    if (iSession && iSessionSize != iSize) return Error(EGL_CONTEXT_LOST);
     if (!iSession) {
         const TUint request[] = { KMagic, KOpen, 0, TUint(iVersion), TUint(iSize.iWidth), TUint(iSize.iHeight) };
         if (iDriver.Submit(request, sizeof(request), &iSession, sizeof(iSession)) != KErrNone || !iSession)
             return Error(EGL_CONTEXT_LOST);
+        iSessionSize = iSize;
     }
     iBound = true;
     return true;
@@ -175,8 +179,16 @@ bool EglWindow::Read(TAny* out, TUint size) {
 
 bool EglWindow::Reserve(TUint opcode, TUint size) {
     if (!iBound) return Error(EGL_BAD_CONTEXT);
-    if (size > KQueueBytes - 16) return Error(EGL_BAD_ALLOC);
-    if ((iUsed + size > KQueueBytes || iCalls >= 96) && !Call(0)) return false;
+    if (size > KMaxQueueBytes - 16) return Error(EGL_BAD_ALLOC);
+    if ((iUsed + size > iCapacity || iCalls >= 96) && !Call(0)) return false;
+    if (iUsed + size > iCapacity) {
+        TUint capacity = iCapacity;
+        while (capacity < iUsed + size) capacity *= 2;
+        auto* queue = static_cast<TUint8*>(User::ReAlloc(iQueue, capacity));
+        if (!queue) return Error(EGL_BAD_ALLOC);
+        iQueue = queue;
+        iCapacity = capacity;
+    }
     Append(opcode);
     Append(size);
     ++iCalls;
@@ -188,21 +200,30 @@ void EglWindow::Append(const TAny* data, TUint size) {
     iUsed += size;
 }
 
-bool EglWindow::eglSwapBuffers() {
+bool EglWindow::eglSwapBuffers(CWindowGc* gc) {
     if (!iBound || !iWindow || iWindow->Size() != iSize) return Error(EGL_BAD_SURFACE);
-    if (!Call(0) || !Control(KSwap) || !Read(iPixels, iSize.iWidth * iSize.iHeight * 4)) return false;
+    TUint8* pixels = iPixels.Base();
+    if (!Call(0) || !Control(KSwap) || !Read(pixels, iSize.iWidth * iSize.iHeight * 4)) return false;
     iBitmap.LockHeap(ETrue);
     auto* output = reinterpret_cast<TUint8*>(iBitmap.DataAddress());
     const TInt stride = iBitmap.DataStride();
     for (TInt y = 0; y < iSize.iHeight; ++y) {
-        const TUint8* input = iPixels + y * iSize.iWidth * 4;
+        const TUint8* input = pixels + y * iSize.iWidth * 4;
         auto* row = reinterpret_cast<TUint32*>(output + y * stride);
         for (TInt x = 0; x < iSize.iWidth; ++x, input += 4)
             row[x] = 0xFF000000 | TUint(input[0]) << 16 | TUint(input[1]) << 8 | input[2];
     }
     iBitmap.UnlockHeap(ETrue);
     iPresented = true;
-    iWindow->Invalidate();
+    if (gc) {
+        iWindow->BeginRedraw();
+        gc->Activate(*iWindow);
+        Draw(*gc, TPoint());
+        gc->Deactivate();
+        iWindow->EndRedraw();
+    } else {
+        iWindow->Invalidate();
+    }
     return true;
 }
 
@@ -220,10 +241,11 @@ void EglWindow::eglDestroyContext() {
 }
 
 void EglWindow::eglDestroySurface() {
-    eglDestroyContext();
+    eglMakeCurrent(false);
+    // A new surface for the same window size can use the existing context and GL objects.
+    iBound = false;
     iBitmap.Reset();
-    User::Free(iPixels);
-    iPixels = nullptr;
+    iPixels.Close();
     iWindow = nullptr;
     iPresented = false;
 }

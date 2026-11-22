@@ -147,7 +147,8 @@
             const GLES = global.V86GLESExecutor;
             if (!GLES) return null;
             if (!executor.device) await executor.initialize();
-            gles = new GLES.GLESExecutor({ device: executor.device, layer, features: executor.deviceFeatures || {} });
+            gles = new GLES.GLESExecutor({ device: executor.device, layer, features: executor.deviceFeatures || {},
+                measure: !!options.ownGlesDevice });
             if (options.ownGlesDevice) executor.device.lost.then(info => {
                 if (!executor.destroyed) fail("WebGPU device lost: " + info.reason);
             });

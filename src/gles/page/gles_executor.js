@@ -104,12 +104,13 @@ function reachable_bindings(source, entry, result)
 
 /**
  * @constructor
- * @param {{device: !GPUDevice, layer: ?Object, features: (Object|undefined)}} options
+ * @param {{device: !GPUDevice, layer: ?Object, features: (Object|undefined), measure: (boolean|undefined)}} options
  */
 export function GLESExecutor(options)
 {
     this.device = options.device;
     this.layer = options.layer || null;
+    this.measure = !!options.measure;
     this.reset();
 }
 
@@ -134,7 +135,7 @@ GLESExecutor.prototype.reset = function()
     /** the frame to show, a read of it in flight */
     this.posted = 0;
     this.stats = { batches: 0, records: 0, draws: 0, refused: 0, pipelines: 0, uploads: 0, posts: 0,
-        readbacks: 0, readback_bytes: 0, errors: [] };
+        readbacks: 0, readback_bytes: 0, errors: [], "queue_submits": 0, "submit_cpu_ms": 0, "readback_wall_ms": 0 };
     this.native_read = null;
     this.pass = null;
     this.pass_target = null;
@@ -183,7 +184,14 @@ GLESExecutor.prototype.submit = async function(bytes, sink)
     }
     this.batch_end3();
     this.end_pass();
-    this.device.queue.submit([this.encoder.finish()]);
+    const commands = this.encoder.finish();
+    const submit_started = this.measure ? performance.now() : 0;
+    this.device.queue.submit([commands]);
+    if(this.measure)
+    {
+        this.stats["queue_submits"]++;
+        this.stats["submit_cpu_ms"] += performance.now() - submit_started;
+    }
     this.encoder = null;
     // (what the batch used and dropped goes only now: its commands were recorded with it)
     for(const object of this.staging) object.destroy();
@@ -198,6 +206,7 @@ GLESExecutor.prototype.submit = async function(bytes, sink)
             read.done(null, sink);
             continue;
         }
+        const read_started = this.measure ? performance.now() : 0;
         await read.buffer.mapAsync(globalThis.GPUMapMode ? globalThis.GPUMapMode.READ : 1);
         const mapped = new Uint8Array(read.buffer.getMappedRange());
         // (rows of texels, or a buffer's bytes as they are: `bytes`)
@@ -211,6 +220,7 @@ GLESExecutor.prototype.submit = async function(bytes, sink)
         }
         read.buffer.unmap();
         read.buffer.destroy();
+        if(this.measure) this.stats["readback_wall_ms"] += performance.now() - read_started;
         read.done(rows, sink);
     }
 };

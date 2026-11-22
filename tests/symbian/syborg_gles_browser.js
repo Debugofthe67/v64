@@ -1,4 +1,5 @@
 import { V86 } from "../../build/libv86.mjs";
+import { measure_syborg_game } from "./syborg_game_metrics.js";
 
 const screen = document.querySelector("#screen");
 const canvas = screen.querySelector("canvas");
@@ -7,8 +8,11 @@ const log = document.querySelector("#log");
 const lose = document.querySelector("#lose");
 const query = new URLSearchParams(location.search);
 const mode = query.get("gpu");
+const game = query.get("game");
+const bantumi = game === "bantumi";
+const game_fixture = "/build/syborg-s0/s7-games/";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const firmware = path => ({ url: "/build/syborg-s0/reference/" + path });
+const firmware = path => ({ url: (bantumi ? game_fixture + "firmware/" : "/build/syborg-s0/reference/") + path });
 let renderer, vm, home_ready = false;
 
 if(mode === "unavailable" && navigator.gpu)
@@ -93,18 +97,20 @@ async function save_picture(name)
 
 async function start()
 {
+    if(game && !bantumi && game !== "classicube") throw new Error("Unsupported native game fixture " + game);
     const seed_name = query.get("seed") === "fallback" ? "C-fallback.img" : "C.img";
-    const storage_key = "syborg-s6-" + seed_name;
+    const fixture_name = game ? "syborg-s7-" + game : "syborg-s6";
+    const storage_key = fixture_name + "-" + seed_name;
     let filename = window.sessionStorage.getItem(storage_key);
     let disks = await navigator.storage.getDirectory();
     for(const dir of ["v86", "disks"]) disks = await disks.getDirectoryHandle(dir, { create: true });
     if(!filename)
     {
-        const fixture = "/build/syborg-s0/s6-probe/";
+        const fixture = bantumi ? game_fixture : game === "classicube" ? game_fixture + "classicube/" : "/build/syborg-s0/s6-probe/";
         const card_name = query.get("seed") === "fallback" ? "E-fallback.img" : "E.img";
         const [seed, card] = await Promise.all([fetch(fixture + seed_name), fetch(fixture + card_name)]);
         if(!seed.ok || !card.ok) throw new Error("Prepare " + seed_name + " and " + card_name + " in " + fixture);
-        filename = "syborg-s6-" + crypto.randomUUID() + ".img";
+        filename = fixture_name + "-" + crypto.randomUUID() + ".img";
         const disk = await disks.getFileHandle(filename, { create: true });
         const transfer = await disks.getFileHandle("card-" + filename, { create: true });
         await seed.body.pipeTo(await disk.createWritable());
@@ -113,7 +119,8 @@ async function start()
     }
     const disk = await disks.getFileHandle(filename);
     vm = new V86({
-        machine_type: "symbian-syborg", cpu_type: "arm32", graphics_adapter: "none", net_device: { type: "none" },
+        machine_type: "symbian-syborg", cpu_type: "arm32", cpu_profile: "arm1136-r2",
+        graphics_adapter: "none", net_device: { type: "none" },
         cpu_worker: true, screen_container: screen, wasm_path: "/build/v86-arm64.wasm", cpu_worker_url: "/build/cpu-worker.js",
         disable_mouse: true, disable_keyboard: true, disable_speaker: true,
         symbian: { manifest: firmware("manifest.json"), rom: firmware("ROM.img"), rofs: firmware("ROM.rofs"),
@@ -122,6 +129,7 @@ async function start()
             nvmemory2: { url: "opfs:v86/disks/card-" + filename, disk_option: "read_write" } },
     });
     window.s6 = { vm, disk, tap, key, diagnostics, pixels, measure_scene, save_picture,
+        measure_game: (api, duration) => measure_syborg_game(vm, renderer, api, duration),
         result: message => { result.textContent = message; } };
     let line = "";
     vm.add_listener("serial0-output-byte", byte =>
@@ -129,7 +137,7 @@ async function start()
         if(byte === 13) return;
         if(byte !== 10) { line += String.fromCharCode(byte); return; }
         if(line === "SYBPROP: Home screen::Home screen sets 101f8766/43 = 101") home_ready = true;
-        if(home_ready && /^SYB|^System/.test(line) && /Home screen|DisplayDriver host GL|installserver|System/.test(line))
+        if(home_ready && /Home screen|DisplayDriver host GL|installserver|System start|Bantumi|ClassiCube/.test(line))
             log.append(line + "\n");
         line = "";
     });
