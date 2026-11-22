@@ -119,7 +119,7 @@ function symbian_panel(ctx)
     return [
         h("table.hardware", null, h("tbody", null, rows.map(([label, value]) =>
             h("tr", null, h("th", null, label), h("td", null, value))))),
-        h("label.field", null, h("span", null, "WebGPU acceleration"), webgpu),
+        h("label.check", null, h("span", null, "WebGPU acceleration"), webgpu),
         firmware.sd && !ctx.config.suspended && (ctx.eject_card ?
             h("p.note", null, "The transfer card will be ejected when you save. Its image stays in Browser disks.") :
             h("button", { type: "button", onclick: ctx.stage_card_ejection }, "Eject transfer card")),
