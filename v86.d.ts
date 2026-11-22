@@ -207,6 +207,8 @@ export interface V86SyborgMedia {
     devicetree: V86Image;
     /** Enable the Syborg EGL/GLES bridge when the browser has a WebGPU adapter. Defaults to false. */
     webgpu?: boolean;
+    /** Insert a virtual SIM in the Syborg modem. Defaults to false. */
+    network?: boolean;
     /** Instance-owned C: disk, initialized from the manifest's seed on first boot. */
     nvmemory: V86SyborgDisk;
     /** E: card. Omit it for a blank 1 GiB card whose writes stay in memory. */

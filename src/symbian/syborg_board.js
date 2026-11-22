@@ -8,7 +8,7 @@ import { syborg_framebuffer } from "./syborg_framebuffer.js";
 import { syborg_graphics } from "./syborg_graphics.js";
 import { validate_syborg_artifacts } from "./syborg_import.js";
 import { syborg_keyboard, syborg_pointer } from "./syborg_input.js";
-import { syborg_offline_modem } from "./syborg_modem.js";
+import { syborg_modem } from "./syborg_modem.js";
 import { blank_syborg_card, syborg_nvmemory } from "./syborg_nvmemory.js";
 import { SYBORG_DIAGNOSTIC, SYBORG_PROFILE, SYBORG_MIB } from "./syborg_profile.js";
 
@@ -70,7 +70,8 @@ export function syborg_boot_files(settings)
             throw new Error("Syborg NVMemory image size must be a positive multiple of 512 bytes, within 2 TiB");
     const platform_dtb = devicetree.slice();
     const boot_dtb = validation ? syborg_boot_dtb(devicetree, profile.ram_size) : platform_dtb;
-    return { profile, rom: rom.slice(), rofs, devicetree: platform_dtb, boot_dtb, disks, identity };
+    const network = settings.symbian["network"] === true;
+    return { profile, rom: rom.slice(), rofs, devicetree: platform_dtb, boot_dtb, disks, identity, network };
 }
 
 export function load_syborg_rom(cpu, boot)
@@ -145,7 +146,7 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
     const hub = new DisplayHub(bus, screen);
     const irq = syborg_irq_controller(cpu);
     const timer = syborg_timer(cpu, irq.source(1));
-    const modem = syborg_offline_modem(cpu, irq);
+    const modem = syborg_modem(cpu, irq, boot.network);
     const [nvmemory, nvmemory2] = boot.disks;
     const disks = [
         syborg_nvmemory(cpu, 0xC0010000, "NVMemory C:", nvmemory, irq.source(12)),
@@ -169,7 +170,12 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
         get_state()
         {
             const state = [boot.identity, devices.map(device => device.get_state())];
-            if(gpu) state.push(gpu.get_state());
+            if(gpu) state[2] = gpu.get_state();
+            if(boot.network)
+            {
+                if(!gpu) state[2] = null;
+                state[3] = true;
+            }
             return state;
         },
         check_state(state)
@@ -178,6 +184,8 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
                 throw new Error("The snapshot requires the same Syborg firmware and device layout");
             if(!!state[2] !== !!gpu || gpu && (!(state[2] instanceof Uint32Array) || state[2].length !== 10))
                 throw new Error("The snapshot requires the original Syborg graphics backend");
+            if((state[3] === true) !== !!boot.network)
+                throw new Error("The snapshot requires the original Syborg network mode");
             disks[0].check_state(state[1][devices.length - 2]);
             disks[1].check_state(state[1][devices.length - 1]);
         },

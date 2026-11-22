@@ -248,6 +248,8 @@ export function check_machine_options(options)
         {
             if(media?.["webgpu"] !== undefined && typeof media["webgpu"] !== "boolean")
                 throw new Error("symbian.webgpu must be a boolean");
+            if(media?.["network"] !== undefined && typeof media["network"] !== "boolean")
+                throw new Error("symbian.network must be a boolean");
             for(const key of diagnostic ? ["rom"] : ["manifest", "rom", "rofs", "devicetree", "nvmemory"])
                 if(!media?.[key]) throw new Error("Syborg requires symbian." + key);
             for(const key of ["nvmemory", "nvmemory2"])

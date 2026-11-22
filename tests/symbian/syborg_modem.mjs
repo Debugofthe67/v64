@@ -1,18 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { syborg_offline_modem } from "../../src/symbian/syborg_modem.js";
+import { syborg_modem } from "../../src/symbian/syborg_modem.js";
 
-function fixture()
+function fixture(network = false)
 {
-    let now = 0;
+    let now = 0, resets = 0;
     const mmio = new Map(), levels = new Map();
-    const modem = syborg_offline_modem({
+    const modem = syborg_modem({
         clock: { now: () => now, wall_time: () => Date.UTC(2026, 10, 20, 12, 34, 56) },
+        wm: { exports: { "a64_request_reset": () => resets++ } },
         io: { register_mmio(address, size, handler) {
             assert.equal(size, 0x2000);
             mmio.set(address, handler);
         } },
-    }, { source: irq => level => levels.set(irq, level) });
+    }, { source: irq => level => levels.set(irq, level) }, network);
     const port = address => {
         const { read, write } = mmio.get(address);
         function send(channel, kind, bytes = [], length = bytes.length)
@@ -34,12 +35,41 @@ function fixture()
         }
         return { read, write, send, take, count: () => read(0x10, 4) };
     };
-    return { modem, first: port(0xC0019000), second: port(0xC001B000), levels,
+    return { modem, first: port(0xC0019000), second: port(0xC001B000), levels, resets: () => resets,
         advance: ms => modem.poll(now += ms) };
 }
 
 const request = (resource, transaction, id, ...payload) =>
     [0, 0, 0, resource, payload.length + 4, 0, 0, 0, transaction, id, ...payload];
+
+test("Syborg virtual SIM becomes ready and registers on its home network", () => {
+    const { first, second } = fixture(true);
+    const startup = 0x0123, telephony = 0x0107;
+    second.send(startup, 3);
+    second.send(startup, 2, [9, 0xEF]);
+    second.send(startup, 1, request(9, 1, 0xC0, 0, 0));
+    assert.deepEqual(second.take(startup).slice(8), [1, 0xC1, 0, 1, 1, 0, 0, 0]);
+    assert.deepEqual(second.take(startup).slice(8), [0, 0xEF, 5, 0x4A]);
+    first.send(telephony, 3);
+    first.send(telephony, 1, request(9, 2, 0x1D, 0x2D, 0));
+    assert.deepEqual(first.take(telephony).slice(8), [2, 0x1E, 0x2D, 1, 8, 0x09, 0x10, 0x10, 0x10, 0x32, 0x54, 0x76, 0x98]);
+    first.send(telephony, 1, request(0x0A, 3, 0));
+    const registration = first.take(telephony).slice(8);
+    assert.deepEqual(registration.slice(0, 8), [3, 1, 0, 2, 0, 8, 0, 2]);
+    assert.deepEqual(first.take(telephony).slice(8), [0, 2, ...registration.slice(2)]);
+});
+
+test("Syborg acknowledges and defers the reset requested after changing its SIM", () => {
+    const { second, advance, resets } = fixture(true);
+    second.send(0x0123, 3);
+    second.send(0x0123, 1, request(0x15, 1, 6, 7, 0));
+    assert.deepEqual(second.take(0x0123).slice(8), [1, 0x69, 0, 0]);
+    assert.equal(advance(2999), 1);
+    assert.equal(resets(), 0);
+    assert.equal(advance(1), Infinity);
+    assert.equal(advance(1), Infinity);
+    assert.equal(resets(), 1);
+});
 
 test("Syborg modem answers offline queries on the requesting port and channel", () => {
     const { first, second, levels } = fixture();

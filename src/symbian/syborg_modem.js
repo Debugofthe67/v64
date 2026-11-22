@@ -1,4 +1,4 @@
-// Offline BB5 mailbox used by the 5800's ISC drivers. Register and ISI wire
+// BB5 mailbox used by the 5800's ISC drivers. Register and ISI wire
 // formats follow the Syborg reference in docs/symbian-syborg-reference.md.
 
 const TX_BUFFER = 0x1000;
@@ -154,7 +154,7 @@ function create_port(cpu, address, set_irq, respond)
     }
 
     cpu.io.register_mmio(address, 0x2000, {
-        name: "Syborg offline modem",
+        name: "Syborg modem",
         read(offset, width)
         {
             if(width > 4) return 0;
@@ -249,9 +249,21 @@ function create_port(cpu, address, set_irq, respond)
     };
 }
 
-export function syborg_offline_modem(cpu, irq)
+// S60's PN_NETWORK home registration, using the test PLMN 001/01.
+// See qembian docs/research/isi-external-references.md and n8-sim-present-mock.md
+// for the ISI sub-block formats and SIM-ready notifications.
+const HOME_REGISTRATION = [
+    0, 2,
+    0, 8, 0, 2, 0, 0, 0, 0, // registration status: home, automatic selection
+    9, 24, 0, 1, 0, 0, 0, 1, 0, 0xF1, 0x10, 0, 0, 1, 1, 1, ...Array(8).fill(0),
+];
+const TEST_SIM_IMSI = [8, 0x09, 0x10, 0x10, 0x10, 0x32, 0x54, 0x76, 0x98];
+const RESET_DELAY_MS = 3000;
+
+export function syborg_modem(cpu, irq, network = false)
 {
     let mtc_state = 1;
+    let reset_at = null;
     function respond(channel, request, send)
     {
         const resource = request[3], transaction = request[8], id = request[9];
@@ -261,17 +273,36 @@ export function syborg_offline_modem(cpu, irq)
         {
             if(id === 0xC0)
             {
-                const status = parameter === 1 ? 1 : 6;
-                reply(0xC1, parameter ? [parameter, status] : [0, status, 0, 255, 0, 0]);
-                if(channel.number === 35 && !channel.sim_sent && subscribed(channel, 9, 0xEF))
+                const ready = network && parameter === 0;
+                const status = parameter === 1 || ready ? 1 : 6;
+                reply(0xC1, parameter ? [parameter, status] : [0, status, Number(ready), ready ? 0 : 255, 0, 0]);
+                if(!channel.sim_sent && subscribed(channel, 9, 0xEF))
                 {
-                    channel.sim_sent = true;
-                    send(9, 0, 0xEF, [5, 6]); // SIM disconnected indication requested by SAServer
+                    const indication = channel.number === 35 ? [5, network ? 0x4A : 6] :
+                        network && channel.number === 7 ? [0x0D, 0x0B, 8, 0, 0] : null;
+                    if(indication)
+                    {
+                        channel.sim_sent = true;
+                        send(9, 0, 0xEF, indication);
+                    }
                 }
                 return;
             }
+            if(network && id === 0x1D && parameter === 0x2D) return reply(0x1E, [parameter, 1, ...TEST_SIM_IMSI]);
+            if(network && id === 0x29 && parameter === 0x35) return reply(0x2A, [parameter, 1, 0, 0, 0, 0]);
+            if(network && id === 0x29 && parameter === 0x36) return reply(0x2A, [parameter, 1]);
             if(SIM_DISCONNECTED_READS.has(id)) return reply(id + 1, [parameter, 0xFB]);
             if(SIM_UNAVAILABLE_READS.has(id)) return reply(id + 1, [parameter, 0x24]);
+        }
+        if(network && resource === 0x0A)
+        {
+            if(id === 0)
+            {
+                reply(1, HOME_REGISTRATION);
+                send(resource, 0, 2, HOME_REGISTRATION);
+                return;
+            }
+            if(id === 0x36) return reply(0x37, [0, 1, 0x2C, 8, 2, 0, 0, 0, 0, 0]);
         }
         if(resource === 0x15)
         {
@@ -284,6 +315,14 @@ export function syborg_offline_modem(cpu, irq)
             {
                 reply(0x65, [mtc_state, mtc_state, 0, 0]);
                 send(0x15, 0, 0xC0, [1, 3]);
+                return;
+            }
+            // Startup asks the modem to reset after detecting a changed SIM.
+            // Let the guest finish its disk writes before making the reset visible.
+            if(network && id === 6)
+            {
+                reply(0x69, [0, 0]);
+                reset_at = cpu.clock.now() + RESET_DELAY_MS;
                 return;
             }
             if(id === 0x16) return reply(0x79, [0, Number(mtc_state === 1 || mtc_state === 4 || mtc_state === 5)]);
@@ -316,9 +355,32 @@ export function syborg_offline_modem(cpu, irq)
     const ports = [0xC0019000, 0xC001B000].map((address, index) =>
         create_port(cpu, address, irq.source(15 + index), respond));
     return {
-        poll(now) { return Math.min(ports[0].poll(now), ports[1].poll(now)); },
-        reset() { mtc_state = 1; ports.forEach(port => port.reset()); },
-        get_state() { return [mtc_state, ports.map(port => port.get_state())]; },
-        set_state([mode, state]) { mtc_state = mode; ports.forEach((port, index) => port.set_state(state[index])); },
+        poll(now)
+        {
+            if(reset_at !== null && reset_at <= now)
+            {
+                reset_at = null;
+                cpu.wm.exports["a64_request_reset"]();
+            }
+            return Math.min(ports[0].poll(now), ports[1].poll(now), reset_at === null ? Infinity : reset_at - now);
+        },
+        reset()
+        {
+            mtc_state = 1;
+            reset_at = null;
+            ports.forEach(port => port.reset());
+        },
+        get_state()
+        {
+            const state = [mtc_state, ports.map(port => port.get_state())];
+            if(reset_at !== null) state.push(reset_at);
+            return state;
+        },
+        set_state([mode, state, deadline = null])
+        {
+            mtc_state = mode;
+            reset_at = deadline;
+            ports.forEach((port, index) => port.set_state(state[index]));
+        },
     };
 }
