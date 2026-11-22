@@ -133,7 +133,7 @@ export async function import_syborg_package(file, expected, name, notes, options
             }
             options.signal?.throwIfAborted();
             config.symbian = { device: SYBORG_DEVICE.id, model: SYBORG_DEVICE.model, sw_version: expected.firmware_version,
-                manifest, manifest_sha256: media.manifest.sha256, media };
+                manifest, manifest_sha256: media.manifest.sha256, media, webgpu: true };
             options.signal?.throwIfAborted();
             stored = await options.store.put(config);
         }

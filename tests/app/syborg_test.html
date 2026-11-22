@@ -115,6 +115,7 @@ async function create(name, archive, exercise_retry = false)
     const config = (await store.list()).find(row => row.name === name);
     check(config?.machine.type === "symbian-syborg" && config.symbian.sw_version === "31.0.101" && config_images(config).length === 5,
         "the saved VM uses Syborg and five checked artifacts");
+    check(config.symbian.webgpu === true, "new Nokia 5800 VMs enable WebGPU");
     return config;
 }
 async function open_machine(config)
@@ -331,6 +332,7 @@ async function run()
     const settings = doc().querySelector("dialog[open]");
     settings.querySelector('[data-item="symbian"]').click();
     check(settings.textContent.includes("RM-356") && settings.textContent.includes("31.0.101"), "firmware settings identify the profile");
+    check(settings.querySelector('input[type="checkbox"]').checked, "WebGPU acceleration is checked by default");
     button(settings, "Cancel").click();
 
     if(prepared)

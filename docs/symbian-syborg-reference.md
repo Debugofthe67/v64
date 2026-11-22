@@ -25,7 +25,7 @@ To replace the transfer card, power off and use **Library → Edit settings → 
 
 ## Play 3D games
 
-Power off the VM, open **Library → Edit settings → Symbian firmware**, and turn on **WebGPU acceleration** before starting again. If the browser cannot provide WebGPU, the phone starts with the software display. Exit active 3D apps before suspending. To resume a snapshot, use the same firmware folder and graphics mode.
+New Nokia 5800 VMs start with **WebGPU acceleration** enabled. To change it, power off the VM and open **Library → Edit settings → Symbian firmware**. If the browser cannot provide WebGPU, the phone starts with the software display. Exit active 3D apps before suspending. To resume a snapshot, use the same firmware and graphics mode.
 
 The tested samples are **Bantumi GL 2.05** (OpenGL ES 1.1) and **ClassiCube 1.3(17)** (OpenGL ES 2.0). Bantumi uses the optional [graphics ROM builder](../tools/symbian/gles-game/build-legacy-rom.sh) and a test-signed copy of the author's package. ClassiCube uses [the v86 build script](../tools/symbian/gles-game/classicube/build.sh) and the regular Syborg firmware. On its first launch, choose **No** for optional online assets, then **Classic → Singleplayer**. [Bantumi GL releases](https://www.martin.st/software/) · [ClassiCube for Symbian](https://nnproject.cc/cc/)
 
