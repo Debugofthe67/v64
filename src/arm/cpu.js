@@ -259,7 +259,10 @@ A64CPU.prototype.init = function(settings, device_bus)
     this.set_profile((this.cpu_type === "arm32" ? ARM32_PROFILES : A64_PROFILES)[cpu_profile][0]);
     // the A64 page tier (J2): synchronous publication (tests), the JIT switches by name
     this.ir_sync_publication = settings["ir_sync_publication"] === true;
-    const jit = syborg ? Object.assign({ "a64_page": true }, parse_jit_switches(settings["jit_switches"])) : settings["jit_switches"];
+    // S60 visits many short-lived code paths during boot. Wait for more
+    // executions before compiling a page, while still compiling hot loops.
+    const jit = syborg ? Object.assign({ "a64_page": true, "a64_page_hot": 16384 },
+        parse_jit_switches(settings["jit_switches"])) : settings["jit_switches"];
     if(syborg && settings.disable_jit) jit["a64_page"] = false;
     set_jit_switches(this.wm.exports, this.wasm_memory, jit);
     // (the GIC's distributor and redistributors: decoded in the core, P4.2;

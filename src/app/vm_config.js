@@ -986,6 +986,7 @@ export function config_to_options(config, env)
         return {
             machine_type: SYBORG_MACHINE, cpu_type: "arm32", cpu_profile: SYBORG_PROFILE.cpu, cpu_cores: 1,
             memory_size: SYBORG_PROFILE.ram_size, cpu_worker: true, cpu_worker_url: "build/cpu-worker.js" + env.query_append,
+            "jit_switches": { "a64_step_stats": env.debug ? 1 : 0 },
             wasm_path: "build/" + (env.debug ? "v86-arm64-debug.wasm" : "v86-arm64.wasm") + env.query_append,
             screen: { container: env.screen_container }, graphics_adapter: "none", net_device: { type: "none" },
             network_relay_url: network === true ? network_relay ?? SYMBIAN_NETWORK_RELAY : undefined,
