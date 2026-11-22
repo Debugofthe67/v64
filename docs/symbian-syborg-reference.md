@@ -215,3 +215,45 @@ TIMEOUT_MS=430000 node tests/app/browser_runner.mjs tests/symbian/syborg_browser
 TIMEOUT_MS=430000 TEST_ARTIFACT_DIR=build/syborg-s0/s3-browser-full \
   node tests/app/browser_runner.mjs tests/symbian/syborg_browser.html capture=1
 ```
+
+## S4 原厂 SIS 安装
+
+v86 Notes 1.0 和 2.0 沿用仓库内的签名包，包 UID、E32 UID3 和安全 ID 均为 `0xE0860505`，目标是 S60v5 产品 UID `0x1028315F`，两版都没有额外能力。原厂 SDK 的构建方法、包和摘要见 [Notes 构建记录](symbian-n97.md#原生-sissisx-递送与-v86-notes)。两版同用一张 RSA/SHA-1 自签名证书，有效期为 UTC 2026-11-18 06:29:23 至 2036-11-15 06:29:23。
+
+从两份签名包提取实际 E32 导入节，按库名和序号查 S0 组合 ROM 的 XIP 导出表，排除空项和缺失导出占位。两版分别解析 59 和 60 项，包括 `efsrv.dll` 11 项、`euser.dll` 18 或 19 项、`gdi.dll` 2 项和 `ws32.dll` 28 项。qembian 组合清单用 `N95` 标记原厂侧。在 RM-356 配置中，`Z:` 的这四个文件路径均从 5800 固件的原厂 XIP 解析。
+
+```sh
+SYBORG_ROM=build/syborg-s0/reference/ROM.img node --test tests/symbian/sis.mjs
+```
+
+实际固件的 `Z:\System\Data\swipolicy.ini` 包含 `AllowUnsigned = false`、`SISCompatibleIfNoTargetDevices = false`、`OcspEnabled = true` 和 `OcspMandatory = false`。原厂 Application manager 的 **Installation settings** 显示 **Software installation: All**、**Online certificate check: Off** 和 **Default web address: None**。验收保留这些出厂值和原厂证书库。首次向导的默认日期是 2009 年，完整验收中用同一 `C:` 冷启后主屏显示 2026-11-22，位于测试证书有效期内。[Nokia 5800 用户指南，第 92–94 页](https://manuals.plus/m/658c640e14a6ed88eb809cd64af58c6718be9e1087c555f112df186702fae509.pdf)
+
+Chrome 和参考 QEMU 从 `E:` 直接打开测试包时，File manager 均提示 **Unable to open. File type not supported.**。Chrome 在证书有效期内也重现该提示。QEMU 的硬件断点确认该操作未进入原厂 SIS 识别函数或安装界面入口。在客体 File manager 里把原包从 `E:` 复制到 **C: Phone mem.** 的 **Root folder** 后，实际路径为 `C:\Data\V1.SIS`。复制件的 SHA-256 与签名包一致。Chrome 在同一开机期间选中刚复制的文件，再用页面的 **Enter** 按钮打开，进入原厂 **v86 Notes 1.00(0)** 安装确认和自签名警告。另一轮冷启动曾对之前复制的文件报类型不支持，因此每个待安装的包在当前开机期间复制。
+
+2026-11-22 的 Chrome 发布版验收使用 `build/syborg-s0/reference/` 的 S0 产物和空白 OPFS `C:`。原厂安装器取消 1.0 后，盘上无 Notes 安装文件或登记。再次打开并安装后，从 **Applications** 启动 1.0，输入并保存 `580086`。结束 Worker 2 后用同一 OPFS 卷启动 Worker 3，从菜单打开 1.0，读回同一标记。复制 `V2.SIS` 后，原厂安装器显示从 1.00(0) 替换为 2.00(0)，升级后从菜单打开 2.0，仍显示 `580086`。两份 `C:\Data\V*.SIS`、存储卡上的包和仓库夹具逐字节一致。
+
+只读盘检查核对 `C:\sys\bin\v86_notes.exe`、两个应用注册资源、`C:\sys\install\sisregistry\e0860505` 中的原厂记录，以及 `C:\private\e0860505\note.txt`。两版的可执行文件和记录中的已签名控制器与各自的包一致。原厂 **Installed applications** 卸载后列表为空，磁盘读回确认删除安装文件、登记和私有笔记。随后从菜单启动原厂 **Calendar**，退出并返回主屏。该次运行的串口日志与界面截图位于本机的 `build/syborg-s0/s4-final/`。
+
+### 复现
+
+准备 S0 产物和发布版浏览器构建。用 FAT32 裸卷递送两个仓库签名包。`.SIS` 文件名用于递送，保留原 SISX 字节。
+
+```sh
+make build/libv86.mjs build/cpu-worker.js build/v86-arm64.wasm
+mkdir -p build/syborg-s0/s4-acceptance
+card=build/syborg-s0/s4-acceptance/E.img
+truncate -s 67108864 "$card"
+mkfs.fat -F 32 -n V86S4 "$card"
+mcopy -i "$card" tests/symbian/fixtures/notes-v1.sisx ::V1.SIS
+mcopy -i "$card" tests/symbian/fixtures/notes-v2.sisx ::V2.SIS
+python3 -m http.server 8000 --bind 127.0.0.1
+```
+
+macOS 上可用 `/sbin/newfs_msdos -F 32 -S 512 -s 131072 -v V86S4 "$card"` 代替 `mkfs.fat`。用独立的临时 Chrome 配置文件打开 [S4 验收页面](http://127.0.0.1:8000/tests/symbian/syborg_sis.html)。页面核对两份包的全部字节，然后创建独立 OPFS `C:` 和 `E:`。关闭并移除该临时浏览器配置文件即可清理验收用盘。
+
+1. 完成首次开机向导。若出现 **Welcome**，选 **No**。用 **Cold reopen same C: disk** 新建 Worker，等主屏显示 **Offline** 和日期，确认客体日期在证书有效期内。若首次按 **Menu** 没有响应，在主屏停留片刻再按一次。
+2. 从 **Menu → Applications → File mgr.** 打开存储卡。选中 `V1.SIS`，选 **Options → Organise → Copy to folder → C: Phone mem. → Root folder → Copy**。回到 File manager 的手机内存，选中复制件并按页面的 **Enter**。
+3. 在原厂安装确认界面选 **Cancel**，用 **Check Notes is absent** 核对正式安装文件和登记。重新打开包，确认版本，接受该测试包的自签名警告，然后选择 **C: Phone mem.** 安装。
+4. 从 **Applications** 中启动带拼图图标的 **Notes**，输入 `580086`，用页面的 **Save (F2)** 保存，随后按 **Escape** 退出。用 **Check Notes 1.0 and saved text** 核对正式登记、E32 文件和应用私有数据。用 **Cold reopen same C: disk** 创建新 Worker，从手机菜单重新启动应用并核对读回。
+5. 在当前开机期间用同一方法把 `V2.SIS` 复制到手机内存并打开。确认原厂升级提示，再启动 v86 Notes。检查它显示 2.0 和原标记，随后用 **Check Notes 2.0 and saved text** 核对盘上记录。
+6. 从 **Menu → Settings → Application mgr. → Installed apps.** 选 v86 Notes 并执行 **Options → Uninstall → Yes**。卸载结束后，用 **Check Notes is absent** 核对磁盘，再从 **Menu** 启动 **Calendar**，退出并返回主屏。

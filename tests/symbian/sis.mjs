@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { inspect_sis } from "../../src/symbian/sis.js";
 import { make_sis_card, sis_card_files } from "../../src/symbian/sis_card.js";
+import { inspect_syborg_xip } from "../../src/symbian/syborg_xip.js";
 import { read_sis_card } from "./fixtures/read_sis_card.js";
 
 const UID = 0xE0860505;
@@ -33,8 +34,14 @@ function expand(wrapper)
     return raw;
 }
 const controller = pkg => field(expand(field(field(pkg.subarray(16), 12), 3)), 13);
+function executable_files(pkg)
+{
+    const data = field(field(pkg.subarray(16), 12), 30);
+    const [{ data: unit }] = fields(field(data, 2), true);
+    return fields(field(unit, 2), true).map(item => expand(field(item.data, 3)));
+}
 
-test("N97 note versions share a test UID, declare S60v5 and have valid self-signatures", async () => {
+test("The two Notes fixtures share a test UID, declare S60v5 and have valid self-signatures", async () => {
     let first_certificate;
     for(const version of [1, 2])
     {
@@ -48,6 +55,8 @@ test("N97 note versions share a test UID, declare S60v5 and have valid self-sign
         const chain = fields(control).find(found => found.type === 39);
         const certificate = new X509Certificate(field(field(chain.data, 22), 37));
         assert.ok(certificate.verify(certificate.publicKey));
+        assert.equal(new Date(certificate.validFrom).toISOString(), "2026-11-18T06:29:23.000Z");
+        assert.equal(new Date(certificate.validTo).toISOString(), "2036-11-15T06:29:23.000Z");
         if(first_certificate) assert.equal(certificate.fingerprint256, first_certificate);
         first_certificate = certificate.fingerprint256;
         const [{ data: signature }] = fields(field(chain.data, 2), true);
@@ -55,15 +64,51 @@ test("N97 note versions share a test UID, declare S60v5 and have valid self-sign
         assert.equal(oid, "1.2.840.113549.1.1.5"); // RSA with SHA-1, SignSIS
         assert.ok(verify("sha1", control.subarray(0, chain.offset), certificate.publicKey, field(signature, 37)));
 
-        const data = field(field(pkg.subarray(16), 12), 30), [{ data: unit }] = fields(field(data, 2), true);
-        const items = fields(field(unit, 2), true);
-        const exe = expand(field(items[0].data, 3));
+        const [exe, ...resources] = executable_files(pkg);
         assert.equal(exe.subarray(16, 20).toString(), "EPOC");
         assert.equal(exe.readUInt32LE(8), UID);
-        assert.equal(exe.readBigUInt64LE(132), 0n); // E32 security capabilities
-        assert.equal(items.length, 3, "executable and both app registration resources");
+        assert.equal(exe.readUInt32LE(128), UID); // E32 secure ID and private directory
+        assert.equal(exe.readBigUInt64LE(136), 0n); // E32 security capabilities
+        assert.equal(resources.length, 2, "both app registration resources");
     }
 });
+
+test("Both Notes executables import ordinals present in the Syborg XIP firmware",
+    { skip: !process.env.SYBORG_ROM }, async () => {
+        const rom = await readFile(process.env.SYBORG_ROM);
+        const xip = inspect_syborg_xip(rom);
+        for(const version of [1, 2])
+        {
+            const [exe] = executable_files(await load(version));
+            assert.equal(exe.readUInt32LE(28), 0, "uncompressed E32 image");
+            assert.equal(exe.readUInt32LE(44) >>> 28, 1, "E32 ELF import format");
+            const code = exe.readUInt32LE(100), section = exe.readUInt32LE(108);
+            const counts = {};
+            let block = section + 4;
+            for(let library = 0; library < exe.readUInt32LE(84); library++)
+            {
+                const name_at = section + exe.readUInt32LE(block);
+                const name = exe.toString("ascii", name_at, exe.indexOf(0, name_at))
+                    .replace(/\{[a-f\d]{8}\}|\[[a-f\d]{8}\]/gi, "").toLowerCase();
+                const file = xip.directory.files.get("sys/bin/" + name);
+                const image = xip.images.get(file?.address);
+                assert.ok(image?.export_count, "missing firmware dependency " + name);
+                const absent = rom.readUInt32LE(file.address - xip.header.rom_base + 16); // TRomImageHeader::iEntryPoint
+                const count = exe.readUInt32LE(block + 4);
+                counts[name] = count;
+                for(let i = 0; i < count; i++)
+                {
+                    const at = code + exe.readUInt32LE(block + 8 + i * 4);
+                    const ordinal = exe.readUInt32LE(at) & 0xFFFF;
+                    assert.ok(ordinal > 0 && ordinal <= image.export_count, name + " ordinal " + ordinal);
+                    const target = rom.readUInt32LE(image.exp + (ordinal - 1) * 4);
+                    assert.ok(target && target !== absent, name + " missing ordinal " + ordinal);
+                }
+                block += 8 + count * 4;
+            }
+            assert.deepEqual(counts, { "efsrv.dll": 11, "euser.dll": 17 + version, "gdi.dll": 2, "ws32.dll": 28 });
+        }
+    });
 
 test("SIS preflight rejects a damaged UID, declared extent, or data checksum", async () => {
     const original = await load(1);
