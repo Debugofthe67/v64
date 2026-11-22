@@ -256,12 +256,12 @@ card_ready:
     cmp r0, #3
     bne fail
     str r0, [r6, #4]
+    /* The quarter-turned framebuffer reverses both raw digitiser axes. */
     ldr r0, [r6, #12]
-    ldr r1, =0x7fff
-    cmp r0, r1
+    cmp r0, #0
     bne fail
     ldr r0, [r6, #16]
-    cmp r0, r1
+    cmp r0, #0
     bne fail
     ldr r0, [r6, #56]
     cmp r0, #1

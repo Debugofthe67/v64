@@ -171,7 +171,9 @@ function pointer(element, type, coords = {})
 function screen_point(x, y)
 {
     const rect = screen().getBoundingClientRect();
-    return { clientX: rect.left + (x + 0.5) * rect.width / 360, clientY: rect.top + (y + 0.5) * rect.height / 640 };
+    const landscape = screen().hasAttribute("data-landscape");
+    return { clientX: rect.left + (x + 0.5) * rect.width / (landscape ? 640 : 360),
+        clientY: rect.top + (y + 0.5) * rect.height / (landscape ? 360 : 640) };
 }
 async function tap(x, y, rest = 550)
 {
@@ -208,6 +210,8 @@ const landmarks = {
     home: [[112, 361, 55, 80, 0xE4C12CB3], [85, 555, 70, 70, 0xA6A38E6C]],
     menu: [[25, 12, 60, 25, 0x4A509670], [262, 465, 61, 62, 0x604ABE38]],
     applications: [[25, 12, 137, 25, 0x73E12815], [141, 472, 58, 67, 0xCD339319]],
+    landscape_menu: [[35, 550, 28, 65, 0x60F42C6E], [268, 182, 54, 50, 0xC9E02BEA]],
+    landscape_applications: [[35, 472, 28, 142, 0x3E4810C6]],
     file_manager: [[25, 12, 145, 23, 0x6C83BDBC]],
     media: [[280, 25, 46, 55, 0x79F10409]],
     welcome: [[13, 432, 136, 26, 0x314A6110]],
@@ -227,18 +231,19 @@ async function wait_screen(name, timeout)
     }, timeout);
     await artifact(name);
 }
-async function menu()
+async function menu(name = "menu")
 {
     await until("original home services", () => guest_home_ready, 100000);
     const deadline = performance.now() + 65000;
     while(performance.now() < deadline)
     {
-        if(matches("menu"))
+        if(matches(name))
         {
-            await wait_screen("menu", 9000);
+            await wait_screen(name, 9000);
             return;
         }
-        if(matches("welcome") || matches("settings_wizard")) await tap(325, 609, 1800);
+        if(matches("welcome") || matches("settings_wizard"))
+            await (screen().hasAttribute("data-landscape") ? tap(30, 325, 1800) : tap(325, 609, 1800));
         else if(matches("home")) await press("menu", 2200);
         else await sleep(800);
     }
@@ -351,6 +356,47 @@ async function check_controls()
     log("App focus loss and pointer cancellation released the mapped key and touch.");
 }
 
+async function check_rotation(input)
+{
+    const config = await create("5800 rotation", input);
+    config.symbian.network = false;
+    await store.put(config);
+    await reset_disk(disk_id(config.symbian.media.phone.path), "/build/browser-test-output/syborg-s4-stock-uninstalled-C.img");
+    await open_machine(config);
+    await wait_screen("home", 165000);
+    await menu();
+    const rotate = doc().querySelector("#symbian_rotate");
+    check(!rotate.disabled, "Rotate is available during the guest session");
+    doc().querySelector("#menu_view").click();
+    doc().querySelector("#view_scale_50").click();
+
+    async function switch_layout(landscape, name)
+    {
+        rotate.click();
+        const { width, height } = screen().getBoundingClientRect();
+        check(rotate.getAttribute("aria-pressed") === String(landscape) &&
+            width === (landscape ? 320 : 180) && height === (landscape ? 180 : 320), "Rotate preserves the selected zoom");
+        let view, changed = 0;
+        await until(name + " layout to settle", () => {
+            const next = matches(name) ? name : matches("home") ? "home" : null;
+            if(next !== view) { view = next; changed = performance.now(); }
+            return view && performance.now() - changed >= 800;
+        });
+        await menu(name);
+    }
+
+    await switch_layout(true, "landscape_menu");
+    await tap(430, 293);
+    await wait_screen("landscape_applications");
+    await tap(568, 36);
+    await wait_screen("landscape_menu");
+    await switch_layout(false, "menu");
+    await tap(295, 505);
+    await wait_screen("applications");
+    await power_off();
+    result.textContent = "PASS Nokia 5800 native portrait and landscape layout with mouse clicks in both views";
+}
+
 async function profile_boot(input)
 {
     const config = await create("5800 cold boot profile", input);
@@ -408,6 +454,7 @@ async function run()
     await until("library", () => doc().querySelector("#new_vm"));
     const input = await fetch_file(firmware_url, firmware_url.split("/").at(-1));
     if(part === "boot-profile") return profile_boot(input);
+    if(part === "rotation") return check_rotation(input);
     if(part === "network-settings")
     {
         const config = await create("5800 network settings", input);

@@ -1,4 +1,5 @@
 import { syborg_key, syborg_touch } from "../symbian/syborg_input.js";
+import { syborg_orientation } from "../symbian/syborg_accelerometer.js";
 import { SYBORG_BOOT_FILES, SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
 import { SYBORG_WISP_OPTIONS } from "../symbian/syborg_packet_data.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
@@ -2817,6 +2818,19 @@ V86.prototype.symbian_set_touch = function(x, y, pressed)
 };
 // eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
 V86.prototype["symbian_set_touch"] = V86.prototype.symbian_set_touch;
+
+/**
+ * Set the phone's gravity direction, in clockwise degrees from portrait.
+ * @param {number} angle
+ */
+V86.prototype.symbian_set_orientation = function(angle)
+{
+    if(this.machine_type !== SYBORG_MACHINE || !syborg_orientation(angle))
+        throw new Error("symbian_set_orientation: expected 0 or 90 degrees for a Syborg machine");
+    this.bus.send("symbian-orientation", angle);
+};
+// eslint-disable-next-line no-self-assign -- Keep the public name through Closure compilation.
+V86.prototype["symbian_set_orientation"] = V86.prototype.symbian_set_orientation;
 
 /**
  * Open a package in E:\INSTALL with the original Symbian installer.

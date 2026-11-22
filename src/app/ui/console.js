@@ -1044,6 +1044,35 @@ function console_ui(layout, emulator, ctx)
         if(phone_screen) phone_screen.set_scale(n);
         else emulator.screen_set_scale(n, n);
     };
+    /** @type {0 | 90} */
+    let symbian_angle = 0;
+    const rotate_phone = phone_screen && /** @type {HTMLButtonElement} */ (h("button#symbian_rotate", {
+        type: "button", "aria-pressed": "false", disabled: !phone_ready(), onclick: () => {
+            if(!phone_ready() || symbian_operation) return;
+            const angle = symbian_angle === 90 ? 0 : 90;
+            orient_phone(angle);
+            emulator.symbian_set_orientation(angle);
+            // Rotate is an explicit layout request. S60's automatic rotation
+            // can be suspended while the phone is idle or in a portrait-only app.
+            const scan = SYBORG_DEVICE.orientation_keys[angle];
+            phone_key(scan, true);
+            phone_key(scan, false);
+        },
+    }, "Rotate"));
+    /** @param {0 | 90} angle */
+    function orient_phone(angle)
+    {
+        symbian_angle = angle;
+        rotate_phone.setAttribute("aria-pressed", String(angle === 90));
+        phone_screen.set_orientation(angle);
+        if(zoom_to_fit) fit();
+    }
+    if(rotate_phone)
+    {
+        emulator.add_listener("emulator-started", () => { rotate_phone.disabled = false; });
+        emulator.add_listener("emulator-stopped", () => { rotate_phone.disabled = true; });
+        emulator.add_listener("symbian-orientation-restored", orient_phone);
+    }
     const show_ui = h("button.theatre-show-ui", { type: "button", hidden: true, onclick: () => set_theatre(false) }, "Leave theatre mode");
     layout.root.append(show_ui);
     const set_theatre = enabled =>
@@ -1444,7 +1473,8 @@ function console_ui(layout, emulator, ctx)
                 id: "devices_get_" + name.replace(":", "_"), action: () => get_disk_image(name) })),
         ],
         view: () => [
-            { label: "Full screen", id: "view_fullscreen", action: () => emulator.screen_go_fullscreen() },
+            { label: "Full screen", id: "view_fullscreen", action: () => phone_screen ?
+                layout.screen_container.requestFullscreen?.() : emulator.screen_go_fullscreen() },
             { label: "Zoom to fit", id: "view_zoom_to_fit", checked: zoom_to_fit, action: () => set_zoom_to_fit(!zoom_to_fit) },
             ...SCALES.map(n => ({ label: "Scale " + n * 100 + "%", id: "view_scale_" + n * 100, checked: !zoom_to_fit && scale === n, action: () => set_scale(n) })),
             { label: "Theatre mode", id: "view_theatre", checked: theatre, action: () => set_theatre(!theatre) },
@@ -1471,6 +1501,7 @@ function console_ui(layout, emulator, ctx)
             menu_button("Power", items.power, "menu_power"),
             ios ? iphone_controls : phone_screen ? phone_screen.top :
                 [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
+            rotate_phone,
             symbian ? h("button#symbian_send_files", { type: "button", onclick: open_transfer }, "Send Files…") : null,
             syborg && symbian.sd ? phone_screen.select : null,
             menu_button("View", items.view, "menu_view"),

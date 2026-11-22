@@ -1784,6 +1784,8 @@ export class V86 {
     symbian_send_key(code: number, pressed: boolean): void;
     /** Set the touch contact in the 360×640 Syborg screen plane. */
     symbian_set_touch(x: number, y: number, pressed: boolean): void;
+    /** Set the Syborg phone's gravity direction in clockwise degrees from portrait. */
+    symbian_set_orientation(angle: 0 | 90): void;
     /** Open a package by filename in E:\INSTALL. Resolves with its Symbian launch status. */
     symbian_install_package(name: string): Promise<number>;
 

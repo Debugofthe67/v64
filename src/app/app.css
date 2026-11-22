@@ -197,10 +197,19 @@ details.checklist { margin: 10px 0; }
     min-width: 0;
     aspect-ratio: 360 / 640;
     touch-action: none;
+    container-type: size;
 }
 #screen_container.syborg-touch-screen #vga, #screen_container.syborg-touch-screen #screen { position: absolute; inset: 0; }
 /* The touchscreen frame sets the scale. Override the screen adapter's inline canvas dimensions. */
 #screen_container.syborg-touch-screen #vga { height: 100% !important; width: 100% !important; object-fit: contain; }
+#screen_container.syborg-touch-screen[data-landscape] { aspect-ratio: 640 / 360; }
+#screen_container.syborg-touch-screen[data-landscape] #vga {
+    inset: 50% auto auto 50%;
+    width: 100cqh !important;
+    height: 100cqw !important;
+    transform-origin: center;
+    transform: translate(-50%, -50%) rotate(90deg) !important;
+}
 #screen_container.syborg-touch-screen:focus-visible { outline: 2px solid var(--accent); }
 .console-drawer {
     flex: 0 0 360px;

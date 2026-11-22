@@ -33,7 +33,11 @@ export function syborg_controls(screen, send_key, send_touch, ready)
     screen.tabIndex = 0;
     const controls = new AbortController();
     const listeners = { signal: controls.signal };
-    const release_touch = bind_phone_touch(screen, () => SYBORG_PROFILE.screen, (x, y) => [x, y], send_touch, ready, controls.signal);
+    const portrait = SYBORG_PROFILE.screen, landscape = { width: height, height: width };
+    let clockwise = false;
+    const display_size = () => clockwise ? landscape : portrait;
+    const release_touch = bind_phone_touch(screen, display_size, (x, y) => clockwise ? [y, height - 1 - x] : [x, y],
+        send_touch, ready, controls.signal);
     const releases = [release_touch];
 
     /** @param {{id: string, label: string, scan: number, min_press_ms?: number}} key */
@@ -85,10 +89,9 @@ export function syborg_controls(screen, send_key, send_touch, ready)
         releases.push(release);
         return button;
     }
-    stage.append(
-        h("div.syborg-body", null, screen, h("div.syborg-side", null, side.map(control))),
-        h("div.syborg-front", null, front.map(control)),
-    );
+    const side_keys = h("div.syborg-side", null, side.map(control));
+    const body = h("div.syborg-body", null, screen, side_keys);
+    stage.append(body, h("div.syborg-front", null, front.map(control)));
 
     // The display accepts a focused computer keyboard for guest apps that use
     // raw key input. The phone's on-screen keyboard is drawn by Symbian.
@@ -122,18 +125,31 @@ export function syborg_controls(screen, send_key, send_touch, ready)
     doc.defaultView.addEventListener("pagehide", release, listeners);
     doc.addEventListener("visibilitychange", () => { if(doc.hidden) release(); }, listeners);
 
-    const set_scale = scale => stage.style.setProperty("--syborg-screen-width", width * scale + "px");
+    let scale = 1;
+    const set_scale = next => {
+        scale = next;
+        stage.style.setProperty("--syborg-screen-width", display_size().width * scale + "px");
+    };
     return {
         release,
         dispose() { release(); controls.abort(); },
         top: top.map(control),
         select: control({ id: "select", label: "Open selected file", scan: 0x03 }),
+        /** @param {0 | 90} angle */
+        set_orientation(angle)
+        {
+            release_touch();
+            clockwise = angle === 90;
+            screen.toggleAttribute("data-landscape", clockwise);
+            set_scale(scale);
+        },
         set_scale,
         set_fit(room_width, room_height)
         {
-            const side = stage.querySelector(".syborg-side").getBoundingClientRect().width;
-            const frame = stage.getBoundingClientRect().height - screen.getBoundingClientRect().height;
-            set_scale(Math.max(0.1, Math.min((room_width - side - 26) / width, (room_height - frame) / height)));
+            const side = side_keys.getBoundingClientRect().width;
+            const frame = stage.getBoundingClientRect().height - body.getBoundingClientRect().height;
+            const size = display_size();
+            set_scale(Math.max(0.1, Math.min((room_width - side - 26) / size.width, (room_height - frame) / size.height)));
         },
     };
 }

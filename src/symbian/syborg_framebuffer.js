@@ -127,6 +127,7 @@ export function syborg_framebuffer(cpu, hub, set_irq)
     reset();
     return {
         reset,
+        rotation() { return registers[ORIENTATION]; },
         get_state() { return [registers.slice(), palette.slice(), update_base, hub.last_vblank, hub.next_vblank]; },
         set_state([saved, colors, base_pending, last, next])
         {

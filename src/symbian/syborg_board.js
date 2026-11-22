@@ -3,6 +3,7 @@
 // See docs/symbian-syborg-reference.md.
 import { DisplayHub } from "../display.js";
 import { sha256_hex } from "../image/sha256.js";
+import { syborg_accelerometer, syborg_orientation } from "./syborg_accelerometer.js";
 import { syborg_audio } from "./syborg_audio.js";
 import { syborg_irq_controller, syborg_rtc, syborg_timer, syborg_uart } from "./syborg_devices.js";
 import { syborg_framebuffer } from "./syborg_framebuffer.js";
@@ -124,7 +125,6 @@ function map_offline_slots(cpu, accelerated)
         [0xC000A000, 0x2000, "Syborg hostfs and snapshot slots", 0],
         [0xC000C000, 0x1000, "Syborg offline Ethernet", 0xC51D0040],
         ...(accelerated ? [] : [[0xC000F000, 0x1000, "Syborg optional graphics slot", 0]]),
-        [0xC001D000, 0x1000, "Syborg optional sensor slot", 0],
     ])
     {
         cpu.io.register_mmio(address, length, {
@@ -149,6 +149,7 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
 
     create_platform(cpu, boot);
     map_offline_slots(cpu, !!graphics);
+    const accelerometer = syborg_accelerometer(cpu, bus);
     const gpu = graphics ? syborg_graphics(cpu, graphics, privileged) : null;
     const hub = new DisplayHub(bus, screen);
     const irq = syborg_irq_controller(cpu);
@@ -163,11 +164,12 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
         syborg_nvmemory(cpu, 0xC0010000, "NVMemory C:", nvmemory, irq.source(12)),
         syborg_nvmemory(cpu, 0xC000D000, "NVMemory E:", nvmemory2, irq.source(14)),
     ];
+    const rtc = syborg_rtc(cpu);
+    const keyboard = syborg_keyboard(cpu, bus, irq.source(2));
+    const pointer = syborg_pointer(cpu, bus, irq.source(3), () => framebuffer.rotation());
+    const framebuffer = syborg_framebuffer(cpu, hub, irq.source(4));
     const devices = [
-        irq, timer, syborg_rtc(cpu),
-        syborg_keyboard(cpu, bus, irq.source(2)), syborg_pointer(cpu, bus, irq.source(3)),
-        syborg_framebuffer(cpu, hub, irq.source(4)),
-        ...ports, modem, ...disks,
+        irq, timer, rtc, keyboard, pointer, framebuffer, ...ports, modem, ...disks,
     ];
     return {
         nvmemory, nvmemory2,
@@ -181,7 +183,7 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
         get_state()
         {
             return [boot.identity, devices.map(device => device.get_state()), gpu?.get_state() ?? null,
-                boot.network, audio.get_state(), install.get_state()];
+                boot.network, audio.get_state(), install.get_state(), accelerometer.get_state()];
         },
         check_state(state)
         {
@@ -191,6 +193,9 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
                 throw new Error("The snapshot requires the original Syborg graphics backend");
             if((state[3] === true) !== !!boot.network)
                 throw new Error("The snapshot requires the original Syborg network mode");
+            if(state[6] !== undefined && (!Array.isArray(state[6]) || !syborg_orientation(state[6][0]) ||
+                state[6][1] !== (state[6][1] >>> 0)))
+                throw new Error("The snapshot has invalid Syborg accelerometer state");
             disks[0].check_state(state[1][devices.length - 2]);
             disks[1].check_state(state[1][devices.length - 1]);
         },
@@ -200,6 +205,7 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
             gpu?.set_state(state[2]);
             audio.set_state(state[4]);
             install.set_state(state[5]);
+            accelerometer.set_state(state[6]);
         },
         network_status() { return modem.network_status(); },
         display: hub,

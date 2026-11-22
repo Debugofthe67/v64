@@ -67,7 +67,7 @@ export function syborg_keyboard(cpu, bus, set_irq)
 
 const MOVE = 4;
 const COALESCED = 8;
-export function syborg_pointer(cpu, bus, set_irq)
+export function syborg_pointer(cpu, bus, set_irq, rotation)
 {
     const capacity = 256;
     let fifo = [], current = [], enabled = false, down = false, x = 0, y = 0;
@@ -78,7 +78,12 @@ export function syborg_pointer(cpu, bus, set_irq)
             pressed === down && next_x === x && next_y === y) return;
         x = next_x;
         y = next_y;
-        const event = [Math.round(x * 0x7FFF / (width - 1)), Math.round(y * 0x7FFF / (height - 1)),
+        // exyin applies a fixed 270-degree transform for the native LCD.
+        // With a quarter-turn in scanout, both axes run the other way.
+        const mirrored = rotation() & 1;
+        const panel_x = mirrored ? width - 1 - x : x;
+        const panel_y = mirrored ? height - 1 - y : y;
+        const event = [Math.round(panel_x * 0x7FFF / (width - 1)), Math.round(panel_y * 0x7FFF / (height - 1)),
             Number(pressed), pressed === down ? MOVE : pressed ? 1 : 2, Math.floor(cpu.clock.now() * 1000)];
         down = pressed;
         if(event[3] === MOVE && fifo.length >= capacity - 4 && fifo.at(-1)?.[3] & MOVE)

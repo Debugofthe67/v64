@@ -80,6 +80,16 @@ try
             assert.equal(cpu.read_pc(), "0x0");
             assert.equal(cpu.profile, "arm1136-r2");
             assert.deepEqual(vm.disk_buffers().map(([name]) => name), ["symbian_nvmemory", "symbian_nvmemory2"]);
+            const sensor = cpu.io.ranges.findIndex(range => range?.base === 0xC001D000);
+            const sensor_read = offset => Number(BigInt.asIntN(32, cpu.io.mmio_read(sensor, offset, 4)));
+            const gravity = () => [4, 8, 12, 16].map(sensor_read);
+            assert.equal(sensor_read(0) >>> 0, 0xC51D0030);
+            assert.deepEqual([20, 0x110, 0x12C, 0x178].map(sensor_read), [248, 1, 1, 1]);
+            assert.deepEqual(gravity(), [0, 1000, 0, 0]);
+            assert.throws(() => vm.symbian_set_orientation(180), /expected 0 or 90/);
+            vm.symbian_set_orientation(90);
+            vm.symbian_set_orientation(90);
+            assert.deepEqual(gravity(), [-1000, 0, 0, 1]);
             await new Promise((resolve, reject) => {
                 deadline = setTimeout(() => reject(new Error("Guest timed out at " + cpu.read_pc() + " with UART " + output)), 10000);
                 vm.add_listener("serial0-output-byte", byte => {
@@ -110,8 +120,12 @@ try
             assert.throws(() => cpu.validate_state(saved), /same Syborg firmware/);
             await vm.restart("power-on");
             assert.equal(cpu.read_pc(), "0x0");
+            assert.deepEqual(gravity(), [-1000, 0, 0, 1]);
+            vm.symbian_set_orientation(0);
+            assert.deepEqual(gravity(), [0, 1000, 0, 2]);
             await vm.restore_state(state);
-            console.log("PASS: Syborg handoff, ARM/Thumb, MMU, alignment, SVC, timer IRQ and return, UART, rotated pixels, input, ROFS, NVMemory and reboot (" +
+            assert.deepEqual(gravity(), [-1000, 0, 0, 1]);
+            console.log("PASS: Syborg handoff, ARM/Thumb, MMU, alignment, SVC, timer IRQ and return, UART, rotated pixels, accelerometer, input, ROFS, NVMemory and reboot (" +
                 (disable_jit ? "interpreter" : compiled + " JIT compilations") + ")");
         }
         finally

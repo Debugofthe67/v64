@@ -11,6 +11,8 @@ v86 runs the Nokia 5800 XpressMusic (RM-356) S60v5 firmware version 31.0.101 on 
 
 Each VM has its own writable phone memory (`C:`). The browser stores it for this site. Clearing the site's data removes its VMs and browser disks. You can export the disks from **Browser disks**.
 
+Use **Rotate** in the toolbar to turn the phone clockwise and switch to landscape. Click it again to return to portrait. S60 apps that use both layouts, such as the Applications menu, rearrange their controls, and you can click them in either view. The standby screen and other portrait-only screens keep their original layout.
+
 ## Connect to the Internet
 
 1. New 5800 VMs start with **Internet via virtual SIM** enabled and a prefilled Wisp relay. To change the relay or turn off networking, power off the VM and open **Library → Edit settings → Symbian firmware**. Use a `wisps://` relay when v86 is served over HTTPS.

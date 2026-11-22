@@ -3,6 +3,8 @@ import { SYBORG_MACHINE, SYBORG_PROFILE } from "./syborg_profile.js";
 // Each listed device has a firmware importer and a machine implementation.
 export const SYBORG_DEVICE = {
     id: SYBORG_MACHINE, family: "S60v5", name: "Nokia 5800", model: SYBORG_PROFILE.model,
+    // RM-356's WSINI hardware layout events, EStdKeyDeviceB/A.
+    orientation_keys: { 0: 0xAF, 90: 0xAE },
     // RM-356 keypad_exp.dll, switch.dll and exyin.dll, using Symbian scan codes.
     controls: {
         front: [
