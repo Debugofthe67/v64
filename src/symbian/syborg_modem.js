@@ -1,5 +1,6 @@
 // BB5 mailbox used by the 5800's ISC drivers. Register and ISI wire
 // formats follow the Syborg reference in docs/symbian-syborg-reference.md.
+import { syborg_packet_data } from "./syborg_packet_data.js";
 
 const TX_BUFFER = 0x1000;
 const RX_BUFFER = 0x1800;
@@ -98,7 +99,7 @@ function subscribed(channel, resource, id)
     return false;
 }
 
-function create_port(cpu, address, set_irq, respond)
+function create_port(cpu, address, set_irq, respond, send_data, close_channel)
 {
     const tx = new Uint8Array(BUFFER_SIZE);
     let channel_number = 0;
@@ -127,6 +128,8 @@ function create_port(cpu, address, set_irq, respond)
         if(number >= 64 || handle === 0 || handle >= 64) return;
         if(kind === 3 || kind === 4) // Open or close discards the handle's earlier lifetime.
         {
+            const previous = channels.get(handle);
+            if(previous) close_channel(handle << 8 | previous.number);
             channels.delete(handle);
             rx = rx.filter(([channel]) => channel >>> 8 !== handle);
             pending = pending.filter(([channel]) => channel >>> 8 !== handle);
@@ -151,6 +154,16 @@ function create_port(cpu, address, set_irq, respond)
         }
         if(kind === 1 && length >= 10 && length <= ISC_MESSAGE_SIZE)
             respond(channel, tx.subarray(0, length), reply);
+        if(kind === 5 && length >= 20 && length <= BUFFER_SIZE)
+            send_data(channel_number, tx.subarray(0, length));
+    }
+
+    function deliver(key, bytes, kind)
+    {
+        if(channels.get(key >>> 8)?.number !== (key & 255) || rx.length >= QUEUE_LIMIT) return false;
+        rx.push([key, bytes, true, kind]);
+        update_irq();
+        return true;
     }
 
     cpu.io.register_mmio(address, 0x2000, {
@@ -171,7 +184,7 @@ function create_port(cpu, address, set_irq, respond)
                 case 0x10: return rx.length;
                 case 0x14: return head?.[0] || 0;
                 case 0x18: return head?.[1].length || 0;
-                case 0x1C: return Number(!!head); // RX_DELIVER
+                case 0x1C: return head ? head[3] || 1 : 0;
                 case 0x24: return Number(enabled);
                 default: return 0;
             }
@@ -198,6 +211,15 @@ function create_port(cpu, address, set_irq, respond)
     });
 
     return {
+        channel_key(number)
+        {
+            let key = 0;
+            for(const [handle, channel] of channels)
+                if(channel.number === number) key = handle << 8 | number;
+            return key;
+        },
+        indicate(key, resource, id, payload) { deliver(key, encode_reply(key, resource, 0, id, payload), 1); },
+        receive_data(key, packet) { return deliver(key, packet, 3); },
         poll(now)
         {
             if(!pending.length) return Infinity;
@@ -260,15 +282,17 @@ const HOME_REGISTRATION = [
 const TEST_SIM_IMSI = [8, 0x09, 0x10, 0x10, 0x10, 0x32, 0x54, 0x76, 0x98];
 const RESET_DELAY_MS = 3000;
 
-export function syborg_modem(cpu, irq, network = false)
+export function syborg_modem(cpu, irq, network = false, bus = null)
 {
     let mtc_state = 1;
     let reset_at = null;
-    function respond(channel, request, send)
+    function respond(port, channel, request, send)
     {
         const resource = request[3], transaction = request[8], id = request[9];
         const parameter = request[10] || 0;
         const reply = (reply_id, payload) => send(resource, transaction, reply_id, payload);
+        if(network && resource === 0x08 && id === 0x11)
+            return reply(0x12, [5, 0x16, 0, 0, 0, 0]); // Security startup complete, no PIN prompt.
         if(resource === 0x09)
         {
             if(id === 0xC0)
@@ -276,9 +300,17 @@ export function syborg_modem(cpu, irq, network = false)
                 const ready = network && parameter === 0;
                 const status = parameter === 1 || ready ? 1 : 6;
                 reply(0xC1, parameter ? [parameter, status] : [0, status, Number(ready), ready ? 0 : 255, 0, 0]);
-                if(!channel.sim_sent && subscribed(channel, 9, 0xEF))
+                if(ready && channel.number === 35 && subscribed(channel, 9, 0xEF))
                 {
-                    const indication = channel.number === 35 ? [5, network ? 0x4A : 6] :
+                    // RM-356's startup service distinguishes SIM-readable
+                    // (0x4A) from SIM-usable (0x49). Its security check waits
+                    // for the latter after processing SIM_STATUS.
+                    send(9, 0, 0xEF, [5, 0x4A], 250);
+                    send(9, 0, 0xEF, [5, 0x49], 500);
+                }
+                else if(!channel.sim_sent && subscribed(channel, 9, 0xEF))
+                {
+                    const indication = !network && channel.number === 35 ? [5, 6] :
                         network && channel.number === 7 ? [0x0D, 0x0B, 8, 0, 0] : null;
                     if(indication)
                     {
@@ -289,11 +321,17 @@ export function syborg_modem(cpu, irq, network = false)
                 return;
             }
             if(network && id === 0x1D && parameter === 0x2D) return reply(0x1E, [parameter, 1, ...TEST_SIM_IMSI]);
+            if(network && id === 0x2D && parameter === 4)
+                return reply(0x2E, [4, 1, 0, 0, 0, 1, 1, 0xA7, 0, 16, 1, 0, 0, 0xF1, 0x10, 0, 0, 0, 0, 0, 0, 0]);
             if(network && id === 0x29 && parameter === 0x35) return reply(0x2A, [parameter, 1, 0, 0, 0, 0]);
             if(network && id === 0x29 && parameter === 0x36) return reply(0x2A, [parameter, 1]);
+            // The SIM query uses a boolean cause (0x31 = false, 0x30 = true).
+            if(network && id === 0x60 && parameter === 0xFA) return reply(0x61, [parameter, 0x31]);
             if(SIM_DISCONNECTED_READS.has(id)) return reply(id + 1, [parameter, 0xFB]);
             if(SIM_UNAVAILABLE_READS.has(id)) return reply(id + 1, [parameter, 0x24]);
         }
+        if(network && resource === 2 && (id === 6 || id === 0x18))
+            return reply(id + 1, [0, 0]); // Accept the TSY's SMS routing registration.
         if(network && resource === 0x0A)
         {
             if(id === 0)
@@ -348,12 +386,17 @@ export function syborg_modem(cpu, irq, network = false)
             send(resource, transaction, 0x35, request.subarray(10, 16), 80);
             return;
         }
+        if(packet_data?.control(port, request, send)) return;
         const fixed = REPLIES.get(resource << 8 | id);
         if(fixed) reply(...fixed);
     }
 
     const ports = [0xC0019000, 0xC001B000].map((address, index) =>
-        create_port(cpu, address, irq.source(15 + index), respond));
+        create_port(cpu, address, irq.source(15 + index),
+            (channel, request, send) => respond(index, channel, request, send),
+            (key, packet) => packet_data?.send_data(index, key, packet),
+            key => packet_data?.close_channel(index, key)));
+    const packet_data = network && bus ? syborg_packet_data(bus, ports) : null;
     return {
         poll(now)
         {
@@ -368,19 +411,24 @@ export function syborg_modem(cpu, irq, network = false)
         {
             mtc_state = 1;
             reset_at = null;
+            packet_data?.reset();
             ports.forEach(port => port.reset());
         },
         get_state()
         {
             const state = [mtc_state, ports.map(port => port.get_state())];
-            if(reset_at !== null) state.push(reset_at);
+            if(reset_at !== null || packet_data) state.push(reset_at);
+            if(packet_data) state.push(packet_data.get_state());
             return state;
         },
-        set_state([mode, state, deadline = null])
+        set_state([mode, state, deadline = null, packet_state = null])
         {
             mtc_state = mode;
             reset_at = deadline;
             ports.forEach((port, index) => port.set_state(state[index]));
+            if(packet_state) packet_data?.set_state(packet_state);
+            else packet_data?.reset();
         },
+        network_status() { return packet_data?.status() || null; },
     };
 }

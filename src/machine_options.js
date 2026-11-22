@@ -250,6 +250,9 @@ export function check_machine_options(options)
                 throw new Error("symbian.webgpu must be a boolean");
             if(media?.["network"] !== undefined && typeof media["network"] !== "boolean")
                 throw new Error("symbian.network must be a boolean");
+            const relay = options["network_relay_url"] || options["net_device"]?.["relay_url"];
+            if(media?.["network"] && relay && (typeof relay !== "string" || !/^wisps?:\/\/[^\s]+$/.test(relay)))
+                throw new Error("Syborg requires a wisp:// or wisps:// relay URL");
             for(const key of diagnostic ? ["rom"] : ["manifest", "rom", "rofs", "devicetree", "nvmemory"])
                 if(!media?.[key]) throw new Error("Syborg requires symbian." + key);
             for(const key of ["nvmemory", "nvmemory2"])

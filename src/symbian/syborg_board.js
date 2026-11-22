@@ -8,6 +8,7 @@ import { syborg_framebuffer } from "./syborg_framebuffer.js";
 import { syborg_graphics } from "./syborg_graphics.js";
 import { validate_syborg_artifacts } from "./syborg_import.js";
 import { syborg_keyboard, syborg_pointer } from "./syborg_input.js";
+import { enable_syborg_isc_data } from "./syborg_isc_data.js";
 import { syborg_modem } from "./syborg_modem.js";
 import { blank_syborg_card, syborg_nvmemory } from "./syborg_nvmemory.js";
 import { SYBORG_DIAGNOSTIC, SYBORG_PROFILE, SYBORG_MIB } from "./syborg_profile.js";
@@ -71,7 +72,9 @@ export function syborg_boot_files(settings)
     const platform_dtb = devicetree.slice();
     const boot_dtb = validation ? syborg_boot_dtb(devicetree, profile.ram_size) : platform_dtb;
     const network = settings.symbian["network"] === true;
-    return { profile, rom: rom.slice(), rofs, devicetree: platform_dtb, boot_dtb, disks, identity, network };
+    const boot_rom = rom.slice();
+    if(network && validation) enable_syborg_isc_data(boot_rom, validation.xip);
+    return { profile, rom: boot_rom, rofs, devicetree: platform_dtb, boot_dtb, disks, identity, network };
 }
 
 export function load_syborg_rom(cpu, boot)
@@ -146,7 +149,7 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
     const hub = new DisplayHub(bus, screen);
     const irq = syborg_irq_controller(cpu);
     const timer = syborg_timer(cpu, irq.source(1));
-    const modem = syborg_modem(cpu, irq, boot.network);
+    const modem = syborg_modem(cpu, irq, boot.network, bus);
     const [nvmemory, nvmemory2] = boot.disks;
     const disks = [
         syborg_nvmemory(cpu, 0xC0010000, "NVMemory C:", nvmemory, irq.source(12)),
@@ -194,6 +197,7 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
             devices.forEach((device, index) => device.set_state(state[1][index]));
             gpu?.set_state(state[2]);
         },
+        network_status() { return modem.network_status(); },
         display: hub,
     };
 }

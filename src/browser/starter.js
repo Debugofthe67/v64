@@ -1,5 +1,6 @@
 import { syborg_key, syborg_touch } from "../symbian/syborg_input.js";
 import { SYBORG_BOOT_FILES, SYBORG_MACHINE, SYBORG_PROFILE } from "../symbian/syborg_profile.js";
+import { SYBORG_WISP_OPTIONS } from "../symbian/syborg_packet_data.js";
 import { wasm_fallback_path } from "./wasm_paths.js";
 import { instantiate_v86, memory_import } from "../parallel/relocate.js";
 import { default_worker_url, parallel_unsupported_reason } from "../parallel/machine.js";
@@ -674,7 +675,9 @@ V86.prototype.continue_init = async function(emulator, options)
     settings.virtio_balloon = options.virtio_balloon;
     settings.virtio_console = !!options.virtio_console;
 
-    const relay_url = options.network_relay_url || options.net_device && options.net_device.relay_url;
+    const syborg_network = this.machine_type === SYBORG_MACHINE;
+    const relay_url = syborg_network && options["symbian"]["network"] !== true ? undefined :
+        options.network_relay_url || options.net_device && options.net_device.relay_url;
     if(relay_url)
     {
         // TODO: remove bus, use direct calls instead
@@ -689,7 +692,8 @@ V86.prototype.continue_init = async function(emulator, options)
         }
         else if(relay_url.startsWith("wisp://") || relay_url.startsWith("wisps://"))
         {
-            this.network_adapter = new WispNetworkAdapter(relay_url, this.bus, options.net_device);
+            const network = syborg_network ? Object.assign({}, options.net_device, SYBORG_WISP_OPTIONS) : options.net_device;
+            this.network_adapter = new WispNetworkAdapter(relay_url, this.bus, network);
         }
         else
         {

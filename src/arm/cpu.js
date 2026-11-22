@@ -1510,6 +1510,7 @@ A64CPU.prototype.get_diagnostics = function(include_steps = false)
         "cpu_type": this.cpu_type,
         "machine_type": this.machine_type,
         "syborg_graphics": syborg_graphics ? Object.assign(syborg_graphics, { "cpu_slice_ms": this.syborg_cpu_slice_ms }) : null,
+        "syborg_network": this.devices.syborg?.network_status() || null,
         "active_core": exports["a64_current_core"](),
         "parallel": this.parallel ? Object.assign(this.parallel.status(), { "machine_core": {
             "tlbi_posted": exports["a64_tlb_ring_stat"](0), "dsb_waits": exports["a64_tlb_ring_stat"](1),
