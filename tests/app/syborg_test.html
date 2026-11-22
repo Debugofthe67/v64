@@ -542,19 +542,17 @@ async function run()
     }
     await open_console(doc().querySelector('.console-notice a').href);
     await wait_screen("home", 165000);
-    await menu();
-    await tap(295, 505);
-    await wait_screen("applications");
-    await tap(55, 143);
-    await wait_screen("file_manager");
-    log("Private raw E: card reopened in the app. Copy notes-v1.sisx from E:\\INSTALL to the C: root and install it. Open the puzzle-piece Notes in Applications, type 580086, and tap Save.");
+    doc().querySelector("#symbian_send_files").click();
+    const packages = await until("packages on E:", () => doc().querySelector('dialog[open] select[aria-label="Package on E:"]'));
+    check(packages.options.length === 1 && packages.value === note.name, "the installer picker reads the signed package from E:");
+    button(doc().querySelector("dialog[open]"), "Open Installer").click();
+    log("Opened notes-v1.sisx directly from E:. Confirm the native installer and choose C: for the app. Open the puzzle-piece Notes in Applications, type 580086, and tap Save.");
     window.s5.card_ready = true;
     await wait_screen("saved_note", 600000);
     await power_off();
     const phone_disk = await image_for(saved.symbian.media.phone);
     await check_installed_notes(phone_disk, 1);
-    const copied = await read_fat16_file(phone_disk, "data/notes-v1.sisx");
-    check(copied?.length === expected.length && copied.every((byte, i) => byte === expected[i]), "the native copy preserves the signed bytes");
+    check(!await read_fat16_file(phone_disk, "data/notes-v1.sisx"), "the native installer did not require a C: copy of the package");
     check(!(await store.get(second.id)).symbian.sd, "second VM never inherited the transfer card");
     const untouched = new Uint8Array(await (await image_for(second.symbian.media.phone)).arrayBuffer());
     check(untouched.every(byte => byte === 0), "second VM's C: seed remained untouched");

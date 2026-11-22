@@ -8,13 +8,16 @@ const LFN_OFFSETS = [1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30];
 function card_layout(files)
 {
     const folders = new Map();
+    let install_reserve = 0;
     for(const entry of files)
     {
         if(!folders.has(entry.folder)) folders.set(entry.folder, { files: [], entries: 3 }); // dot, dotdot, end marker
         const directory = folders.get(entry.folder);
         directory.files.push(entry.file);
         directory.entries += Math.ceil(entry.file.name.length / LFN_OFFSETS.length) + 1;
+        if(entry.folder === "INSTALL") install_reserve += entry.file.size;
     }
+    let smallest = null;
     for(let size = 16 * MiB; size <= 2048 * MiB; size *= 2)
     {
         // Leave one MiB outside the largest volume so its cluster count
@@ -28,9 +31,15 @@ function card_layout(files)
             blocks: Math.ceil(dir.entries * 32 / cluster) }));
         const blocks = files.reduce((sum, { file }) => sum + Math.ceil(file.size / cluster),
             directories.reduce((sum, dir) => sum + dir.blocks, 0));
-        if(blocks <= Math.floor((total - 1 - COPIES * fatsz - ROOT_SECTORS) / per_cluster))
-            return { size, total, per_cluster, cluster, fatsz, header_size, data_bytes: blocks * cluster, directories };
+        const capacity = Math.floor((total - 1 - COPIES * fatsz - ROOT_SECTORS) / per_cluster);
+        if(blocks > capacity) continue;
+        const layout = { size, total, per_cluster, cluster, fatsz, header_size, data_bytes: blocks * cluster, directories };
+        smallest ||= layout;
+        // Reserve a second copy's worth of space as a baseline for installing
+        // to E:. The installer makes the final check after seeing the contents.
+        if(blocks + Math.ceil(install_reserve / cluster) <= capacity) return layout;
     }
+    if(smallest) return smallest;
     throw new Error("The selected files do not fit on a 2 GiB transfer card");
 }
 
@@ -70,11 +79,17 @@ export async function transfer_card_files(files, signal)
 
 // VFAT stores 13 UTF-16 units in each long entry. The entries precede
 // their 8.3 alias in reverse ordinal order and share its checksum.
-function long_name(dir, index, name, alias)
+function alias_checksum(alias)
 {
     let checksum = 0;
     for(let i = 0; i < alias.length; i++)
         checksum = (((checksum & 1) << 7 | checksum >>> 1) + alias.charCodeAt(i)) & 255;
+    return checksum;
+}
+
+function long_name(dir, index, name, alias)
+{
+    const checksum = alias_checksum(alias);
     const count = Math.ceil(name.length / LFN_OFFSETS.length);
     for(let part = count; part > 0; part--)
     {
@@ -179,4 +194,65 @@ export function make_transfer_card(files, serial)
     for(let remaining = size - header.length - data_bytes; remaining > 0; remaining -= MiB)
         parts.push(remaining < MiB ? zero.slice(0, remaining) : zero);
     return new File(parts, "file-transfer.img", { type: "application/octet-stream" });
+}
+
+/** List the packages on a transfer card without loading their contents. @param {Blob} disk */
+export async function transfer_card_packages(disk)
+{
+    const boot = new DataView(await disk.slice(0, SECTOR).arrayBuffer());
+    const invalid = () => new Error("The transfer card has an invalid FAT16 layout.");
+    if(boot.byteLength !== SECTOR || boot.getUint16(11, true) !== SECTOR || boot.getUint16(510, true) !== 0xAA55 ||
+        String.fromCharCode(...new Uint8Array(boot.buffer, 54, 5)) !== "FAT16") throw invalid();
+    const cluster = boot.getUint8(13) * SECTOR;
+    const fat_at = boot.getUint16(14, true) * SECTOR, fat_size = boot.getUint16(22, true) * SECTOR;
+    const root_at = fat_at + boot.getUint8(16) * fat_size, root_size = boot.getUint16(17, true) * 32;
+    const data_at = root_at + Math.ceil(root_size / SECTOR) * SECTOR;
+    const size = (boot.getUint16(19, true) || boot.getUint32(32, true)) * SECTOR;
+    if(!cluster || !fat_at || !fat_size || !root_size || size > disk.size || data_at >= size) throw invalid();
+    const root = new Uint8Array(await disk.slice(root_at, root_at + root_size).arrayBuffer());
+    const root_view = new DataView(root.buffer);
+    let first = 0;
+    for(let at = 0; at + 32 <= root.length && root[at]; at += 32)
+    {
+        if(!(root[at + 11] & 0x10) || String.fromCharCode(...root.subarray(at, at + 11)) !== "INSTALL    ") continue;
+        first = root_view.getUint16(at + 26, true);
+        if(first < 2) throw invalid();
+        break;
+    }
+    if(!first) return [];
+
+    const fat = new DataView(await disk.slice(fat_at, fat_at + fat_size).arrayBuffer());
+    const seen = new Set(), parts = [];
+    for(let next = first; next < 0xFFF8; next = fat.getUint16(next * 2, true))
+    {
+        const address = data_at + (next - 2) * cluster;
+        if(next < 2 || next >= 0xFFF0 || next * 2 + 2 > fat.byteLength || address + cluster > size ||
+            seen.has(next) || (seen.size + 1) * cluster > 65536 * 32) throw invalid();
+        seen.add(next);
+        parts.push(disk.slice(address, address + cluster));
+    }
+    const dir = new Uint8Array(await new Blob(parts).arrayBuffer()), view = new DataView(dir.buffer);
+    const names = [];
+    let long_name = "", remaining = 0, checksum = 0;
+    for(let at = 0; at + 32 <= dir.length && dir[at]; at += 32)
+    {
+        const marker = dir[at], kind = dir[at + 11];
+        if(marker === 0xE5) { long_name = ""; remaining = 0; continue; }
+        if(kind === 0x0F)
+        {
+            const part = marker & 31, check = dir[at + 13];
+            if(marker & 0x40) { long_name = ""; remaining = part; checksum = check; }
+            if(!part || part !== remaining || check !== checksum) { long_name = ""; remaining = 0; continue; }
+            long_name = String.fromCharCode(...LFN_OFFSETS.map(offset => view.getUint16(at + offset, true))).split("\0")[0] + long_name;
+            remaining--;
+            continue;
+        }
+        const short = String.fromCharCode(...dir.subarray(at, at + 11));
+        const name = long_name && remaining === 0 && alias_checksum(short) === checksum ? long_name :
+            short.slice(0, 8).trimEnd() + "." + short.slice(8).trimEnd();
+        long_name = "";
+        remaining = 0;
+        if(!(kind & 0x18) && view.getUint32(at + 28, true) && /\.sisx?$/i.test(name)) names.push(name);
+    }
+    return names;
 }

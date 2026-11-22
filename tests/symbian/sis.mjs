@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { inspect_sis } from "../../src/symbian/sis.js";
-import { make_transfer_card, transfer_card_files } from "../../src/symbian/transfer_card.js";
+import { make_transfer_card, transfer_card_files, transfer_card_packages } from "../../src/symbian/transfer_card.js";
 import { inspect_syborg_xip } from "../../src/symbian/syborg_xip.js";
 import { list_fat16_directory, read_fat16_file } from "../lib/fat32_reader.mjs";
 
@@ -161,7 +161,7 @@ test("a large, structurally valid unsigned SIS traverses the streaming preflight
     const files = await transfer_card_files([pkg]);
     assert.equal(files[0].path, "E:\\INSTALL\\大文件.sis");
     const card = make_transfer_card(files, 0x356);
-    assert.equal(card.size, 64 * 1024 ** 2);
+    assert.equal(card.size, 128 * 1024 ** 2);
     const extracted = await read_fat16_file(card, "INSTALL/大文件.sis", 64 * 1024 ** 2);
     assert.equal(extracted.length, pkg.size);
     assert.equal(sha(extracted), sha(new Uint8Array(await pkg.arrayBuffer())));
@@ -177,6 +177,8 @@ test("a mixed transfer card keeps original names, extensions and contents", asyn
         ...install.map(file => "E:\\INSTALL\\" + file.name), ...regular.map(file => "E:\\Transfer\\" + file.name),
     ]);
     const card = make_transfer_card(selected, 0x356);
+    assert.deepEqual(await transfer_card_packages(card), install.map(file => file.name));
+    assert.deepEqual(await transfer_card_packages(make_transfer_card(await transfer_card_files(regular), 0x356)), []);
     for(const [folder, files] of [["INSTALL", install], ["Transfer", regular]])
     {
         const entries = await list_fat16_directory(card, folder);

@@ -1,5 +1,5 @@
 // @ts-check
-import { h, replace } from "./dom.js";
+import { dialog, h, replace } from "./dom.js";
 import { transfer_card_files } from "../../symbian/transfer_card.js";
 
 /** @param {Awaited<ReturnType<typeof transfer_card_files>>} files */
@@ -8,8 +8,19 @@ export function transfer_paths(files)
     return h("ul", null, files.map(({ path }) => h("li", null, h("code", null, path))));
 }
 
-export const SYBORG_TRANSFER_HELP = "In Symbian File manager, look in E:\\Transfer for files and E:\\INSTALL for SIS/SISX packages.";
-const INSTALL_HELP = "To install a package, copy it from E:\\INSTALL to the Phone memory root. Select the copy and use Open selected file.";
+export const SYBORG_TRANSFER_HELP = "Open transferred files in E:\\Transfer. To install a SIS or SISX, choose Send Files… again.";
+const INSTALL_HELP = "After restarting the phone, choose Send Files… again to open a package in the Symbian installer.";
+
+/** @param {string[]} names */
+export async function choose_install_package(names)
+{
+    const select = /** @type {HTMLSelectElement} */ (h("select", { "aria-label": "Package on E:" },
+        names.map(name => h("option", { value: name }, name))));
+    const open = await dialog({ title: "Install from E:",
+        body: h("label.field", null, h("span", null, "Installation package"), select), focus: select,
+        buttons: [{ label: "Cancel", value: false }, { label: "Open Installer", value: true, primary: true }] });
+    return open ? select.value : undefined;
+}
 
 /**
  * @param {(files: Awaited<ReturnType<typeof transfer_card_files>>) => Promise<void>} attach

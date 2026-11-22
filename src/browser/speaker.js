@@ -58,8 +58,9 @@ export function SpeakerAdapter(bus)
 
     bus.register("emulator-started", function()
     {
+        if(!this.dac) return;
         this.dac.paused = false;
-        this.audio_context.resume();
+        this.resume();
         this.dac.pump();
     }, this);
 
@@ -77,7 +78,7 @@ export function SpeakerAdapter(bus)
     this.unlock = () =>
     {
         if(!this.audio_context || this.audio_context.state !== "suspended" || this.dac.paused) return;
-        this.audio_context.resume().then(() => this.audio_context && this.audio_context.state === "running" && this.remove_unlock());
+        this.resume().then(() => this.audio_context && this.audio_context.state === "running" && this.remove_unlock());
     };
     if(typeof document !== "undefined")
     {
@@ -95,10 +96,23 @@ SpeakerAdapter.prototype.remove_unlock = function()
     this.unlock = null;
 };
 
+// Powering the VM off can close the context while its last resume/suspend
+// operation is still pending. Other audio failures remain visible.
+SpeakerAdapter.prototype.resume = function()
+{
+    const context = this.audio_context;
+    return context && context.state !== "closed" ? context.resume().catch(error => {
+        if(context.state !== "closed") throw error;
+    }) : Promise.resolve();
+};
+
 SpeakerAdapter.prototype.pause = function()
 {
     if(this.dac) this.dac.paused = true;
-    return this.audio_context ? this.audio_context.suspend() : Promise.resolve();
+    const context = this.audio_context;
+    return context && context.state !== "closed" ? context.suspend().catch(error => {
+        if(context.state !== "closed") throw error;
+    }) : Promise.resolve();
 };
 
 SpeakerAdapter.prototype.destroy = function()

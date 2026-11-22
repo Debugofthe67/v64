@@ -994,7 +994,7 @@ export function config_to_options(config, env)
                 network: network === true,
                 rom: image(rom), rofs: image(rofs), devicetree: image(devicetree),
                 nvmemory: { ...image(phone), disk_option: "read_write" },
-                ...(sd ? { nvmemory2: { ...image(sd), disk_option: "read_write" } } : {}) },
+                ...(sd ? { nvmemory2: { ...image(sd), disk_option: "read_write" }, install_bridge: true } : {}) },
             initial_state: image(config.initial_state), autostart: true, disable_mouse: true, disable_keyboard: true,
         };
     }

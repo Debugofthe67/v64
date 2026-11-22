@@ -13,7 +13,7 @@ import { h, replace, confirm, inform, dialog, download, pick_file, ask_text, men
 import { VMStore } from "../vm_store.js";
 import { read_state, delete_state, write_state, storage_space, state_estimate, machine_digest, hold_machine } from "../vm_state.js";
 import { config_to_options, android_display, uefi_vars_template, TPM_STATE_SIZE } from "../vm_config.js";
-import { import_disk, create_disk, delete_disk } from "../browser_disks.js";
+import { import_disk, create_disk, delete_disk, disk_file, disk_id } from "../browser_disks.js";
 import { combination_scancodes, COMBINATIONS } from "../keys.js";
 import { DEFAULT_FORM, DEFAULT_GRAPHICS_ADAPTER, settings_to_options } from "../../browser/vm_options.js";
 import { bool_arg, start_settings } from "../../browser/query_compat.js";
@@ -22,8 +22,8 @@ import { NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
 import { IOSInstallController } from "../ios_install.js";
 import { show_ios_install } from "./ios_install.js";
-import { transfer_paths, show_file_transfer, SYBORG_TRANSFER_HELP } from "./symbian_transfer.js";
-import { make_transfer_card } from "../../symbian/transfer_card.js";
+import { transfer_paths, show_file_transfer, choose_install_package, SYBORG_TRANSFER_HELP } from "./symbian_transfer.js";
+import { make_transfer_card, transfer_card_packages } from "../../symbian/transfer_card.js";
 import { syborg_controls } from "./syborg_controls.js";
 import { hardware_rows } from "./describe.js";
 import { SYBORG_DEVICE } from "../../symbian/catalog.js";
@@ -703,6 +703,26 @@ function console_ui(layout, emulator, ctx)
     {
         const { config, store } = ctx;
         if(!config?.symbian || !store) return;
+        const sd = config.symbian.sd;
+        if(sd?.kind === "browser")
+        {
+            try
+            {
+                const names = await transfer_card_packages(await disk_file(disk_id(sd.path)));
+                if(!names.length)
+                {
+                    await inform("Transfer card in use", "This card has no installation packages. Power off and eject it in Library → Settings → Symbian firmware to send more files.");
+                    return;
+                }
+                const name = await choose_install_package(names);
+                if(!name || powered_off) return;
+                const status = await emulator.symbian_install_package(name);
+                if(status === -18) throw new Error("The installer is still starting. Wait for the phone's home screen and try again. If the phone resumed an older snapshot, power it off and start it once.");
+                if(status !== 0) throw new Error(`Symbian could not open ${name} (error ${status}).`);
+            }
+            catch(error) { await inform("Could not open the installer", error.message); }
+            return;
+        }
         if(!navigator.locks) { await inform("File transfer", "This transfer needs browser Web Locks to attach the card safely."); return; }
         /** @param {VMConfig | undefined} current */
         function card_slot(current)
