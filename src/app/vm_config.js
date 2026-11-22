@@ -487,7 +487,7 @@ export function validate_config(config)
                 if(card.kind !== "browser" || !/^v86\/disks\/[a-f0-9-]+\.img$/.test(card.path) ||
                     card.size < 16 * SYBORG_MIB || card.size > 2048 * SYBORG_MIB || card.size % 512 ||
                     !digest.test(card.sha256) || !card.name)
-                    problem("symbian.sd", "Choose a compatible Nokia 5800 SIS transfer card");
+                    problem("symbian.sd", "Choose a compatible Nokia 5800 transfer card");
             }
         }
         const expected_profile = SYBORG_PROFILE.cpu;

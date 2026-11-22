@@ -4,9 +4,9 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 import { inspect_sis } from "../../src/symbian/sis.js";
-import { make_sis_card, sis_card_files } from "../../src/symbian/sis_card.js";
+import { make_transfer_card, transfer_card_files } from "../../src/symbian/transfer_card.js";
 import { inspect_syborg_xip } from "../../src/symbian/syborg_xip.js";
-import { read_sis_card } from "./fixtures/read_sis_card.js";
+import { list_fat16_directory, read_fat16_file } from "../lib/fat32_reader.mjs";
 
 const UID = 0xE0860505;
 const load = version => readFile(new URL(`./fixtures/notes-v${version}.sisx`, import.meta.url));
@@ -158,11 +158,36 @@ test("a large, structurally valid unsigned SIS traverses the streaming preflight
     for await (const part of data.stream())
         for(const byte of part) crc = ((crc << 8) & 65535) ^ table[(crc >>> 8) ^ byte];
     const pkg = new File([template.subarray(0, 16), tag(12, tag(35, number(crc, 2)), packed(meta), data)], "大文件.sis");
-    const packages = await sis_card_files([pkg]);
-    assert.equal(packages[0].path, "E:\\INSTALL\\PKG00001.SIS");
-    const card = make_sis_card(packages, 0x356);
+    const files = await transfer_card_files([pkg]);
+    assert.equal(files[0].path, "E:\\INSTALL\\大文件.sis");
+    const card = make_transfer_card(files, 0x356);
     assert.equal(card.size, 64 * 1024 ** 2);
-    const extracted = await read_sis_card(card, 1);
+    const extracted = await read_fat16_file(card, "INSTALL/大文件.sis", 64 * 1024 ** 2);
     assert.equal(extracted.length, pkg.size);
     assert.equal(sha(extracted), sha(new Uint8Array(await pkg.arrayBuffer())));
+});
+
+test("a mixed transfer card keeps original names, extensions and contents", async () => {
+    const install = [new File([await load(1)], "Notes 实验版.sisx"), new File([await load(2)], "Notes v2.SIS")];
+    const regular = [new File(["utf16 split"], "123456789012🎵.txt"), new File(["reserved alias"], "F0000001.TXT"),
+        new File(["exactly 13"], "123456789.txt"), new File([], "empty"), new File(["a movie"], "Example Clip.MP4"),
+        ...Array.from({ length: 40 }, (_, i) => new File([String(i)], `Transfer item with a long name ${i}.bin`))];
+    const selected = await transfer_card_files([...install, ...regular]);
+    assert.deepEqual(selected.map(({ path }) => path), [
+        ...install.map(file => "E:\\INSTALL\\" + file.name), ...regular.map(file => "E:\\Transfer\\" + file.name),
+    ]);
+    const card = make_transfer_card(selected, 0x356);
+    for(const [folder, files] of [["INSTALL", install], ["Transfer", regular]])
+    {
+        const entries = await list_fat16_directory(card, folder);
+        assert.deepEqual(entries.map(({ name }) => name), files.map(file => file.name));
+        for(const file of files)
+        {
+            const content = await read_fat16_file(card, `${folder}/${file.name}`);
+            assert.deepEqual(content, new Uint8Array(await file.arrayBuffer()), file.name);
+        }
+    }
+    await assert.rejects(transfer_card_files([new File(["ordinary file"], "bad.sisx")]), /bad.sisx/);
+    await assert.rejects(transfer_card_files([new File([], "same.txt"), new File([], "Same.TXT")]), /same name/);
+    await assert.rejects(transfer_card_files([new File([], "bad:name")]), /cannot be stored/);
 });

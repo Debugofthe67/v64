@@ -22,8 +22,8 @@ import { NIC_LABELS, SOUND_LABELS } from "./panels/devices.js";
 import { USB_PORTS } from "../../machine_options.js";
 import { IOSInstallController } from "../ios_install.js";
 import { show_ios_install } from "./ios_install.js";
-import { package_paths, show_sis_transfer, SYBORG_INSTALL_HELP } from "./symbian_packages.js";
-import { make_sis_card } from "../../symbian/sis_card.js";
+import { transfer_paths, show_file_transfer, SYBORG_TRANSFER_HELP } from "./symbian_transfer.js";
+import { make_transfer_card } from "../../symbian/transfer_card.js";
 import { syborg_controls } from "./syborg_controls.js";
 import { hardware_rows } from "./describe.js";
 import { SYBORG_DEVICE } from "../../symbian/catalog.js";
@@ -699,30 +699,30 @@ function console_ui(layout, emulator, ctx)
             h("a", { href: location.pathname }, "library"), "."));
         ctx.set_status("Powered off");
     };
-    const send_sis = async () =>
+    const send_files = async () =>
     {
         const { config, store } = ctx;
         if(!config?.symbian || !store) return;
-        if(!navigator.locks) { await inform("SIS/SISX transfer", "This transfer needs browser Web Locks to attach the card safely."); return; }
+        if(!navigator.locks) { await inform("File transfer", "This transfer needs browser Web Locks to attach the card safely."); return; }
         /** @param {VMConfig | undefined} current */
         function card_slot(current)
         {
             if(!current?.symbian || current.suspended)
-                throw new Error("Finish starting or resuming the " + SYBORG_DEVICE.name + " before sending packages.");
+                throw new Error("Finish starting or resuming the " + SYBORG_DEVICE.name + " before sending files.");
             if(current.symbian.sd)
                 throw new Error("A transfer card is already attached." +
                     " Power off and eject it in Library → Settings → Symbian firmware. Its image stays in Browser disks.");
             return current;
         }
         try { card_slot(await store.get(config.id)); }
-        catch(error) { await inform("SIS/SISX transfer", error.message); return; }
-        /** @param {Parameters<typeof package_paths>[0]} packages */
-        const insert_sis = async packages => {
+        catch(error) { await inform("File transfer", error.message); return; }
+        /** @param {Parameters<typeof transfer_paths>[0]} files */
+        const attach_card = async files => {
             card_slot(await store.get(config.id));
-            const image = make_sis_card(packages, crypto.getRandomValues(new Uint32Array(1))[0]);
-            const disk = await import_disk(image, ctx.name + " · SIS transfer card",
+            const image = make_transfer_card(files, crypto.getRandomValues(new Uint32Array(1))[0]);
+            const disk = await import_disk(image, ctx.name + " · File transfer card",
                 { prefs: store, symbian: { owner: config.id, role: "sd" } });
-            const sd = /** @type {const} */ ({ kind: "browser", path: disk.path, size: disk.size, sha256: disk.sha256, name: "SIS transfer card" });
+            const sd = /** @type {const} */ ({ kind: "browser", path: disk.path, size: disk.size, sha256: disk.sha256, name: "File transfer card" });
             try
             {
                 await store.update(config.id, latest => {
@@ -739,19 +739,19 @@ function console_ui(layout, emulator, ctx)
             config.symbian.sd = sd;
             written_back = true;
             await power_off(false);
-            layout.notice.append(h("p", { role: "status" }, "Transfer card saved. Power on again to use it."), package_paths(packages));
+            layout.notice.append(h("p", { role: "status" }, "Transfer card saved. Power on again to use it."), transfer_paths(files));
         };
-        await show_sis_transfer(packages => {
+        await show_file_transfer(files => {
             if(symbian_operation || powered_off) throw new Error("The " + SYBORG_DEVICE.name + " is busy. Wait for the current operation and try again.");
-            return symbian_exclusive(() => insert_sis(packages))();
-        }, { name: SYBORG_DEVICE.name, firmware: symbian.sw_version });
+            return symbian_exclusive(() => attach_card(files))();
+        }, SYBORG_DEVICE.name);
     };
-    let sis_dialog = false;
-    const open_sis = async () => {
-        if(sis_dialog || symbian_operation || powered_off) return;
-        sis_dialog = true;
-        try { await send_sis(); }
-        finally { sis_dialog = false; }
+    let transfer_dialog = false;
+    const open_transfer = async () => {
+        if(transfer_dialog || symbian_operation || powered_off) return;
+        transfer_dialog = true;
+        try { await send_files(); }
+        finally { transfer_dialog = false; }
     };
     const shutdown_iphone = async () =>
     {
@@ -1450,7 +1450,7 @@ function console_ui(layout, emulator, ctx)
             menu_button("Power", items.power, "menu_power"),
             ios ? iphone_controls : phone_screen ? phone_screen.top :
                 [menu_button("Keys", items.keys, "menu_keys"), menu_button("Devices", items.devices, "menu_devices")],
-            symbian ? h("button#symbian_send_sis", { type: "button", onclick: open_sis }, "Send SIS/SISX…") : null,
+            symbian ? h("button#symbian_send_files", { type: "button", onclick: open_transfer }, "Send Files…") : null,
             syborg && symbian.sd ? phone_screen.select : null,
             menu_button("View", items.view, "menu_view"),
             ios || symbian ? null : menu_button("Input", items.input, "menu_input"),
@@ -1467,7 +1467,7 @@ function console_ui(layout, emulator, ctx)
     if(syborg)
     {
         set_zoom_to_fit(true);
-        if(symbian.sd) layout.notice.append(h("p.note", null, SYBORG_INSTALL_HELP));
+        if(symbian.sd) layout.notice.append(h("p.note", null, SYBORG_TRANSFER_HELP));
     }
     ctx.set_status("Starting ...");
 }

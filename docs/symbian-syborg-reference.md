@@ -20,17 +20,23 @@ Each VM has its own writable phone memory (`C:`). The browser stores it for this
 
 Internet connections pass through your selected Wisp relay. The virtual SIM supports IPv4 data for the phone's apps.
 
+## Send files to the phone
+
+1. Save any open work in the phone. Choose **Send Files…** in the v86 toolbar, select one or more files, and click **Save card and power off**. Then click **Power on again**.
+2. In the phone, open **Menu → Applications → File mgr. → E:**. Look in **Transfer** for ordinary files and **INSTALL** for SIS and SISX packages. Each file keeps its name and extension.
+
+To replace the transfer card, power off and use **Library → Edit settings → Symbian firmware → Eject transfer card**, then save. Its image is available in **Browser disks**.
+
 ## Install an app
 
 1. Get a signed S60v5 SIS or SISX package that supports the Nokia 5800. To try the included example, use [v86 Notes 1.0](../tests/symbian/fixtures/notes-v1.sisx).
-2. Save any open work in the phone. In the v86 toolbar, choose **Send SIS/SISX…**, select the package, and click **Save card and power off**. Then click **Power on again**.
-3. In the phone, open **Menu → Applications → File mgr. → E: → INSTALL**. v86 lists each transferred filename. The first is `PKG00001.SIS`.
-4. Select the file and choose **Options → Organise → Copy to folder → C: Phone mem. → Root folder → Copy**. In the same boot, open **Phone memory**, select the copy, and click **Open selected file** in the v86 toolbar.
-5. Follow the original Symbian installer and choose **C: Phone mem.**. Open the installed app from **Applications**. v86 Notes has a puzzle-piece icon. Type a note and tap **Save**. Open it again after a cold start to see the saved text.
+2. Send the package with **Send Files…** and open **E: → INSTALL** after restarting the phone.
+3. Select the package and choose **Options → Organise → Copy to folder → C: Phone mem. → Root folder → Copy**. In the same boot, open **Phone memory**, select the copy, and click **Open selected file** in the v86 toolbar.
+4. Follow the original Symbian installer and choose **C: Phone mem.**. Open the installed app from **Applications**. v86 Notes has a puzzle-piece icon. Type a note and tap **Save**. Open it again after a cold start to see the saved text.
 
 If an installer reports an expired certificate, check the guest's date against the certificate's validity period. The included Notes packages are valid from 18 November 2026 to 15 November 2036 UTC. The original installer checks signing, permissions, and device compatibility. If you see a file-type error, copy the package from E: to C: again and open the new copy during that session.
 
-To replace the transfer card, power off and use **Library → Edit settings → Symbian firmware → Eject transfer card**, then save. You can still find its image in **Browser disks**. To remove an installed app, use **Menu → Settings → Application mgr. → Installed apps.** inside the phone.
+To remove an installed app, use **Menu → Settings → Application mgr. → Installed apps.** inside the phone.
 
 ## Play 3D games
 

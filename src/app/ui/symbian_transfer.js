@@ -1,37 +1,38 @@
 // @ts-check
 import { h, replace } from "./dom.js";
-import { sis_card_files } from "../../symbian/sis_card.js";
+import { transfer_card_files } from "../../symbian/transfer_card.js";
 
-/** @param {Awaited<ReturnType<typeof sis_card_files>>} packages */
-export function package_paths(packages)
+/** @param {Awaited<ReturnType<typeof transfer_card_files>>} files */
+export function transfer_paths(files)
 {
-    return h("ul", null, packages.map(({ file, path }) => h("li", null, file.name, " → ", h("code", null, path))));
+    return h("ul", null, files.map(({ path }) => h("li", null, h("code", null, path))));
 }
 
-export const SYBORG_INSTALL_HELP = "In Symbian File manager, copy the package from E:\\INSTALL to the Phone memory root folder. Select the copied file and use Open selected file.";
+export const SYBORG_TRANSFER_HELP = "In Symbian File manager, look in E:\\Transfer for files and E:\\INSTALL for SIS/SISX packages.";
+const INSTALL_HELP = "To install a package, copy it from E:\\INSTALL to the Phone memory root. Select the copy and use Open selected file.";
 
 /**
- * @param {(packages: Awaited<ReturnType<typeof sis_card_files>>) => Promise<void>} attach
- * @param {{name: string, firmware: string}} device
+ * @param {(files: Awaited<ReturnType<typeof transfer_card_files>>) => Promise<void>} attach
+ * @param {string} device_name
  */
-export function show_sis_transfer(attach, device)
+export function show_file_transfer(attach, device_name)
 {
     return new Promise(resolve => {
-        const element = /** @type {HTMLDialogElement} */ (h("dialog.dialog.sis-transfer", { "aria-labelledby": "sis-transfer-title" }));
-        const input = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: ".sis,.sisx", multiple: true }));
+        const element = /** @type {HTMLDialogElement} */ (h("dialog.dialog.file-transfer", { "aria-labelledby": "file-transfer-title" }));
+        const input = /** @type {HTMLInputElement} */ (h("input", { type: "file", multiple: true }));
         const paths = h("div"), status = h("p", { role: "status" });
         let controller = new AbortController(), busy = false;
-        /** @type {Awaited<ReturnType<typeof sis_card_files>>} */
-        let packages = [];
+        /** @type {Awaited<ReturnType<typeof transfer_card_files>>} */
+        let selected = [];
         const close = () => { controller.abort(); element.close(); element.remove(); resolve(undefined); };
         const cancel = /** @type {HTMLButtonElement} */ (h("button", { type: "button", onclick: close }, "Cancel"));
         const use = /** @type {HTMLButtonElement} */ (h("button.primary", { type: "button", disabled: true, onclick: async () => {
-            if(busy || !packages.length) return;
+            if(busy || !selected.length) return;
             busy = input.disabled = cancel.disabled = use.disabled = true;
             status.textContent = "Writing the transfer card…";
             try
             {
-                await attach(packages);
+                await attach(selected);
                 close();
             }
             catch(error)
@@ -45,17 +46,17 @@ export function show_sis_transfer(attach, device)
             controller.abort();
             const { signal } = controller = new AbortController();
             const files = Array.from(input.files || []);
-            packages = [];
+            selected = [];
             use.disabled = true;
             replace(paths);
-            status.textContent = files.length ? "Checking packages…" : "";
+            status.textContent = files.length ? "Checking files…" : "";
             if(!files.length) return;
             try
             {
-                const result = await sis_card_files(files, signal);
+                const result = await transfer_card_files(files, signal);
                 if(signal.aborted) return;
-                packages = result;
-                replace(paths, package_paths(packages));
+                selected = result;
+                replace(paths, transfer_paths(selected), selected.some(file => file.folder === "INSTALL") && h("p.note", null, INSTALL_HELP));
                 status.textContent = "";
                 use.disabled = false;
             }
@@ -65,13 +66,10 @@ export function show_sis_transfer(attach, device)
             }
         };
         element.append(h("form", { method: "dialog", onsubmit: event => event.preventDefault() },
-            h("h2#sis-transfer-title", null, "Send SIS/SISX to " + device.name),
+            h("h2#file-transfer-title", null, "Send Files to " + device_name),
             h("div.dialog-body", null,
-                h("p.note", null, "Firmware " + device.firmware),
-                h("p", null, "Save any open work to C: first. Saving this card replaces the temporary E: drive and powers off the VM. Start it again to use the card."),
-                h("p", null, SYBORG_INSTALL_HELP),
-                h("p.note", null, "Symbian handles installation and decides whether to accept each package."),
-                h("label.field", null, h("span", null, "Local SIS/SISX packages"), input), paths, status),
+                h("p", null, "Save any open work to C: first. Saving this card replaces the temporary E: drive and powers off the VM. Start it again to open the files."),
+                h("label.field", null, h("span", null, "Files"), input), paths, status),
             h("div.dialog-buttons", null, cancel, use)));
         element.addEventListener("cancel", event => { event.preventDefault(); if(!busy) close(); });
         document.body.append(element);

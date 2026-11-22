@@ -1,5 +1,5 @@
 // Read bounded guest-written artifacts from a read-only FAT disk adapter.
-async function read_fat(disk, filename, list_directory, bits)
+async function read_fat(disk, filename, list_directory, bits, max_file_size = 32 * 1024 * 1024)
 {
     const blob = disk instanceof Blob;
     async function read(at, size) {
@@ -33,8 +33,8 @@ async function read_fat(disk, filename, list_directory, bits)
         const seen = new Set(), chunks = [];let length = 0;
         for(let next = first; next >= 2 && next < first_end;) {
             const entry = next * entry_size;
-            if(seen.has(next) || entry + entry_size > fat.byteLength || length >= 32 * 1024 * 1024)
-                throw new Error("Invalid or oversized FAT chain");
+            if(seen.has(next) || entry + entry_size > fat.byteLength)
+                throw new Error("Invalid FAT chain");
             seen.add(next);chunks.push(await read(data_at + (next - 2) * cluster, cluster));length += cluster;
             if(length >= limit) break;
             next = fat32 ? fat.getUint32(entry, true) & 0x0fffffff : fat.getUint16(entry, true);
@@ -50,7 +50,9 @@ async function read_fat(disk, filename, list_directory, bits)
             if(row[0] === 0xe5) {long = [];continue;}
             if(row[11] === 15) {
                 const text = new Uint8Array([...row.subarray(1, 11), ...row.subarray(14, 26), ...row.subarray(28, 32)]);
-                long.unshift(new TextDecoder("utf-16le").decode(text).split("\0")[0].replaceAll("\uffff", ""));continue;
+                const values = view(text);
+                const units = Array.from({ length: text.length / 2 }, (_, i) => values.getUint16(i * 2, true));
+                long.unshift(String.fromCharCode(...units).split("\0")[0].replaceAll("\uffff", ""));continue;
             }
             const short = new TextDecoder().decode(row.subarray(0, 8)).trim() +
                 (row[8] === 32 ? "" : "." + new TextDecoder().decode(row.subarray(8, 11)).trim());
@@ -74,7 +76,7 @@ async function read_fat(disk, filename, list_directory, bits)
                 return entries(await chain(found.cluster));
             }
             if(found.directory) throw new Error("Requested a directory");
-            if(found.size > 32 * 1024 * 1024) throw new Error("Artifact exceeds reader limit");
+            if(found.size > max_file_size) throw new Error("Artifact exceeds reader limit");
             const bytes = found.size ? await chain(found.cluster, found.size) : new Uint8Array(0);
             if(bytes.length !== found.size) throw new Error("Truncated FAT file");
             return bytes;
@@ -88,5 +90,5 @@ async function read_fat(disk, filename, list_directory, bits)
 
 export const read_fat32_file = (disk, filename) => read_fat(disk, filename, false, 32);
 export const list_fat32_directory = (disk, dirname) => read_fat(disk, dirname, true, 32);
-export const read_fat16_file = (disk, filename) => read_fat(disk, filename, false, 16);
+export const read_fat16_file = (disk, filename, max_file_size) => read_fat(disk, filename, false, 16, max_file_size);
 export const list_fat16_directory = (disk, dirname) => read_fat(disk, dirname, true, 16);

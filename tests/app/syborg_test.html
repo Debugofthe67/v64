@@ -16,7 +16,7 @@ const firmware_url = args.get("archive") || directory + "firmware.zip";
 const missing_url = args.get("missing") || directory + "missing.zip";
 const part = args.get("part");
 const controls_only = part === "controls";
-const prepared = controls_only && args.has("prepared");
+const prepared = (controls_only || part === "notes") && args.has("prepared");
 const result = document.querySelector("#result");
 const log = text => document.querySelector("#log").append(text + "\n");
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -471,8 +471,9 @@ async function run()
 
     if(prepared)
     {
-        await reset_disk(disk_id(first.symbian.media.phone.path), "/build/browser-test-output/syborg-s4-stock-notes-v1-C.img");
-        log("Using the S4 C: copy in this independent controls run.");
+        const seed = part === "notes" ? "syborg-s4-stock-uninstalled-C.img" : "syborg-s4-stock-notes-v1-C.img";
+        await reset_disk(disk_id(first.symbian.media.phone.path), "/build/browser-test-output/" + seed);
+        log("Using the S4 C: copy with first-run setup complete.");
     }
     first.symbian.network = false;
     await store.put(first);
@@ -515,18 +516,30 @@ async function run()
         return;
     }
 
-    doc().querySelector("#symbian_send_sis").click();
-    const transfer = await until("transfer dialog", () => doc().querySelector(".sis-transfer[open]"));
+    doc().querySelector("#symbian_send_files").click();
+    const transfer = await until("transfer dialog", () => doc().querySelector(".file-transfer[open]"));
     const note = await fetch_file("/tests/symbian/fixtures/notes-v1.sisx", "notes-v1.sisx");
-    files(transfer.querySelector("input"), [note]);
-    (await until("signed package on E:", () => transfer.textContent.includes("E:\\INSTALL\\PKG00001.SIS") &&
+    const sample = new File(["Notes from the host\n"], "传输测试.txt");
+    const ordinary = [sample];
+    if(args.has("video")) ordinary.push(await fetch_file(args.get("video"), "Playback test.mp4"));
+    const picker = transfer.querySelector("input");
+    check(picker.multiple && !picker.accept, "the transfer picker accepts multiple files of any type");
+    files(picker, [note, ...ordinary]);
+    (await until("mixed files on E:", () => transfer.textContent.includes("E:\\INSTALL\\notes-v1.sisx") &&
+        ordinary.every(file => transfer.textContent.includes("E:\\Transfer\\" + file.name)) &&
         button(transfer, "Save card and power off"))).click();
     await until("card saved and powered off", () => status("Powered off"), 60000);
     const saved = await store.get(first.id);
     const card = await image_for(saved.symbian.sd);
-    const bytes = await read_fat16_file(card, "INSTALL/PKG00001.SIS");
+    const bytes = await read_fat16_file(card, "INSTALL/notes-v1.sisx");
     const expected = new Uint8Array(await note.arrayBuffer());
     check(bytes?.length === expected.length && bytes.every((byte, i) => byte === expected[i]), "transfer image preserves signed package bytes");
+    for(const file of ordinary)
+    {
+        const contents = await read_fat16_file(card, "Transfer/" + file.name);
+        const expected = new Uint8Array(await file.arrayBuffer());
+        check(contents?.length === expected.length && contents.every((byte, i) => byte === expected[i]), "transfer image preserves " + file.name);
+    }
     await open_console(doc().querySelector('.console-notice a').href);
     await wait_screen("home", 165000);
     await menu();
@@ -534,13 +547,13 @@ async function run()
     await wait_screen("applications");
     await tap(55, 143);
     await wait_screen("file_manager");
-    log("Private raw E: card reopened in the app. Copy PKG00001.SIS from E:\\INSTALL to the C: root and install it. Open the puzzle-piece Notes in Applications, type 580086, and tap Save.");
+    log("Private raw E: card reopened in the app. Copy notes-v1.sisx from E:\\INSTALL to the C: root and install it. Open the puzzle-piece Notes in Applications, type 580086, and tap Save.");
     window.s5.card_ready = true;
     await wait_screen("saved_note", 600000);
     await power_off();
     const phone_disk = await image_for(saved.symbian.media.phone);
     await check_installed_notes(phone_disk, 1);
-    const copied = await read_fat16_file(phone_disk, "data/PKG00001.SIS");
+    const copied = await read_fat16_file(phone_disk, "data/notes-v1.sisx");
     check(copied?.length === expected.length && copied.every((byte, i) => byte === expected[i]), "the native copy preserves the signed bytes");
     check(!(await store.get(second.id)).symbian.sd, "second VM never inherited the transfer card");
     const untouched = new Uint8Array(await (await image_for(second.symbian.media.phone)).arrayBuffer());
