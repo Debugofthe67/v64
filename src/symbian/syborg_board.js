@@ -3,6 +3,7 @@
 // See docs/symbian-syborg-reference.md.
 import { DisplayHub } from "../display.js";
 import { sha256_hex } from "../image/sha256.js";
+import { syborg_audio } from "./syborg_audio.js";
 import { syborg_irq_controller, syborg_rtc, syborg_timer, syborg_uart } from "./syborg_devices.js";
 import { syborg_framebuffer } from "./syborg_framebuffer.js";
 import { syborg_graphics } from "./syborg_graphics.js";
@@ -118,7 +119,6 @@ function map_offline_slots(cpu, accelerated)
     for(const [address, length, name, id] of [
         [0xC000A000, 0x2000, "Syborg hostfs and snapshot slots", 0],
         [0xC000C000, 0x1000, "Syborg offline Ethernet", 0xC51D0040],
-        [0xC000E000, 0x1000, "Syborg optional audio slot", 0],
         ...(accelerated ? [] : [[0xC000F000, 0x1000, "Syborg optional graphics slot", 0]]),
         [0xC001D000, 0x1000, "Syborg optional sensor slot", 0],
     ])
@@ -149,7 +149,8 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
     const hub = new DisplayHub(bus, screen);
     const irq = syborg_irq_controller(cpu);
     const timer = syborg_timer(cpu, irq.source(1));
-    const modem = syborg_modem(cpu, irq, boot.network, bus);
+    const audio = syborg_audio(cpu, bus);
+    const modem = syborg_modem(cpu, irq, boot.network, bus, audio);
     const [nvmemory, nvmemory2] = boot.disks;
     const disks = [
         syborg_nvmemory(cpu, 0xC0010000, "NVMemory C:", nvmemory, irq.source(12)),
@@ -166,20 +167,14 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
         timer(now)
         {
             const was_asserted = irq.asserted();
-            const next = Math.min(timer.poll(now), hub.timer(now), modem.poll(now));
+            const next = Math.min(timer.poll(now), hub.timer(now), audio.poll(now), modem.poll(now));
             return !was_asserted && irq.asserted() ? 0 : next;
         },
-        reset() { for(const device of devices) device.reset?.(); gpu?.reset(); },
+        reset() { for(const device of devices) device.reset?.(); gpu?.reset(); audio.reset(); },
         get_state()
         {
-            const state = [boot.identity, devices.map(device => device.get_state())];
-            if(gpu) state[2] = gpu.get_state();
-            if(boot.network)
-            {
-                if(!gpu) state[2] = null;
-                state[3] = true;
-            }
-            return state;
+            return [boot.identity, devices.map(device => device.get_state()), gpu?.get_state() ?? null,
+                boot.network, audio.get_state()];
         },
         check_state(state)
         {
@@ -196,6 +191,7 @@ export function create_syborg_board(cpu, boot, bus, screen, graphics = null, pri
         {
             devices.forEach((device, index) => device.set_state(state[1][index]));
             gpu?.set_state(state[2]);
+            audio.set_state(state[4]);
         },
         network_status() { return modem.network_status(); },
         display: hub,

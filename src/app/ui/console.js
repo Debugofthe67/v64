@@ -1191,7 +1191,8 @@ function console_ui(layout, emulator, ctx)
             ["Storage (" + storage_bus + ")", storage],
             ["Network", (NIC_LABELS[network_card] || network_card) + (network_card === "none" ? "" :
                 ": " + format_size(stats.net_in) + " received, " + format_size(stats.net_out) + " sent")],
-            ["Sound", iphone ? "CS42L61, PCM output unavailable" : (SOUND_LABELS[sound_card] || sound_card) + (options.disable_speaker ? ", muted" : "")],
+            ["Sound", iphone ? "CS42L61, PCM output unavailable" : syborg ? "Syborg PCM" :
+                (SOUND_LABELS[sound_card] || sound_card) + (options.disable_speaker ? ", muted" : "")],
             ["Shared folder", stats.fs_file ? format_size(stats.fs_read) + " read, " + format_size(stats.fs_written) + " written, last " + stats.fs_file : "-"],
             ["Display", stats.mode ? stats.mode + ", " + stats.resolution : "-"],
             ["Mouse", stats.usb_tablet ? "the USB tablet (absolute)" + (stats.pointer_locked ? "; locked: PS/2" : "") :

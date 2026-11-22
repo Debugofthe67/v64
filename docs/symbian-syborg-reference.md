@@ -27,6 +27,8 @@ Internet connections pass through your selected Wisp relay. The virtual SIM supp
 
 To replace the transfer card, power off and use **Library → Edit settings → Symbian firmware → Eject transfer card**, then save. Its image is available in **Browser disks**.
 
+Open an MP3 from **E: → Transfer** to play it through the original Symbian player. If the browser has blocked autoplay, click the VM page to enable sound. Power off and start the VM once if it is resuming from a snapshot made before audio support.
+
 ## Install an app
 
 1. Get a signed S60v5 SIS or SISX package that supports the Nokia 5800. To try the included example, use [v86 Notes 1.0](../tests/symbian/fixtures/notes-v1.sisx).

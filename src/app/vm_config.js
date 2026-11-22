@@ -995,7 +995,7 @@ export function config_to_options(config, env)
                 rom: image(rom), rofs: image(rofs), devicetree: image(devicetree),
                 nvmemory: { ...image(phone), disk_option: "read_write" },
                 ...(sd ? { nvmemory2: { ...image(sd), disk_option: "read_write" } } : {}) },
-            initial_state: image(config.initial_state), autostart: true, disable_mouse: true, disable_keyboard: true, disable_speaker: true,
+            initial_state: image(config.initial_state), autostart: true, disable_mouse: true, disable_keyboard: true,
         };
     }
     if(machine.type === "s5l8930" && config.ios)

@@ -23,7 +23,7 @@ const REPLIES = new Map([
     [0x0A0B, [0x0C, "000104040000"]],
     [0x0A36, [0x37, "00012c08010100000000"]],
     [0x0A40, [0x41, "010000"]],           // RM-356 network mode query
-    [0x0B00, [0x01, "0100"]],             // Silent audio control
+    [0x0B00, [0x01, "0100"]],             // Audio control
     [0x0B04, [0x05, "0000"]],
     [0x0B14, [0x15, "0000"]],
     [0x0B19, [0x1A, "0000"]],
@@ -48,6 +48,7 @@ const REPLIES = new Map([
     [0xF33B, [0x3C, "00000000"]],
     [0xF33D, [0x3E, "00000000"]],
     [0xF33F, [0x40, "0000"]],
+    [0xF341, [0x42, "0000"]],
 ].map(([request, [id, payload]]) => [request, [id, Uint8Array.from(
     payload.match(/../g), byte => parseInt(byte, 16))]]));
 
@@ -282,7 +283,7 @@ const HOME_REGISTRATION = [
 const TEST_SIM_IMSI = [8, 0x09, 0x10, 0x10, 0x10, 0x32, 0x54, 0x76, 0x98];
 const RESET_DELAY_MS = 3000;
 
-export function syborg_modem(cpu, irq, network = false, bus = null)
+export function syborg_modem(cpu, irq, network = false, bus = null, audio = null)
 {
     let mtc_state = 1;
     let reset_at = null;
@@ -381,9 +382,9 @@ export function syborg_modem(cpu, irq, network = false, bus = null)
         }
         if(resource === 0xF3 && id === 0x34 && request.length >= 16)
         {
-            // The offline DSP consumes a silent period using the board's
-            // 16-unit ring timing. Only delayed frames raise the mailbox IRQ.
-            send(resource, transaction, 0x35, request.subarray(10, 16), 80);
+            const data = new DataView(request.buffer, request.byteOffset, request.byteLength);
+            const delay = audio?.data_written(data.getUint16(10), data.getUint32(12)) ?? 80;
+            send(resource, transaction, 0x35, request.subarray(10, 16), delay);
             return;
         }
         if(packet_data?.control(port, request, send)) return;
