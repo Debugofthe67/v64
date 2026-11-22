@@ -29,6 +29,8 @@ To replace the transfer card, power off and use **Library → Edit settings → 
 
 Open an MP3 from **E: → Transfer** to play it through the original Symbian player. If the browser has blocked autoplay, click the VM page to enable sound. Power off and start the VM once if it is resuming from a snapshot made before audio support.
 
+For a video that RealPlayer cannot play, send it with **Send Files…** and power the VM back on. Open **View → Play Video from E:…**, select the file and press Play. The browser decodes the transferred file locally, using the codecs your browser supports.
+
 ## Install an app
 
 1. Get a signed S60v5 SIS or SISX package that supports the Nokia 5800. To try the included example, use [v86 Notes 1.0](../tests/symbian/fixtures/notes-v1.sisx).

@@ -1,6 +1,7 @@
 import { inspect_sis } from "./sis.js";
 
 const SECTOR = 512, MAX_CARD_SLACK = 2048, ROOT_SECTORS = 16, COPIES = 2;
+const MAX_DIRECTORY_BYTES = 65536 * 32;
 const MiB = 1024 ** 2;
 const VOLUME = "V86TRANSFER";
 const LFN_OFFSETS = [1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30];
@@ -70,11 +71,17 @@ export async function transfer_card_files(files, signal)
 
 // VFAT stores 13 UTF-16 units in each long entry. The entries precede
 // their 8.3 alias in reverse ordinal order and share its checksum.
-function long_name(dir, index, name, alias)
+function alias_checksum(alias)
 {
     let checksum = 0;
     for(let i = 0; i < alias.length; i++)
         checksum = (((checksum & 1) << 7 | checksum >>> 1) + alias.charCodeAt(i)) & 255;
+    return checksum;
+}
+
+function long_name(dir, index, name, alias)
+{
+    const checksum = alias_checksum(alias);
     const count = Math.ceil(name.length / LFN_OFFSETS.length);
     for(let part = count; part > 0; part--)
     {
@@ -179,4 +186,94 @@ export function make_transfer_card(files, serial)
     for(let remaining = size - header.length - data_bytes; remaining > 0; remaining -= MiB)
         parts.push(remaining < MiB ? zero.slice(0, remaining) : zero);
     return new File(parts, "file-transfer.img", { type: "application/octet-stream" });
+}
+
+const VIDEO_TYPES = new Map([
+    ["mp4", "video/mp4"], ["m4v", "video/mp4"], ["3gp", "video/3gpp"],
+    ["mov", "video/quicktime"], ["webm", "video/webm"],
+]);
+
+function directory_entries(bytes)
+{
+    const dir = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const entries = [];
+    let name = "", sequence = 0, checksum = 0;
+    for(let at = 0; at + 32 <= bytes.length && bytes[at]; at += 32)
+    {
+        const marker = bytes[at], attr = bytes[at + 11];
+        if(marker === 0xE5) { name = ""; sequence = 0; continue; }
+        if(attr === 15)
+        {
+            const part = marker & 31, check = bytes[at + 13];
+            if(marker & 0x40) { name = ""; sequence = part; checksum = check; }
+            if(!part || part !== sequence || check !== checksum) { name = ""; sequence = 0; continue; }
+            const units = LFN_OFFSETS.map(offset => dir.getUint16(at + offset, true));
+            name = String.fromCharCode(...units).split("\0")[0] + name;
+            sequence--;
+            continue;
+        }
+        const alias = String.fromCharCode(...bytes.subarray(at, at + 11));
+        const long = name && sequence === 0 && checksum === alias_checksum(alias) ? name : "";
+        name = "";
+        sequence = 0;
+        if(attr & 8 || marker === 0x2E) continue;
+        const ext = alias.slice(8).trimEnd();
+        entries.push({ name: long || alias.slice(0, 8).trimEnd() + (ext ? "." + ext : ""),
+            directory: !!(attr & 0x10), cluster: dir.getUint16(at + 26, true), size: dir.getUint32(at + 28, true) });
+    }
+    return entries;
+}
+
+/** Read the video entries on the FAT16 transfer card created by make_transfer_card. @param {Blob} disk */
+export async function transfer_card_videos(disk)
+{
+    const boot = new DataView(await disk.slice(0, SECTOR).arrayBuffer());
+    if(boot.byteLength !== SECTOR || boot.getUint16(510, true) !== 0xAA55 || boot.getUint16(11, true) !== SECTOR ||
+        String.fromCharCode(...new Uint8Array(boot.buffer, 54, 5)) !== "FAT16")
+        throw new Error("The transfer card does not contain a supported FAT16 volume.");
+    const cluster_bytes = boot.getUint8(13) * SECTOR;
+    const fat_at = boot.getUint16(14, true) * SECTOR, fat_size = boot.getUint16(22, true) * SECTOR;
+    const root_at = fat_at + boot.getUint8(16) * fat_size;
+    const root_size = boot.getUint16(17, true) * 32;
+    const data_at = root_at + Math.ceil(root_size / SECTOR) * SECTOR;
+    const total = (boot.getUint16(19, true) || boot.getUint32(32, true)) * SECTOR;
+    if(!cluster_bytes || !fat_at || !fat_size || !root_size || total > disk.size || data_at >= total)
+        throw new Error("The transfer card has an invalid FAT16 layout.");
+    const fat = new DataView(await disk.slice(fat_at, fat_at + fat_size).arrayBuffer());
+    const root = new Uint8Array(await disk.slice(root_at, root_at + root_size).arrayBuffer());
+    const transfer = directory_entries(root).find(entry => entry.directory && entry.name.toUpperCase() === "TRANSFER");
+    if(!transfer) return [];
+
+    // Coalesce consecutive clusters, so a video can be passed to the browser
+    // as a Blob without reading the whole card or copying it to phone memory.
+    function extents(first, length)
+    {
+        const ranges = [], visited = new Set();
+        let remaining = length;
+        for(let cluster = first; cluster < 0xFFF8 && remaining > 0; cluster = fat.getUint16(cluster * 2, true))
+        {
+            const offset = data_at + (cluster - 2) * cluster_bytes;
+            if(cluster < 2 || cluster >= 0xFFF0 || cluster * 2 + 2 > fat.byteLength || offset + cluster_bytes > total || visited.has(cluster))
+                throw new Error("The transfer card has a damaged file chain.");
+            visited.add(cluster);
+            const end = offset + Math.min(remaining, cluster_bytes);
+            const previous = ranges.at(-1);
+            if(previous && previous.end === offset) previous.end = end;
+            else ranges.push({ offset, end });
+            remaining -= end - offset;
+        }
+        if((Number.isFinite(length) && remaining > 0) || !ranges.length)
+            throw new Error("The transfer card contains an incomplete file.");
+        return ranges;
+    }
+
+    const directory = new Blob(extents(transfer.cluster, Infinity).map(({ offset, end }) => disk.slice(offset, end)));
+    if(directory.size > MAX_DIRECTORY_BYTES) throw new Error("The transfer directory is too large.");
+    return directory_entries(new Uint8Array(await directory.arrayBuffer())).flatMap(entry => {
+        const dot = entry.name.lastIndexOf(".");
+        const type = dot < 0 ? undefined : VIDEO_TYPES.get(entry.name.slice(dot + 1).toLowerCase());
+        if(entry.directory || !entry.size || !type) return [];
+        return [{ name: entry.name, open: () => new Blob(extents(entry.cluster, entry.size).map(({ offset, end }) =>
+            disk.slice(offset, end)), { type }) }];
+    });
 }
