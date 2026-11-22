@@ -38,6 +38,7 @@
 ```js
 const vm = new V86({
     cpu_type: "arm32",
+    cpu_profile: "arm1136-r2",
     machine_type: "symbian-syborg",
     cpu_worker: true,
     graphics_adapter: "none",
@@ -59,6 +60,7 @@ const vm = new V86({
 vm.add_listener("emulator-loaded", () => vm.run());
 ```
 
+- `cpu_profile: "arm1136-r2"` 选用 Syborg 对照机的 ARM1136 r0p2。省略时，`symbian-syborg` 会自动选择该配置。
 - `manifest` 标识机型、固件版本和产物格式，提供各只读文件的大小和 SHA-256。v86 据此选择 CPU、RAM 和板级配置，并在启动前校验传入的产物。`rom` 是本地组装的混合 XIP，包含开源 EKA2、Syborg BSP 和原厂用户态模块。`rofs` 是按固件顺序合并的只读分区。`devicetree` 提供 Syborg 平台设备树。示例用本地站点的文件 URL，浏览器文件夹导入也可传入 `{ buffer: ArrayBuffer }`。
 - `nvmemory` 是 `C:` 的可写介质。需要 `E:` 时，按同样的磁盘描述提供可选 `nvmemory2`。浏览器新建向导和程序化调用使用同一套构造参数。
 - qembian 使用 ARM 启动存根，混合 XIP 的物理装载地址为 `0x00010000`，ROFS 只读窗口从 `0x60000000` 开始，设备树由平台设备在 `0xC0012000` 提供。v86 从所选配置取得装载条件。S0 记录首次取指地址、CPU 模式及寄存器交接，S2 对照实现。[qembian Syborg 板级源码](https://github.com/emgfc/qembian/blob/aae8b5f4ecf4fccacac91b2b93a6a24df586d9bb/src/qemu-syborg/hw/arm/syborg.c#L1-L32)
