@@ -1,0 +1,49 @@
+name: Build v64
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: # Lets you click "Run workflow" manually in the Actions tab
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system build dependencies (make, clang, java)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make clang default-jre-headless
+
+      - name: Set up Node.js v24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Rust and wasm32 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build optimized v64 and static site
+        run: make all pages
+
+      - name: Upload compiled build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v64-build-output
+          path: |
+            build/libv86.mjs
+            build/v86.wasm
+            build/v86-parallel.wasm
+            build/vcpu-worker.js
+            build/v86_app.js
+            build/pages/
+            bios/
+          retention-days: 7
